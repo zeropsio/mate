@@ -209,7 +209,7 @@ describe("arrivalSteps — Git access that failed", () => {
         signin: "waiting",
         standup: "none",
       },
-      why: "HQ has no record of this Mate yet. Finish its setup from its menu.",
+      why: "HQ has no record of this Mate yet.",
     },
     {
       case: "failed, why not said",
@@ -772,7 +772,7 @@ describe("pressNote — what the steps this tab runs leave to read whole under t
     {
       case: "a registration not finished: what is not, and why",
       press: [
-        step("done", "Private network ready"),
+        step("done", "Its computer"),
         step("unfinished", "Not registered", "Its grant timed out."),
       ],
       want: { kind: "unfinished", text: "Not registered: Its grant timed out." },

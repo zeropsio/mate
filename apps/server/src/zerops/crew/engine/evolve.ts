@@ -144,7 +144,6 @@ const fold = (state: CrewState, event: CrewEvent): CrewState => {
         crewPorts: [],
         served: { by: "unknown" as const },
         integration: null,
-        polls: 0,
       };
       return { ...state, hosts: { ...state.hosts, [event.host]: { ...host, ...event.set } } };
     }

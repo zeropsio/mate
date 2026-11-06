@@ -14,7 +14,7 @@ export {
 } from "./account.ts";
 export { makeMateAttentionWire, type MateAttentionWire } from "./adapters/mateAttention.ts";
 export { makeHqWire } from "./adapters/hqWire.ts";
-export type { HqHandoverCandidates, HqMoveOffers, HqWire } from "./adapters/hq.ts";
+export type { HqMoveOffers, HqWire } from "./adapters/hq.ts";
 export type {
   HqAppValue,
   HqOrganizationValue,
@@ -31,6 +31,7 @@ export {
   canonicalHqNavigation,
   canonicalHqMenuNavigation,
   type CanonicalHqNavigationRead,
+  hqEnvironmentOffers,
   hqNavigation,
   hqPersonFacts,
   hqStatus,
@@ -90,6 +91,8 @@ export {
   type ZeropsPrincipalVerdict,
   type ZeropsSessionCalls,
 } from "../zerops/data/zeropsSession.ts";
+export { followMateRoles } from "../zerops/account/mateRoles.ts";
+export { finishGoneProjects } from "./goneProjects.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { makeBuildLogTransport } from "./adapters/buildLog.ts";
 export { makeVaultReveal, type VaultReveal, type VaultRevealed } from "./adapters/vaultReveal.ts";
@@ -203,9 +206,16 @@ export {
   type OrganizationProjects,
   type RosterRead,
 } from "./projections/projects.ts";
+export { mateVisibility } from "./projections/mateVisibility.ts";
 export { HQ_SLOW, type UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
 export { creationImports } from "./projections/creationImports.ts";
+export {
+  sharedBirths,
+  type SharedBirth,
+  type SharedBirthState,
+  type BirthProgress,
+} from "./projections/birthProgress.ts";
 export {
   creationStepId,
   creationSteps,
@@ -236,6 +246,8 @@ export { releaseRequestOf, type FlowWriteIntent } from "./operations/flowWrites.
 export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { OperationStopped, runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
+export { birthAttempt } from "./operations/birthAttempt.ts";
+export { continueBirth } from "./operations/continueBirth.ts";
 export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
 export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export {
@@ -247,9 +259,11 @@ export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
 export { operationWait, type OperationWait } from "./projections/operationWait.ts";
 export {
   accountReadsAtom,
+  sharedBirthsAtom,
   NOT_READ_PROCESSES,
   listedProjectAtom,
-  hqMateSetupAtom,
+  shownMateVisibilityAtom,
+  shownMateVisibilitiesAtom,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
@@ -304,7 +318,6 @@ export {
 
 export { environmentSetup } from "./projections/environmentSetup.ts";
 
-export { hqMateSetup, type HqMateSetup } from "./projections/hqMateSetup.ts";
 export { hqPicture, type HqPictureRead } from "./projections/hqPicture.ts";
 export {
   pictureOwner,
@@ -527,8 +540,7 @@ export { makeVcsReads, makeVcsWire } from "./adapters/mateVcs.ts";
 export { mateVcs, type VcsKey } from "./projections/mateVcs.ts";
 export {
   acquireHqPressLease,
-  PRESS_RENEW_MS,
-  PRESS_STEP_RENEW_MS,
+  type KeepPress,
   type PressHold,
 } from "./operations/executors/hqPressLease.ts";
 
@@ -559,12 +571,6 @@ export {
   arrivalAwaitsAnswer,
   mateArrivalShown,
   mateConnectKey,
-  HALF_MADE_LINE,
-  HALF_MADE_OWNER_LINE,
-  CLOSING_OFF_LINE,
-  CHECKING_SETUP_LINE,
-  AWAITING_HQ_LINE,
-  halfMadeFor,
   asSentence,
   RESTARTING_SERVICE_STATUSES,
   COMING_UP_LINE,
@@ -797,7 +803,7 @@ export {
   shownHqListedMatesAtom,
   shownMateListProjectsAtom,
 } from "./reads.ts";
-export { zeropsAccessToken, zeropsOrgStart, type OrgStartClient } from "./adapters/hqOrgStart.ts";
+export { zeropsAccessToken } from "./adapters/hqAccessToken.ts";
 export { mateTicketIssuer } from "./adapters/hqMateTicket.ts";
 
 export {
@@ -833,3 +839,4 @@ export {
   automaticObserveRequestId,
   offersObserveAuthorize,
 } from "./projections/observeAuthorization.ts";
+export { projectOperator } from "./projections/permissionFacts.ts";

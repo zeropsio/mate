@@ -9,6 +9,7 @@ import {
   MateLinkClosed,
   MATE_LINK_TEXT_MAX,
   MateLinkDown,
+  MateSelf,
   LoginDigest,
   MateLinkUp,
   linkFrameBytes,
@@ -17,6 +18,7 @@ import {
 
 const decodeUp = Schema.decodeUnknownExit(Schema.fromJsonString(MateLinkUp));
 const decodeDown = Schema.decodeUnknownExit(Schema.fromJsonString(MateLinkDown));
+const encodeKeyUp = Schema.encodeUnknownSync(Schema.fromJsonString(KeyLinkUp));
 
 /** The summary a Mate from before the overview sent. */
 const summary = (lastRequest: string) =>
@@ -364,7 +366,6 @@ describe("mateLink", () => {
           name: "Ada",
           face: "face-1",
           standupRequestedBy: null,
-          closedOff: true,
           appId: "A1",
           changes: [
             {
@@ -440,14 +441,39 @@ describe("the keys model's link", () => {
     name: "Ada",
     face: "face-1",
     standupRequestedBy: null,
-    closedOff: true,
-    signers: { "claude-code": "U1" },
     appId: "A1",
     appName: "Shop",
     changes: [],
     chief: { projectId: "P_CHIEF" },
   };
-  const member = { userId: "U1", role: "ADMIN", visibility: "open" };
+
+  it("Decision: HQ's state and self read decode without closedOff or signers; signers come only from their own frame", () => {
+    // The unplaced Mate's self record, as link.go and ReadMateChanges build it.
+    const mate = {
+      projectId: "P_MATE",
+      name: "Ada",
+      face: "face-1",
+      standupRequestedBy: null,
+      chief: null,
+      appId: null,
+      appName: null,
+      changes: [],
+      repos: [],
+    };
+    const frame = { type: "state", mate, pingIntervalMs: 20_000 };
+    expect(Schema.decodeUnknownExit(MateSelf)(mate)._tag).toBe("Success");
+    const decoded = decodeKeyDown(JSON.stringify(frame));
+    expect(decoded._tag).toBe("Success");
+    const withRetiredFields = decodeKeyDown(
+      JSON.stringify({
+        ...frame,
+        mate: { ...mate, closedOff: true, signers: { codex: "U1" } },
+      }),
+    );
+    expect(withRetiredFields._tag === "Success" && withRetiredFields.value).toEqual(
+      decoded._tag === "Success" && decoded.value,
+    );
+  });
 
   it("a Mate opens its link with its project key and a service label, and every frame either side sends under the keys model decodes as its own type", () => {
     const up = [
@@ -479,22 +505,14 @@ describe("the keys model's link", () => {
         mate: { ...self, chief: null, ownerUserId: "U1" },
         autoUpdate: { orgId: "O", enabled: true, revision: 1 },
       },
-      { type: "access", version: 3, viewAt: AT, full: true, members: [member] },
-      {
-        type: "access",
-        version: 4,
-        viewAt: AT,
-        full: false,
-        members: [{ ...member, visibility: "none" }],
-      },
-      { type: "access", version: 5, viewAt: AT, full: false, members: [] },
-      { type: "access", version: 6, full: true, refused: true, members: [] },
       { type: "ticket", ticket: "tk-1", userId: "U1", sessionId: "hs-1", expiresIn: 60 },
       { type: "close-session", sessionId: "hs-1" },
       { type: "git-credential", credential: "gc-1" },
       { type: "git-credential", credential: null },
       { type: "observe-credential", id: "obs-1", credential: "zobs.value" },
       { type: "observe-credential", id: "obs-2", credential: null },
+      { type: "signers", signers: { "claude-code": "U1" } },
+      { type: "signers", signers: {} },
       // Today's frames a Mate keeps: its tasks, its usage and its update policy.
       { type: "task-stop", taskId: "task-1", reason: "closed" },
       { type: "provider-keys", keys: [] },
@@ -510,10 +528,23 @@ describe("the keys model's link", () => {
         frame.type,
         "Success",
       ]);
-    const refused = decodeKeyDown(JSON.stringify(down[6]));
-    expect(
-      refused._tag === "Success" && refused.value.type === "access" && "refused" in refused.value,
-    ).toBe(true);
+  });
+
+  it("Decision: The contract schema drops `missing`: an access report is its `at`, `openers` and `listed`, and HQ derives who is missing.", () => {
+    const report = { type: "access_report", at: AT, openers: ["U1"], listed: ["U2"] };
+    const decoded = decodeKeyUp(JSON.stringify(report));
+    expect(decoded._tag === "Success" && decoded.value).toEqual(report);
+    const encoded = encodeKeyUp({
+      ...report,
+      missing: ["U3"],
+    });
+    expect(JSON.parse(encoded)).toEqual(report);
+  });
+
+  it("the signers frame carries no write time", () => {
+    const frame = { type: "signers", signers: { "claude-code": "U1" } };
+    const decoded = decodeKeyDown(JSON.stringify({ ...frame, at: 1 }));
+    expect(decoded._tag === "Success" && decoded.value).toEqual(frame);
   });
 
   it("HQ announces a positive ping period on its state while older HQ states remain readable", () => {
@@ -577,23 +608,19 @@ describe("the keys model's link", () => {
     expect(read({ ...self, openPerBranch: false })).toBeUndefined();
   });
 
-  it("a hello without its key, an access delta naming an unknown visibility, a refused access frame carrying members and a state without its Chief are no frames", () => {
+  it("a hello without its key, a state without its Chief and an older HQ's access frame are no frames", () => {
     const { chief: _chief, ...withoutChief } = self;
     for (const hello of [
       { key: "", serviceId: "S", origin: "https://mate.zerops.app" },
       { key: "zcp-key", serviceId: "S" },
     ])
       expect(decodeKeyUp(JSON.stringify({ type: "hello", ...hello }))._tag).toBe("Failure");
+    const member = { userId: "U1", role: "ADMIN", visibility: "open" };
     const down = [
-      {
-        type: "access",
-        version: 1,
-        viewAt: AT,
-        full: false,
-        members: [{ ...member, visibility: "hidden" }],
-      },
-      { type: "access", version: 1, full: true, refused: true, members: [member] },
       { type: "state", mate: withoutChief },
+      { type: "access", version: 3, viewAt: AT, full: true, members: [member] },
+      { type: "access", version: 4, viewAt: AT, full: false, members: [] },
+      { type: "access", version: 6, full: true, refused: true, members: [] },
     ];
     for (const frame of down) expect(decodeKeyDown(JSON.stringify(frame))._tag).toBe("Failure");
   });

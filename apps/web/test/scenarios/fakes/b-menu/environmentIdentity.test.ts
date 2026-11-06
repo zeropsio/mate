@@ -19,7 +19,6 @@ const row = {
   order: 2,
   keyHeld: true,
   keyInvalid: false,
-  can: {},
   jobs: [],
   release: null,
   birth: null,

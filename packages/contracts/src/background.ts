@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import {
   AuthSessionId,
   EnvironmentId,
+  NonNegativeInt,
   RpcClientId,
   ThreadId,
   TrimmedNonEmptyString,
@@ -70,13 +71,16 @@ export const ClientActivityReportInput = Schema.Struct({
   clientKind: ClientKind,
   visible: Schema.Boolean,
   focused: Schema.Boolean,
-  recentlyInteracted: Schema.Boolean,
+  /**
+   * How long ago, by the client's own clock, the person last interacted with it; absent when the
+   * client does not track interaction. The server stamps it on its own clock.
+   */
+  idleMs: Schema.optionalKey(NonNegativeInt),
   appState: Schema.optionalKey(Schema.Literals(["active", "inactive", "background", "unknown"])),
   lowPowerMode: Schema.optionalKey(BackgroundBooleanState),
   batteryState: Schema.optionalKey(Schema.Literals(["unknown", "unplugged", "charging", "full"])),
   networkType: Schema.optionalKey(Schema.String),
   scopes: Schema.Array(BackgroundScope),
-  ttlMs: Schema.optionalKey(Schema.Number),
   observedAt: Schema.DateTimeUtc,
 });
 export type ClientActivityReportInput = typeof ClientActivityReportInput.Type;
@@ -88,14 +92,13 @@ export const ClientActivityLease = Schema.Struct({
   clientKind: ClientKind,
   visible: Schema.Boolean,
   focused: Schema.Boolean,
-  recentlyInteracted: Schema.Boolean,
+  lastInteractionAt: Schema.optionalKey(Schema.DateTimeUtc),
   appState: Schema.optionalKey(Schema.Literals(["active", "inactive", "background", "unknown"])),
   lowPowerMode: Schema.optionalKey(BackgroundBooleanState),
   batteryState: Schema.optionalKey(Schema.Literals(["unknown", "unplugged", "charging", "full"])),
   networkType: Schema.optionalKey(Schema.String),
   scopes: Schema.Array(BackgroundScope),
   updatedAt: Schema.DateTimeUtc,
-  expiresAt: Schema.DateTimeUtc,
 });
 export type ClientActivityLease = typeof ClientActivityLease.Type;
 

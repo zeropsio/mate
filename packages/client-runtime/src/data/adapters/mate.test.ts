@@ -14,6 +14,11 @@ import { linkKeys } from "../model.ts";
 import { streamOf } from "../reducer.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { mateLink, mateLinks } from "../projections/mateLinks.ts";
+import { followMateRoles } from "../../zerops/account/mateRoles.ts";
+import { liveProjects } from "../__fixtures__/account.ts";
+import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
+import { accountReadsAtom } from "../reads.ts";
 import { makeMateAdapter, type MateAdapter, type MateTarget } from "./mate.ts";
 
 const GRANTED: AccountGuards = {
@@ -90,6 +95,7 @@ const target = (projectId: string, overrides: Partial<MateTarget> = {}): MateTar
 
 interface Rig {
   readonly adapter: MateAdapter;
+  readonly registry: AtomRegistry.AtomRegistry;
   readonly store: AccountStore;
   readonly clock: ReturnType<typeof manualClock>;
   readonly probes: Array<{ readonly origin: string; readonly ask: ProbeRead }>;
@@ -106,7 +112,8 @@ function rig(
   } = {},
 ): Rig {
   const clock = manualClock();
-  const store = makeAccountStore(AtomRegistry.make());
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
   const probes: Array<{ readonly origin: string; readonly ask: ProbeRead }> = [];
   const exchanges: Array<ExchangeRequest> = [];
   const installs: Array<string> = [];
@@ -152,7 +159,7 @@ function rig(
   });
   adapter.setAccount(GRANTED);
   adapter.setVisible(true);
-  return { adapter, store, clock, probes, exchanges, installs, intents };
+  return { adapter, registry, store, clock, probes, exchanges, installs, intents };
 }
 
 const read = (store: AccountStore) => readsOfState(store.state());
@@ -241,6 +248,75 @@ describe("makeMateAdapter", () => {
     expect(first.intents.value).toBeNull();
   });
 
+  it("reads a restarting Mate HQ relays once, as HQ's presence turns online, and never before", async () => {
+    let initAt = "init-1";
+    const { adapter, store, clock, probes } = rig({
+      reading: (origin) => ({ ...ready(new URL(origin).hostname.split(".")[0] ?? ""), initAt }),
+    });
+    adapter.setTargets([target("p1")]);
+    adapter.presence("p1:zcp", true);
+    await flush();
+    expect(adapter.intend("p1:zcp", { kind: "restart", initAt: "init-1" })).toBe(true);
+    await flush();
+    adapter.presence("p1:zcp", false);
+    await clock.advance(60_000);
+    expect(probes).toEqual([]);
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("restarting");
+
+    initAt = "init-2";
+    adapter.presence("p1:zcp", true);
+    await flush();
+    await clock.advance(60_000);
+    expect(probes).toEqual([{ origin: "https://p1.example", ask: { fresh: true, initAt: true } }]);
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("ready");
+  });
+
+  it("reads a finished restart even while HQ says the Mate is offline", async () => {
+    const { adapter, store, probes } = rig({ reading: () => ({ kind: "unreachable" }) });
+    adapter.setTargets([target("p1")]);
+    adapter.presence("p1:zcp", true);
+    await flush();
+    expect(adapter.intend("p1:zcp", { kind: "restart", initAt: "init-1" })).toBe(true);
+    adapter.presence("p1:zcp", false);
+    adapter.process("p1:zcp", true);
+    await flush();
+    const before = probes.length;
+    adapter.process("p1:zcp", false);
+    await flush();
+    expect(probes.length).toBe(before + 1);
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("booting");
+    adapter.dispose();
+  });
+
+  it("reads a finished restart when its old socket closes after the process ends", async () => {
+    let answering = true;
+    const { adapter, store, probes, clock } = rig({
+      reading: () => (answering ? ready("p1") : { kind: "unreachable" }),
+    });
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("route", ["p1:zcp"]);
+    adapter.presence("p1:zcp", true);
+    await flush();
+    const environmentId = EnvironmentId.make("env-p1");
+    adapter.link(environmentId, { phase: "connected" });
+    await flush();
+    await clock.advance(1);
+    expect(adapter.intend("p1:zcp", { kind: "restart", initAt: "init-1" })).toBe(true);
+    adapter.presence("p1:zcp", false);
+    adapter.process("p1:zcp", true);
+    await flush();
+    answering = false;
+    adapter.process("p1:zcp", false);
+    await flush();
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("restarting");
+    const before = probes.length;
+    adapter.link(environmentId, { phase: "backoff", retryAtMs: null });
+    await flush();
+    expect(probes.length).toBe(before + 1);
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("booting");
+    adapter.dispose();
+  });
+
   it("a Mate restarted before a reload opens once it answers, though nothing proves its container re-initialized", async () => {
     const restarted = JSON.stringify([
       { target: "p1:zcp", kind: "restart", since: 1_800_000_000_000 - 60_000 },
@@ -292,6 +368,56 @@ describe("makeMateAdapter", () => {
     expect(streamOf(store.state(), linkKeys.mate("p1")).phase).toBe("live");
   });
 
+  // Brief W7 (Karel, 2026-11-04): HQ lists every Mate and sends no view of the person; the
+  // client's own live Zerops data is the one source of a role change.
+  it("When the signed-in person's role on a Mate's project changes in the client's own live data, a refused connection tries again", async () => {
+    let refuse = true;
+    const { adapter, registry, store, exchanges } = rig({
+      answer: (request) =>
+        refuse
+          ? {
+              ok: false,
+              failure: { class: "refusal", reason: { kind: "role" } },
+              descriptor: descriptor("p1"),
+            }
+          : {
+              ok: true,
+              environmentId: EnvironmentId.make("env-p1"),
+              descriptor: descriptor(request.key.split(":")[0] ?? ""),
+              credential: "credential-p1",
+            },
+    });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: "org",
+      demandDetail: () => () => undefined,
+      renewHeld: () => undefined,
+    });
+    seedHqNavigation(store, "org", {
+      structure: {
+        apps: [],
+        ungrouped: [{ projectId: "p1", name: "p1", mate: { face: "" } }],
+      },
+    });
+    for (const input of [...liveProjects("org", [{ id: "p1" }]), ...membershipInputs("READ_ONLY")])
+      store.dispatch(input);
+    const stop = followMateRoles(registry, adapter.roleChanged);
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("route", ["p1:zcp"]);
+    await flush();
+    expect(streamOf(store.state(), linkKeys.mate("p1")).phase).toBe("refused");
+    const asked = exchanges.length;
+    refuse = false;
+
+    // A `client-user` frame naming the person reads their membership again: Basic user now.
+    for (const input of membershipInputs("BASIC_USER", false, 2)) store.dispatch(input);
+    await flush();
+
+    expect(exchanges.length).toBe(asked + 1);
+    expect(streamOf(store.state(), linkKeys.mate("p1")).phase).toBe("live");
+    stop();
+  });
+
   it("keeps a Mate's facts through an outage: an unanswered probe changes its container, not its credential", async () => {
     let down = false;
     const { adapter, store, clock } = rig({
@@ -327,18 +453,6 @@ describe("makeMateAdapter", () => {
     await flush();
     expect([...mateLinks.derive(read(store), null).machines.keys()]).toEqual(["p1:zcp"]);
     expect(mateLink.derive(read(store), "p2:zcp")?.shown).toBe(false);
-  });
-
-  it("connects none of a Mate held for its close-off, until it is let go", async () => {
-    const { adapter, exchanges } = rig();
-    adapter.setTargets([target("p1")]);
-    adapter.setCloseOffHeld(["p1"]);
-    adapter.setDemand("route", ["p1:zcp"]);
-    await flush();
-    expect(exchanges).toEqual([]);
-    adapter.setCloseOffHeld([]);
-    await flush();
-    expect(exchanges.map((exchange) => exchange.key)).toEqual(["p1:zcp"]);
   });
 
   // Reading every listed Mate's descriptor and health check repeats remote work,

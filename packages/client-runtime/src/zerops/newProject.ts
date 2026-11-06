@@ -124,18 +124,11 @@ export function agentTypeToEnvSuffix(agentType: ZeropsAgentType): string {
 }
 
 /**
- * The tier's runtimes as `MATE_SETUP_RUNTIMES` carries them: base64 of the import document's
- * UTF-8 bytes, so no quote, colon or newline in it can break the line it rides on. zcp imports
- * what it lists on its first boot, with its own key, once the project is closed off.
+ * The press's marker on the container it makes (`MATE_SETUP`): the Mate's server stands the Mate up
+ * only where it reads it (`zeropsSetupMarker.ts`), so a container made before the press, which
+ * carries none, never does.
  */
-/** What `MATE_SETUP_RUNTIMES` carries for a tier with no runtimes: nothing to import. */
-export const NO_SETUP_RUNTIMES = "services: []";
-
-export function encodeSetupRuntimes(yaml: string): string {
-  let binary = "";
-  for (const byte of new TextEncoder().encode(yaml)) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
+export const MATE_SETUP_MARKER = "MATE_SETUP";
 
 /**
  * Where a Mate was born: the HQ that created it and the web it was created from. Its container
@@ -161,12 +154,6 @@ export function buildZcpServiceImportYaml(input: {
    * the container's, never a project variable another service could be handed.
    */
   readonly apiKey?: string;
-  /**
-   * The tier's runtimes for zcp to import on boot. Set whenever the key is: the Mate server starts
-   * its own stand-up only on a container that carries it, so a tier with none sends
-   * `services: []`, and a container made before the press — which carries neither — never does.
-   */
-  readonly setupRuntimesYaml?: string;
   /** Absent where no HQ is known: zcp reads `mate.hqOrigin` from the installed Mate package. */
   readonly birthplace?: MateBirthplace;
   /**
@@ -191,9 +178,8 @@ export function buildZcpServiceImportYaml(input: {
     .map((agentType) => `      ZCP_AGENT_AUTH_TYPE_${agentTypeToEnvSuffix(agentType)}: "oauth"\n`)
     .join("");
   const keyLine = input.apiKey ? `      ZCP_API_KEY: "${input.apiKey}"\n` : "";
-  const runtimesLine = input.apiKey
-    ? `      MATE_SETUP_RUNTIMES: "${encodeSetupRuntimes(input.setupRuntimesYaml || NO_SETUP_RUNTIMES)}"\n`
-    : "";
+  // Set whenever the key is: a press made this container.
+  const markerLine = input.apiKey ? `      ${MATE_SETUP_MARKER}: "1"\n` : "";
   const hqOriginLine = input.birthplace
     ? `      T3CODE_ZEROPS_HQ_ORIGIN: "${input.birthplace.hqOrigin}"\n`
     : "";
@@ -214,7 +200,7 @@ export function buildZcpServiceImportYaml(input: {
       ZCP_VSCODE_AUTH_ENABLED: "true"
       ZCP_VSCODE: "true"
 ${agentsLine}${agentAuthSecrets}      ZCP_MATE_ENABLED: "1"
-${keyLine}${apiHostLine}${runtimesLine}${hqOriginLine}${allowedOriginsLine}    zeropsYaml:
+${keyLine}${apiHostLine}${markerLine}${hqOriginLine}${allowedOriginsLine}    zeropsYaml:
 ${buildZcpDeploymentYaml(input.serviceName, zcpRunConfig(input.zcpVersion))
   .split("\n")
   .map((line) => `      ${line}`)
@@ -252,26 +238,6 @@ export function buildCreateProjectBody(input: {
     mode: input.mode ?? "LIGHT",
     maxCreditLimit: null,
     userRoles: creationUserRoles(input.userRoles ?? []),
-  };
-}
-
-export interface DevelopmentContainerImportBody {
-  readonly serviceImportYaml: string;
-  readonly recipeSource: string;
-  readonly createIntegrationToken: boolean;
-}
-
-export function buildDevelopmentContainerImportBody(input: {
-  readonly serviceImportYaml: string;
-}): DevelopmentContainerImportBody {
-  return {
-    serviceImportYaml: input.serviceImportYaml,
-    recipeSource: "zeropsio/zcp",
-    // The container's key comes inside the document (`ZCP_API_KEY`), minted by the person with
-    // exactly the Mate's reach. The platform's own would be `ADMIN` on the project, a project
-    // variable every service can read, and a one-time delegation: three things to take back
-    // afterwards, from a browser that may have gone by then.
-    createIntegrationToken: false,
   };
 }
 

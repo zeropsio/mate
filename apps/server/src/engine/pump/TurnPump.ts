@@ -25,6 +25,7 @@ import {
  */
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -42,8 +43,8 @@ import { LiveBus } from "../LiveBus.ts";
 import { makeCallPictures } from "./callPictures.ts";
 import { makeSessionHost, type SessionHost } from "./SessionHost.ts";
 
-/** How often the pump looks for hosts to let go. */
-export const HOST_SWEEP_MS = 5 * 60_000;
+/** How long a host stays idle before the pump lets it go. */
+export const HOST_IDLE_GRACE_MS = 5 * 60_000;
 
 /** How long `quiet` lets the bus run: at least a few turns of the scheduler, at most many. */
 const QUIET_MIN_ROUNDS = 8;
@@ -161,12 +162,13 @@ export const makeTurnPump = Effect.gen(function* () {
           scope,
           stopping: () => stopping,
           quiet,
-          changed,
+          changed: Effect.andThen(changed, lookAt(conversation)),
           ...(pictures === undefined ? {} : { pictures }),
         },
       );
       hosts.set(conversation, host);
       byThread.set(host.thread, host);
+      yield* lookAt(conversation);
       return host;
     });
 
@@ -192,26 +194,44 @@ export const makeTurnPump = Effect.gen(function* () {
     });
 
   /**
-   * Lets go of a host idle at two sweeps in a row (its session closed, nothing waiting): a
-   * conversation's next open makes a new one, so hosts never pile up with conversations.
+   * Lets go of a host idle for `HOST_IDLE_GRACE_MS` (its session closed, nothing waiting): a
+   * conversation's next open makes a new one, so hosts never pile up with conversations. A host
+   * tells every change of its state; the pump looks at it then and arms its letting-go at that
+   * instant plus the grace, or disarms it while the host is busy.
    */
-  const idleBefore = new Set<SessionHost>();
-  const sweep = Effect.gen(function* () {
-    for (const [conversation, host] of hosts) {
-      if (!(yield* host.idle)) {
-        idleBefore.delete(host);
-        continue;
-      }
-      if (!idleBefore.has(host)) {
-        idleBefore.add(host);
-        continue;
-      }
-      idleBefore.delete(host);
+  const looks = yield* Queue.unbounded<ConversationId>();
+  const looking = new Set<ConversationId>();
+  const lookAt = (conversation: ConversationId) =>
+    Effect.suspend(() => {
+      if (looking.has(conversation)) return Effect.void;
+      looking.add(conversation);
+      return Effect.asVoid(Queue.offer(looks, conversation));
+    });
+  const lettingGo = new Map<ConversationId, Fiber.Fiber<void>>();
+  const letGo = (conversation: ConversationId, host: SessionHost) =>
+    Effect.gen(function* () {
+      lettingGo.delete(conversation);
+      if (hosts.get(conversation) !== host || !(yield* host.idle)) return;
       hosts.delete(conversation);
       if (byThread.get(host.thread) === host) byThread.delete(host.thread);
       yield* host.close;
-    }
-  });
+    });
+  const look = (conversation: ConversationId) =>
+    Effect.gen(function* () {
+      looking.delete(conversation);
+      const armed = lettingGo.get(conversation);
+      if (armed !== undefined) {
+        lettingGo.delete(conversation);
+        yield* Fiber.interrupt(armed);
+      }
+      const host = hosts.get(conversation);
+      if (host === undefined || !(yield* host.idle)) return;
+      const fiber = yield* Effect.sleep(HOST_IDLE_GRACE_MS).pipe(
+        Effect.andThen(Effect.uninterruptible(letGo(conversation, host))),
+        Effect.forkIn(scope),
+      );
+      lettingGo.set(conversation, fiber);
+    });
 
   return TurnPump.of({
     hostFor,
@@ -260,7 +280,7 @@ export const makeTurnPump = Effect.gen(function* () {
           ),
         ),
       );
-      yield* Effect.forkScoped(Effect.forever(Effect.andThen(Effect.sleep(HOST_SWEEP_MS), sweep)));
+      yield* Effect.forkScoped(Effect.forever(Effect.flatMap(Queue.take(looks), look)));
     }),
     foreign: Effect.sync(() => new Map(foreign)),
   });

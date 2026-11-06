@@ -175,7 +175,6 @@ export default defineConfig({
       "t3code/no-remote-data-in-browser-storage": "error",
       "t3code/no-remote-io-outside-data-layer": "error",
       "t3code/no-arbitrary-values": "error",
-      "t3code/no-direct-permission-rule": "error",
       "t3code/no-restyle": "error",
       "t3code/no-legacy-notice-api": "error",
       "t3code/no-legacy-notice-policy": "error",

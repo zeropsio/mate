@@ -55,18 +55,23 @@ export function createProjectExecutor(platform: {
   });
   return (requestId: string, intent: IntentOf<"create-project">) =>
     Effect.gen(function* () {
-      const before = platform.listed(intent.orgId, intent.name) ?? (yield* named(intent));
+      const before =
+        intent.birthId === undefined
+          ? (platform.listed(intent.orgId, intent.name) ?? (yield* named(intent)))
+          : null;
       const sent = yield* Effect.result(
-        verb(() =>
-          platform.createProject({
-            clientId: intent.orgId,
-            name: intent.name,
-            tagList: intent.tagList,
-            ...(intent.location === undefined ? {} : { location: intent.location }),
-            ...(intent.userRoles === undefined || intent.userRoles.length === 0
-              ? {}
-              : { userRoles: intent.userRoles }),
-          }),
+        verb(
+          () =>
+            platform.createProject({
+              clientId: intent.orgId,
+              name: intent.name,
+              tagList: intent.tagList,
+              ...(intent.location === undefined ? {} : { location: intent.location }),
+              ...(intent.userRoles === undefined || intent.userRoles.length === 0
+                ? {}
+                : { userRoles: intent.userRoles }),
+            }),
+          { targetWrite: true },
         ),
       );
       if (Result.isSuccess(sent)) return receipt(requestId, sent.success.id);

@@ -1,9 +1,14 @@
 import { assert, describe, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
+import type { ProcessLiveEvent } from "./ZeropsAccessSocket.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import {
@@ -211,14 +216,96 @@ const httpLayer = (route: (request: SeenRequest) => Response) => {
   return { layer, seen } as const;
 };
 
+/** A socket that never pushes: the read at subscribe start is all the wait hears. */
+const noFrames = Effect.succeed(Stream.never);
+
+/** A socket whose events the test pushes, once the wait has subscribed. */
+const pushedFrames = Effect.gen(function* () {
+  const events = yield* Queue.unbounded<ProcessLiveEvent>();
+  const subscribed = yield* Deferred.make<void>();
+  return {
+    processes: Deferred.succeed(subscribed, undefined).pipe(Effect.as(Stream.fromQueue(events))),
+    push: (event: ProcessLiveEvent) =>
+      Deferred.await(subscribed).pipe(Effect.andThen(Queue.offer(events, event))),
+  };
+});
+
+const finished = (id: string): ProcessLiveEvent => ({
+  _tag: "process",
+  processes: [{ id, status: "FINISHED", row: { id, status: "FINISHED", projectId: PROJECT_ID } }],
+});
+
 describe("markSignedIn", () => {
+  it.effect(
+    "a registration still running completes at its process frame, read once at subscribe start and never on a timer",
+    () =>
+      Effect.gen(function* () {
+        const { layer, seen } = httpLayer((request) => {
+          if (request.url.includes("/process/"))
+            return json({ id: "process-1", status: "RUNNING" });
+          if (request.method === "GET") return json({ items: [] });
+          return json({ id: "process-1", status: "PENDING" });
+        });
+        const { processes, push } = yield* pushedFrames;
+        const told: Array<string | undefined> = [];
+        const wait = yield* markSignedIn({
+          environment,
+          serviceId: SERVICE_ID,
+          agentId: "claude-code",
+          processes,
+          onAccepted: (process) => Effect.sync(() => told.push(process.status)),
+        }).pipe(Effect.provide(layer), Effect.forkChild);
+        yield* push(finished("process-other"));
+        yield* push(finished("process-1"));
+        const result = yield* Fiber.join(wait);
+        assert.deepStrictEqual(result.process, { id: "process-1", status: "FINISHED" });
+        assert.deepStrictEqual(told, ["PENDING", "RUNNING", "FINISHED"]);
+        assert.strictEqual(seen.filter((request) => request.url.includes("/process/")).length, 1);
+      }),
+  );
+
+  it.effect(
+    "a registration whose frame a socket outage swallowed is read again at the reconnect",
+    () =>
+      Effect.gen(function* () {
+        let status = "RUNNING";
+        const { layer, seen } = httpLayer((request) => {
+          if (request.url.includes("/process/")) return json({ id: "process-1", status });
+          if (request.method === "GET") return json({ items: [] });
+          return json({ id: "process-1", status: "PENDING" });
+        });
+        const { processes, push } = yield* pushedFrames;
+        const running = yield* Deferred.make<void>();
+        const wait = yield* markSignedIn({
+          environment,
+          serviceId: SERVICE_ID,
+          agentId: "codex",
+          processes,
+          onAccepted: (process) =>
+            process.status === "RUNNING" ? Deferred.succeed(running, undefined) : Effect.void,
+        }).pipe(Effect.provide(layer), Effect.forkChild);
+        // Receipt: the read at subscribe start saw it running; it ends while the socket is away.
+        yield* Deferred.await(running);
+        status = "FINISHED";
+        yield* push({ _tag: "connected" });
+        const result = yield* Fiber.join(wait);
+        assert.deepStrictEqual(result.process, { id: "process-1", status: "FINISHED" });
+        assert.strictEqual(seen.filter((request) => request.url.includes("/process/")).length, 2);
+      }),
+  );
+
   it.effect("creates the row when it is absent", () => {
     const { layer, seen } = httpLayer((request) => {
       if (request.url.includes("/process/")) return json({ status: "FINISHED" });
       if (request.method === "GET") return json({ items: [] });
       return json({ id: "process-1" });
     });
-    return markSignedIn({ environment, serviceId: SERVICE_ID, agentId: "claude-code" }).pipe(
+    return markSignedIn({
+      environment,
+      serviceId: SERVICE_ID,
+      agentId: "claude-code",
+      processes: noFrames,
+    }).pipe(
       Effect.tap((result) =>
         Effect.sync(() => {
           assert.deepStrictEqual(result, {
@@ -247,7 +334,9 @@ describe("markSignedIn", () => {
     const { layer, seen } = httpLayer((request) =>
       request.method === "GET" ? json({ items: [] }) : json({}),
     );
-    return Effect.flip(markSignedIn({ environment, serviceId: SERVICE_ID, agentId: "codex" })).pipe(
+    return Effect.flip(
+      markSignedIn({ environment, serviceId: SERVICE_ID, agentId: "codex", processes: noFrames }),
+    ).pipe(
       Effect.tap((error) =>
         Effect.sync(() => {
           assert.strictEqual(error.reason, "Zerops did not return a registration process.");
@@ -272,7 +361,7 @@ describe("markSignedIn", () => {
         return json({ id: "process-1", status: "RUNNING" });
       });
       return Effect.flip(
-        markSignedIn({ environment, serviceId: SERVICE_ID, agentId: "codex" }),
+        markSignedIn({ environment, serviceId: SERVICE_ID, agentId: "codex", processes: noFrames }),
       ).pipe(
         Effect.tap((error) =>
           Effect.sync(() => {
@@ -296,7 +385,12 @@ describe("markSignedIn", () => {
         items: [{ id: "row-1", key: "ZCP_AGENT_OAUTH_CODEX", content: "true", sensitive: false }],
       }),
     );
-    return markSignedIn({ environment, serviceId: SERVICE_ID, agentId: "codex" }).pipe(
+    return markSignedIn({
+      environment,
+      serviceId: SERVICE_ID,
+      agentId: "codex",
+      processes: noFrames,
+    }).pipe(
       Effect.tap((result) =>
         Effect.sync(() => {
           assert.deepStrictEqual(result, {
@@ -326,7 +420,12 @@ describe("markSignedIn", () => {
       }
       return json({ id: "process-1" });
     });
-    return markSignedIn({ environment, serviceId: SERVICE_ID, agentId: "claude-code" }).pipe(
+    return markSignedIn({
+      environment,
+      serviceId: SERVICE_ID,
+      agentId: "claude-code",
+      processes: noFrames,
+    }).pipe(
       Effect.tap((result) =>
         Effect.sync(() => {
           assert.deepStrictEqual(result, {
@@ -352,7 +451,12 @@ describe("markSignedIn", () => {
     });
     return Effect.gen(function* () {
       const error = yield* Effect.flip(
-        markSignedIn({ environment, serviceId: undefined, agentId: "claude-code" }),
+        markSignedIn({
+          environment,
+          serviceId: undefined,
+          agentId: "claude-code",
+          processes: noFrames,
+        }),
       );
       assert.strictEqual(error._tag, "ZeropsAgentFlagError");
     }).pipe(Effect.provide(layer));
@@ -362,7 +466,12 @@ describe("markSignedIn", () => {
     const { layer } = httpLayer(() => json({ message: "down" }, 500));
     return Effect.gen(function* () {
       const error = yield* Effect.flip(
-        markSignedIn({ environment, serviceId: SERVICE_ID, agentId: "claude-code" }),
+        markSignedIn({
+          environment,
+          serviceId: SERVICE_ID,
+          agentId: "claude-code",
+          processes: noFrames,
+        }),
       );
       assert.strictEqual(error._tag, "ZeropsAgentFlagError");
     }).pipe(Effect.provide(layer));

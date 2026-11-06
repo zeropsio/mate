@@ -46,12 +46,12 @@ export function resolveAddProjectVerb(input: {
       reason:
         input.offer.reason === "not_structure_writer"
           ? ONLY_ADMINS_ADD_A_PROJECT
-          : hqOfferWords(input.offer, { at: input.at, rolesAnsweredAt: null }),
+          : hqOfferWords(input.offer, { at: input.at }),
     };
   }
   return {
     offered: false,
-    reason: hqOfferWords(input.offer, { at: input.at, rolesAnsweredAt: null }),
+    reason: hqOfferWords(input.offer, { at: input.at }),
   };
 }
 
@@ -79,89 +79,3 @@ export function resolveMateRegistration(input: {
   );
   return registered ? "registered" : "unplaced";
 }
-
-/**
- * *Finish setup*, on a half-made Mate's ⋯ menu (pass 28): the press's own steps run again on a
- * Mate whose press did not finish — its container imported with its key where it has none, its
- * project closed off, its registration written. A press cut short before its registration — a
- * closed tab — or a Mate made before HQ runs in no application until somebody who may write the
- * registry finishes it: an org owner or admin, in any browser. A Mate HQ holds no record of has its
- * record written, and its birth with it, by whoever HQ offers writing that record.
- *
- * `undefined` for everybody else, and for a Mate already whole: a disabled entry on a row a person
- * can do nothing about is noise.
- */
-export function finishMateSetupVerb(input: {
-  readonly registration: MateRegistration;
-  /** Its project has no container: its import never went through. */
-  readonly containerMissing: boolean;
-  /** A press this tab made for it stopped at a step. */
-  readonly pressStopped: boolean;
-  /**
-   * Its container carries the press's marker (`MATE_SETUP_RUNTIMES`) and HQ does not know its
-   * project closed off — or HQ says it is not, and the marker is not read or cannot be: a press
-   * interrupted before its close-off, whose runtimes zcp holds back (`interruptedPresses`).
-   */
-  readonly closedOffMissing: boolean;
-  /**
-   * A press in another browser may still be at it (`pressElsewhere`): HQ holds its press, or has
-   * not said — an unregistered or unmarked Mate is then that press running, and finishing it would
-   * race it. A press this tab made and saw stop holds nothing.
-   */
-  readonly pressedElsewhere: boolean;
-  /** The viewer added this Mate: closing it off needs no registry rights. */
-  readonly viewerIsAdder: boolean;
-  /** Its project has its container: without one there is nothing for a close-off to finish. */
-  readonly hasContainer: boolean;
-  /** Its services have proved whether a container is present, even while a press holds it. */
-  readonly containerKnown: boolean;
-  /**
-   * HQ offers the viewer writing the registry (`create_app`); `undefined` while HQ has not said,
-   * or does not answer: then what the viewer finishes is not known, and nothing is offered.
-   */
-  readonly writer: boolean | undefined;
-  /**
-   * HQ, its structure known, holds no record of this Mate: the record's write failed mid-way, or
-   * it sits in no application with none — and its birth with it.
-   */
-  readonly recordMissing: boolean;
-  /** HQ's rule lets the viewer create its record (`create_mate_record`). */
-  readonly mayCreateRecord: boolean;
-}): string | undefined {
-  // An unread service listing proves neither a container nor its absence. Finishing then could
-  // register and close off the birth while silently skipping its container import.
-  if (!input.containerKnown) return undefined;
-  // Its record, and its birth after it, are whoever HQ's rule lets create the record.
-  if (
-    input.recordMissing &&
-    input.mayCreateRecord &&
-    (input.pressStopped || !input.pressedElsewhere)
-  ) {
-    return FINISH_MATE_SETUP_VERB;
-  }
-  if (input.writer === undefined) return undefined;
-  if (input.writer) {
-    const halfMade =
-      input.pressStopped ||
-      (!input.pressedElsewhere &&
-        (input.registration === "unplaced" || input.containerMissing || input.closedOffMissing));
-    return halfMade ? FINISH_MATE_SETUP_VERB : undefined;
-  }
-  // The Mate's own adder may close it off — nothing more: its registration and a container to
-  // make are an owner's or an admin's. With no container there is nothing to close off.
-  if (
-    input.viewerIsAdder &&
-    input.hasContainer &&
-    (input.pressStopped || (!input.pressedElsewhere && input.closedOffMissing))
-  ) {
-    return FINISH_MATE_SETUP_VERB;
-  }
-  return undefined;
-}
-
-/** What a viewer's *Finish setup* runs: all of it for a registry writer, else the close-off. */
-export function finishMateSetupScope(writer: boolean): "whole" | "close-off" {
-  return writer ? "whole" : "close-off";
-}
-
-export const FINISH_MATE_SETUP_VERB = "Finish setup";

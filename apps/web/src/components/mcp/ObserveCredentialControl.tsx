@@ -4,15 +4,20 @@
  * none is held) is offered to a person who may operate the Mate; HQ's refusal is said in its words.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
-import { offersObserveAuthorize, type ObserveCredentialRead } from "@t3tools/client-runtime/data";
-
+import {
+  offersObserveAuthorize,
+  projectOperator,
+  type ObserveCredentialRead,
+} from "@t3tools/client-runtime/data";
+import { Atom } from "effect/reactivity";
 import { useObserveCredential } from "~/zerops/useObserveCredential";
 import { useAuthorizeObserve, type ObserveAuthorizePress } from "~/zerops/useObserveAuthorization";
 import { useEnvironmentProjectRef } from "~/zerops/useZeropsFeeds";
-import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
-import { useHqPersonNames, useHqProjectPerson } from "~/zerops/useZeropsMateOwners";
-
+import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { InlineButton } from "../ui/button";
+
+const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 
 export function ObserveLine({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const project = useEnvironmentProjectRef(environmentId);
@@ -20,10 +25,17 @@ export function ObserveLine({ environmentId }: { readonly environmentId: Environ
   const control = useObserveCredential(projectId);
   const orgId = useAccountOrgId();
   const personName = useHqPersonNames(orgId ?? undefined);
-  const mayWrite = useHqProjectPerson(projectId ?? "")?.mayWrite;
+  const operates = useProjection(
+    projectOperator,
+    orgId === null || projectId === null ? null : { orgId, projectId },
+    UNDECIDED,
+  );
   const { authorize, press } = useAuthorizeObserve(projectId);
   if (project === null) return null;
-  const offered = offersObserveAuthorize({ mayWrite, metadata: control.state.metadata });
+  const offered = offersObserveAuthorize({
+    operates: operates === true,
+    metadata: control.state.metadata,
+  });
   return (
     <ObserveLineBody
       authorize={offered ? authorize : null}

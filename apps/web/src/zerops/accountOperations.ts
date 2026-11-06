@@ -33,6 +33,7 @@ import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/reactivity";
 import { createContext, useContext } from "react";
 
+import { toastManager } from "~/components/ui/toast";
 import { randomUUID } from "~/lib/utils";
 
 import { hqProjectIdOf, hqWritesOf } from "./hqWrites";
@@ -114,6 +115,8 @@ export function accountOperations(
     hqProjectIdOf,
     gitStore: store,
     store,
+    tokenLeft: (description) =>
+      toastManager.add({ type: "warning", title: "Old deploy token still valid", description }),
   });
   const operations = makeOperations({
     store,
@@ -185,7 +188,7 @@ export function accountOperations(
           if (ended || recorded.kind === "waiting") return;
           ended = true;
           if (recorded.kind === "recorded") resolve({ name: recorded.name, keyed: recorded.keyed });
-          else reject(new Error(recorded.kind === "refused" ? recorded.reason : HQ_UNOBSERVED));
+          else reject(new Error(HQ_UNOBSERVED));
           cancel?.();
         },
         { immediate: true },

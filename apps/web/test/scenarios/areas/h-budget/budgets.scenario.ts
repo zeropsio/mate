@@ -9,9 +9,9 @@ const report = (line: string) => process.stdout.write(`${line}\n`);
 
 const names = ["Ada", "Bea", "Cara", "Dora"];
 // One registration pair per organization-wide family (project, service, process, app version,
-// public HTTP routing, public port routing): a fixed count that never grows with the projects or
-// Mates shown.
-const REGISTRATIONS = 12;
+// public HTTP routing, public port routing), plus the membership update stream for live roles:
+// a fixed count that never grows with the projects or Mates shown.
+const REGISTRATIONS = 13;
 
 describe("H: hosted client budgets", () => {
   scenarioSuite((it) => {
@@ -309,6 +309,7 @@ describe("H: hosted client budgets", () => {
             `H target startup: browser registrations=${registrations}, other=${otherRequests}, total=${registrations + otherRequests}; targets <=${REGISTRATIONS} registrations, <=8 others`,
           );
           expect(registrations, "Browser startup registrations").toBeLessThanOrEqual(REGISTRATIONS);
+          expect(b.measure.membershipRequests(), "Organization membership update stream").toBe(1);
           expect(otherRequests, "Browser startup non-registration requests").toBeLessThanOrEqual(8);
         }),
     );

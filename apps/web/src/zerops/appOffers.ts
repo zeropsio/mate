@@ -1,8 +1,8 @@
 /**
- * What HQ offers the reader of an application (`can`, `@t3tools/shared/hqOffers`) as its navigation
- * says it: releasing its production. Drawn, never decided here: HQ
- * decides each over the very target its write is enforced with, and again at the press. While HQ
- * does not answer, each is unavailable since then; before HQ has said, none is offered.
+ * What the reader of an application is offered (`can`, `@t3tools/shared/hqOffers`), decided from
+ * their live Zerops roles: releasing its production. Drawn, never decided here; HQ decides the
+ * write again at the press. While HQ does not answer, each is unavailable since then; before the
+ * roles are read, none is offered.
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ReleaseGate } from "@t3tools/client-runtime/zerops";
@@ -30,7 +30,7 @@ export function useOfferReading(): OfferReading {
     const at = (ms: number) => formatShortTimestamp(new Date(ms).toISOString(), timestampFormat);
     return {
       state: (can, verb) => hqOffer(can, verb, hq),
-      words: (state) => hqOfferWords(state, { at, rolesAnsweredAt: null }),
+      words: (state) => hqOfferWords(state, { at }),
     };
   }, [downSince, timestampFormat, view]);
 }

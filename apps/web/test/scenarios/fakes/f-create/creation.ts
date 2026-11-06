@@ -73,52 +73,6 @@ export class CreationFake {
         );
       return { body: this.zerops.rows("project").find((row) => row.id === id) };
     }
-    const container = path.match(
-      /^\/project\/([^/]+)\/first-class-recipe\/development-container$/u,
-    );
-    if (container && request.method === "PUT") {
-      const projectId = container[1]!;
-      const project = this.zerops.rows("project").find((row) => row.id === projectId);
-      if (!project) return this.zerops.error(400, "projectNotFound");
-      const credential = request.headers.authorization?.replace(/^Bearer /u, "") ?? "";
-      if (!this.zerops.canWrite(credential, projectId))
-        return this.zerops.error(403, "insufficientPermissions");
-      const id = `container-${projectId}`;
-      this.zerops.put(
-        "service-stack",
-        {
-          id,
-          projectId,
-          clientId: project.clientId,
-          name: "zcp",
-          status: "ACTIVE",
-          subdomainAccess: true,
-          isSystem: false,
-          serviceStackTypeInfo: {
-            serviceStackTypeName: "zcp",
-            serviceStackTypeVersionName: "zcp@1",
-            serviceStackTypeCategory: "USER",
-          },
-          ports: [{ port: 8080, scheme: "http" }],
-          userData: [{ key: "ZCP_MATE_ENABLED", content: "1" }],
-        },
-        "entity-first",
-      );
-      this.zerops.put(
-        "user-data",
-        {
-          id: `${id}-mate`,
-          serviceStackId: id,
-          clientId: project.clientId,
-          key: "ZCP_MATE_ENABLED",
-          content: "1",
-        },
-        "entity-first",
-      );
-      const processId = this.zerops.writes.start(projectId, "service-stack.create", [id]);
-      this.zerops.writes.transition(processId, "FINISHED");
-      return { body: { processes: [{ id: processId }] } };
-    }
     if (/^\/project\/[^/]+\/service-stack\/import$/u.test(path) && request.method === "POST") {
       const credential = request.headers.authorization?.replace(/^Bearer /u, "") ?? "";
       const response = await this.zerops.writes.handle(request, path, credential);
@@ -131,6 +85,23 @@ export class CreationFake {
         for (const service of imported.serviceStacks)
           for (const process of service.processes)
             this.zerops.writes.transition(process.id, "FINISHED");
+        // A Mate's birth brings its container in the same import: up and served, as zcp is.
+        const projectId = path.split("/")[2]!;
+        for (const row of this.zerops.rows("service-stack")) {
+          const type = row.serviceStackTypeInfo as { serviceStackTypeVersionName?: string };
+          if (row.projectId !== projectId || type.serviceStackTypeVersionName !== "zcp@1") continue;
+          this.zerops.put(
+            "service-stack",
+            {
+              ...row,
+              status: "ACTIVE",
+              subdomainAccess: true,
+              serviceStackTypeInfo: { ...type, serviceStackTypeCategory: "USER" },
+              ports: [{ port: 8080, scheme: "http" }],
+            },
+            "entity-first",
+          );
+        }
       }
       return response;
     }

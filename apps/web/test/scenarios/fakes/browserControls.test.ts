@@ -3,13 +3,31 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it, vi } from "vite-plus/test";
-import { openBrowser, clickText, menuMateRow } from "../harness/browser.ts";
+import { openBrowser, clickText, menuMateRow, waitForConversation } from "../harness/browser.ts";
 import { completedHttp } from "../harness/completedHttp.ts";
 import { MateFake } from "./mate.ts";
 import { AuthSessionState, AuthStandardClientScopes } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 const decodeSessionState = Schema.decodeUnknownSync(AuthSessionState);
+
+it("an opening conversation fails with the visible access denial", async () => {
+  const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-access-denied-"));
+  await NodeFSP.writeFile(
+    NodePath.join(dist, "index.html"),
+    `<div data-zerops-surface="mate-empty-state"><h1>Chief isn't available with your access.</h1></div>`,
+  );
+  const web = await openBrowser(dist, {});
+  try {
+    await web.page.goto(web.origin);
+    await expect(waitForConversation(web.page)).rejects.toThrow(
+      "Chief isn't available with your access.",
+    );
+  } finally {
+    await web.close();
+    await NodeFSP.rm(dist, { recursive: true, force: true });
+  }
+});
 
 it.each(["Ada", "Shop · Ada"])(
   "a replaced menu row still receives its intended click (%s)",

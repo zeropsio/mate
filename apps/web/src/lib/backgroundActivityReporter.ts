@@ -1,5 +1,5 @@
 import { writeBrowserStorage } from "./storage";
-import { EnvironmentRegistry } from "@t3tools/client-runtime/connection";
+import { connectedArrivals, EnvironmentRegistry } from "@t3tools/client-runtime/connection";
 import {
   EnvironmentRpcSubscriptionObserver,
   request,
@@ -16,16 +16,14 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
-import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { randomUUID } from "./utils";
 
 const CLIENT_ID_STORAGE_KEY = "t3.backgroundActivity.clientId";
-const REPORT_INTERVAL_MS = 25_000;
-const LEASE_TTL_MS = 45_000;
-const RECENT_INTERACTION_WINDOW_MS = LEASE_TTL_MS;
+/** A later interaction is reported once the last one the server heard of is this old. */
+const INTERACTION_REPORT_SPACING_MS = 15_000;
 const BASELINE_SCOPES: ReadonlyArray<BackgroundScope> = [{ type: "provider-status" }];
 
 interface RetainedScope {
@@ -78,16 +76,32 @@ function resolveClientKind(): ClientActivityReportInput["clientKind"] {
   return window.desktopBridge ? "desktop-renderer" : "web";
 }
 
-export function wasRecentlyInteracted(lastInteractionAtMs: number, observedAtMs: number): boolean {
-  return (
-    lastInteractionAtMs <= observedAtMs &&
-    observedAtMs - lastInteractionAtMs <= RECENT_INTERACTION_WINDOW_MS
-  );
+/**
+ * The person's last interaction as this client tells the server: every report carries how long ago
+ * it was, and the server decides on its own clock how long that counts. An interaction asks for a
+ * report only once the last one reported is INTERACTION_REPORT_SPACING_MS old, so continued use
+ * reaches the server without a report per pointer move, and an idle client sends nothing.
+ */
+export function makeInteractionTracker(startedAtMs: number) {
+  let lastInteractionAtMs = startedAtMs;
+  let reportedInteractionAtMs = startedAtMs;
+  return {
+    /** Records an interaction; true when it should be reported. */
+    interact: (atMs: number): boolean => {
+      lastInteractionAtMs = atMs;
+      return atMs - reportedInteractionAtMs >= INTERACTION_REPORT_SPACING_MS;
+    },
+    /** The idle time a report sent at `atMs` carries; the interaction counts as reported. */
+    reportIdleMs: (atMs: number): number => {
+      reportedInteractionAtMs = lastInteractionAtMs;
+      return Math.max(0, atMs - lastInteractionAtMs);
+    },
+  };
 }
 
 function createActivityReport(
   environmentId: EnvironmentId,
-  lastInteractionAtMs: number,
+  idleMs: number,
   observedAtMs: number,
 ): ClientActivityReportInput {
   const scopes = [...BASELINE_SCOPES];
@@ -102,10 +116,9 @@ function createActivityReport(
     clientKind: resolveClientKind(),
     visible: document.visibilityState === "visible",
     focused: document.hasFocus(),
-    recentlyInteracted: wasRecentlyInteracted(lastInteractionAtMs, observedAtMs),
+    idleMs,
     appState: document.visibilityState === "visible" ? "active" : "background",
     scopes,
-    ttlMs: LEASE_TTL_MS,
     observedAt: DateTime.makeUnsafe(observedAtMs),
   };
 }
@@ -206,26 +219,34 @@ export const backgroundActivityReporterLayer = Layer.effectDiscard(
     const clock = yield* Clock.Clock;
     const reportRequests = yield* Queue.sliding<void>(1);
     const requestReport = () => Queue.offerUnsafe(reportRequests, undefined);
-    let lastInteractionAtMs = clock.currentTimeMillisUnsafe();
+    const interaction = makeInteractionTracker(clock.currentTimeMillisUnsafe());
     const recordInteraction = () => {
-      const observedAtMs = clock.currentTimeMillisUnsafe();
-      const wasRecent = wasRecentlyInteracted(lastInteractionAtMs, observedAtMs);
-      lastInteractionAtMs = observedAtMs;
-      if (!wasRecent) {
+      if (interaction.interact(clock.currentTimeMillisUnsafe())) {
         requestReport();
       }
     };
     const passiveListenerOptions = { passive: true } as const;
 
-    const report = Effect.gen(function* () {
+    const reportRequest = Effect.gen(function* () {
       const observedAtMs = yield* Clock.currentTimeMillis;
-      yield* reportToConnected(registry, (environmentId) =>
+      const idleMs = interaction.reportIdleMs(observedAtMs);
+      return (environmentId: EnvironmentId) =>
         request(
           WS_METHODS.serverReportClientActivity,
-          createActivityReport(environmentId, lastInteractionAtMs, observedAtMs),
-        ),
+          createActivityReport(environmentId, idleMs, observedAtMs),
+        );
+    });
+    const report = reportRequest.pipe(
+      Effect.flatMap((send) => reportToConnected(registry, send)),
+      Effect.withSpan("web.backgroundActivity.report"),
+    );
+    // The server holds a client's lease exactly as long as its socket, so each new socket hears it.
+    const reportArrival = (environmentId: EnvironmentId) =>
+      reportRequest.pipe(
+        Effect.flatMap((send) => registry.run(environmentId, send(environmentId))),
+        Effect.ignore,
+        Effect.withSpan("web.backgroundActivity.arrival"),
       );
-    }).pipe(Effect.withSpan("web.backgroundActivity.report"));
 
     yield* Effect.acquireRelease(
       Effect.sync(() => {
@@ -253,17 +274,10 @@ export const backgroundActivityReporterLayer = Layer.effectDiscard(
         }),
     );
 
-    yield* SubscriptionRef.changes(registry.entries).pipe(
-      Stream.runForEach(() => Effect.sync(requestReport)),
-      Effect.forkScoped,
-    );
+    yield* connectedArrivals(registry).pipe(Stream.runForEach(reportArrival), Effect.forkScoped);
     yield* Stream.fromQueue(reportRequests).pipe(
       Stream.debounce("250 millis"),
       Stream.runForEach(() => report),
-      Effect.forkScoped,
-    );
-    yield* Effect.sync(requestReport).pipe(
-      Effect.repeat(Schedule.spaced(`${REPORT_INTERVAL_MS} millis`)),
       Effect.forkScoped,
     );
   }),

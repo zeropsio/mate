@@ -25,6 +25,7 @@ describe("owner-reported layout regressions", () => {
         const s = yield* createScenario([installArea]);
         // The grant exists before HQ reads the project: HQ's organisation view ages before it
         // learns a grant made after that read.
+        s.given.person("owner", { role: "OWNER", grants: { Chief: "OWNER", Ada: "OWNER" } });
         s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
         yield* s.given.project("Ada", { mate: true });
         mateChat(s).fixture().history();
@@ -61,6 +62,7 @@ describe("owner-reported layout regressions", () => {
     const ownershipArrives = (anchor: boolean) =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });
+        s.given.person("owner", { role: "OWNER", grants: { Chief: "OWNER", Ada: "OWNER" } });
         s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
         yield* s.given.project("Ada", {
           mate: true,

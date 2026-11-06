@@ -12,10 +12,7 @@ import type {
   AtomCommandOptions,
   AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import type {
-  AccountEnvironments,
-  CloseOffHold,
-} from "@t3tools/client-runtime/zerops/account/runtime";
+import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import {
@@ -202,14 +199,6 @@ const mateLocationAtom = Atom.family((environmentId: string) =>
 );
 
 const NO_MATE = Atom.make(null);
-
-const NO_CLOSE_OFF_HOLDS: ReadonlyMap<string, CloseOffHold> = new Map();
-const closeOffHoldsOf = (environments: AccountEnvironments) => environments.closeOffHolds();
-
-/** The projects whose Mate the close-off gate holds, and why (`closeOffGate`). */
-export function useCloseOffHolds(): ReadonlyMap<string, CloseOffHold> {
-  return useAccountEnvironmentsSnapshot(closeOffHoldsOf, NO_CLOSE_OFF_HOLDS);
-}
 
 const NO_DETAIL_PROJECTS: ReadonlySet<string> = new Set();
 const detailProjectsOf = (environments: AccountEnvironments) => environments.detailProjects();

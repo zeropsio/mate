@@ -1,5 +1,6 @@
 import { ZeropsConnections } from "./ZeropsConnections.ts";
-import { ZeropsTicketDoor, type TicketFrame } from "./ZeropsTicketDoor.ts";
+import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import type { TicketFrame } from "./ZeropsTicketDoor.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
  * The Mate's link to its HQ (mate-hq `spec/protocol.md`, "Mate link"; `@t3tools/shared/mateLink`, the keys model): one
@@ -14,27 +15,29 @@ import { ZeropsTicketDoor, type TicketFrame } from "./ZeropsTicketDoor.ts";
  *   changed, at most once per `MATE_OVERVIEW_EVERY_MS`, looked at again when something it is made
  *   of moves — a domain event, the crew's snapshot, a login, the update line — and never on a
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
- *   each new revision; `pong` to each of HQ's pings.
+ *   each new revision; the Mate's own access list (`access_report`), its latest on every link and
+ *   again after each recompute, whole every time; `pong` to each of
+ *   HQ's pings.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
- *   every session on a moved Chief mark (`chief`); who its project opens for and lists (`access`), handed on to
- *   `ZeropsMateAccessList`; the Mate's Git credential (`git-credential`), handed on to
+ *   every session on a moved Chief mark (`chief`), and to `ZeropsChangesFile`, which keeps the
+ *   Mate's changes from every state where zcp reads them; tickets (`ticket`), each answered
+ *   `ticket-ack`, or `ticket_refused` when the Mate's own list does not open for its person; the
+ *   Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
  *   to `ZeropsAutomation`, never logged; and the tasks HQ hands an automated Mate (`task`), the
  *   follow-ups people say on them (`task-message`) and their stops (`task-stop`), worked by
  *   `ZeropsTasks`, whose reports go up as `task-state` — the latest task's first on every link —
  *   and only on a link whose HQ said in its state that the Mate is automated. A task's frame told
- *   before HQ's first state on a link is held until it comes ({@link HQ_TASK_HOLD}).
+ *   before HQ's first state on a link is held until it comes ({@link HQ_TASK_HOLD}). An older
+ *   HQ's `access` frame is read past like any frame this build cannot decode: the Mate's own list
+ *   is the only one (`ZeropsMateAccessList`).
  * - **Closed:** HQ names why (`MateLinkClosed`). A refused key (`4401`) or one HQ does not admit
  *   (`4403`, its code the reason) is the Mate's standing until HQ next sends its state; a link
  *   superseded by the Mate's own newer one (`4409`) is expected.
  *
  * A link that closes or never opens is tried again after a growing wait; one superseded (`4409`)
- * after the shortest. HQ is reached over IPv6 where it answers there ({@link HQ_LINK_ADDRESS_ORDER}):
- * the Zerops L7 cuts a WebSocket on a project's shared IPv4 at 120 s, and not one on its IPv6. A
- * link that went over anything but IPv6 is replaced before that cut ({@link MATE_LINK_ROTATE_MS}):
- * its successor opens beside it, HQ closes the old one `4409` once it admits the new, and the Mate
- * waits on the successor rather than linking anew, so HQ never holds the Mate without a link.
+ * after the shortest. HQ is reached over IPv6 only, and the link is kept until it closes.
  *
  * @module ZeropsHqLink
  */
@@ -42,7 +45,7 @@ import { mateRunsWithoutSignIn } from "@t3tools/shared/zeropsAgentAuth";
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import * as NodeDns from "node:dns";
-import type * as NodeNet from "node:net";
+import * as NodeNet from "node:net";
 
 import { NodeWS } from "@effect/platform-node/NodeSocket";
 import type {
@@ -57,8 +60,9 @@ import { type MateTaskReport, TrimmedNonEmptyString } from "@t3tools/contracts";
 import {
   KeyLinkDown,
   KeyLinkUp,
-  type KeyLinkAccess,
+  type AccessReport,
   type LinkedMate,
+  type TicketRefusal,
   MATE_OVERVIEW_EVERY_MS,
   MateLinkClosed,
   type MateOverview,
@@ -71,6 +75,7 @@ import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -83,7 +88,6 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import * as Semaphore from "effect/Semaphore";
 
 import { ServerConfig } from "../config.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
@@ -92,11 +96,14 @@ import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
+import type { MateChanges } from "@t3tools/shared/hqChanges";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { chatsSource } from "./engineOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
+import { makeChangesFile } from "./ZeropsChangesFile.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
 import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
 import { ZeropsObserveCredentialFile } from "./ZeropsObserveCredentialFile.ts";
@@ -113,11 +120,6 @@ import { makeUsageCapture } from "../usage/UsageCapture.ts";
 export interface LinkSocket {
   send(data: string): void;
   close(): void;
-  /**
-   * The address family it went over, once open. Unknown is taken as a path the L7 may cut at 120 s
-   * ({@link MATE_LINK_ROTATE_MS}).
-   */
-  family?(): "IPv4" | "IPv6" | undefined;
   addEventListener(type: "open" | "error", listener: () => void): void;
   addEventListener(
     type: "close",
@@ -186,22 +188,30 @@ export interface ZeropsHqLinkOptions {
   readonly readKey: Effect.Effect<string | undefined>;
   readonly keyRefusal?: ZeropsKeyRefusal;
   readonly connect: ConnectLinkSocket;
-  /** The Mate's overview as it stands now; none when it cannot be read, tried again next round. */
+  /** The Mate's overview as it stands now; none when it cannot be read, tried again at the next change. */
   readonly overview: Effect.Effect<Option.Option<MateOverview>>;
   /** Fires whenever the overview may have changed. */
   readonly changes: Stream.Stream<unknown>;
   /** The Mate's attention now, then each new revision (`ZeropsMateAttention.changes`). */
   readonly attention: Stream.Stream<MateAttention>;
-  /** Hands on who HQ says the project opens for and lists (`ZeropsMateAccessList`). */
-  readonly ticket?: (frame: TicketFrame) => Effect.Effect<void>;
+  /**
+   * Takes HQ's ticket and gives what admits it or says why not, answered `ticket-ack` or
+   * `ticket_refused` (`ZeropsConnections.ticket`).
+   */
+  readonly ticket?: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
   readonly closeSession?: (sessionId: string) => Effect.Effect<void>;
-  readonly access: (frame: KeyLinkAccess) => Effect.Effect<void>;
+  /** Whom the Mate's own access list names, latest first, then after each change (`access_report`). */
+  readonly accessReports?: Stream.Stream<AccessReport>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
   /** Writes or removes the explicit personal Observe credential, returning its durable receipt. */
   readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
+  /** Applies HQ's map of each login's last signer (`signers`) to whose a login is (`ZeropsSignIns.heard`). */
+  readonly signers?: (signers: Readonly<Record<string, string>>) => Effect.Effect<void>;
   /** The fingerprint of the Git credential held now, read afresh for every dial; HQ keeps a live one it names. */
   readonly gitFingerprint: Effect.Effect<Option.Option<string>>;
+  /** Keeps the Mate's changes from every state HQ sends where zcp reads them (`ZeropsChangesFile`). */
+  readonly mateChanges?: (changes: MateChanges) => Effect.Effect<void>;
   /** Hands on the project HQ's Chief mark names, or none, with every state HQ sends. */
   readonly chief?: (projectId: string | null) => Effect.Effect<void>;
   /** Hands on HQ's word on the Mate and the organization's keys (`ZeropsAutomation`). */
@@ -219,47 +229,53 @@ export class ZeropsHqLink extends Context.Service<
   {
     /** Where the Mate stands with its HQ now. */
     readonly standing: Effect.Effect<HqStanding>;
+    /** Fires with each state HQ sends: `standing` may have moved. */
+    readonly changes: Stream.Stream<void>;
   }
 >()("t3/zerops/ZeropsHqLink") {}
 
 const DEFAULT_RECONNECT_DELAYS_MS: ReadonlyArray<number> = [1_000, 2_000, 5_000, 10_000, 30_000];
 
-/**
- * The order the link resolves HQ's addresses in. The Zerops L7 cuts a WebSocket on a project's shared
- * IPv4 120 s after it opened, and not one on the project's IPv6 (verified.md, 2026-10-03): a Mate
- * container has IPv6, so its link normally holds and never rotates. IPv4 is still tried should IPv6
- * not answer (Node's `autoSelectFamily`, on by default), and rotation covers that case.
- */
-export const HQ_LINK_ADDRESS_ORDER = "ipv6first";
+// An IPv4-mapped IPv6 address still opens an IPv4 connection.
+const mappedIpv4 = new NodeNet.BlockList();
+mappedIpv4.addSubnet("::ffff:0:0", 96, "ipv6");
+const nativeIpv6 = (address: string) =>
+  NodeNet.isIP(address) === 6 && !mappedIpv4.check(address, "ipv6");
 
-/** `lookup`, resolving in {@link HQ_LINK_ADDRESS_ORDER} whatever else a connection asks of it. */
-export const preferringIpv6 =
+/** HQ's shared IPv4 cuts a WebSocket at 120 s; its IPv6 holds (verified.md, 2026-10-03). */
+export const lookupIpv6 =
   (lookup: NodeNet.LookupFunction): NodeNet.LookupFunction =>
   (hostname, options, callback) =>
-    lookup(hostname, { ...options, order: HQ_LINK_ADDRESS_ORDER }, callback);
+    lookup(hostname, { ...options, family: 6 }, (error, address, version) => {
+      if (error) return callback(error, address, version);
+      const usable = Array.isArray(address)
+        ? address.filter((item) => nativeIpv6(item.address))
+        : nativeIpv6(address)
+          ? address
+          : "";
+      if (usable.length === 0) {
+        const failure = Object.assign(new Error("HQ has no usable IPv6 address"), {
+          code: "ENOTFOUND",
+        });
+        return callback(failure, usable);
+      }
+      return callback(null, usable, 6);
+    });
 
-/**
- * The link's socket (`ws`): HQ resolved {@link HQ_LINK_ADDRESS_ORDER}, and the family it went over
- * said once it opened.
- */
+/** The link's socket (`ws`) uses only IPv6, including for an address supplied directly. */
 export const connectLinkSocket: ConnectLinkSocket = (url) => {
-  const socket = new NodeWS.WebSocket(url, { lookup: preferringIpv6(NodeDns.lookup) });
-  let family: string | undefined;
-  socket.once("upgrade", (response) => {
-    family = response.socket.remoteFamily;
-  });
-  return Object.assign(socket, {
-    family: () => (family === "IPv4" || family === "IPv6" ? family : undefined),
-  }) as unknown as LinkSocket;
+  const host = new URL(url).hostname;
+  const address = host.startsWith("[") ? host.slice(1, -1) : host;
+  if (NodeNet.isIP(address) !== 0 && !nativeIpv6(address)) {
+    throw new Error("HQ link requires an IPv6 address");
+  }
+  // ws passes these options to Node's socket, although its types omit auto-selection.
+  const socketOptions = {
+    lookup: lookupIpv6(NodeDns.lookup),
+    autoSelectFamily: false,
+  };
+  return new NodeWS.WebSocket(url, socketOptions) as unknown as LinkSocket;
 };
-
-/**
- * How long a link that did not go over IPv6 is kept before its successor opens. The Zerops L7
- * closes a WebSocket on a project's shared IPv4 120 s after it opened, with no close frame,
- * whatever passes over it (measured on the organization's HQ, F26, 2026-10-03): 100 s leaves the successor
- * 20 s to open and be answered.
- */
-export const MATE_LINK_ROTATE_MS = 100_000;
 
 const decodeDown = Schema.decodeUnknownResult(Schema.fromJsonString(KeyLinkDown));
 const encodeUp = Schema.encodeSync(Schema.fromJsonString(KeyLinkUp));
@@ -284,16 +300,13 @@ type SocketEvent =
     }
   | { readonly _tag: "close"; readonly close: LinkClose | undefined };
 
-/** One link while it lives. */
-interface Link {
-  readonly openedAt: number;
-  readonly family: "IPv4" | "IPv6" | undefined;
-  /** Completes on HQ's first state over the link. */
-  readonly answered: Deferred.Deferred<void>;
-  /** How the link closed, once it did. */
-  readonly closed: Effect.Effect<LinkClose | undefined>;
-  readonly stop: Effect.Effect<void>;
-}
+type HandshakeSignals = {
+  readonly opened: Deferred.Deferred<void>;
+  readonly firstState: Deferred.Deferred<void>;
+};
+
+/** How one link closed, once it does. */
+type Link = Effect.Effect<LinkClose | undefined>;
 
 /** An overview's sections, each sent whole when it changed. */
 const SECTIONS = ["identity", "main", "threads", "logins", "crew", "conversations"] as const;
@@ -327,13 +340,6 @@ export const makeZeropsHqLink = (
     // HQ's refusal of the key on the latest link that closed, until HQ next sends its state.
     const refusal = yield* Ref.make<string | undefined>(undefined);
     let reportedKey: string | undefined;
-    // Links are numbered as they open; the current one is the newest HQ answered on. A credential
-    // is written only from the current link, one write at a time, so a superseded link's frame
-    // neither lands after nor races the current link's.
-    let linksOpened = 0;
-    let currentLink = 0;
-    const credentialWrites = yield* Semaphore.make(1);
-    const observeWrites = yield* Semaphore.make(1);
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
     const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_OVERVIEW_EVERY_MS);
     const url = `${options.hqOrigin.replace(/^http/u, "ws").replace(/\/+$/u, "")}/api/mate/link`;
@@ -341,34 +347,44 @@ export const makeZeropsHqLink = (
     /**
      * One link, opened with the project's key in its first frame, then relayed in the scope's
      * lifetime until it closes: the overview up once HQ answered, pongs and HQ's frames down.
-     * `answered` completes on HQ's first state over it — HQ admitted the key; `stop` closes it.
      * None when there is no key or the socket never opened.
      */
-    const openLink = Effect.gen(function* () {
+    const openLink = Effect.fnUntraced(function* (handshake: HandshakeSignals) {
       const key = yield* options.readKey;
       if (key === undefined || key === "" || options.publicOrigin === undefined) {
         return Option.none<Link>();
       }
       const origin = options.publicOrigin;
-      const serial = ++linksOpened;
       const events = yield* Queue.unbounded<SocketEvent>();
       const clock = yield* Clock.Clock;
       const pingInterval = yield* Deferred.make<number>();
       let lastInboundAt = clock.monotonicTimeNanosUnsafe();
-      const socket = options.connect(url);
-      socket.addEventListener("open", () => Queue.offerUnsafe(events, { _tag: "open" }));
+      const socket = yield* Effect.acquireRelease(
+        Effect.sync(() => options.connect(url)),
+        (socket) =>
+          Effect.sync(() => {
+            try {
+              socket.close();
+            } catch {
+              // Gone already.
+            }
+          }),
+      );
+      socket.addEventListener("open", () => {
+        Deferred.doneUnsafe(handshake.opened, Effect.void);
+        Queue.offerUnsafe(events, { _tag: "open" });
+      });
       socket.addEventListener("message", (event) => {
         // Ingress is liveness even while a consumer waits, or this build cannot read the frame.
         lastInboundAt = clock.monotonicTimeNanosUnsafe();
         const raw = String(event.data);
         const frame = decodeDown(raw);
-        if (
-          Result.isSuccess(frame) &&
-          frame.success.type === "state" &&
-          frame.success.pingIntervalMs !== undefined
-        ) {
-          // The first announcement owns this generation's cadence; older HQs never arm it.
-          Deferred.doneUnsafe(pingInterval, Effect.succeed(frame.success.pingIntervalMs));
+        if (Result.isSuccess(frame) && frame.success.type === "state") {
+          Deferred.doneUnsafe(handshake.firstState, Effect.void);
+          if (frame.success.pingIntervalMs !== undefined) {
+            // The first announcement owns this generation's cadence; older HQs never arm it.
+            Deferred.doneUnsafe(pingInterval, Effect.succeed(frame.success.pingIntervalMs));
+          }
         }
         Queue.offerUnsafe(events, { _tag: "message", raw, frame });
       });
@@ -389,20 +405,12 @@ export const makeZeropsHqLink = (
             // A socket going away: its close is on its way.
           }
         });
-      const quit = Effect.sync(() => {
-        try {
-          socket.close();
-        } catch {
-          // Gone already.
-        }
-      });
       const silence = Effect.gen(function* () {
         const period = yield* Deferred.await(pingInterval);
         for (;;) {
           const elapsed = Number(clock.monotonicTimeNanosUnsafe() - lastInboundAt) / 1_000_000;
           const remaining = 3 * period - elapsed;
           if (remaining <= 0) {
-            yield* quit;
             return undefined;
           }
           yield* Effect.sleep(Duration.millis(remaining));
@@ -410,7 +418,6 @@ export const makeZeropsHqLink = (
       });
       const first = yield* Queue.take(events);
       if (first._tag !== "open") {
-        yield* quit;
         return Option.none<Link>();
       }
       const gitFingerprint = yield* options.gitFingerprint;
@@ -479,8 +486,6 @@ export const makeZeropsHqLink = (
         ? yield* options.autoUpdatePolicy.open(verifyPolicy)
         : undefined;
 
-      const openedAt = yield* Clock.currentTimeMillis;
-      const family = socket.family?.();
       const answered = yield* Deferred.make<void>();
       // HQ counts nothing the Mate says before it admitted the key with its first state.
       const onceAnswered = <A, E>(effect: Effect.Effect<A, E>) =>
@@ -492,28 +497,32 @@ export const makeZeropsHqLink = (
           : onceAnswered(Ref.get(automatedHere)).pipe(
               Effect.flatMap((automated) => (automated ? tasks.run : Effect.never)),
             );
-      const dirty = yield* Ref.make(true);
+      // A wake per change, the ones heard while the overview is read or held back folded into one;
+      // the first is the whole overview every link opens with.
+      const woken = yield* Queue.dropping<void>(1);
+      yield* Queue.offer(woken, undefined);
       // What this link sent of each section, as JSON: a new link starts with nothing sent.
       const sent = new Map<string, string>();
       const overviews = Effect.forever(
         Effect.gen(function* () {
-          if (yield* Ref.getAndSet(dirty, false)) {
-            const overview = yield* options.overview;
-            if (Option.isNone(overview)) yield* Ref.set(dirty, true);
-            else if (sent.size === 0) {
-              changedSections(overview.value, sent);
-              yield* send({ type: "overview", full: true, overview: overview.value });
-            } else {
-              const sections = changedSections(overview.value, sent);
-              if (sections !== undefined) {
-                yield* send({ type: "overview", full: false, sections });
-              }
+          yield* Queue.take(woken);
+          const overview = yield* options.overview;
+          // Unread, it is read again at the next change.
+          if (Option.isNone(overview)) return;
+          if (sent.size === 0) {
+            changedSections(overview.value, sent);
+            yield* send({ type: "overview", full: true, overview: overview.value });
+          } else {
+            const sections = changedSections(overview.value, sent);
+            if (sections !== undefined) {
+              yield* send({ type: "overview", full: false, sections });
             }
           }
+          // At most one frame per window: a change inside it waits for its end.
           yield* Effect.sleep(overviewEvery);
         }),
       );
-      const heard = Stream.runForEach(options.changes, () => Ref.set(dirty, true));
+      const heard = Stream.runForEach(options.changes, () => Queue.offer(woken, undefined));
       const health =
         options.health === undefined
           ? Effect.never
@@ -521,6 +530,12 @@ export const makeZeropsHqLink = (
       const attention = Stream.runForEach(options.attention, (value) =>
         send({ type: "attention", attention: value }),
       );
+      const accessReports =
+        options.accessReports === undefined
+          ? Effect.never
+          : Stream.runForEach(options.accessReports, (report) =>
+              send({ type: "access_report", ...report }),
+            );
       /**
        * A task's frame (`task`, `task-message`, `task-stop`), held beside the frames that follow,
        * for as long as the link lives, until HQ's first state; HQ tells it again if that never
@@ -547,10 +562,10 @@ export const makeZeropsHqLink = (
             return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
           case "state":
             if (sentKey !== undefined) reportedKey = sentKey;
-            currentLink = Math.max(currentLink, serial);
             return SubscriptionRef.set(state, Option.some(frame.mate)).pipe(
               Effect.andThen(Ref.set(refusal, undefined)),
               Effect.andThen(Ref.set(automatedHere, frame.mate.automated === true)),
+              Effect.andThen(options.mateChanges?.(frame.mate) ?? Effect.void),
               Effect.andThen(options.automation?.heard(frame.mate) ?? Effect.void),
               Effect.andThen(options.chief?.(frame.mate.chief?.projectId ?? null) ?? Effect.void),
               Effect.andThen(
@@ -559,24 +574,14 @@ export const makeZeropsHqLink = (
               Effect.andThen(Deferred.succeed(answered, undefined)),
               Effect.andThen(usage?.state(frame) ?? Effect.void),
             );
-          case "access":
-            return options.access(frame);
           case "git-credential":
-            return credentialWrites.withPermits(1)(
-              Effect.suspend(() =>
-                serial < currentLink ? Effect.void : options.gitCredential(frame.credential),
-              ),
-            );
+            return options.gitCredential(frame.credential);
           case "observe-credential":
-            return observeWrites.withPermits(1)(
-              Effect.suspend(() =>
-                serial < currentLink
-                  ? Effect.succeed(false)
-                  : (options.observeCredential?.(frame.credential) ?? Effect.succeed(false)),
-              ).pipe(
-                Effect.flatMap((ok) => send({ type: "observe-credential-ack", id: frame.id, ok })),
-              ),
+            return (options.observeCredential?.(frame.credential) ?? Effect.succeed(false)).pipe(
+              Effect.flatMap((ok) => send({ type: "observe-credential-ack", id: frame.id, ok })),
             );
+          case "signers":
+            return options.signers?.(frame.signers) ?? Effect.void;
           case "provider-keys":
             return options.automation?.keysHeard(frame.keys, frame.model) ?? Effect.void;
           case "task":
@@ -590,11 +595,25 @@ export const makeZeropsHqLink = (
               ? Effect.void
               : onceStated(tasks.stop(frame.taskId, frame.reason, frame.requeued === true));
           case "ticket":
+            // Taken here, in the order heard; answered aside, since a verdict may wait on a
+            // Zerops read that must not hold back pings, close-session or the frames after it.
             return options.ticket === undefined
               ? Effect.void
-              : options
-                  .ticket(frame)
-                  .pipe(Effect.andThen(send({ type: "ticket-ack", ticket: frame.ticket })));
+              : options.ticket(frame).pipe(
+                  Effect.flatMap((answer) =>
+                    answer.pipe(
+                      Effect.flatMap((verdict) =>
+                        send(
+                          verdict === "open"
+                            ? { type: "ticket-ack", ticket: frame.ticket }
+                            : { type: "ticket_refused", ticket: frame.ticket, reason: verdict },
+                        ),
+                      ),
+                      Effect.forkChild,
+                    ),
+                  ),
+                  Effect.asVoid,
+                );
           case "close-session":
             return options.closeSession?.(frame.sessionId) ?? Effect.void;
           default:
@@ -635,82 +654,40 @@ export const makeZeropsHqLink = (
               heard,
               onceAnswered(attention),
               onceAnswered(health),
+              onceAnswered(accessReports),
               ...(usage ? [onceAnswered(usage.run)] : []),
               reporting,
               keyRefusals,
             ],
             { concurrency: "unbounded" },
           ).pipe(Effect.as(undefined)),
-        ).pipe(Effect.ensuring(quit), Effect.ensuring(autoUpdatePolicy?.close ?? Effect.void)),
+        ).pipe(Effect.ensuring(autoUpdatePolicy?.close ?? Effect.void)),
       );
-      return Option.some<Link>({
-        openedAt,
-        family,
-        answered,
-        closed: Fiber.join(relayed),
-        stop: Fiber.interrupt(relayed),
-      });
+      return Option.some<Link>(Fiber.join(relayed));
     });
 
-    /**
-     * A successor to a link not over IPv6, dialled at its rotation time: it once HQ answered on it,
-     * none where it did not open or closed unanswered. `dialing` is set once it is being dialled.
-     */
-    const successorOf = (current: Link, dialing: Ref.Ref<boolean>) =>
-      Effect.gen(function* () {
-        const rotateAt = current.openedAt + MATE_LINK_ROTATE_MS;
-        yield* Effect.sleep(Duration.millis(rotateAt - (yield* Clock.currentTimeMillis)));
-        yield* Ref.set(dialing, true);
-        const next = yield* openLink;
-        if (Option.isNone(next)) return Option.none<Link>();
-        const answered = yield* Effect.raceFirst(
-          Deferred.await(next.value.answered).pipe(Effect.as(true)),
-          next.value.closed.pipe(Effect.as(false)),
-        );
-        return answered ? next : Option.none<Link>();
-      });
-
-    /**
-     * Links, and keeps the Mate linked: each link not over IPv6 is replaced by a successor before
-     * the L7's cut, the old one closed once HQ answered on the new. HQ closes the old one `4409` as
-     * it admits the new; the Mate then waits on the successor. A successor that does not open or is
-     * not answered is let go, and the old link kept until it closes. Whether a link opened, and how
-     * the last one closed.
-     */
+    /** Whether a link opened, and how it closed. */
     const runOnce = Effect.scoped(
       Effect.gen(function* () {
-        const opened = yield* openLink;
-        if (Option.isNone(opened)) return { opened: false } as const;
-        let current = opened.value;
-        for (;;) {
-          // Only the shared IPv4 is cut at 120 s: a link over IPv6 is kept as it is.
-          if (current.family === "IPv6") return { opened: true, close: yield* current.closed };
-          const dialing = yield* Ref.make(false);
-          const successor = yield* Effect.forkScoped(successorOf(current, dialing));
-          const ended = yield* Effect.raceFirst(
-            current.closed.pipe(Effect.map((close) => ({ _tag: "closed", close }) as const)),
-            Fiber.join(successor).pipe(
-              Effect.flatMap((next) =>
-                Option.isSome(next)
-                  ? Effect.succeed({ _tag: "next", link: next.value } as const)
-                  : Effect.never,
-              ),
-            ),
-          );
-          if (ended._tag === "next") {
-            yield* current.stop;
-            current = ended.link;
-            continue;
-          }
-          if (ended.close?.code !== SUPERSEDED || !(yield* Ref.get(dialing))) {
-            yield* Fiber.interrupt(successor);
-            return { opened: true, close: ended.close };
-          }
-          // Superseded by the successor being dialled: it takes over once HQ answers on it.
-          const next = yield* Fiber.join(successor);
-          if (Option.isNone(next)) return { opened: true, close: ended.close };
-          current = next.value;
-        }
+        const opened = yield* Deferred.make<void>();
+        const firstState = yield* Deferred.make<void>();
+        const run = Effect.gen(function* () {
+          const link = yield* openLink({ opened, firstState });
+          if (Option.isNone(link)) return { opened: false } as const;
+          const close = yield* link.value;
+          return { opened: true, close, stated: yield* Deferred.isDone(firstState) } as const;
+        });
+        const handshake = Deferred.await(opened).pipe(
+          Effect.andThen(
+            Deferred.await(firstState).pipe(Effect.timeoutOption(HQ_HANDSHAKE_BUDGET)),
+          ),
+          Effect.flatMap((received) =>
+            Option.isSome(received)
+              ? Effect.never
+              : Effect.succeed({ opened: true, close: undefined, stated: false } as const),
+          ),
+        );
+        return yield* Effect.raceFirst(run, handshake);
       }),
     );
 
@@ -731,13 +708,14 @@ export const makeZeropsHqLink = (
           }
           const refused = refusalOf(close);
           if (refused !== undefined) yield* Ref.set(refusal, refused);
-          // Only a link that stayed up, one the Mate's own newer link superseded, or one HQ handed
-          // over on purpose resets the wait; one HQ closes at once is a failure too.
+          // Only an admitted link that stayed up, one the Mate's own newer link superseded, or one
+          // HQ handed over on purpose resets the wait; a link that never gets state is a failure.
           const lived = (yield* Clock.currentTimeMillis) - began;
           const planned =
             close?.code === SUPERSEDED ||
             (close?.code !== undefined && PLANNED_HANDOVER.includes(close.code));
-          attempt = planned || (ran.opened && lived >= LINK_STABLE_MS) ? 0 : attempt + 1;
+          attempt =
+            planned || (ran.opened && ran.stated && lived >= LINK_STABLE_MS) ? 0 : attempt + 1;
           const delay = delays[Math.min(Math.max(attempt - 1, 0), delays.length - 1)] ?? 1_000;
           // Up to a quarter more, so Mates that lost one HQ do not all knock on the next at once.
           const spread = yield* Random.nextIntBetween(0, Math.floor(delay / 4) + 1);
@@ -758,10 +736,13 @@ export const makeZeropsHqLink = (
           ? ({ kind: "linked", mate: held.value } as const)
           : ({ kind: "not-linked" } as const);
       }),
+      changes: Stream.map(SubscriptionRef.changes(state), () => undefined),
     });
   });
 
-/** How long a link must stay up before the next reconnect starts from the shortest wait. */
+/** Time after the socket opens for HQ to admit the key and send its first state. */
+const HQ_HANDSHAKE_BUDGET = Duration.seconds(30);
+/** How long an admitted link must stay up before the next reconnect starts from the shortest wait. */
 const LINK_STABLE_MS = 30_000;
 /**
  * How long a task told before HQ's first state on a link waits for it; HQ tells a task again
@@ -799,6 +780,8 @@ export interface OverviewSources {
   readonly conversations?: Effect.Effect<ReadonlyArray<ConversationRow>, ProjectionRepositoryError>;
   /** The engine its conversation runs on, by the protocol its rows speak; none on a V1 Mate. */
   readonly engine?: { readonly protocol: number };
+  /** Whether its service holds the press's setup marker, read locally at each look; none off Zerops. */
+  readonly setupMarker?: Effect.Effect<boolean>;
 }
 
 /**
@@ -830,6 +813,7 @@ export const mateOverviewFeed = (
           serverVersion: sources.serverVersion,
           update: (yield* sources.update.current) ?? null,
           ...(sources.engine === undefined ? {} : { engine: sources.engine }),
+          ...(sources.setupMarker === undefined ? {} : { setupMarker: yield* sources.setupMarker }),
           ...(sources.providers === undefined
             ? {}
             : {
@@ -877,19 +861,24 @@ export const layer = (crew: OverviewSources["crew"]) =>
     Effect.gen(function* () {
       const config = yield* ServerConfig;
       const paths = yield* Path.Path;
+      const fs = yield* FileSystem.FileSystem;
       const providers = yield* ProviderInstances;
       // Separate home database: capture IO cannot lock the orchestration event store.
       // Admission waits for a subscribed capture service, including across storage recovery.
       const usage = yield* makeUsageCapture(paths.join(config.stateDir, "usage.sqlite"));
       const zerops = config.zerops;
       if (zerops === undefined) {
-        return ZeropsHqLink.of({ standing: Effect.succeed({ kind: "not-linked" }) });
+        return ZeropsHqLink.of({
+          standing: Effect.succeed({ kind: "not-linked" }),
+          changes: Stream.empty,
+        });
       }
       const key = yield* ZeropsMateKey;
       const connections = yield* ZeropsConnections;
-      const tickets = yield* ZeropsTicketDoor;
+      const access = yield* ZeropsMateAccessList;
       const credential = yield* ZeropsGitCredentialFile;
       const observeCredential = yield* ZeropsObserveCredentialFile;
+      const signIns = yield* ZeropsSignIns;
       // The engine's conversations are the chats: V1's projections (a thread left running at the
       // flip among them) are never read.
       const attention = yield* ZeropsMateAttention;
@@ -908,12 +897,16 @@ export const layer = (crew: OverviewSources["crew"]) =>
         crew,
         agentAuth: yield* ZeropsAgentAuth,
         agentLogin: yield* ZeropsAgentLogin,
-        lastSigners: (yield* ZeropsSignIns).lastSigners,
+        lastSigners: signIns.lastSigners,
         logins: yield* ZeropsLogins,
         update: yield* ZeropsMateUpdate,
         domainEvents: chats.domainEvents,
         ...(chats.conversations === undefined ? {} : { conversations: chats.conversations }),
         ...(chats.engine === undefined ? {} : { engine: chats.engine }),
+        setupMarker: readServiceVariableKeys(zerops.envStorePath).pipe(
+          Effect.map(hasSetupMarker),
+          Effect.provideService(FileSystem.FileSystem, fs),
+        ),
       });
       return yield* makeZeropsHqLink({
         hqOrigin: zerops.hqOrigin,
@@ -923,11 +916,15 @@ export const layer = (crew: OverviewSources["crew"]) =>
         readKey: Effect.andThen(key.invalidate, key.read),
         ...(key.refusal === undefined ? {} : { keyRefusal: key.refusal }),
         connect: connectLinkSocket,
-        access: connections.heard,
-        ticket: tickets.heard,
+        accessReports: access.reports,
+        ticket: connections.ticket,
         closeSession: connections.closeSession,
         gitCredential: credential.write,
         observeCredential: observeCredential.write,
+        signers: signIns.heard,
+        mateChanges: yield* makeChangesFile(
+          paths.join(config.homeDir, ".zcp", "hq", "changes.json"),
+        ),
         gitFingerprint: credential.fingerprint,
         // A moved Chief mark rotates every session on this engine, so each runs a fresh zcp.
         chief: (yield* makeChiefRestart({

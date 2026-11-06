@@ -72,6 +72,7 @@ const RESOLVES = STATE === "none" || params.get("resolves") === "none" ? "none" 
 
 const TIER = {
   kind: "tier" as const,
+  revision: "recipe-revision",
   tier: "mate" as const,
   yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
 };

@@ -8,7 +8,6 @@
  *
  * @module data/families/hqNavigation
  */
-import { HqOffers } from "@t3tools/shared/hqOffers";
 import {
   CanonicalHqNavigationApp,
   CanonicalHqNavigationEnvironment,
@@ -28,11 +27,8 @@ import type { ScopeKey } from "../model.ts";
 import { navigationRecord } from "./navigationRecord.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-/** The organization's own record: its offers and the Core its HQ runs. */
+/** The organization's own record: the Core its HQ runs. */
 export interface HqOrganizationValue {
-  readonly can: HqOffers;
-  /** Each project HQ holds nowhere the reader reads, by id, with what it offers of it. */
-  readonly unheld: Readonly<Record<string, HqOffers>>;
   /** The Core HQ runs. */
   readonly build: string;
   /**
@@ -53,26 +49,41 @@ export interface HqStatusValue {
   readonly parts: HqParts;
 }
 
+const BirthAttempt = Schema.Struct({
+  by: Schema.String,
+  at: Schema.String,
+  refused: Schema.optionalKey(Schema.Struct({ at: Schema.String, reason: Schema.String })),
+  unsent: Schema.optionalKey(Schema.Struct({ at: Schema.String, reason: Schema.String })),
+});
+
 const Birth = Schema.Struct({
   id: Schema.String,
   face: Schema.String,
+  madeBy: Schema.optionalKey(Schema.String),
+  chief: Schema.optionalKey(Schema.Boolean),
+  chiefRegistered: Schema.optionalKey(Schema.Boolean),
+  adopted: Schema.optionalKey(Schema.Boolean),
+  intent: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+  attempts: Schema.optionalKey(
+    Schema.Struct({
+      create: Schema.optionalKey(BirthAttempt),
+      import: Schema.optionalKey(BirthAttempt),
+    }),
+  ),
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   importProcessId: Schema.optionalKey(Schema.String),
 });
 // The old outward reader remains Zerops-only; the account admits each target's own job contract.
-const DeliveryEnvironments = Schema.Union([
-  Schema.Array(
-    Schema.Union([
-      HqGitNavigationEnvironment,
-      CanonicalHqNavigationEnvironment.check(
-        Schema.makeFilter((row) =>
-          row.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
-        ),
+const DeliveryEnvironments = Schema.Array(
+  Schema.Union([
+    HqGitNavigationEnvironment,
+    CanonicalHqNavigationEnvironment.check(
+      Schema.makeFilter((row) =>
+        row.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
       ),
-    ]),
-  ),
-  Schema.Struct({ refused: Schema.String }),
-]);
+    ),
+  ]),
+);
 const App = navigationRecord({
   ...CanonicalHqNavigationApp.fields,
   environments: DeliveryEnvironments,
@@ -93,8 +104,9 @@ export type HqPersonFacts = typeof PersonFacts.Type;
 export type HqPersonValue = typeof Person.Type;
 
 /**
- * A press HQ holds, by its project: what it makes, where, its import once Zerops took it, and how
- * long its hold runs on from HQ's read (`heldForMs`) — renewed holds come with a new `until`.
+ * A press HQ holds, by its project: what it makes, where, its import once Zerops took it, and
+ * whether its hold runs on (a stopped press keeps its record with `held: false`). HQ removes or
+ * rewrites it when the hold ends: no reader times it out.
  */
 export type HqPressValue = HqNavigationPress;
 
@@ -109,11 +121,7 @@ declare module "../model.ts" {
   }
 }
 
-const Organization = Schema.Struct({
-  can: HqOffers,
-  unheld: Schema.Record(Schema.String, HqOffers),
-  build: Schema.String,
-});
+const Organization = Schema.Struct({ build: Schema.String });
 
 const Viewer = Schema.Struct({
   firstSignedInAt: Schema.NullOr(Schema.String),
@@ -125,7 +133,8 @@ const decodeViewer = Schema.decodeUnknownOption(Viewer);
 
 /** The record, its reader's first sign-in apart: one unreadable never loses the other. */
 const decodeOrganization = (raw: unknown): Option.Option<HqOrganizationValue> =>
-  Option.map(decodeOrganizationRecord(raw), (organization) => {
+  Option.map(decodeOrganizationRecord(raw), ({ build }) => {
+    const organization = { build };
     const viewer =
       typeof raw === "object" && raw !== null && "viewer" in raw
         ? Option.getOrUndefined(decodeViewer(raw.viewer))
@@ -198,18 +207,6 @@ export const placementFamily: FamilySpec<"placement"> = {
   family: "placement",
   authority: "hq",
   scope: navigation("hq-placements"),
-  // A partial navigation record cannot erase setup evidence HQ previously proved.
-  keepUnsaid: (held, row) => {
-    if (held?.mate == null || row.mate == null) return row;
-    return {
-      ...row,
-      mate: {
-        ...row.mate,
-        closedOff: row.mate.closedOff ?? held.mate.closedOff,
-        setupMarker: row.mate.setupMarker ?? held.mate.setupMarker,
-      },
-    };
-  },
   hq: {
     scope: "navigation",
     ...prefixed("project"),

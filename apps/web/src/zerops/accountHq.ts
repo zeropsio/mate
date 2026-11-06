@@ -1,4 +1,4 @@
-import { captureAccountLifetime } from "./accountLifetime";
+import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 /**
  * The HQ this build names, as this tab reaches it (ADR 0001, SPEC §3.3, §4).
  *
@@ -13,16 +13,17 @@ import { captureAccountLifetime } from "./accountLifetime";
  *   that stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
  */
 import {
+  HqError,
   sharedHq,
   type HqApi,
   type HqEndpoint,
   type HqParts,
 } from "@t3tools/client-runtime/zerops/hq";
-import { makeBrowserHqApi, zeropsAccessToken, zeropsOrgStart } from "@t3tools/client-runtime/data";
+import { makeBrowserHqApi, zeropsAccessToken } from "@t3tools/client-runtime/data";
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { useMemo } from "react";
 
-import { keptHqSessions } from "./keptSessions";
+import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
 /**
@@ -41,25 +42,48 @@ export function configuredHq(): HqEndpoint {
 /** Where the account keeps HQ's session for the organization `clientId` and `hq`. */
 const keptHqKey = (clientId: string, hq: HqEndpoint) => `${clientId}:${hq.projectId}:${hq.address}`;
 
+// A press and its stream must use the same HQ session and socket identity.
+let accountHqClients = new WeakMap<
+  ZeropsApiClient,
+  Map<string, { readonly nativeEpoch: number; readonly api: HqApi }>
+>();
+onAccountLifetimeClose(() => {
+  accountHqClients = new WeakMap();
+});
+
 /**
  * HQ's API for this account and org, with the session the account kept for this HQ, else signed in
- * with the person's Zerops access token on the first call. An organization HQ has not started is
- * started by its Owner's or Admin's sign-in.
+ * with the person's Zerops access token on the first call.
  */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
-  const accessToken = zeropsAccessToken(client);
   const keptKey = keptHqKey(clientId, hq);
-  const active = captureAccountLifetime();
   const nativeEpoch = client.accountEpoch;
-  return makeBrowserHqApi({
+  let clients = accountHqClients.get(client);
+  const existing = clients?.get(keptKey);
+  if (existing?.nativeEpoch === nativeEpoch) return existing.api;
+  const accessToken = zeropsAccessToken(client);
+  const active = captureAccountLifetime();
+  const isCurrent = () => active() && client.accountEpoch === nativeEpoch;
+  const accountChanged = () =>
+    new HqError({
+      kind: "refused",
+      code: "account_changed",
+      message: "This Zerops sign-in or its HQ has changed.",
+    });
+  const api = makeBrowserHqApi({
     address: hq.address,
     kept: {
       read: () => {
+        if (!isCurrent()) throw accountChanged();
         const kept = keptHqSessions.read(keptKey);
         return kept === null ? null : { token: kept.token, expiresAtMs: kept.expiresAtEpochMs };
       },
       keep: ({ token, expiresAt }) => {
         const expiresAtEpochMs = Date.parse(expiresAt);
+        if (!isCurrent()) {
+          endHqSession({ address: hq.address, token, expiresAtEpochMs });
+          throw accountChanged();
+        }
         if (!Number.isFinite(expiresAtEpochMs)) return;
         // A session another tab kept meanwhile may still be that tab's: it is never revoked from
         // here. It stays kept beside this one, so the account's close ends it with the rest.
@@ -71,13 +95,20 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
         if (displaced !== null)
           keptHqSessions.keep(`${keptKey}:displaced:${displaced.token}`, displaced);
       },
-      forget: (token) => keptHqSessions.forget(keptKey, token),
+      forget: (token) => {
+        if (isCurrent()) keptHqSessions.forget(keptKey, token);
+      },
     },
-    isCurrent: () => active() && client.accountEpoch === nativeEpoch,
+    isCurrent,
     accessToken,
     orgId: clientId,
-    startOrganisation: zeropsOrgStart(client, clientId, navigator.locks),
   });
+  if (clients === undefined) {
+    clients = new Map();
+    accountHqClients.set(client, clients);
+  }
+  clients.set(keptKey, { nativeEpoch, api });
+  return api;
 }
 
 /**

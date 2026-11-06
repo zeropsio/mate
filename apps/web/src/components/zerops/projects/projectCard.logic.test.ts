@@ -104,7 +104,6 @@ describe("production's line at a card's foot", () => {
       order: 1,
       keyHeld: false,
       keyInvalid: false,
-      can: {},
       birth: null,
       release: {
         id: "rollout",
@@ -223,7 +222,6 @@ describe("production's line at a card's foot", () => {
         order,
         keyHeld: false,
         keyInvalid: false,
-        can: {},
         birth: null,
         release: {
           id: `rollout-${id}`,

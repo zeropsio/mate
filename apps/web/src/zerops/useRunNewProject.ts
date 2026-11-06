@@ -3,6 +3,7 @@
  * its creation names (`creationSteps`), from the press and again on the person's *Try again*.
  */
 import { appProjectName, withZeropsMateTag } from "@t3tools/client-runtime/zerops";
+import { birthAttempt } from "@t3tools/client-runtime/data";
 import { useCallback } from "react";
 
 import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
@@ -33,11 +34,22 @@ export function useRunNewProject(): (held: CreationAsk) => void {
               { kind: "create-app", orgId: organizationId, name: groupName },
               { ...hqStep, requestId },
             ),
-          recordBirth: (requestId, { appId, face: birthFace }) =>
+          recordBirth: (requestId, { appId, id, face: birthFace, createdApp, intent, chief }) =>
             operations.run(
-              { kind: "record-birth", orgId: organizationId, appId, face: birthFace },
+              {
+                kind: "record-birth",
+                orgId: organizationId,
+                appId,
+                id,
+                face: birthFace,
+                createdApp,
+                intent,
+                ...(chief === true ? { chief } : {}),
+              },
               { ...hqStep, requestId },
             ),
+          attemptProject: (birthId, send) =>
+            birthAttempt(operations.run, organizationId, birthId, isCurrent)("create", send),
           // The project alone, born a Mate under its birth intent (its marker on before anything
           // else): its press attaches it to its application, then imports its container (F6b). In
           // flight as a press: the background mints no throwaway while it reads the token list.
@@ -51,12 +63,13 @@ export function useRunNewProject(): (held: CreationAsk) => void {
                     kind: "create-project",
                     orgId: organizationId,
                     name: projectName,
+                    birthId: birth,
                     tagList:
                       ask.chief === true
                         ? [...withZeropsMateTag([]), CHIEF_TAG]
                         : withZeropsMateTag([]),
                     ...(location === undefined ? {} : { location }),
-                    ...(userRoles === undefined ? {} : { userRoles }),
+                    userRoles,
                   },
                   {
                     orgId: organizationId,
@@ -92,8 +105,8 @@ export function useRunNewProject(): (held: CreationAsk) => void {
           accepted: (projectId, { hq, appId, intent }) => {
             // A step still running when the person signs out lands nowhere.
             if (!isCurrent()) return;
-            // The press goes on: the Mate attached to its application in HQ, its container
-            // imported and the project closed off. The listing is read again so the project's
+            // The press goes on: the Mate attached to its application in HQ, then its one import
+            // accepted. The listing is read again so the project's
             // group catches up with it. Its row stands where the creation's stood, with the same
             // face and name, on the creation's own clock — never from 0:00.
             beginPress({
@@ -119,6 +132,7 @@ export function useRunNewProject(): (held: CreationAsk) => void {
                 mate: { face },
                 standUp: false,
                 intent,
+                ...(ask.chief === true ? { chief: true as const } : {}),
               },
               hq,
               isCurrent,

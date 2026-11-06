@@ -1,20 +1,13 @@
 import type { TokenWriteHold } from "./groupReach.ts";
 import { describe, expect, it, vi } from "@effect/vitest";
 
-import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
+import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient, ZeropsApiError } from "./api.ts";
 import {
   buildCreateProjectBody,
-  buildDevelopmentContainerImportBody,
   buildZcpServiceImportYaml,
-  encodeSetupRuntimes,
   generateVscodePassword,
   nextZcpServiceName,
 } from "./newProject.ts";
-
-/** The test's own decoder: base64 back to the UTF-8 document. */
-function decodeSetupRuntimes(encoded: string): string {
-  return new TextDecoder().decode(Uint8Array.from(atob(encoded), (char) => char.charCodeAt(0)));
-}
 
 /**
  * Traced from the platform GUI's own `ZeropsYamlBuilder` on 2026-08-28 for the
@@ -321,60 +314,27 @@ describe("buildCreateProjectBody", () => {
   });
 });
 
-describe("buildDevelopmentContainerImportBody", () => {
-  it("names the recipe source and asks the platform for no token: the Mate's key comes with it", () => {
-    expect(buildDevelopmentContainerImportBody({ serviceImportYaml: "services: []" })).toEqual({
-      serviceImportYaml: "services: []",
-      recipeSource: "zeropsio/zcp",
-      createIntegrationToken: false,
-    });
-  });
-});
-
-describe("the Mate's key and its runtimes in the container's document", () => {
+describe("the Mate's key and the press's marker in the container's document", () => {
   const KEY = ["key", "for", "test"].join("-");
-  const RUNTIMES = "services:\n  - hostname: appdev\n    type: nodejs@22\n";
 
   it.each([
-    { case: "neither", input: {}, key: undefined, runtimes: undefined },
-    // The marker the Mate server starts its own stand-up on: a press always sets it, to nothing
-    // to import where the tier has no runtimes.
-    { case: "the key alone", input: { apiKey: KEY }, key: KEY, runtimes: "services: []" },
-    {
-      case: "the key and the runtimes",
-      input: { apiKey: KEY, setupRuntimesYaml: RUNTIMES },
-      key: KEY,
-      runtimes: RUNTIMES,
-    },
-    {
-      case: "an empty runtimes plan, which is nothing to import",
-      input: { apiKey: KEY, setupRuntimesYaml: "" },
-      key: KEY,
-      runtimes: "services: []",
-    },
-  ])("carries $case", ({ input, key, runtimes }) => {
+    { case: "neither", input: {}, key: undefined, marker: undefined },
+    // The marker the Mate server starts its own stand-up on: a press always sets it.
+    { case: "the key alone", input: { apiKey: KEY }, key: KEY, marker: "1" },
+  ])("carries $case", ({ input, key, marker }) => {
     const yaml = buildZcpServiceImportYaml({
       serviceName: "zcp",
       vscodePassword: "PASSWORD0PASSWORD",
       ...input,
     });
     const keyLine = /^ {6}ZCP_API_KEY: "([^"]*)"$/m.exec(yaml)?.[1];
-    const runtimesLine = /^ {6}MATE_SETUP_RUNTIMES: "([^"]*)"$/m.exec(yaml)?.[1];
+    const markerLine = /^ {6}MATE_SETUP: "([^"]*)"$/m.exec(yaml)?.[1];
     expect(keyLine).toBe(key);
-    expect(runtimesLine === undefined ? undefined : decodeSetupRuntimes(runtimesLine)).toBe(
-      runtimes,
-    );
+    expect(markerLine).toBe(marker);
     // Secrets, both: never a plain variable another service could be handed.
     const secrets = yaml.slice(yaml.indexOf("envSecrets:"), yaml.indexOf("zeropsYaml:"));
     if (key !== undefined) expect(secrets).toContain("ZCP_API_KEY");
-    if (runtimes !== undefined) expect(secrets).toContain("MATE_SETUP_RUNTIMES");
-  });
-
-  it("encodes the runtimes as base64 of their UTF-8 bytes, so any document survives the quotes", () => {
-    const document = 'services:\n  - hostname: "café"\n';
-    const encoded = encodeSetupRuntimes(document);
-    expect(encoded).toMatch(/^[A-Za-z0-9+/]+=*$/);
-    expect(decodeSetupRuntimes(encoded)).toBe(document);
+    if (marker !== undefined) expect(secrets).toContain("MATE_SETUP");
   });
 });
 
@@ -414,7 +374,7 @@ function platformClient(state: {
         method,
         body: typeof init?.body === "string" ? init.body : null,
       });
-      const payload = input.includes("/first-class-recipe/")
+      const payload = input.endsWith("/service-stack/import")
         ? (state.importAnswer ?? {})
         : input.endsWith("/process/search")
           ? { items: state.processes ?? [] }
@@ -441,9 +401,10 @@ function platformClient(state: {
   return { client, requests };
 }
 
-const importOf = (requests: ReadonlyArray<Recorded>) => {
-  const sent = requests.find((request) => request.url.includes("/first-class-recipe/"));
-  return sent === undefined ? undefined : JSON.parse(sent.body ?? "{}");
+/** The one import's document, as the platform receives it. */
+const importOf = (requests: ReadonlyArray<Recorded>): string | undefined => {
+  const sent = requests.find((request) => request.url.endsWith("/service-stack/import"));
+  return sent === undefined ? undefined : (JSON.parse(sent.body ?? "{}") as { yaml: string }).yaml;
 };
 const writesOf = (requests: ReadonlyArray<Recorded>) =>
   requests
@@ -455,8 +416,35 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     clientId: "org-1",
     projectId: "project-9",
     projectName: "Acme Docs - Ada",
-    setupRuntimesYaml: "services:\n  - hostname: appdev\n",
+    tierYaml: "services:\n  - hostname: appdev\n    type: nodejs@22\n",
   };
+
+  it("distinguishes the import's refusal from an earlier failed read", async () => {
+    const refusal = new ZeropsApiError("No room.", "invalid-input", 400);
+    const target = platformClient({}).client;
+    vi.spyOn(target, "importServicesIntoProject").mockRejectedValue(refusal);
+    await expect(target.importDevelopmentContainer(INPUT)).rejects.toMatchObject({
+      message: "No room.",
+      targetWriteRefused: true,
+    });
+    const earlier = platformClient({}).client;
+    vi.spyOn(earlier, "listProjectServices").mockRejectedValue(refusal);
+    await expect(earlier.importDevelopmentContainer(INPUT)).rejects.not.toMatchObject({
+      targetWriteRefused: true,
+    });
+    await expect(earlier.importDevelopmentContainer(INPUT)).rejects.toMatchObject({
+      name: "ZeropsWriteNotSent",
+      message: "No room.",
+    });
+  });
+
+  it("a lost key creation answer stays uncertain before the container import", async () => {
+    const { client, requests } = platformClient({});
+    const lost = new ZeropsApiError("The key creation answer was lost.", "uncertain");
+    vi.spyOn(client, "mintIntegrationToken").mockRejectedValue(lost);
+    await expect(client.importDevelopmentContainer(INPUT)).rejects.toBe(lost);
+    expect(requests.some(({ url }) => url.endsWith("/service-stack/import"))).toBe(false);
+  });
 
   it.each(["minted", "regenerated"] as const)(
     "establishes the actual $0 key authorization before importing, carrying only project and hash",
@@ -517,6 +505,38 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(importOf(requests)).toBeUndefined();
   });
 
+  // W17 (alfa rev7 1b): a key HQ would not authorize is a key no container holds.
+  it.each([
+    { kind: "minted", deleted: ["DELETE /client/org-1/integration-token/token-new"] },
+    { kind: "regenerated", deleted: [] },
+  ] as const)(
+    "a $kind key whose authorization HQ refused is deleted only where this press minted it",
+    async ({ kind, deleted }) => {
+      const { client, requests } = platformClient(
+        kind === "regenerated"
+          ? {
+              tokens: [
+                {
+                  id: "earlier",
+                  name: "zcp-Acme Docs - Ada",
+                  roleCode: "NO_ACCESS",
+                  projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
+                  createdByUser: { id: "delegating-creator" },
+                },
+              ],
+            }
+          : {},
+      );
+      await expect(
+        client.importDevelopmentContainer(INPUT, undefined, undefined, async () => {
+          throw new Error("HQ refused ZCP authorization");
+        }),
+      ).rejects.toThrow("HQ refused ZCP authorization");
+      expect(writesOf(requests).filter((write) => write.startsWith("DELETE"))).toEqual(deleted);
+      expect(importOf(requests)).toBeUndefined();
+    },
+  );
+
   it("an existing container does not establish or replace its authorizer", async () => {
     const { client, requests } = platformClient({
       services: [
@@ -576,7 +596,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(result).toEqual({ serviceName: "zcp", imported: true });
     expect(writesOf(requests)).toEqual([
       "POST /client/org-1/integration-token",
-      "PUT /project/project-9/first-class-recipe/development-container",
+      "POST /project/project-9/service-stack/import",
     ]);
     const mint = JSON.parse(requests.find((request) => request.method === "POST")?.body ?? "{}");
     expect(mint).toEqual({
@@ -587,21 +607,21 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
       canEditFinances: false,
       projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
     });
-    const body = importOf(requests);
-    expect(body.createIntegrationToken).toBe(false);
-    expect(body.serviceImportYaml).toContain(`ZCP_API_KEY: "${MINTED_KEY}"`);
-    expect(body.serviceImportYaml).toContain("MATE_SETUP_RUNTIMES: ");
+    const yaml = importOf(requests);
+    expect(yaml).toContain(`ZCP_API_KEY: "${MINTED_KEY}"`);
+    expect(yaml).toContain('MATE_SETUP: "1"');
+    expect(yaml).toContain(
+      "  - hostname: appdev\n    type: nodejs@22\n    envIsolation: service@zcp",
+    );
   });
 
   it("a Mate born on another Zerops platform names that platform's API to its container; one on prg1 names none", async () => {
     const alpha = platformClient({ baseUrl: "https://api.app-alpha.zerops.dev" });
     await alpha.client.importDevelopmentContainer(INPUT);
-    expect(importOf(alpha.requests).serviceImportYaml).toContain(
-      'ZCP_API_HOST: "api.app-alpha.zerops.dev"',
-    );
+    expect(importOf(alpha.requests)).toContain('ZCP_API_HOST: "api.app-alpha.zerops.dev"');
     const prg1 = platformClient({});
     await prg1.client.importDevelopmentContainer(INPUT);
-    expect(importOf(prg1.requests).serviceImportYaml).not.toContain("ZCP_API_HOST");
+    expect(importOf(prg1.requests)).not.toContain("ZCP_API_HOST");
   });
 
   // B5: the import's own process is the press's handle another browser follows.
@@ -609,9 +629,20 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     const { client } = platformClient({
       importAnswer: {
         projectId: "project-9",
-        processes: [
-          { id: "proc-deploy", actionName: "stack.deploy" },
-          { id: "proc-create", actionName: "stack.create" },
+        serviceStacks: [
+          {
+            id: "svc-app",
+            name: "appdev",
+            processes: [{ id: "proc-app", actionName: "stack.create" }],
+          },
+          {
+            id: "svc-zcp",
+            name: "zcp",
+            processes: [
+              { id: "proc-deploy", actionName: "stack.deploy" },
+              { id: "proc-create", actionName: "stack.create" },
+            ],
+          },
         ],
       },
     });
@@ -636,7 +667,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
       expect(logged.join("\n")).not.toContain(MINTED_KEY);
       const carrying = requests.filter((request) => request.body?.includes(MINTED_KEY));
       expect(carrying.map((request) => request.url)).toEqual([
-        "/project/project-9/first-class-recipe/development-container",
+        "/project/project-9/service-stack/import",
       ]);
     } finally {
       for (const spy of spies) spy.mockRestore();
@@ -696,9 +727,9 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     // Its own grant is already the Mate's: nothing is written to it but its new value.
     expect(writesOf(requests)).toEqual([
       "PUT /client/org-1/integration-token/token-old/regenerate",
-      "PUT /project/project-9/first-class-recipe/development-container",
+      "POST /project/project-9/service-stack/import",
     ]);
-    expect(importOf(requests).serviceImportYaml).toContain(`ZCP_API_KEY: "${REGENERATED_KEY}"`);
+    expect(importOf(requests)).toContain(`ZCP_API_KEY: "${REGENERATED_KEY}"`);
   });
 
   // Security review 7: a `zcp-` key that may write another project is no Mate's key to reuse: it
@@ -770,7 +801,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
 
     expect(writesOf(requests)).toEqual([
       "POST /client/org-1/integration-token",
-      "PUT /project/project-9/first-class-recipe/development-container",
+      "POST /project/project-9/service-stack/import",
     ]);
   });
 
@@ -896,6 +927,6 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
       ],
     });
     await client.importDevelopmentContainer(INPUT);
-    expect(importOf(requests).serviceImportYaml).toContain("- hostname: zcp\n");
+    expect(importOf(requests)).toContain("- hostname: zcp\n");
   });
 });

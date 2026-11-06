@@ -501,13 +501,13 @@ describe("vault — the Mate's own keys", () => {
     ]),
     answered(SERVICES_SCOPE, "serviceVariable", [
       ...SERVICE_ROWS,
-      userData("s-app", "MATE_SETUP_RUNTIMES", "x", { created: T(13), lastUpdate: T(13) }),
+      userData("s-app", "MATE_SETUP", "x", { created: T(13), lastUpdate: T(13) }),
       entry("s-app", "ADMIN", "${ZCP_API_KEY}"),
     ]),
   );
   const keys = view.scopes.flatMap((each) => each.values.map((one) => one.key));
 
-  it.each(["ZCP_API_KEY", "GIT_TOKEN", "GITEA_URL", "MATE_SETUP_RUNTIMES"])(
+  it.each(["ZCP_API_KEY", "GIT_TOKEN", "GITEA_URL", "MATE_SETUP"])(
     "never lists %s as a value, nor as anything not live",
     (key) => {
       expect(keys).not.toContain(key);

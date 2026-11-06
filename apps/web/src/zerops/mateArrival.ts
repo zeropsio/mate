@@ -231,8 +231,7 @@ export interface ArrivalSubstep {
   readonly id: string;
   readonly label: string;
   /**
-   * `unfinished`: refused here, and left to *Finish setup* — the Mate runs on without it (its
-   * registration), so nothing waits on it and nothing stopped.
+   * `unfinished`: refused here; the Mate runs on without its registration.
    */
   readonly state: "done" | "active" | "waiting" | "failed" | "unfinished";
   /** Why it stopped, or why it is not finished, in its own words. */
@@ -363,7 +362,7 @@ export function arrivalSteps(
     readonly steps: ReadonlyArray<ArrivalStepInput>;
     /** The copy's managed services (`birthCopyServices`). */
     readonly managed?: ReadonlyArray<BirthService> | undefined;
-    /** The tier's runtimes, imported once the project is closed off (`birthRuntimesFacts`). */
+    /** The tier's runtimes, imported with its container (`birthRuntimesFacts`). */
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
     readonly setup?:

@@ -15,11 +15,12 @@ import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
  * @module hq/environments
  */
 import { hqEnvironmentCodec } from "@t3tools/shared/hqEnvironment";
-import { HqOffers } from "@t3tools/shared/hqOffers";
 import { EnvironmentBirth, HqDeployEvidence, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 import { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+
+import type { HqOffered } from "./client.ts";
 
 /** A job of an environment, as HQ's record holds it. */
 export const HqJob = Schema.Struct({
@@ -95,6 +96,8 @@ export const HqEnvironment = Schema.Struct({
   keyHeld: Schema.Boolean,
   /** Whether the token held no longer answers, or reaches more than its project. */
   keyInvalid: Schema.Boolean,
+  /** The Zerops id of the token held, never its value; absent where HQ records none. */
+  keyId: Schema.optionalKey(Schema.String),
   /** True only when HQ proves it created this production target. Older HQs make no claim. */
   deleteProjectOnRemoval: Schema.optionalKey(Schema.Boolean),
   /** Its newest jobs, newest first, and each service's newest live one where it is older. */
@@ -114,8 +117,6 @@ export const HqEnvironment = Schema.Struct({
    * Core older than this client: none known.
    */
   tierStops: Schema.optionalKey(Schema.Array(TierStop)),
-  /** What the reader may do with it (`@t3tools/shared/hqOffers`); absent where HQ sent none. */
-  can: Schema.optional(HqOffers),
 });
 export type HqEnvironment = typeof HqEnvironment.Type;
 
@@ -132,8 +133,8 @@ export function canonicalEnvironmentsOf(
 
 /** Temporary outward DTOs only address Zerops; Git has no project to project. */
 export function zeropsEnvironments(
-  environments: ReadonlyArray<CanonicalHqEnvironment>,
-): ReadonlyArray<HqEnvironment> {
+  environments: ReadonlyArray<CanonicalHqEnvironment & HqOffered>,
+): ReadonlyArray<HqEnvironment & HqOffered> {
   return environments.flatMap(({ id: _id, target, projectId: _legacy, ...environment }) =>
     target.kind === "zerops" ? [{ ...environment, projectId: target.projectId }] : [],
   );

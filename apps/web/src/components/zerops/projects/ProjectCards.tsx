@@ -526,8 +526,10 @@ function SetupChangeRow({
 /** A Mate being created: waking, named, how far its birth has got, nothing to press. */
 function CardComingMate<T>({
   mate,
+  birth,
 }: {
   readonly mate: Extract<FlowMateEntry<T>, { kind: "coming" }>;
+  readonly birth: { readonly line: string; readonly menu: ReactNode } | undefined;
 }) {
   return (
     <div aria-busy="true" className="ov-mate" data-zerops-surface="mate-coming" role="listitem">
@@ -538,8 +540,9 @@ function CardComingMate<T>({
         <span className="ov-mate-l1">
           <span className="ov-mate-name">{mate.mate.name}</span>
         </span>
-        <span className="ov-mate-l2">{comingMateLine(mate.coming)}</span>
+        <span className="ov-mate-l2">{birth?.line ?? comingMateLine(mate.coming)}</span>
       </span>
+      {birth?.menu}
     </div>
   );
 }
@@ -569,7 +572,11 @@ function CardMates<T>({
     : foldMates(mates, (mate) => mateIsLoud(mate.mate, entry.flow));
   const draw = (mate: FlowMateEntry<T>) =>
     mate.kind === "coming" ? (
-      <CardComingMate key={`coming:${mate.mate.projectId}`} mate={mate} />
+      <CardComingMate
+        birth={props.renderComingBirth?.(mate.mate.projectId)}
+        key={`coming:${mate.mate.projectId}`}
+        mate={mate}
+      />
     ) : (
       <Fragment key={props.getKey(mate.item)}>
         {props.renderMate(mate.item, {

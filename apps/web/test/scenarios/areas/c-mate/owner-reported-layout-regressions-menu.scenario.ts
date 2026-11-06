@@ -52,9 +52,7 @@ describe("owner-reported layout regressions", () => {
               .locator('[data-sidebar="sidebar"] [data-zerops-surface="sidebar-chief-row"]')
               .click(),
           );
-          yield* Effect.promise(() =>
-            s.page.waitForSelector('[role="textbox"]', { visible: true }),
-          );
+          yield* s.then.conversation.appears;
           const mate = s.drivers.realMates.get("Chief")!;
           yield* mate.provider.turn([
             {

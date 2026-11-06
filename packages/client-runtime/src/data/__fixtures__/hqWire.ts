@@ -15,6 +15,9 @@ import type { StreamFault } from "../streamMachine.ts";
 
 const encodeMessage = Schema.encodeSync(Schema.fromJsonString(HqStreamMessage));
 
+/** The person's Zerops access token the fixture's frames carry where HQ decides on their role. */
+export const HQ_FIXTURE_ACCESS_TOKEN = "person-access";
+
 /** Credential-free source facts shared by the Git wire/consumer witnesses. */
 export const gitRemote = {
   url: "https://github.com/example/shop.git",
@@ -54,7 +57,6 @@ export const gitEnvironment = {
   order: 2,
   keyHeld: true,
   keyInvalid: false,
-  can: {},
   jobs: [
     {
       id: "push-v2",
@@ -143,6 +145,7 @@ export function hqFixtureWire(
         messages === null ? Effect.void : Effect.asVoid(Queue.fail(messages, fault)),
       ),
     wire: {
+      withAccess: (frame) => Effect.succeed({ ...frame, accessToken: HQ_FIXTURE_ACCESS_TOKEN }),
       open: (socketCreated) =>
         Effect.gen(function* () {
           if (options.open !== undefined) yield* options.open(socketCreated);

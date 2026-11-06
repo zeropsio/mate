@@ -1,9 +1,10 @@
-// @effect-diagnostics nodeBuiltinImport:off -- content-addressed, worktree-local production bundles.
+// @effect-diagnostics nodeBuiltinImport:off -- content-addressed production bundles.
 import { HostProcessPlatform, HostProcessArchitecture } from "@t3tools/shared/hostProcess";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeUtil from "node:util";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { acquireProcessLock } from "../../../../../scripts/test-process-lock.ts";
 
@@ -102,10 +103,9 @@ export async function bundleKey(root: string, env: NodeJS.ProcessEnv) {
     if (stat.isDirectory()) {
       for (const name of (await NodeFSP.readdir(absolute)).sort()) await visit(`${path}/${name}`);
     } else {
-      hash.update(path);
-      hash.update("\0");
-      hash.update(await NodeFSP.readFile(absolute));
-      hash.update("\0");
+      const bytes = await NodeFSP.readFile(absolute);
+      hash.update(JSON.stringify([path, bytes.length]));
+      hash.update(bytes);
     }
   };
   for (const input of await bundleInputs(root)) await visit(input);
@@ -117,32 +117,43 @@ export async function cachedBundle(
   env: NodeJS.ProcessEnv,
   build: (dist: string) => Promise<void>,
 ): Promise<string> {
-  const key = await bundleKey(root, env);
-  const cache = NodePath.join(root, "node_modules/.cache/mate-scenario-web");
-  const dist = NodePath.join(cache, key);
-  const ready = async () => {
-    try {
-      await NodeFSP.access(NodePath.join(dist, "index.html"));
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  if (await ready()) return dist;
-  await NodeFSP.mkdir(cache, { recursive: true });
-  // Keep the inode: unlinking a lock lets later builders bypass existing waiters.
-  const release = await acquireProcessLock(NodePath.join(cache, `${key}.lock`));
-  let staging: string | undefined;
-  try {
+  // Actions transfers this exact path as an artifact; local worktrees share the host cache.
+  const cache =
+    env.GITHUB_ACTIONS === "true" || env.MATE_SCENARIO_REQUIRE_BUNDLE === "1"
+      ? NodePath.join(root, "node_modules/.cache/mate-scenario-web")
+      : NodePath.join(
+          env.XDG_CACHE_HOME || NodePath.join(NodeOS.homedir(), ".cache"),
+          "mate-scenario-web",
+        );
+  for (;;) {
+    const key = await bundleKey(root, env);
+    const dist = NodePath.join(cache, key);
+    const ready = async () => {
+      try {
+        await NodeFSP.access(NodePath.join(dist, "index.html"));
+        return true;
+      } catch {
+        return false;
+      }
+    };
     if (await ready()) return dist;
-    staging = await NodeFSP.mkdtemp(NodePath.join(cache, ".building-"));
-    await build(staging);
-    if (key !== (await bundleKey(root, env)))
-      throw new Error("Scenario bundle inputs changed during build; rerun the gate");
-    await NodeFSP.rename(staging, dist);
-    return dist;
-  } finally {
-    if (staging) await NodeFSP.rm(staging, { recursive: true, force: true });
-    await release();
+    await NodeFSP.mkdir(cache, { recursive: true });
+    // Keep the inode: unlinking a lock lets later builders bypass existing waiters.
+    const release = await acquireProcessLock(NodePath.join(cache, `${key}.lock`));
+    let staging: string | undefined;
+    try {
+      // Another worktree may publish this key while this checkout changes in the queue.
+      if (key !== (await bundleKey(root, env))) continue;
+      if (await ready()) return dist;
+      staging = await NodeFSP.mkdtemp(NodePath.join(cache, ".building-"));
+      await build(staging);
+      if (key !== (await bundleKey(root, env)))
+        throw new Error("Scenario bundle inputs changed during build; rerun the gate");
+      await NodeFSP.rename(staging, dist);
+      return dist;
+    } finally {
+      if (staging) await NodeFSP.rm(staging, { recursive: true, force: true });
+      await release();
+    }
   }
 }

@@ -80,7 +80,6 @@ it.each([
       retry: vi.fn(),
       showHq: vi.fn(),
       moveOffers: vi.fn(),
-      handoverCandidates: vi.fn(),
       readDetail: vi.fn(),
       revalidate: vi.fn(),
       retryDetail: vi.fn(),

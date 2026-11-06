@@ -22,7 +22,7 @@ import type { Known } from "../knowledge/known.ts";
 import type { HqMate, HqStructure } from "./client.ts";
 
 /** Mate placement readers use app projects/births, independently of environment targets. */
-export type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "tools" | "unheld"> & {
+export type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "tools" | "placeable"> & {
   readonly apps: ReadonlyArray<Omit<HqStructure["apps"][number], "environments">>;
 };
 import type { HqPressHold } from "./pressElsewhere.ts";
@@ -36,7 +36,7 @@ export type HqPlacement =
       readonly mate: HqMate | null | undefined;
       /**
        * Placed by an accepted birth or an environment press, before its registration.
-       * The exact project is retained at HQ; Finish setup registers it in this application.
+       * The exact project is retained at HQ for the birth's continuation.
        */
       readonly unregistered?: true;
     }
@@ -242,7 +242,8 @@ export function birthFaceOf(
 /**
  * The menu's rows HQ places, each enriched with the platform's facts by project id: a project HQ
  * places that no inventory row or store fact names yet is drawn by HQ's name for it, its presence
- * unknown.
+ * unknown. One its person's own read proved deleted (`gone`) is drawn gone on Zerops, HQ still
+ * holding it (`projectGone`), never dropped as if HQ had let it go.
  */
 export function placedMenuRows(input: {
   readonly organizationId: string;
@@ -262,9 +263,10 @@ export function placedMenuRows(input: {
   }
   return [...input.placements].flatMap(([id, placement]): ReadonlyArray<CandidateRow> => {
     // A press's record alone places no row: HQ holds the project nowhere yet.
-    if (input.gone.has(id) || ("unregistered" in placement && placement.unregistered === true))
-      return [];
-    const row = candidates.get(id);
+    if ("unregistered" in placement && placement.unregistered === true) return [];
+    const gone = input.gone.has(id);
+    // A gone project's last row is no longer what it is: none of its container is carried on.
+    const row = gone ? undefined : candidates.get(id);
     const project = projects.get(id) ??
       row?.project ?? {
         id,
@@ -274,7 +276,10 @@ export function placedMenuRows(input: {
       };
     return [
       {
-        ...(row ?? { key: id, group: "unavailable", presence: "unknown" }),
+        ...(row ??
+          (gone
+            ? { key: id, group: "unavailable", presence: "known", projectGone: true }
+            : { key: id, group: "unavailable", presence: "unknown" })),
         project: { ...project, hq: placement },
       },
     ];
@@ -292,15 +297,16 @@ export function placedNames(structure: MatePlacementStructure): ReadonlyMap<stri
 }
 
 /**
- * What HQ offers the reader of a project (`can`, `@t3tools/shared/hqOffers`): of a Mate it holds,
- * following it, its record and leaving its application — none while HQ does not answer; of a
- * project it holds nowhere, writing its Mate's record. HQ decides each, and decides the
- * write again at the press.
+ * What the reader of a project is offered (`can`, `@t3tools/shared/hqOffers`), decided from their
+ * live Zerops roles: of a Mate it holds, its record and leaving its application — none while HQ
+ * does not answer; of a project it holds nowhere, writing its Mate's record. HQ decides the write
+ * again at the press.
+ * Whether the reader may see or open the Mate is never HQ's offer: its visibility is the client's
+ * verdict from live Zerops data (`mateVisibility`).
  */
 export type HqMateOfferStates =
   | {
       readonly held: true;
-      readonly observe: HqOfferState;
       readonly edit: HqOfferState;
       readonly detach: HqOfferState;
     }
@@ -319,12 +325,11 @@ export function hqMateOffers(
   if (mate === undefined) {
     return {
       held: false,
-      createRecord: hqOffer(structure.unheld?.[projectId], "create_mate_record", hq),
+      createRecord: hqOffer(structure.placeable?.[projectId], "create_mate_record", hq),
     };
   }
   return {
     held: true,
-    observe: hqOffer(mate.can, "observe_mate", hq),
     edit: hqOffer(mate.can, "edit_mate_record", hq),
     detach: hqOffer(mate.can, "detach", hq),
   };

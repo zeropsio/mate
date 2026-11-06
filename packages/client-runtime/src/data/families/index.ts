@@ -89,6 +89,7 @@ import { projectSpendFamily } from "./projectSpend.ts";
 import { organizationCreditFamily } from "./organizationCredit.ts";
 import { organizationLocationsFamily } from "./organizationLocations.ts";
 import { organizationUserFamily } from "./organizationUser.ts";
+import { clientUserFamily } from "./clientUser.ts";
 import { organizationMembersFamily } from "./organizationMembers.ts";
 import { memberProjectRolesFamily } from "./memberProjectRoles.ts";
 import { mateLinkFamily } from "./mateLink.ts";
@@ -203,6 +204,7 @@ export const FAMILIES = defineFamilies([
   organizationMembersFamily,
   memberProjectRolesFamily,
   organizationUserFamily,
+  clientUserFamily,
   organizationLocationsFamily,
   organizationCreditFamily,
   organizationBalanceFamily,

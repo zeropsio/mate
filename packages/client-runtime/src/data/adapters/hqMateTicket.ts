@@ -1,9 +1,10 @@
 /**
  * A Mate's ticket as the connection runtime asks for it (spec-mate §3.8): one HQ ticket per
  * attempt, and HQ's refusal told as what it means for reconnecting. Only HQ saying the person may
- * not open the Mate ends it — their role sees it and may not open it (`read-only`), or HQ has no
- * Mate there for them (`not-found`); everything else — no link, no acknowledgement, a follower, an
- * unreachable HQ, a session being renewed — waits for the next try.
+ * not open the Mate ends it — their role sees it and may not open it, or the Mate's own live list
+ * does not admit them (`read-only`), or HQ has no Mate there for them (`not-found`); everything
+ * else — no link, no acknowledgement, a follower, an unreachable HQ, a session being renewed —
+ * waits for the next try.
  */
 import * as Effect from "effect/Effect";
 
@@ -14,6 +15,10 @@ import {
 } from "../../connection/model.ts";
 import type { IssuedMateTicket, MateTicketIssuerService } from "../../platform/capabilities.ts";
 import { HqError, type HqApi, type HqMateTicket } from "../../zerops/hq/client.ts";
+import { ZEROPS_READ_ONLY_DOOR_REASON } from "../../zerops/mateAccess.ts";
+
+/** HQ's codes when the Mate refuses on the person's role or its own list. */
+const PROJECT_REFUSALS = new Set([ZEROPS_READ_ONLY_DOOR_REASON, "not_in_list"]);
 
 const notConnected = (reason: string | undefined): string => {
   switch (reason) {
@@ -32,6 +37,12 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
     return new ConnectionBlockedError({
       reason: "read-only",
       detail: "Your role on this Mate's project lets you see it, not open it.",
+    });
+  }
+  if (cause.kind === "refused" && PROJECT_REFUSALS.has(cause.code)) {
+    return new ConnectionBlockedError({
+      reason: "read-only",
+      detail: "This Mate's project does not admit you.",
     });
   }
   if (cause.code === "mate_not_found") {
@@ -112,11 +123,14 @@ export function mateTicketIssuer(
   const ask = (hq: Ask, key: string, projectId: string, signal: AbortSignal) => {
     const held = take(key, hq);
     if (held === null) return hq.mateTicket(projectId, signal);
-    // HQ refused it, or it outlived its own life meanwhile: the attempt asks for its own.
+    // A transient refusal or an expired ticket needs the attempt's own request.
     return held.answer.then(
       (ticket) =>
         now() - held.at < ticket.expiresIn * 1000 ? ticket : hq.mateTicket(projectId, signal),
-      () => hq.mateTicket(projectId, signal),
+      (cause: unknown) => {
+        if (attemptErrorOf(cause)._tag === "ConnectionBlockedError") throw cause;
+        return hq.mateTicket(projectId, signal);
+      },
     );
   };
   return {
@@ -151,7 +165,7 @@ export function mateTicketIssuer(
       const last = lastPrimed.get(key);
       if (last !== undefined && last.hq === hq && now() - last.at < TICKET_LIFE_MS) return;
       const answer = hq.mateTicket(projectId);
-      // Its refusal is the attempt's to hear, by asking again: never an unhandled rejection.
+      // The attempt hears its refusal; it must never become an unhandled rejection.
       answer.catch(() => undefined);
       primed.set(key, { hq, at: now(), answer });
       lastPrimed.set(key, { hq, at: now() });

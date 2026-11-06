@@ -1,14 +1,24 @@
 /**
  * The organization as HQ's navigation says it, for the surfaces that place projects: its
- * applications with the projects HQ places in each, the Mates it holds in none, its offers, the
- * presses it holds, the people its records name, and how its HQ stands — each read from
- * the store's facts and the navigation's own streams. A record HQ removed, or withheld from the
- * reader, is in none of it. An application's detail (releases, recipes, changes) and its
+ * applications with the projects HQ places in each, the Mates it holds in none, the presses it
+ * holds, the people its records name, and how its HQ stands — each read from the store's facts and
+ * the navigation's own streams — with what the person may do with each, decided over their own live
+ * read of Zerops (`permissionFacts`). A record HQ removed is in none of it. An application's detail (releases, recipes, changes) and its
  * environments are no part of the navigation.
  *
  * @module data/projections/hqNavigation
  */
+import type { HqOffers } from "@t3tools/shared/hqOffers";
 import { HQ_NAVIGATION_PROTOCOL } from "@t3tools/shared/hqStream";
+import {
+  applicationOffers,
+  environmentOffers,
+  gitEnvironmentOffers,
+  organizationOffers,
+  placeableOffers,
+  placementOffers,
+  type ApplicationFacts,
+} from "@t3tools/shared/zeropsOffers";
 import type { HqPeople } from "@t3tools/shared/hqMates";
 
 import type { HqMate, HqStructure, CanonicalHqStructure } from "../../zerops/hq/client.ts";
@@ -28,12 +38,19 @@ import {
   type PlacementValue,
 } from "../families/hqNavigation.ts";
 import { hqProtocolScope } from "../families/hqProtocol.ts";
+import { projectsScope } from "../families/project.ts";
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";
 import type { HqGitTargetRecord } from "../adapters/hqGitTargets.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { retryDelayMs, STREAM_POLICY } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
+import {
+  applicationFacts,
+  applicationProjects,
+  decided,
+  livePermissionFacts,
+} from "./permissionFacts.ts";
 import { scopeFreshness, scopeSlow, type ScopeFreshness } from "./freshness.ts";
 import type { RosterRead } from "./projects.ts";
 
@@ -84,6 +101,34 @@ export const canonicalHqNavigation = {
   equals: sameValue,
 } satisfies Projection<string, CanonicalHqDeliveryNavigationRead>;
 
+/**
+ * What the person may do with one of an application's environments: a Zerops one as the structure
+ * decides it, a Git one by the structure's writers (`gitEnvironmentOffers`). `undefined` while
+ * unknown.
+ */
+export const hqEnvironmentOffers = {
+  name: "hqEnvironmentOffers",
+  keyOf: ({ orgId, appId, environmentId }) => `${orgId}/${appId}/${environmentId}`,
+  derive: (read, { orgId, appId, environmentId }) => {
+    const app = read.fact("hqApp", appId);
+    const environment =
+      app.kind === "known"
+        ? app.value.environments?.find((candidate) => candidate.id === environmentId)
+        : undefined;
+    if (environment === undefined) return undefined;
+    if (environment.target.kind === "git")
+      return decided(livePermissionFacts(read, orgId), [], gitEnvironmentOffers);
+    return canonicalHqNavigation
+      .derive(read, orgId)
+      .structure?.apps.find((candidate) => candidate.id === appId)
+      ?.environments?.find((candidate) => candidate.id === environmentId)?.can;
+  },
+  equals: sameValue,
+} satisfies Projection<
+  { readonly orgId: string; readonly appId: string; readonly environmentId: string },
+  HqOffers | undefined
+>;
+
 /** The ids a navigation scope lists, each with its value. */
 function listed<F extends "hqApp" | "placement" | "hqPerson" | "hqPress">(
   read: ProjectionReads,
@@ -106,8 +151,6 @@ function mateOf(
     ...(mate.face === undefined ? {} : { face: mate.face }),
     madeBy: mate.madeBy,
     standupRequestedBy: mate.standupRequestedBy,
-    closedOff: mate.closedOff,
-    setupMarker: mate.setupMarker,
     ...(mate.birthId === undefined ? {} : { birthId: mate.birthId }),
     ...(mate.importProcessId === undefined ? {} : { importProcessId: mate.importProcessId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),
@@ -118,21 +161,30 @@ function mateOf(
 }
 
 /**
- * An application's stage and production with their deploys, to whoever reads its changes; HQ's
- * refusal with its reason to one who only sees it; none where they cannot be read.
+ * An application's Zerops stage and production with their deploys, each with what the person may
+ * do with it; none where HQ sent none this build can read.
  */
 function environmentsOfApp(
   environments: HqAppValue["environments"],
+  offers: (projectId: string, tier: "stage" | "production") => HqOffers | undefined,
 ): Pick<CanonicalHqStructure["apps"][number], "environments"> {
   if (environments === undefined) return {};
-  if ("refused" in environments) return { environments: { refused: environments.refused } };
   // Legacy Zerops rows still go through their existing normalizer; Git has no outward project DTO.
   const read = canonicalEnvironmentsOf(environments.filter((row) => row.target?.kind !== "git"));
-  return read === undefined ? {} : { environments: read };
+  return read === undefined
+    ? {}
+    : {
+        environments: read.map((environment) => {
+          const can =
+            environment.target.kind === "zerops"
+              ? offers(environment.target.projectId, environment.tier)
+              : undefined;
+          return can === undefined ? environment : { ...environment, can };
+        }),
+      };
 }
 
-const offersOf = (placement: PlacementValue) =>
-  placement.can === undefined ? {} : { can: placement.can };
+const offered = (can: HqOffers | undefined) => (can === undefined ? {} : { can });
 
 function structureOf(
   read: ProjectionReads,
@@ -147,38 +199,67 @@ function structureOf(
   const placements = new Map(
     listed(read, "placement", placementsScope(orgId)).map(({ id, value }) => [id, value]),
   );
+  // What the person may do with each, from their own live read of Zerops (`zeropsOffers`).
+  const facts = livePermissionFacts(read, orgId);
+  const placementCan = (projectId: string, kind: string, app: ApplicationFacts) =>
+    decided(facts, [projectId, ...app.projectIds], (live) =>
+      placementOffers(live, { projectId, kind }, app),
+    );
+  const ungroupedApp: ApplicationFacts = { projectIds: [], placements: [], production: null };
   return {
-    ...(organization === null ? {} : { can: organization.can, unheld: organization.unheld }),
-    apps: listed(read, "hqApp", hqAppsScope(orgId)).map(({ id, value: app }) => ({
-      id,
-      name: app.name ?? "Unknown",
-      ...(app.can === undefined ? {} : { can: app.can }),
-      ...(app.problems === undefined ? {} : { problems: app.problems }),
-      ...(app.contents === undefined ? {} : { contents: app.contents }),
-      ...(app.births === undefined ? {} : { births: app.births }),
-      ...(app.intake === undefined ? {} : { intake: app.intake }),
-      ...environmentsOfApp(app.environments),
-      projects: (
+    ...(organization === null ? {} : offered(decided(facts, [], organizationOffers))),
+    // Placeable: in the person's own live Zerops list, with no row in HQ's read structure.
+    ...(facts === undefined || read.coverage(placementsScope(orgId)) !== "complete"
+      ? {}
+      : {
+          placeable: Object.fromEntries(
+            read.members(projectsScope(orgId)).ids.flatMap((projectId) => {
+              if (placements.has(projectId)) return [];
+              const can = decided(facts, [projectId], (live) => placeableOffers(live, projectId));
+              return can === undefined ? [] : [[projectId, can]];
+            }),
+          ),
+        }),
+    apps: listed(read, "hqApp", hqAppsScope(orgId)).map(({ id, value: app }) => {
+      const projects = (
         app.projectIds ??
         [...placements].flatMap(([projectId, placed]) => (placed.appId === id ? [projectId] : []))
       ).flatMap((projectId) => {
         const placement = placements.get(projectId);
         return placement === undefined
           ? []
-          : [
-              {
-                projectId,
-                name: placement.name ?? "Unknown",
-                kind: placement.kind ?? "unknown",
-                mate:
-                  placement.mate == null
-                    ? placement.mate
-                    : mateOf(placement.mate, placement.everSignedIn),
-                ...offersOf(placement),
-              },
-            ];
-      }),
-    })),
+          : [{ projectId, placement, kind: placement.kind ?? "unknown" }];
+      });
+      const appFacts = applicationFacts(app, projects);
+      return {
+        id,
+        name: app.name ?? "Unknown",
+        ...offered(
+          decided(facts, applicationProjects(appFacts), (live) =>
+            applicationOffers(live, appFacts),
+          ),
+        ),
+        ...(app.problems === undefined ? {} : { problems: app.problems }),
+        ...(app.contents === undefined ? {} : { contents: app.contents }),
+        ...(app.births === undefined ? {} : { births: app.births }),
+        ...(app.intake === undefined ? {} : { intake: app.intake }),
+        ...environmentsOfApp(app.environments, (projectId, tier) =>
+          decided(facts, [projectId, ...appFacts.projectIds], (live) =>
+            environmentOffers(live, { projectId, tier }, appFacts),
+          ),
+        ),
+        projects: projects.map(({ projectId, placement, kind }) => ({
+          projectId,
+          name: placement.name ?? "Unknown",
+          kind,
+          mate:
+            placement.mate == null
+              ? placement.mate
+              : mateOf(placement.mate, placement.everSignedIn),
+          ...offered(placementCan(projectId, kind, appFacts)),
+        })),
+      };
+    }),
     ungrouped: [...placements].flatMap(([projectId, placement]) =>
       placement.appId !== null || placement.mate == null
         ? []
@@ -187,7 +268,7 @@ function structureOf(
               projectId,
               name: placement.name ?? "Unknown",
               mate: mateOf(placement.mate, placement.everSignedIn),
-              ...offersOf(placement),
+              ...offered(placementCan(projectId, placement.kind ?? "mate", ungroupedApp)),
             },
           ],
     ),
@@ -303,9 +384,9 @@ export const hqMenuNavigation = {
 } satisfies Projection<string, HqDeliveryNavigationRead>;
 
 /**
- * What HQ computed of the reader for each project it places, by project: their role, whether they
- * may write to its Mate, whether it is theirs (*Mine*), and how much of it they have not seen.
- * Apart from the navigation: it moves with every result a Mate publishes.
+ * What HQ computed of the reader for each project it places, by project: whether it is theirs
+ * (*Mine*), whether it waits on them, and how much of it they have not seen. Apart from the
+ * navigation: it moves with every result a Mate publishes.
  */
 export const hqPersonFacts: Projection<string, Readonly<Record<string, HqPersonFacts>>> = {
   name: "hqPersonFacts",

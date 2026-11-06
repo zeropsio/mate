@@ -3,9 +3,9 @@ import { CreationFake } from "../../fakes/f-create/creation.ts";
 import { MateFake } from "../../fakes/mate.ts";
 import { replyLossProxy } from "../../fakes/f-create/replyLoss.ts";
 import { serve } from "../../harness/http.ts";
+import type { SearchTerm } from "../../fakes/zerops.ts";
 
 type CreationControl = CreationFake & {
-  blockIsolation: boolean;
   holdCreation: boolean;
   deleted: string[];
   mateKeys: string[];
@@ -19,7 +19,6 @@ export const creationOf = (drivers: ScenarioDrivers) => {
 
 export const installCreation: ScenarioExtension = async (drivers) => {
   const creation = Object.assign(new CreationFake(drivers.zerops), {
-    blockIsolation: false,
     holdCreation: false,
     deleted: [] as string[],
     mateKeys: [] as string[],
@@ -28,6 +27,30 @@ export const installCreation: ScenarioExtension = async (drivers) => {
   drivers.zerops.handlers.push(async (request) => {
     const path = request.url.pathname.replace(/^\/api\/rest\/public/u, "");
     if (
+      path === "/client-user/search" &&
+      request.method === "POST" &&
+      request.body.wsOutputType === "updateStream"
+    ) {
+      // The shared member-list fake answers searches but does not register membership pushes.
+      const zerops = drivers.zerops;
+      const name = String(request.body.subscriptionName);
+      const receiver = String(request.body.receiverId);
+      zerops.subscriptions.set(`${receiver}:${name}`, {
+        kind: "client-user",
+        name,
+        receiver,
+        socket: zerops.sockets.get(receiver),
+        apiToken: request.headers.authorization?.replace(/^Bearer /u, "") ?? "",
+        output: "updateStream",
+        search: (request.body.search ?? []) as SearchTerm[],
+        members: new Set(),
+      });
+      const key = "client-user:updateStream";
+      zerops.registrations.set(key, (zerops.registrations.get(key) ?? 0) + 1);
+      zerops.events.emit("change");
+      return { body: { success: true } };
+    }
+    if (
       path === "/client/ORG/integration-token" &&
       request.method === "POST" &&
       typeof request.body.name === "string" &&
@@ -35,7 +58,19 @@ export const installCreation: ScenarioExtension = async (drivers) => {
     )
       creation.mateKeys.push(request.body.name);
     if (path === "/client/ORG/project" && request.method === "POST") {
-      const response = await creation.handle(request);
+      // The base fake creates a FINISHED process. Do not publish that transient state when a
+      // scenario holds creation: the first process frame must be RUNNING, not a raced completion.
+      const previousPush = drivers.zerops.faults.get("process:push");
+      if (creation.holdCreation) drivers.zerops.faults.set("process:push", { silence: true });
+      let response;
+      try {
+        response = await creation.handle(request);
+      } finally {
+        if (creation.holdCreation) {
+          if (previousPush === undefined) drivers.zerops.faults.delete("process:push");
+          else drivers.zerops.faults.set("process:push", previousPush);
+        }
+      }
       if (creation.creationStatus === "FAILED") {
         const project = drivers.zerops.rows("project").find((row) => row.id === "created-1");
         if (project) drivers.zerops.put("project", { ...project, status: "NEW" });
@@ -47,39 +82,6 @@ export const installCreation: ScenarioExtension = async (drivers) => {
         if (process) drivers.zerops.put("process", { ...process, status: "RUNNING" });
       }
       return response;
-    }
-    if (
-      path === "/project/created-1/first-class-recipe/development-container" &&
-      request.method === "PUT"
-    ) {
-      const response = await creation.handle(request);
-      const yaml = String(request.body.serviceImportYaml ?? "");
-      const marker = yaml.match(/MATE_SETUP_RUNTIMES: "([^"]+)"/u)?.[1];
-      if (marker !== undefined && response?.status === undefined) {
-        drivers.zerops.put("user-data", {
-          id: "container-created-1-setup",
-          projectId: "created-1",
-          serviceStackId: "container-created-1",
-          clientId: "ORG",
-          key: "MATE_SETUP_RUNTIMES",
-          content: marker,
-        });
-      }
-      return response;
-    }
-    const search = request.body.search as { name: string; value: string }[] | undefined;
-    if (
-      creation.blockIsolation &&
-      path === "/project/search" &&
-      request.method === "POST" &&
-      search?.some((filter) => filter.name === "id" && filter.value === "created-1") &&
-      drivers.zerops.rows("service-stack").some((row) => row.projectId === "created-1")
-    ) {
-      const project = drivers.zerops.rows("project").find((row) => row.id === "created-1");
-      if (project) {
-        const { envList: _unread, ...partial } = project;
-        return { body: { items: [partial] } };
-      }
     }
     const target = path.match(/^\/project\/([^/]+)$/u)?.[1];
     if (request.method !== "DELETE" || !target) return undefined;

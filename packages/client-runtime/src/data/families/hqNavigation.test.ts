@@ -10,7 +10,6 @@ import { gitEnvironment } from "../__fixtures__/hqWire.ts";
 const app = {
   id: "shop",
   name: "Shop",
-  can: {},
   contents: { empty: false, deletingProjectIds: [] },
   environments: [],
   changes: [],
@@ -23,10 +22,8 @@ const project = {
   appId: "shop",
   name: "Ada",
   kind: "mate",
-  mate: { face: "ada", madeBy: null, standupRequestedBy: null, closedOff: false },
+  mate: { face: "ada", madeBy: null, standupRequestedBy: null },
   person: {
-    role: "DEVELOPER",
-    mayWrite: true,
     mine: true,
     ownerUserId: null,
     waitsOnViewer: false,
@@ -85,6 +82,13 @@ it("slice one admits direct branches only and never invents a PR target", () => 
 });
 
 describe("navigation record decoding", () => {
+  it("keeps an adopted birth's identity so its existing project is protected", () => {
+    const birth = { id: "birth-ada", face: "ada", projectId: "ada", adopted: true };
+    expect(hqAppFamily.hq!.decode({ ...app, births: [birth] }, "app:shop")?.births).toEqual([
+      birth,
+    ]);
+  });
+
   it("a fresh observer retains the accepted import identity from an HQ birth without a press", () => {
     const birth = {
       id: "birth-ada",
@@ -172,7 +176,6 @@ it("keeps modern identity and its authoritative target, even beside an older add
     order: 1,
     keyHeld: true,
     keyInvalid: false,
-    can: {},
     jobs: [],
     release: null,
     birth: null,
@@ -181,36 +184,33 @@ it("keeps modern identity and its authoritative target, even beside an older add
   expect(app?.environments).toEqual([environment]);
 });
 
-it.each([[], { refused: "Changes are private" }])(
-  "explicit empty or refused environments replace the known rows: %s",
-  (environments) => {
-    const held = hqAppFamily.hq!.decode(
-      {
-        ...app,
-        environments: [
-          {
-            id: "prod",
-            target: { kind: "zerops", projectId: "prod" },
-            tier: "production",
-            name: "production",
-            sources: ["release"],
-            order: 1,
-            keyHeld: true,
-            keyInvalid: false,
-            can: {},
-            jobs: [],
-          },
-        ],
-      },
-      "app:shop",
-    )!;
-    const row = hqAppFamily.hq!.decode({ ...app, environments }, "app:shop")!;
-    expect(hqAppFamily.keepUnsaid?.(held, row, false) ?? row).toEqual(row);
-  },
-);
+it("explicit empty environments replace the known rows", () => {
+  const held = hqAppFamily.hq!.decode(
+    {
+      ...app,
+      environments: [
+        {
+          id: "prod",
+          target: { kind: "zerops", projectId: "prod" },
+          tier: "production",
+          name: "production",
+          sources: ["release"],
+          order: 1,
+          keyHeld: true,
+          keyInvalid: false,
+          jobs: [],
+        },
+      ],
+    },
+    "app:shop",
+  )!;
+  const row = hqAppFamily.hq!.decode({ ...app, environments: [] }, "app:shop")!;
+  expect(hqAppFamily.keepUnsaid?.(held, row, "listing") ?? row).toEqual(row);
+});
 
 describe("the organization's record, as its reader reads it", () => {
-  const organization = { can: {}, unheld: {}, build: "0.15.80" };
+  const organization = { build: "0.15.80" };
+  const record = { build: "0.15.80" };
   const decode = (raw: unknown) =>
     hqOrganizationFamily.hq!.decode(raw, "org", { orgId: "org", ownerId: null });
   it.each([
@@ -231,13 +231,13 @@ describe("the organization's record, as its reader reads it", () => {
     },
   ])("$sentence", ({ viewer, read }) => {
     expect(decode(viewer === undefined ? organization : { ...organization, viewer })).toEqual(
-      read === undefined ? organization : { ...organization, viewer: read },
+      read === undefined ? record : { ...record, viewer: read },
     );
   });
 
   it("A record that still carries a tools list is read without it", () => {
     expect(decode({ ...organization, tools: [{ projectId: "p1", kind: "gitea" }] })).toEqual(
-      organization,
+      record,
     );
   });
 });

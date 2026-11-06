@@ -2,7 +2,8 @@ import * as Clock from "effect/Clock";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import type * as EffectAcpSchema from "effect-acp/schema";
 import { deriveToolActivityPresentation } from "@t3tools/shared/toolActivity";
 import type { ToolLifecycleItemType } from "@t3tools/contracts";
@@ -714,27 +715,35 @@ export interface SessionLoadGate {
   readonly initializeResult: EffectAcpSchema.InitializeResponse;
 }
 
+/** A load whose replay has begun: the gate holds its last activity. */
+const isReplaying = (
+  gate: Option.Option<SessionLoadGate>,
+): gate is Option.Some<SessionLoadGate & { readonly lastActivityAtMillis: number }> =>
+  Option.isSome(gate) && gate.value.active && gate.value.lastActivityAtMillis !== undefined;
+
+/**
+ * Settles once the replay has been quiet for the gate's idle gap: waits for its first activity,
+ * then sleeps to the instant its last activity plus the gap, again while activity moved it on.
+ */
 export const waitForSessionLoadReplayIdle = (input: {
-  readonly gateRef: Ref.Ref<Option.Option<SessionLoadGate>>;
-}): Effect.Effect<EffectAcpSchema.LoadSessionResponse, never> =>
-  Effect.gen(function* () {
-    const pollInterval = Duration.millis(25);
+  readonly gateRef: SubscriptionRef.SubscriptionRef<Option.Option<SessionLoadGate>>;
+}): Effect.Effect<EffectAcpSchema.LoadSessionResponse, never> => {
+  const replaying = SubscriptionRef.changes(input.gateRef).pipe(
+    Stream.filter(isReplaying),
+    Stream.runHead,
+  );
+  return Effect.gen(function* () {
     while (true) {
-      const gate = yield* Ref.get(input.gateRef);
-      if (
-        Option.isSome(gate) &&
-        gate.value.active &&
-        gate.value.lastActivityAtMillis !== undefined
-      ) {
-        const idleGapMillis = Duration.toMillis(gate.value.idleGap);
-        const nowMillis = yield* Clock.currentTimeMillis;
-        if (nowMillis - gate.value.lastActivityAtMillis >= idleGapMillis) {
-          return syntheticLoadSessionResponseFromInitialize(gate.value.initializeResult);
-        }
-      }
-      yield* Effect.sleep(pollInterval);
+      const found = yield* replaying;
+      if (Option.isNone(found)) return yield* Effect.never;
+      const { lastActivityAtMillis, idleGap, initializeResult } = found.value.value;
+      const quietFor =
+        lastActivityAtMillis + Duration.toMillis(idleGap) - (yield* Clock.currentTimeMillis);
+      if (quietFor <= 0) return syntheticLoadSessionResponseFromInitialize(initializeResult);
+      yield* Effect.sleep(quietFor);
     }
   });
+};
 
 /**
  * Model state some agents (Grok) advertise in `initialize._meta.modelState`, before any

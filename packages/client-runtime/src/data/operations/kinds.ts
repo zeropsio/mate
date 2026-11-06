@@ -16,7 +16,6 @@ import { MATE_ENGINE_KINDS } from "./mateEngine.ts";
  * @module data/operations/kinds
  */
 import type { OperationIntent } from "../model.ts";
-import { assignMateOwner, finishMateHandover } from "./assignMateOwner.ts";
 import { createProject } from "./createProject.ts";
 import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
@@ -27,7 +26,7 @@ import { HQ_CHIEF_KINDS } from "./hqChief.ts";
 import { authorizeObserve } from "./hqObserveAuthorization.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { PERSONA_TEMPLATE_KINDS } from "./hqPersonaTemplates.ts";
-import { importContainer } from "./importContainer.ts";
+import { importContainer, prepareTierVariables } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
 import { importServices } from "./importServices.ts";
 import { renameApp, deleteApp, answerKeptGit } from "./hqAppWrites.ts";
@@ -91,14 +90,13 @@ export const OPERATION_KINDS = defineOperationKinds([
   enableZeropsMate,
   renameProject,
   updateProjectTags,
-  assignMateOwner,
-  finishMateHandover,
   moveProject,
   ...MATE_DELETION_KINDS,
   createProject,
   importProject,
   importServices,
   importContainer,
+  prepareTierVariables,
   hardenProject,
   ...HQ_WRITE_KINDS,
   ...PERSONA_TEMPLATE_KINDS,

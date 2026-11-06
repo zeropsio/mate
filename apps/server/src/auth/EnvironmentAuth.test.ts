@@ -22,7 +22,7 @@ import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import * as SessionStore from "./SessionStore.ts";
-import { layer as accessListLayer } from "../zerops/ZeropsMateAccessList.ts";
+import { AccessScene, accessSceneLayer, type SceneRoles } from "../zerops/testing/accessScene.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import type * as PtyAdapter from "../terminal/PtyAdapter.ts";
@@ -53,34 +53,20 @@ const makeEnvironmentAuthLayer = (overrides?: Partial<ServerConfig.ServerConfig[
     Layer.provide(makeServerConfigLayer(overrides)),
   );
 
-/** The auth boundary inside a Zerops Mate, its admission read from HQ's access list. */
+/** The auth boundary inside a Zerops Mate, its admission read from the Mate's own Zerops list. */
 const makeAdmissionAuthLayer = () =>
   EnvironmentAuth.zeropsLayer.pipe(
     Layer.provideMerge(
       ZeropsConnections.layer.pipe(
         Layer.provideMerge(ZeropsTicketDoor.layer),
-        Layer.provideMerge(accessListLayer),
+        Layer.provideMerge(accessSceneLayer({})),
       ),
     ),
     Layer.provide(makeServerConfigLayer({ zerops: zeropsTestEnvironment })),
   );
 
-/** HQ's full list, opening the project for `open` and listing `listed`. */
-const accessFrame = (
-  version: number,
-  open: ReadonlyArray<string>,
-  listed: ReadonlyArray<string> = [],
-) =>
-  ({
-    type: "access",
-    version,
-    viewAt: "2026-10-24T10:00:00.000Z",
-    full: true,
-    members: [
-      ...open.map((userId) => ({ userId, role: "ADMIN", visibility: "open" }) as const),
-      ...listed.map((userId) => ({ userId, role: "READ_ONLY", visibility: "listed" }) as const),
-    ],
-  }) as const;
+/** Zerops now holds `roles`, and the Mate's list has read it. */
+const zeropsHolds = (roles: SceneRoles) => Effect.flatMap(AccessScene, (scene) => scene.set(roles));
 
 const makeCookieRequest = (
   cookieName: string,
@@ -249,7 +235,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
 
 it.layer(NodeServices.layer)("current admission for existing sessions", (it) => {
   it.effect(
-    "an existing session opens only while HQ's access list opens the project for its person",
+    "an existing session opens only while the Mate's Zerops list opens the project for its person",
     () =>
       Effect.gen(function* () {
         const auth = yield* EnvironmentAuth.EnvironmentAuth;
@@ -267,39 +253,33 @@ it.layer(NodeServices.layer)("current admission for existing sessions", (it) => 
             .authenticateHttpRequest(makeBearerRequest(ticket))
             .pipe(Effect.match({ onFailure: () => false, onSuccess: () => true }));
         const admitted = [yield* opens()];
-        yield* list.heard(accessFrame(1, ["owner"]));
+        yield* zeropsHolds({ owner: "ADMIN" });
         expect(Option.isSome(yield* list.admit({ ticket }, Effect.void))).toBe(true);
         admitted.push(yield* opens());
-        yield* list.heard(accessFrame(2, [], ["owner"]));
+        yield* zeropsHolds({ owner: "READ_ONLY" });
         admitted.push(yield* opens());
-        yield* list.heard(accessFrame(3, ["owner"]));
-        yield* list.heard({ type: "access", version: 4, full: true, refused: true, members: [] });
-        admitted.push(yield* opens());
-        expect(admitted).toEqual([false, true, false, false]);
+        expect(admitted).toEqual([false, true, false]);
       }).pipe(Effect.provide(makeAdmissionAuthLayer())),
   );
 });
 
-// F1 (permission audit): an open bearer session outlived the person's org role. HQ's next list
-// after the change ends it at once.
+// F1 (permission audit): an open bearer session outlived the person's org role. The Mate's next
+// read of Zerops after the change ends it at once.
 const demotions = [
-  { case: "lowered to Developer: HQ's next list leaves her out", to: "NO_ACCESS" },
-  { case: "lowered to Read only: HQ's next list only lists her", to: "READ_ONLY" },
+  { case: "lowered to Developer: the Mate's next Zerops read leaves her out", to: "NO_ACCESS" },
+  { case: "lowered to Read only: the Mate's next Zerops read only lists her", to: "READ_ONLY" },
 ] as const;
 
 const makeDemotionScene = () => ({ layer: makeAdmissionAuthLayer() });
 
-/** HQ's next list after Bea is lowered: without her, or listing her only. */
-const demote = (to: (typeof demotions)[number]["to"]) =>
-  Effect.flatMap(ZeropsConnections.ZeropsConnections, (list) =>
-    list.heard(to === "READ_ONLY" ? accessFrame(2, ["owner"], ["bea"]) : accessFrame(2, ["owner"])),
-  );
+/** Zerops after Bea is lowered: she is out of the list, or only listed. */
+const demote = (to: (typeof demotions)[number]["to"]) => zeropsHolds({ owner: "ADMIN", bea: to });
 
 /** HQ admits Bea's connection, which also authorizes her HTTP requests. */
 const signInBea = Effect.fn("signInBea")(function* (close: Effect.Effect<void> = Effect.void) {
   const auth = yield* EnvironmentAuth.EnvironmentAuth;
   const connections = yield* ZeropsConnections.ZeropsConnections;
-  yield* connections.heard(accessFrame(1, ["owner", "bea"]));
+  yield* zeropsHolds({ owner: "ADMIN", bea: "ADMIN" });
   const ticket = "bea-ticket";
   yield* (yield* ZeropsTicketDoor.ZeropsTicketDoor).heard({
     type: "ticket",
@@ -324,7 +304,7 @@ it.layer(NodeServices.layer)(
         const live = yield* Effect.forkChild(Deferred.await(ended));
         const { access } = yield* signInBea(Deferred.succeed(ended, "revoked").pipe(Effect.asVoid));
         const later = { ticket: "unused-ticket" };
-        // The live socket is listening before HQ's next list lands, as a connected one is.
+        // The live socket is listening before the Mate's next Zerops read lands, as a connected one is.
         yield* TestClock.adjust(Duration.zero);
 
         yield* demote(to);

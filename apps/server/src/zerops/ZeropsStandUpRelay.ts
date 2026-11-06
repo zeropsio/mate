@@ -5,9 +5,10 @@
  * tier for minutes, and its own progress never reaches the card: the Claude
  * CLI's headless stream drops MCP progress notifications. zcp writes the same
  * progress into its status file (`ZCP_STATUS_FILE`, its `standup` section), so
- * while a stand-up call runs this reads that section and relays every change
- * as the call's progress, live on the call's item in the engine's record
- * (`MateEngine.callProgress`), never stored: the call's result is what it keeps.
+ * while a stand-up call runs this reads that section at each change of the
+ * file and relays every change as the call's progress, live on the call's
+ * item in the engine's record (`MateEngine.callProgress`), never stored: the
+ * call's result is what it keeps.
  *
  * @module ZeropsStandUpRelay
  */
@@ -27,9 +28,6 @@ import { SECTION_SKEW_MS, type ZcpStatus } from "./zeropsSetupSteps.ts";
 
 /** The stand-up tool, as the event's tool call names it (its `mcp__…__` prefix stripped). */
 export const STAND_UP_TOOL_NAME = "zerops_standup";
-
-/** How often the status file is read while a stand-up call runs. */
-export const STAND_UP_RELAY_INTERVAL = Duration.seconds(2);
 
 /** The longest a call is followed: past zcp's own limit for a stand-up. */
 export const STAND_UP_RELAY_LIMIT = Duration.hours(2);
@@ -169,13 +167,17 @@ export const make = Effect.gen(function* () {
       Effect.ensuring(passes.complete),
     );
 
+  /** Read at the call's start, then at each change of the file, until its MCP process is gone. */
   const follow = (
     event: SpiEvent,
     call: { readonly startedAt: string; last: string | undefined },
   ) =>
-    Effect.gen(function* () {
-      while (!(yield* relayOnce(event, call))) yield* Effect.sleep(STAND_UP_RELAY_INTERVAL);
-    }).pipe(Effect.timeout(STAND_UP_RELAY_LIMIT), Effect.ignore);
+    Effect.scoped(
+      Effect.gen(function* () {
+        const changes = yield* setup.statusChanges;
+        while (!(yield* relayOnce(event, call))) yield* changes.next;
+      }),
+    ).pipe(Effect.timeout(STAND_UP_RELAY_LIMIT), Effect.ignore);
 
   /** Each thread's call that last ended: a late update of it is no new call. */
   const ended = new Map<string, string>();

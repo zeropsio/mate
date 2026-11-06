@@ -129,6 +129,8 @@ export function budgets(s: Scenario) {
     },
     measure: {
       browser: observation.browser.sample,
+      /** The browser's organization membership search requests. */
+      membershipRequests: () => observation.browser.matching(/^POST \/client-user\/search(\?|$)/u),
       /** One project's process history read, `GET /project/{id}/process`, and its preflight. */
       projectHistoryReads: () =>
         observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/process(\?|$)/u),

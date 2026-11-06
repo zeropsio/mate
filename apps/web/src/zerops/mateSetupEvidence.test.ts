@@ -8,10 +8,12 @@ import {
   readsOfState,
   runningScope,
   runToEnd,
+  sharedBirths,
   type RunToEnd,
 } from "@t3tools/client-runtime/data";
 import {
   liveZerops,
+  membershipInputs,
   ORG,
   seedHqNavigation,
   zeropsVersion,
@@ -31,6 +33,7 @@ import { arrivalRow, arrivalSteps } from "./mateArrival";
 import { mateComingHeadlineClauses } from "./mateComing";
 import { beginPress, forgetPress, runPress } from "./matePress";
 import { runNewProjectBirth, type CreationAsk } from "./newProjectBirth";
+import { sharedBirthPresentation } from "./sharedBirths";
 
 const START = Date.parse("2026-10-28T12:29:49.006Z");
 const project: ZeropsProject = {
@@ -85,6 +88,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
   const held: CreationAsk = {
     ask: {
       organizationId: ORG,
+      creator: "cu-me",
       birthId: "birth-pepa",
       name: "Franta",
       botName: mate.name,
@@ -119,6 +123,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
     {
       registerGroup: () => Promise.reject(new Error("Application already recorded")),
       recordBirth: () => Promise.reject(new Error("Birth already recorded")),
+      attemptProject: async (_birthId, send) => send(),
       createProject: (requestId, args) =>
         run(
           { kind: "create-project", orgId: ORG, name: args.name, tagList: [] },
@@ -142,7 +147,6 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
           steps: [{ kind: "import-container", agents: [] }],
           platform: {
             run: importRun,
-            markClosedOff: async () => undefined,
             register: async () => undefined,
             untilServicesSettled: async () => [],
           },
@@ -178,7 +182,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
         },
       ],
     });
-  const observe = (
+  const creatorArrival = (
     nowMs: number,
     services: ReadonlyArray<ZeropsService>,
     presses: HqPresses = {},
@@ -188,14 +192,54 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
       candidate,
       press: undefined,
       nowMs,
+      // The legacy arrival path belongs to the tab that made this project.
+      created: true,
+      madeAt: START,
       pressElsewhere: pressElsewhere({
         presses,
         projectId: project.id,
-        nowMs,
         importStatus: presses[project.id]?.importProcessId === undefined ? undefined : "RUNNING",
       }),
     });
   };
+  // A different account sees HQ's birth, without the creator's press or operations.
+  const observer = makeAccountStore(registry);
+  liveZerops({ running: [], projects: [project], services: [] }).forEach(observer.dispatch);
+  membershipInputs("OWNER").forEach(observer.dispatch);
+  const publishBirth = (importProcessId?: string) =>
+    seedHqNavigation(observer, ORG, {
+      structure: {
+        apps: [
+          {
+            id: "app-franta",
+            name: "Franta",
+            projects: [
+              {
+                projectId: project.id,
+                name: project.name,
+                kind: "mate",
+                mate: { face: "", birthId: held.ask.birthId },
+              },
+            ],
+            births: [
+              {
+                id: held.ask.birthId,
+                face: "",
+                madeBy: held.ask.creator,
+                projectId: project.id,
+                ...(importProcessId === undefined ? {} : { importProcessId }),
+              },
+            ],
+          },
+        ],
+        ungrouped: [],
+      },
+      presses: {},
+    });
+  const observedBirth = () =>
+    sharedBirths
+      .derive(readsOfState(observer.state()), { orgId: ORG, personId: "cu-observer" })
+      .open.find((birth) => birth.projectId === project.id)!;
   try {
     await accepted.promise;
     expect(sends).toHaveBeenCalledTimes(1);
@@ -210,13 +254,23 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
     });
     expect(importCalls).toEqual([]);
     const nowMs = START + 42_777;
-    const fresh = observe(nowMs, []);
-    expect(fresh).toMatchObject({
+    publishBirth();
+    expect(observedBirth()).toMatchObject({
+      projectId: project.id,
+      progress: { phase: "project-created", next: { kind: "wait", for: "creation-history" } },
+    });
+    expect(sharedBirthPresentation(observedBirth())).toMatchObject({
+      line: "Project created · Waiting for project creation history",
+      attention: false,
+    });
+    // Keep the old arrival assertions on the creator path; the fresh observer reads the birth.
+    const creator = creatorArrival(nowMs, []);
+    expect(creator).toMatchObject({
       coming: { kind: "coming" },
       page: { kind: "coming", coming: { kind: "coming" } },
     });
-    expect(mateBornLine(fresh.coming!)).toMatchObject({ words: "Coming up", tone: "muted" });
-    expect(mateComingHeadlineClauses(mate, fresh.coming!.kind)).toEqual([
+    expect(mateBornLine(creator.coming!)).toMatchObject({ words: "Coming up", tone: "muted" });
+    expect(mateComingHeadlineClauses(mate, creator.coming!.kind)).toEqual([
       "Pepa is coming up on Franta.",
     ]);
     const progress = deriveBirthProgress(
@@ -246,47 +300,43 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
         serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
       },
     ];
-    const later = observe(nowMs + 15_000, services, {
-      [project.id]: { kind: "mate", importProcessId: "import-pepa", expiresAtMs: START },
+    const later = creatorArrival(nowMs + 15_000, services, {
+      [project.id]: { kind: "mate", importProcessId: "import-pepa", held: false },
     });
     expect(later.coming?.kind).toBe("coming");
     imported.resolve({ serviceName: "zcp", imported: true, processId: "import-pepa" });
     expect(await press).toMatchObject({ ok: true, projectId: project.id });
-    // The creator has finished. This account has neither its press nor its local operations.
-    const observer = makeAccountStore(registry);
-    liveZerops({ running: [] }).forEach(observer.dispatch);
-    seedHqNavigation(observer, ORG, {
-      structure: {
-        apps: [],
-        ungrouped: [
-          {
-            projectId: project.id,
-            name: mate.name,
-            mate: { face: "", importProcessId: "import-pepa" },
-          },
-        ],
-      },
-      presses: {},
-    });
+    // HQ retains the accepted import after the creator's press has gone.
+    publishBirth("import-pepa");
     const recovered = () =>
       projectCreations.derive(readsOfState(observer.state()), {
         orgId: ORG,
         projectIds: [project.id],
       })[project.id];
-    const recoveredArrival = () =>
+    const creatorAfterImport = () =>
       mateArrival({
         candidate: deriveZeropsCandidates(project, [], new Map())[0],
         press: undefined,
         nowMs,
+        created: true,
+        madeAt: START,
         pressElsewhere: pressElsewhere({
           presses: {},
           projectId: project.id,
-          nowMs,
           importStatus: recovered()?.status,
         }),
       });
     expect(recovered()).toBeUndefined();
-    expect(recoveredArrival().page?.kind).toBe("coming");
+    expect(observedBirth()).toMatchObject({
+      importProcessId: "import-pepa",
+      progress: { phase: "import-accepted", next: { kind: "wait", for: "service" } },
+    });
+    expect(sharedBirthPresentation(observedBirth())).toMatchObject({
+      line: "Import accepted · The Mate service has not appeared in Zerops",
+      attention: false,
+      actions: ["delete"],
+    });
+    expect(creatorAfterImport().page?.kind).toBe("coming");
     for (const [index, status] of ["RUNNING", "FINISHED"].entries()) {
       observer.dispatch({
         kind: "rows",
@@ -311,11 +361,19 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
         ],
       });
       expect(recovered()).toEqual({ processId: "import-pepa", status, error: null });
-      expect(recoveredArrival().page?.kind).toBe("coming");
+      expect(observedBirth().progress).toMatchObject({
+        phase: "import-accepted",
+        next: { kind: "wait", for: "service" },
+      });
+      expect(sharedBirthPresentation(observedBirth())).toMatchObject({
+        line: "Import accepted · The Mate service has not appeared in Zerops",
+        attention: false,
+        actions: ["delete"],
+      });
+      expect(creatorAfterImport().page?.kind).toBe("coming");
     }
     expect(observer.state().operations.size).toBe(0);
     expect(importCalls).toHaveLength(1);
-    observer.close();
     const up = mateArrival({
       press: undefined,
       candidate: deriveZeropsCandidates(project, services, new Map())[0],
@@ -337,6 +395,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
     await creation;
     await press;
     forgetPress(project.id);
+    observer.close();
     registry.dispose();
   }
 });

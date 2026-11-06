@@ -1,7 +1,7 @@
 /**
- * The menu's rows: those HQ places, from the account's store (`hqNavigation`), and the
- * organization's projects only Zerops lists so far, ungrouped (`menuRows`) — a project HQ places
- * later moves into its application then. Each project is the store's; inventory and admission
+ * The menu's rows: those HQ places that the person may see (`mateVisibility`), from the account's
+ * store (`hqNavigation`), and the organization's projects only Zerops lists so far, ungrouped
+ * (`menuRows`) — a project HQ places later moves into its application then. Each project is the store's; inventory and admission
  * enrich rows, never enumerate them. None is drawn until every source they come from answered or
  * stopped answering (`menuSourcesSettled`): a first paint is the settled one, never reordered.
  * Once drawn, they stay while a source reads again: what was painted is never taken back.
@@ -14,6 +14,7 @@ import {
   listedProjectAtom,
   projectGoneAtom,
   shownHqMatesAnsweredAtom,
+  shownMateVisibilityAtom,
   shownProjectsAtom,
 } from "@t3tools/client-runtime/data";
 import { placedMenuRows, placedNames } from "@t3tools/client-runtime/zerops/hq";
@@ -63,10 +64,18 @@ export function menuRowsAtom<Row extends CandidateRow>(
       return LOADING;
     const directory = get(shownHqMateDirectoryAtom);
     const allPlacements = get(hqPlacementsAtom);
+    // HQ places every Mate of the organization: one the person cannot reach is not theirs to see.
+    // One whose project their own read proved deleted they saw, and see gone (`placedMenuRows`).
     const placements =
       allPlacements === null
         ? null
-        : new Map([...allPlacements].filter(([id]) => isListedMateProject(directory, { id })));
+        : new Map(
+            [...allPlacements].filter(
+              ([id]) =>
+                isListedMateProject(directory, { id }) &&
+                (get(shownMateVisibilityAtom(id)) !== "hidden" || get(projectGoneAtom(id))),
+            ),
+          );
     const listedCandidates = candidates.filter((row) =>
       isListedMateProject(directory, row.project),
     );

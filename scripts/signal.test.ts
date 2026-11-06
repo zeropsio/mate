@@ -4,9 +4,11 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
+import { scenarioDurations } from "./lib/scenario-durations.ts";
 import {
   classifyFailures,
   failedSelection,
+  signalShardFiles,
   standingReds,
   validateReport,
   type SignalFailure,
@@ -65,6 +67,40 @@ const test = (file: string, path: string[], status: string) => ({
   title: path.join(" "),
   path,
   status,
+});
+
+it("Decision: Signal reruns assertion failures only and reports time-bound failures as timed out, not rerun", () => {
+  const initial: SignalReport = {
+    tests: [
+      test("assertion.scenario.ts", ["assertion"], "failed"),
+      {
+        ...test("hung.scenario.ts", ["hung"], "failed"),
+        reason: "hung: no end within 180000 ms; last step: when.menu.opensMate",
+      },
+      {
+        ...test("killed.scenario.ts", ["killed"], "failed"),
+        reason: "hung: the shard ended while this case was running",
+      },
+    ],
+    errors: [],
+  };
+  expect(failedSelection([initial])).toEqual({
+    files: ["assertion.scenario.ts"],
+    testNamePattern: "^(?:assertion)$",
+  });
+  expect(
+    classifyFailures(
+      [initial],
+      { tests: [test("assertion.scenario.ts", ["assertion"], "passed")], errors: [] },
+      42,
+    ),
+  ).toEqual([
+    { file: "assertion.scenario.ts", title: "assertion", class: "fail-pass", run: 42 },
+    ...initial.tests
+      .slice(1)
+      .map(({ file, title, reason }) => ({ file, title, reason, class: "timed-out", run: 42 })),
+  ]);
+  expect(failedSelection([{ ...initial, tests: initial.tests.slice(1) }]).files).toEqual([]);
 });
 
 it.each([
@@ -153,6 +189,7 @@ it.each([
 it.each([
   { evidence: "no report", reason: "no report or progress" },
   { evidence: "global setup", reason: "scenario bundle artifact mismatch" },
+  { evidence: "timeout stop", reason: "Scenario did not certify execution: remaining case" },
 ])(
   "Decision: A shard whose global setup failed is classified as infrastructure by the classifier, never a throw that hides the verdict. ($evidence)",
   ({ evidence, reason }) => {
@@ -173,6 +210,15 @@ it.each([
           JSON.stringify([reason]),
         );
       }
+      const hung = {
+        ...report("failed").tests[0]!,
+        reason: "hung: no end within 180000 ms; last step: given.project",
+      };
+      if (evidence === "timeout stop")
+        NodeFS.writeFileSync(
+          NodePath.join(directory, "c-3.json"),
+          JSON.stringify({ tests: [hung], errors: [reason] }),
+        );
       const result = NodeChildProcess.spawnSync(
         process.execPath,
         [NodePath.join(import.meta.dirname, "signal.ts"), "classify"],
@@ -201,9 +247,37 @@ it.each([
       ).toEqual([{ shard: "c-3", reason }]);
       expect(
         JSON.parse(NodeFS.readFileSync(NodePath.join(directory, "signal-failures.json"), "utf8")),
-      ).toEqual([]);
+      ).toEqual(
+        evidence === "timeout stop"
+          ? [
+              {
+                file: hung.file,
+                title: hung.title,
+                reason: hung.reason,
+                class: "timed-out",
+                run: 42,
+              },
+            ]
+          : [],
+      );
+      if (evidence === "timeout stop")
+        expect(result.stdout).toContain("Signal timed out, not rerun::Chat send");
     } finally {
       NodeFS.rmSync(directory, { recursive: true, force: true });
     }
   },
 );
+
+it("Signal's non-C shards each run their share of every non-C scenario file by measured time, never a C file", () => {
+  const shards = [1, 2, 3].map((index) => signalShardFiles("non-c", index, 3));
+  const files = shards.flat();
+  expect(files.length).toBeGreaterThan(0);
+  expect(new Set(files).size).toBe(files.length);
+  expect(files.filter((file) => file.includes("/c-mate/"))).toEqual([]);
+  expect(files.every((file) => file.endsWith(".scenario.ts"))).toBe(true);
+  const totals = shards.map((shard) =>
+    shard.reduce((sum, file) => sum + (scenarioDurations[file] ?? 1_000), 0),
+  );
+  const mean = totals.reduce((sum, total) => sum + total, 0) / totals.length;
+  expect(Math.max(...totals) / mean).toBeLessThan(1.1);
+});

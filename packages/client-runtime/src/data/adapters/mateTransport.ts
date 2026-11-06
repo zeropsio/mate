@@ -8,7 +8,7 @@ import { makeDescriptorShare } from "../../zerops/descriptorShare.ts";
 import type { ExchangeClock } from "../../zerops/environments/exchange.ts";
 
 /** Resolve at call time so session mocks and browser fetch instrumentation share the same port. */
-export const browserTransportFetch: typeof globalThis.fetch = (input, init) =>
+export const browserTransportFetch: Parameters<typeof remoteHttpClientLayer>[0] = (input, init) =>
   // @effect-diagnostics-next-line globalFetch:off -- native fetch port for the Effect FetchHttpClient and account door protocols.
   globalThis.fetch(input, init);
 

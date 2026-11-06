@@ -16,6 +16,7 @@ import { zeropsSessionAtom } from "../state/zerops";
 import { organization } from "./__fixtures__/platformData";
 import { candidateListingAtom, detailCandidateListingAtom } from "./useZeropsCandidates";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 
 const ORG = "org-example";
 
@@ -82,6 +83,54 @@ describe("menuRowsAtom", () => {
     for (const frame of frames.slice(0, -1)) {
       expect(frame).toEqual({ settled: false, rows: [] });
     }
+  });
+
+  // Brief W3 (Karel, 2026-11-04): HQ places every Mate of the organization; the person's own
+  // roster and org role, as Zerops answers them, decide which of those they see.
+  it("draws no Mate HQ places that Zerops lists the person no way to reach", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
+    mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
+    const granted = { ...ADA, userRoles: [{ clientUserId: "member", roleCode: "BASIC_USER" }] };
+    mountRoster(registry, ORG, [granted], { into: store });
+    for (const input of membershipInputs("NO_ACCESS", false, 1, ORG)) store.dispatch(input);
+    expect(drawnOrder(registry.get(menuRowsAtom(ORG, [])))).toEqual([ADA.id]);
+  });
+
+  // Decision: When the signed-in person's project stream drops a project HQ still lists as a Mate's,
+  // and HQ has no verb to confirm it gone, the client shows the honest "project gone on Zerops, HQ
+  // still holds it" state.
+  it("draws a Mate HQ still places whose project the person's own read proved deleted as gone on Zerops", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
+    mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
+    mountRoster(registry, ORG, [ADA, ZOE], { into: store });
+    for (const input of membershipInputs("ADMIN", true, 1, ORG)) store.dispatch(input);
+    // Zoe's project leaves the admin's roster and its read answers projectNotFound.
+    store.dispatch({
+      kind: "proven-deletion",
+      family: "project",
+      id: ZOE.id,
+      evidence: `GET /project/${ZOE.id} answered 404`,
+    });
+    const rows = registry.get(menuRowsAtom(ORG, [])).rows;
+    expect(drawnOrder({ settled: true, rows }).toSorted()).toEqual([ADA.id, ZOE.id]);
+    const zoe = rows.find((row) => row.project.id === ZOE.id);
+    expect(zoe).toMatchObject({ group: "unavailable", presence: "known", projectGone: true });
+    expect(zoe?.project.hq?.appId).toBe("app-h");
+    expect(rows.find((row) => row.project.id === ADA.id)?.projectGone).toBeUndefined();
   });
 
   type Outcome = "transient" | "definitive-refusal" | "slow";
@@ -371,8 +420,6 @@ it("known Mate details include only ordinary Mates and the person's own Chief", 
         kind: "mate" as const,
         mate: { face: "" },
         person: {
-          role: "ADMIN" as const,
-          mayWrite: true,
           mine: id === "own-chief",
           ownerUserId: id,
           waitsOnViewer: false,

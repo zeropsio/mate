@@ -26,7 +26,7 @@ function withProject(
   try {
     NodeFS.writeFileSync(
       NodePath.join(directory, "vite.config.ts"),
-      `import { defineConfig } from 'vite-plus/test/config'; export default defineConfig({ test: { include: ['*.test.ts'] } });`,
+      `import { defineConfig } from 'vite-plus/test/config'; export default defineConfig({ test: { include: ['*.test.ts'], fileParallelism: false, sequence: { sequencer: class { shard(files) { return files; } sort(files) { return files.sort((a, b) => a.moduleId.localeCompare(b.moduleId)); } } }, runner: ${JSON.stringify(NodePath.join(root, "scripts/scenario-budget-runner.ts"))}, globalSetup: [${JSON.stringify(NodePath.join(root, "scripts/scenario-budget.setup.ts"))}] } });`,
     );
     NodeFS.writeFileSync(
       NodePath.join(directory, "case.test.ts"),
@@ -119,15 +119,20 @@ it("a case that hits the hang ceiling fails as hung, names its last step, and th
   withProject(
     `import { trackSteps } from ${JSON.stringify(NodePath.join(root, "apps/web/test/scenarios/harness/lastStep.ts"))};
      const when = trackSteps('when', { menu: { opensMate: () => 1 } });
-     it('stuck', async () => { when.menu.opensMate(); await new Promise(() => {}); });
-     it('after the stuck one', () => {});`,
+     describe('opening', () => {
+       it('stuck', async () => { when.menu.opensMate(); await new Promise(() => {}); });
+       it('after the stuck one', () => {});
+     });`,
     (run, directory) => {
       const result = run(["--testTimeout=200"]);
       expect(result.status, result.stderr).toBe(1);
+      expect(NodeFS.existsSync(`${result.output}.vitest.json`), result.stdout + result.stderr).toBe(
+        true,
+      );
       const report = readSignalReport(result.output);
       expect(report.tests.map(({ title, status, reason }) => [title, status, reason])).toEqual([
-        ["stuck", "failed", "hung: no end within 200 ms; last step: when.menu.opensMate"],
-        ["after the stuck one", "passed", undefined],
+        ["opening stuck", "failed", "hung: no end within 200 ms; last step: when.menu.opensMate"],
+        ["opening after the stuck one", "passed", undefined],
       ]);
       const [failure] = classifyFailures([report], report, 42);
       expect(failure?.reason).toContain("hung");
@@ -149,7 +154,72 @@ it("a shard killed mid-case leaves its finished cases and names the running one"
     ["done case", "passed", undefined],
     ["running case", "failed", "hung: the shard ended while this case was running"],
   ]);
-  expect(failedSelection([report]).files).toEqual([
-    "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts",
+  expect(failedSelection([report]).files).toEqual([]);
+});
+
+it("Signal classifies an assertion recorded before a killed shard without rerunning its timed-out case", () => {
+  const file = NodePath.join(root, "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts");
+  const initial = reportFromProgress([
+    { event: "end", file, title: "Chat > send", status: "failed" },
+    { event: "start", file, title: "Chat > open" },
+  ]);
+  const rerun = {
+    tests: [
+      {
+        file: NodePath.relative(root, file),
+        title: "Chat send",
+        path: ["Chat", "send"],
+        status: "passed",
+      },
+    ],
+    errors: [],
+  };
+  expect(failedSelection([initial]).testNamePattern).toBe("^(?:Chat > send)$");
+  expect(classifyFailures([initial], rerun, 42)).toEqual([
+    { file: NodePath.relative(root, file), title: "Chat > send", class: "fail-pass", run: 42 },
+    {
+      file: NodePath.relative(root, file),
+      title: "Chat > open",
+      class: "timed-out",
+      run: 42,
+      reason: "hung: the shard ended while this case was running",
+    },
   ]);
 });
+
+it("Decision: a shard stops after three consecutive time-bound failures and names them across files", () =>
+  withProject(
+    `it('timeout before pass', async () => { await new Promise(() => {}); });
+     it('pass resets the streak', () => {});
+     it('timeout before assertion', async () => { await new Promise(() => {}); });
+     it('assertion resets the streak', () => { expect(1).toBe(2); });
+     it('hung one', async () => { await new Promise(() => {}); });`,
+    (run, directory) => {
+      NodeFS.writeFileSync(
+        NodePath.join(directory, "next.test.ts"),
+        `import { it } from 'vite-plus/test';
+         it('hung two', async () => { await new Promise(() => {}); });
+         it('hung three', async () => { await new Promise(() => {}); });
+         it('must not start', () => { throw new Error('unreachable'); });`,
+      );
+      const result = run(["--testTimeout=200", "--reporter=default"]);
+      expect(result.status, result.stderr).toBe(1);
+      expect(NodeFS.existsSync(`${result.output}.vitest.json`), result.stdout + result.stderr).toBe(
+        true,
+      );
+      const report = readSignalReport(result.output);
+      expect(
+        report.tests.filter(({ status }) => status === "failed").map(({ title }) => title),
+      ).toEqual([
+        "timeout before pass",
+        "timeout before assertion",
+        "assertion resets the streak",
+        "hung one",
+        "hung two",
+        "hung three",
+      ]);
+      expect(result.stdout + result.stderr).toContain(
+        "Stopped shard after 3 consecutive time-bound failures: hung one; hung two; hung three",
+      );
+    },
+  ));

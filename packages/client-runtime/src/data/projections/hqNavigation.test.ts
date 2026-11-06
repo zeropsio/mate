@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { hqMateScope } from "../families/hqMate.ts";
 import {
   hqAppFamily,
+  hqPressFamily,
   placementFamily,
   hqAppsScope,
   hqOrganizationScope,
@@ -17,7 +18,8 @@ import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../mod
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
-import { pastGrace } from "../__fixtures__/account.ts";
+import { liveProjects, pastGrace } from "../__fixtures__/account.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
 import { hqMates } from "./hqMates.ts";
 import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
 import { gitEnvironment } from "../__fixtures__/hqWire.ts";
@@ -47,12 +49,9 @@ const CHANGE = {
 const PRESS = {
   kind: "stage",
   appId: "shop",
-  heldForMs: 30_000,
-  until: "2026-10-06T00:00:30.000Z",
+  held: true,
 } as const;
 const person = {
-  role: "DEVELOPER",
-  mayWrite: true,
   mine: true,
   ownerUserId: null,
   waitsOnViewer: false,
@@ -62,15 +61,13 @@ const mate = {
   face: "",
   madeBy: null,
   standupRequestedBy: null,
-  closedOff: false,
-  setupMarker: null,
 };
 const rows: ReadonlyArray<Row> = [
   {
     family: "hqOrganization",
     id: ORG,
     revision,
-    value: { can: {}, unheld: {}, build: "b1" },
+    value: { build: "b1" },
   },
   {
     family: "hqStatus",
@@ -85,7 +82,6 @@ const rows: ReadonlyArray<Row> = [
     value: {
       id: "shop",
       name: "Shop",
-      can: {},
       contents: { empty: false, deletingProjectIds: [] },
       projectIds: ["ada", "stage"],
       births: [],
@@ -205,7 +201,6 @@ it("the delivery reader keeps mixed targets while existing project navigation ke
       order: 2,
       keyHeld: true,
       keyInvalid: false,
-      can: {},
       jobs: [],
       release: null,
       birth: null,
@@ -252,6 +247,61 @@ const removed = apply(read, [
 ]);
 
 const navigation = (state: AccountState) => hqNavigation.derive(readsOfState(state), ORG);
+
+it.each([true, false])(
+  "HQ's late press hold %s reaches the navigation of another device",
+  (held) => {
+    const wire = { kind: "mate", held, importProcessId: "accepted-import" } as const;
+    const value = hqPressFamily.hq!.decode(wire, "press:p1");
+    expect(value).toEqual(wire);
+    const state = apply(read, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: generations,
+        reset: false,
+        rows: [
+          { family: "hqPress", id: "p1", value: value!, revision: { ...revision, revision: 2 } },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(navigation(state).presses.p1).toEqual(wire);
+  },
+);
+
+it("a later HQ birth carries its original intent and attempts to another device", () => {
+  const birth = {
+    id: "birth-ada",
+    face: "rose:seal",
+    madeBy: "person-1",
+    intent: {
+      projectName: "Shop - Ada",
+      recipe: { id: "group", revision: "abc123", tier: "dev" },
+      agents: ["codex"],
+    },
+    attempts: {
+      create: {
+        by: "person-1",
+        at: "2026-11-05T17:00:00Z",
+        refused: { at: "2026-11-05T17:01:00Z", reason: "Project quota reached" },
+      },
+    },
+  };
+  const app = rows.find((row) => row.family === "hqApp")!;
+  const value = hqAppFamily.hq!.decode({ ...app.value, births: [birth] }, "app:shop")!;
+  const state = apply(read, [
+    {
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: generations,
+      reset: false,
+      rows: [{ family: "hqApp", id: "shop", value, revision: { ...revision, revision: 2 } }],
+      removals: [],
+    },
+  ]);
+  expect(navigation(state).structure?.apps[0]?.births).toEqual([birth]);
+});
 
 it("navigation keeps each accepted import identity after the browser press is gone", () => {
   const birth = {
@@ -330,7 +380,6 @@ describe("hqNavigation", () => {
     const raw = {
       id: "shop",
       name: "Shop",
-      can: {},
       contents: { empty: false, deletingProjectIds: [] },
       environments: [],
       changes: [],
@@ -425,7 +474,6 @@ describe("hqNavigation", () => {
         {
           id: "shop",
           name: "Shop",
-          can: {},
           contents: { empty: false, deletingProjectIds: [] },
           environments: [],
           changes: [],
@@ -612,6 +660,31 @@ describe("hqNavigation", () => {
     const { structure } = navigation(removed);
     expect(structure?.apps[0]?.projects.map(({ name }) => name)).toEqual(["Ada"]);
     expect(structure?.ungrouped).toEqual([]);
+  });
+});
+
+// Brief W18 (2026-11-05): HQ names no project it holds nowhere; the client derives the placeable
+// set from the person's own live Zerops list and HQ's rows, and offers by the shared role rule.
+describe("placeable projects", () => {
+  const placeable = (role: string) =>
+    navigation(
+      apply(read, [
+        ...liveProjects(ORG, [{ id: "ada" }, { id: "stage" }, { id: "lone" }, { id: "free" }]),
+        ...membershipInputs(role),
+      ]),
+    ).structure?.placeable;
+
+  it("a project in the person's live Zerops list that HQ holds no row for is placeable", () => {
+    expect(Object.keys(placeable("ADMIN") ?? {})).toContain("free");
+  });
+
+  it("a project HQ holds as a Mate, a stage or a production is not placeable", () => {
+    expect(Object.keys(placeable("ADMIN") ?? {})).toEqual(["free"]);
+  });
+
+  it("a read-only person is offered no Mate record on a placeable project", () => {
+    expect(placeable("ADMIN")?.free?.create_mate_record?.allow).toBe(true);
+    expect(placeable("READ_ONLY")?.free?.create_mate_record?.allow).toBe(false);
   });
 });
 

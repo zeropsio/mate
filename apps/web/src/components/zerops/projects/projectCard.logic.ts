@@ -727,7 +727,6 @@ export function cardSecondWords(input: {
   const muted = (text: string | undefined) => ({ text, tone: "muted" as const });
   switch (second.kind) {
     case "coming":
-    case "finishing":
     case "none":
       return muted(undefined);
     case "deleting":

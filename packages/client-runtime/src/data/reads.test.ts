@@ -8,7 +8,7 @@ import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
 import {
   accountReadsAtom,
-  hqMateSetupAtom,
+  sharedBirthsAtom,
   holdProjectHistory,
   holdServiceRead,
   NOT_READ_PROCESSES,
@@ -27,6 +27,40 @@ import {
 import { makeAccountStore, readsOfState } from "./store.ts";
 import { projectRoutingsScope, routingsScope } from "./families/publicRouting.ts";
 import { usageOwnerOf, usageScope } from "./families/usage.ts";
+
+it("open births hold their exact import and project history only while observed", () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  liveZerops({ running: [], projects: [{ id: "p1" }] }).forEach(store.dispatch);
+  const held: string[] = [];
+  registry.set(accountReadsAtom, {
+    data: store.data,
+    orgId: ORG,
+    demandDetail: (demand) => {
+      const key = `${demand.listing}:${demand.ownerId}`;
+      held.push(key);
+      return () => void held.splice(held.indexOf(key), 1);
+    },
+    renewHeld: () => {},
+  });
+  const atom = sharedBirthsAtom("ada");
+  const unmount = registry.mount(atom);
+  const seed = (
+    births: Array<{ id: string; face: string; projectId?: string; importProcessId?: string }>,
+  ) =>
+    seedHqNavigation(store, ORG, {
+      structure: { apps: [{ id: "app", name: "App", projects: [], births }], ungrouped: [] },
+    });
+  seed([{ id: "birth", face: "", projectId: "p1", importProcessId: "import" }]);
+  expect(registry.get(atom).open).toMatchObject([{ projectId: "p1", importProcessId: "import" }]);
+  expect(held.toSorted()).toEqual(["history:p1", "process:import"]);
+  seed([]);
+  expect(registry.get(atom).open).toEqual([]);
+  expect(held).toEqual([]);
+  unmount();
+  store.close();
+  registry.dispose();
+});
 
 describe("projectProcessesAtom", () => {
   it("reads a project's processes through the mounted account, and nothing without one", () => {
@@ -580,39 +614,6 @@ describe("readMateFlag", () => {
 
   it("without a mounted account, unknown", async () => {
     expect(await readMateFlag(AtomRegistry.make(), "zcp")).toBe("unknown");
-  });
-});
-
-describe("hqMateSetupAtom", () => {
-  it("reads navigation evidence without demanding variables or any other detail", () => {
-    const registry = AtomRegistry.make();
-    const store = makeAccountStore(registry);
-    seedHqNavigation(store, ORG, {
-      structure: {
-        apps: [],
-        ungrouped: [
-          { projectId: "p1", name: "Ada", mate: { face: "", closedOff: false, setupMarker: true } },
-        ],
-      },
-    });
-    registry.set(accountReadsAtom, {
-      data: store.data,
-      orgId: ORG,
-      demandDetail: () => {
-        throw new Error("Navigation must never demand detail");
-      },
-      renewHeld: () => {},
-    });
-    expect(registry.get(hqMateSetupAtom("p1"))).toEqual({ closedOff: false, marker: true });
-    expect(registry.get(hqMateSetupAtom("not-known"))).toEqual({
-      closedOff: "unknown",
-      marker: "unknown",
-    });
-    registry.set(accountReadsAtom, null);
-    expect(registry.get(hqMateSetupAtom("p1"))).toEqual({
-      closedOff: "unknown",
-      marker: "unknown",
-    });
   });
 });
 

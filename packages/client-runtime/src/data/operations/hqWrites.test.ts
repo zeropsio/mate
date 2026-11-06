@@ -1,6 +1,6 @@
 /**
  * The writes a creation makes at HQ: its application, a Mate's birth and its bind, a project's
- * attach, a Mate's record and its close-off, an environment's deploy key. HQ answers each at once;
+ * attach, a Mate's record, an environment's deploy key. HQ answers each at once;
  * where an answer is lost, HQ's navigation showing its effect — absent at the send — adopts it.
  * HQ keeps no request ids here: nothing is asked by one, and nothing is sent again blindly.
  */
@@ -13,7 +13,7 @@ import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { linkKeys, operationResult, type OperationIntent } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
-import { HqError, type HqStructure } from "../../zerops/hq/client.ts";
+import { HqError, makeHqApi, type HqStructure } from "../../zerops/hq/client.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 import { personaTemplatesScope } from "../families/hqPersonaTemplates.ts";
@@ -46,14 +46,19 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         updateMate: asked("updateMate"),
         renameApp: asked("renameApp"),
         deleteApp: asked("deleteApp"),
+        completeProjectDeletion: asked("completeProjectDeletion"),
         answerKeptGit: asked("answerKeptGit"),
         createApp: asked("createApp"),
         recordBirth: asked("recordBirth"),
         bindBirth: asked("bindBirth"),
+        registerBirthChief: asked("registerBirthChief"),
+        deleteBirth: asked("deleteBirth"),
+        claimBirthAttempt: asked("claimBirthAttempt"),
+        endBirthAttempt: asked("endBirthAttempt"),
         attachProject: asked("attachProject"),
         createMate: asked("createMate"),
-        recordClosedOff: asked("recordClosedOff"),
         keepDeployToken: asked("keepDeployToken"),
+        handOver: asked("handOver"),
         commentOnChange: asked("commentOnChange"),
         release: asked("release"),
         rollback: asked("rollback"),
@@ -94,6 +99,113 @@ const progress = (store: AccountStore) =>
 const record = (store: AccountStore) => store.state().operations.get("r1");
 
 describe("a creation's writes at HQ", () => {
+  it.effect("sends application provenance only for the birth that created it", () =>
+    Effect.gen(function* () {
+      const sent: unknown[] = [];
+      const api = makeHqApi({
+        address: "https://hq.test",
+        orgId: ORG,
+        accessToken: async () => ({ token: "test-access" }),
+        openSocket: () => {
+          throw new Error("no socket in this test");
+        },
+        fetch: async (url, init) => {
+          const path = new URL(url).pathname;
+          if (path === "/api/door")
+            return new Response(
+              JSON.stringify({
+                session: "test-session",
+                expiresAt: "2099-01-01T00:00:00.000Z",
+                userId: "u1",
+              }),
+            );
+          if (path !== "/api/births") throw new Error(`Unexpected HQ path: ${path}`);
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          delete body.accessToken;
+          sent.push(body);
+          return new Response(JSON.stringify({ id: "birth-1", face: "tint:shape" }));
+        },
+      });
+      const birth = {
+        kind: "record-birth",
+        orgId: ORG,
+        appId: "app-1",
+        id: "birth-1",
+        face: "tint:shape",
+      } as const;
+      for (const intent of [{ ...birth, createdApp: true as const }, birth]) {
+        const { operations } = operationsOf(account(), { recordBirth: api.recordBirth });
+        yield* operations.submit(intent);
+      }
+      expect(sent).toEqual([
+        { appId: "app-1", id: "birth-1", face: "tint:shape", createdApp: true },
+        { appId: "app-1", id: "birth-1", face: "tint:shape" },
+      ]);
+    }),
+  );
+
+  it.effect("sends a Chief birth's top-level flag through the HQ write", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const sent: unknown[] = [];
+      const { operations } = operationsOf(store, {
+        recordBirth: async (birth) => {
+          sent.push(birth);
+          return { id: "birth-1", face: birth.face };
+        },
+      });
+      yield* operations.submit({
+        kind: "record-birth",
+        orgId: ORG,
+        appId: "app-1",
+        id: "birth-1",
+        face: "tint:shape",
+        chief: true,
+      });
+      expect(sent).toEqual([{ appId: "app-1", id: "birth-1", face: "tint:shape", chief: true }]);
+    }),
+  );
+
+  it.effect("a lost unbound birth deletion is confirmed only by a live complete birth list", () =>
+    Effect.gen(function* () {
+      const intent = { kind: "delete-birth", orgId: ORG, appId: "app-1", birthId: "b1" } as const;
+      const store = account([app({ births: [{ id: "b1", face: "" }] })]);
+      const { operations } = operationsOf(store, {
+        deleteBirth: async () => {
+          hqSays(store, [app({ births: [] })]);
+          throw lost;
+        },
+      });
+      yield* operations.submit(intent);
+      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+
+      const unread = account([]);
+      const unseen = operationsOf(unread, {
+        deleteBirth: async () => {
+          hqSays(unread, [app({ births: [] })]);
+          throw lost;
+        },
+      });
+      yield* unseen.operations.submit(intent);
+      expect(progress(unread)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+
+      const bound = account([app({ births: [{ id: "b1", face: "", projectId: "p1" }] })]);
+      const refusal = operationsOf(bound, {
+        deleteBirth: async () => {
+          throw new HqError({
+            kind: "refused",
+            code: "conflict",
+            reason: "birth_bound",
+            status: 409,
+            message: "The birth is already bound.",
+          });
+        },
+      });
+      yield* refusal.operations.submit(intent);
+      expect(progress(bound)).toMatchObject({ stage: "refused", code: "birth_bound" });
+    }),
+  );
+
   it.effect.each(["app", "birth"] as const)(
     "a lost $0 answer cannot adopt a preexisting record from an unread baseline",
     (kind) =>
@@ -118,7 +230,7 @@ describe("a creation's writes at HQ", () => {
         yield* operations.submit(
           kind === "app"
             ? { kind: "create-app", orgId: ORG, name: "Garden" }
-            : { kind: "record-birth", orgId: ORG, appId: "app-1", face: "face" },
+            : { kind: "record-birth", orgId: ORG, appId: "app-1", id: "birth-1", face: "face" },
         );
         expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
         expect(sends).toBe(1);
@@ -140,7 +252,7 @@ describe("a creation's writes at HQ", () => {
           { appId: "app-9" },
         ],
         [
-          { kind: "record-birth", orgId: ORG, appId: "app-1", face: "tint:shape" },
+          { kind: "record-birth", orgId: ORG, appId: "app-1", id: "birth-1", face: "tint:shape" },
           {
             recordBirth: async (birth) => {
               said.push(`birth ${birth.appId} ${birth.face}`);
@@ -187,15 +299,6 @@ describe("a creation's writes at HQ", () => {
           },
           undefined,
         ],
-        [
-          { kind: "mark-closed-off", orgId: ORG, projectId: "p1" },
-          {
-            recordClosedOff: async (projectId) => {
-              said.push(`closed-off ${projectId}`);
-            },
-          },
-          undefined,
-        ],
       ];
       for (const [intent, api, result] of cases) {
         const store = account();
@@ -212,7 +315,6 @@ describe("a creation's writes at HQ", () => {
         "bind b1 p1",
         "attach app-1 p1 stage",
         "mate p1",
-        "closed-off p1",
       ]);
     }),
   );
@@ -231,7 +333,7 @@ describe("a creation's writes at HQ", () => {
             { appId: "app-9" },
           ],
           [
-            { kind: "record-birth", orgId: ORG, appId: "app-1", face: "tint:shape" },
+            { kind: "record-birth", orgId: ORG, appId: "app-1", id: "birth-1", face: "tint:shape" },
             { recordBirth: () => Promise.reject(lost) },
             [app({ births: [{ id: "birth-1", face: "tint:shape" }] })],
             { birthId: "birth-1" },
@@ -294,6 +396,39 @@ describe("a creation's writes at HQ", () => {
     }),
   );
 
+  it.effect(
+    "a lost birth answer adopts its own identity when another birth has the same face",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        const sent: unknown[] = [];
+        const { operations } = operationsOf(store, {
+          recordBirth: async (birth) => {
+            sent.push(birth);
+            hqSays(store, [
+              app({
+                births: [
+                  { id: "birth-other", face: "tint:shape" },
+                  { id: "birth-1", face: "tint:shape" },
+                ],
+              }),
+            ]);
+            throw lost;
+          },
+        });
+        yield* operations.submit({
+          kind: "record-birth",
+          orgId: ORG,
+          appId: "app-1",
+          id: "birth-1",
+          face: "tint:shape",
+        });
+        expect(sent).toEqual([{ appId: "app-1", id: "birth-1", face: "tint:shape" }]);
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+        expect(operationResult(record(store), "record-birth")).toEqual({ birthId: "birth-1" });
+      }),
+  );
+
   it.effect.each(["conflict", "forbidden"] as const)(
     "HQ's %s finding reaches the operation's real consumer with what, where, rule and next step.",
     (code) =>
@@ -354,39 +489,24 @@ describe("a creation's writes at HQ", () => {
 });
 
 describe("a write HQ answers as already done", () => {
-  it.effect(
-    "a Mate's record HQ holds already stands, and a Mate it holds none of has no close-off to mark",
-    () =>
-      Effect.gen(function* () {
-        for (const [intent, api] of [
-          [
-            { kind: "create-mate-record", orgId: ORG, mate: { projectId: "p1", face: "" } },
-            {
-              createMate: () =>
-                Promise.reject(
-                  new HqError({ kind: "refused", code: "conflict", message: "It has a record." }),
-                ),
-            },
-          ],
-          [
-            { kind: "mark-closed-off", orgId: ORG, projectId: "p1" },
-            {
-              recordClosedOff: () =>
-                Promise.reject(
-                  new HqError({
-                    kind: "refused",
-                    code: "mate_not_found",
-                    message: "No such Mate.",
-                  }),
-                ),
-            },
-          ],
-        ] as const) {
-          const store = account();
-          yield* operationsOf(store, api).operations.submit(intent);
-          expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
-        }
-      }),
+  it.effect("a Mate's record HQ holds already stands", () =>
+    Effect.gen(function* () {
+      for (const [intent, api] of [
+        [
+          { kind: "create-mate-record", orgId: ORG, mate: { projectId: "p1", face: "" } },
+          {
+            createMate: () =>
+              Promise.reject(
+                new HqError({ kind: "refused", code: "conflict", message: "It has a record." }),
+              ),
+          },
+        ],
+      ] as const) {
+        const store = account();
+        yield* operationsOf(store, api).operations.submit(intent);
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+      }
+    }),
   );
 });
 
@@ -514,6 +634,87 @@ describe("changing a Mate's face", () => {
       yield* operations.retry("r1");
       expect(progress(store).stage).toBe("refused");
     }),
+  );
+});
+
+describe("handing a Mate over", () => {
+  const owned = (store: AccountStore, ownerUserId: string | null) =>
+    seedHqNavigation(store, ORG, {
+      structure: { apps: [], ungrouped: [{ projectId: "p1", name: "p1", mate: { face: "" } }] },
+      person: {
+        mine: false,
+        ownerUserId,
+        waitsOnViewer: false,
+        unseen: null,
+      },
+    });
+  const intent = {
+    kind: "hand-over-mate",
+    orgId: ORG,
+    projectId: "p1",
+    ownerUserId: "u-bob",
+  } as const;
+  it.effect("is HQ's one call for the person picked, done at HQ's answer", () =>
+    Effect.gen(function* () {
+      const store = account();
+      owned(store, "u-ann");
+      const sent: Array<[string, string]> = [];
+      const { operations } = operationsOf(store, {
+        handOver: async (projectId, ownerUserId) => {
+          sent.push([projectId, ownerUserId]);
+        },
+      });
+      yield* operations.submit(intent);
+      expect(sent).toEqual([["p1", "u-bob"]]);
+      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+  it.effect("names the phase HQ stopped at, and is asked again only deliberately", () =>
+    Effect.gen(function* () {
+      const store = account();
+      owned(store, "u-ann");
+      let sends = 0;
+      const { operations } = operationsOf(store, {
+        handOver: async () => {
+          sends++;
+          throw new HqError({
+            kind: "refused",
+            code: "handover_unfinished",
+            reason: "projectNotFound",
+            message: "The hand-over stopped while making its new key (projectNotFound).",
+          });
+        },
+      });
+      yield* operations.submit(intent);
+      expect(progress(store)).toMatchObject({
+        stage: "refused",
+        reason: "The hand-over stopped while making its new key (projectNotFound).",
+        code: "handover_unfinished",
+      });
+      yield* operations.retry("r1");
+      expect(sends).toBe(1);
+    }),
+  );
+  it.effect(
+    "keeps a lost answer uncertain until HQ names the person picked its owner, never asking again",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        owned(store, "u-ann");
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          handOver: async () => {
+            sends++;
+            throw lost;
+          },
+        });
+        yield* operations.submit(intent);
+        expect(progress(store).stage).toBe("uncertain");
+        owned(store, "u-bob");
+        yield* operations.retry("r1");
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+        expect(sends).toBe(1);
+      }),
   );
 });
 

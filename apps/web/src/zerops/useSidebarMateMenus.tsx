@@ -1,8 +1,8 @@
 /**
  * What a Mate's own menu in the left menu does, wired to the session.
  *
- * The verbs the projects screen offers too — *Restart* or *Start*, *Finish
- * setup*, *Hand over…*, *Move to project…*, *Delete {name}…* — are
+ * The verbs the projects screen offers too — *Restart* or *Start*, *Hand over…*,
+ * *Move to project…*, *Delete {name}…* — are
  * `useMateActions`', one definition with its dialogs; *Check for updates* and
  * *Update to x.y.z* are its update control's, read off its environment once
  * the menu opens (a hook cannot run in a menu-building function); *Rename* is its write
@@ -16,9 +16,6 @@
  * A Mate this page holds no socket to is acted on by HQ's word of it (`mateMenuTarget`): its
  * environment and its main chat's last finished turn. Stopping a run holds the Mate connected
  * until it answers (`useMateCommand`).
- *
- * The group registry is read only once somebody opens a Mate's menu: it is
- * what *Finish setup* needs to know a Mate unregistered, and the menu is on every screen.
  */
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -28,10 +25,11 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { createSharer } from "@t3tools/shared/structuralSharing";
 import { useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
-import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
+import type { SharedBirthRow } from "~/components/zerops/SidebarComingEnds";
+import type { ZeropsMenuAction, ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
 import { toastManager } from "~/components/ui/toast";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { hqMatesAtom } from "~/state/zerops";
@@ -44,14 +42,14 @@ import { useMateActions } from "./useMateActions";
 import { useDrawnProjectAccess } from "./useVisibleProjectAccess";
 import { useMutedMates } from "./mutedMates";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
-import { useZeropsRegistry } from "./useZeropsRegistry";
 import { useZeropsContainers } from "./zeropsContainers";
+import { sharedBirthPresentation } from "./sharedBirths";
 
 /** The shared verbs this menu carries, relabelled for a Mate's own menu. */
 const SHARED_VERBS: Readonly<Record<string, string | null>> = {
+  continue: null,
   start: null,
   restart: null,
-  "finish-setup": null,
   assign: "Hand over…",
   access: null,
   move: "Move to project…",
@@ -204,10 +202,10 @@ export function useSidebarMateMenus(input: {
     activity: ZeropsAgentActivity | undefined,
   ) => MateRowActions | undefined;
   readonly dialogs: ReactNode;
+  readonly getBirth: (birthId: string) => SharedBirthRow | undefined;
 } {
   const { serverVersions } = useZeropsContainers();
-  const registry = useZeropsRegistry();
-  const mateActions = useMateActions({ registry, serverVersions });
+  const mateActions = useMateActions({ serverVersions });
   // Each drawn row holds the project detail needed to decide the viewer’s access.
   const drawnOf = useDrawnProjectAccess();
   const { muted, toggle } = useMutedMates();
@@ -243,7 +241,7 @@ export function useSidebarMateMenus(input: {
   const [completedAtOf] = useState(createCompletedAtReader);
   const completedAt = useMemo(() => completedAtOf(input.threads), [completedAtOf, input.threads]);
 
-  const { actionsFor, renameInPlace, changeFace } = mateActions;
+  const { actionsFor, birthForProject, renameInPlace, changeFace } = mateActions;
   const [readActions] = useState(() => createMateMenuReader<MateRowActions>());
   // A row's menu stands while its Mate and its activity do: a memoised row redraws only when its
   // own menu changes.
@@ -256,6 +254,7 @@ export function useSidebarMateMenus(input: {
           told[candidate.project.id],
           activity === undefined ? undefined : completedAt.get(activity.threadKey),
           actionsFor,
+          birthForProject,
           changeFace,
           copyToClipboard,
           drawnOf,
@@ -281,6 +280,7 @@ export function useSidebarMateMenus(input: {
               ? undefined
               : scopeThreadRef(environmentId, activity.threadId);
           return {
+            birthOnly: birthForProject(candidate.project.id) !== undefined,
             muted: environmentId !== undefined && muted.includes(environmentId),
             toggleMute:
               environmentId === undefined
@@ -335,6 +335,7 @@ export function useSidebarMateMenus(input: {
       ),
     [
       actionsFor,
+      birthForProject,
       changeFace,
       completedAt,
       copyToClipboard,
@@ -351,5 +352,21 @@ export function useSidebarMateMenus(input: {
     ],
   );
 
-  return { getMateActions, dialogs: mateActions.dialogs };
+  const { birthFor, birthActionsFor } = mateActions;
+  const getBirth = useCallback(
+    (birthId: string): SharedBirthRow | undefined => {
+      const birth = birthFor(birthId);
+      if (birth === undefined) return undefined;
+      const { line, attention } = sharedBirthPresentation(birth);
+      return {
+        line,
+        attention,
+        entries: birthActionsFor(birthId).filter(
+          (entry): entry is ZeropsMenuAction => !("separator" in entry),
+        ),
+      };
+    },
+    [birthFor, birthActionsFor],
+  );
+  return { getMateActions, getBirth, dialogs: mateActions.dialogs };
 }

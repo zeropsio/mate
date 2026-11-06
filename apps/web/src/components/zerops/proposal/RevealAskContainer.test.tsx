@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   REVEAL_UNRECORDABLE,
   OperationStopped,
-  type HqProjectPeople,
   type VaultView,
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -47,7 +46,7 @@ const VAULT: VaultView = {
 };
 
 const source = vi.hoisted(() => ({
-  person: undefined as HqProjectPeople | undefined,
+  operates: true as boolean | undefined,
   members: undefined as unknown,
   grants: undefined as unknown,
   decision: undefined as ProposalDecision | undefined,
@@ -67,7 +66,9 @@ vi.mock("~/zerops/ZeropsAccountData", () => ({
       ? (source.members ?? { members: [] })
       : projection.name === "projectsGrants"
         ? (source.grants ?? {})
-        : source.person,
+        : projection.name === "projectOperator"
+          ? source.operates
+          : undefined,
   useDetailDemand: () => undefined,
   useAccountDataOptional: () => ({ reveal: { reveal: source.reveal } }),
 }));
@@ -123,7 +124,7 @@ afterEach(async () => {
   await act(async () => root?.unmount());
   root = undefined;
   document.body.innerHTML = "";
-  source.person = undefined;
+  source.operates = true;
   source.members = undefined;
   source.grants = undefined;
   source.decision = undefined;
@@ -258,7 +259,7 @@ describe("revealing a hidden value on the card", () => {
   });
 
   it("names who can reveal it to someone without production access, and offers no press", async () => {
-    source.person = { mayWrite: false } as HqProjectPeople;
+    source.operates = false;
     source.members = {
       members: [
         { id: "cu-petr", roleCode: "BASIC_USER", user: { id: "petr", fullName: "Petr" } },
@@ -269,5 +270,12 @@ describe("revealing a hidden value on the card", () => {
     await draw();
     expect(card()).toContain("Only people with production access can reveal this. Petr can.");
     expect(button("Reveal production value")).toBeUndefined();
+  });
+
+  it("waits to offer reveal until the person's project access is known", async () => {
+    source.operates = undefined;
+    await draw();
+    expect(button("Reveal production value")?.disabled).toBe(true);
+    expect(card()).toContain("Reading your project access…");
   });
 });

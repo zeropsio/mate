@@ -110,6 +110,24 @@ describe("a Mate the platform restarts", () => {
   });
 });
 
+describe("a Mate whose project is gone on Zerops while HQ still holds it", () => {
+  const GONE: ZeropsRowCandidate = {
+    key: "p-gone",
+    project: { id: "p-gone", name: "Shop - Zoe", status: "UNKNOWN" },
+    group: "unavailable",
+    presence: "known",
+    projectGone: true,
+  };
+
+  it("reads as gone on Zerops, HQ still holding it, and offers nothing", () => {
+    expect(deriveZeropsRowPresentation(input(GONE, undefined))).toEqual({
+      status: { label: "Gone", tone: "off" },
+      detail: "Its project is gone on Zerops. HQ still holds this Mate.",
+    });
+    expect(deriveZeropsRowAction(input(GONE, undefined))).toEqual({ kind: "none" });
+  });
+});
+
 describe("a project the platform failed to create", () => {
   const FAILED_CREATION: ZeropsRowCandidate = {
     key: "p-new",
@@ -1122,30 +1140,30 @@ describe("releaseRowTone", () => {
 
 // The web review, 2026-10-05: a row's verbs are the door's and Zerops', who refuse in their own
 // words; an HQ that has not said — one from before it streamed offers, or one being read again —
-// takes none of them away. Only HQ's refusal of following the Mate does.
-describe("mateRowCan — a row's verbs, unless HQ refuses following its Mate", () => {
+// takes none of them away. Whether the person may open the Mate at all is its visibility, from
+// live Zerops data (Karel, 2026-11-04), never HQ's offer.
+describe("mateRowCan — a row's verbs, which HQ's offers on a Mate never take away", () => {
   const held = (kind: HqOfferState["kind"]): HqMateOfferStates => {
-    const observe: HqOfferState =
+    const offer: HqOfferState =
       kind === "refused"
-        ? { kind, reason: "not_mate_operator" }
+        ? { kind, reason: "not_project_admin" }
         : kind === "unavailable"
           ? { kind, since: 1 }
           : { kind };
-    return { held: true, observe, edit: observe, detach: observe };
+    return { held: true, edit: offer, detach: offer };
   };
-  it.each<[string, HqMateOfferStates | undefined, boolean]>([
-    ["offered", held("allowed"), true],
-    ["while HQ does not answer: the door and Zerops decide", held("unavailable"), true],
-    ["refused: the door would refuse it too", held("refused"), false],
-    ["not said: an HQ from before its offers", held("unknown"), true],
-    ["before HQ's structure is known", undefined, true],
+  it.each<[string, HqMateOfferStates | undefined]>([
+    ["offered", held("allowed")],
+    ["while HQ does not answer: the door and Zerops decide", held("unavailable")],
+    ["refused its record: its visibility, not HQ, says whether it opens", held("refused")],
+    ["not said: an HQ from before its offers", held("unknown")],
+    ["before HQ's structure is known", undefined],
     [
       "a project HQ holds as no Mate: the door and Zerops decide",
       { held: false, createRecord: { kind: "unknown" } },
-      true,
     ],
-  ])("%s", (_name, offers, offered) => {
-    expect(mateRowCan(offers)).toEqual({ ...(offered ? ALL : NONE), setUpPlainProject: false });
+  ])("%s", (_name, offers) => {
+    expect(mateRowCan(offers)).toEqual({ ...ALL, setUpPlainProject: false });
   });
 
   // Set up Mate on a plain project writes its Mate's record at HQ first: only where HQ offers it

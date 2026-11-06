@@ -243,15 +243,6 @@
     "class": "justified"
   },
   {
-    "path": "packages/client-runtime/src/data/operations/executors/hqPressLease.ts",
-    "kind": "CallExpression",
-    "fingerprint": "hold().catch(() => undefined)",
-    "owner": "maintainers",
-    "reason": "Renewal holds a serialized command with no result payload; the accepted press and operation outcome remain separately owned.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
     "path": "packages/client-runtime/src/data/operations/flowWrites.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "fact.kind === \"known\" ? fact.value : undefined",
@@ -318,15 +309,6 @@
     "path": "packages/client-runtime/src/data/projections/environmentSetup.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "project.kind === \"known\" ? [{ ...project.value, hq: placement.get(projectId) }] : []",
-    "owner": "maintainers",
-    "reason": "Setup permissions and project assembly conservatively include only known authorized records; setup state remains separate.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
-    "path": "packages/client-runtime/src/data/projections/environmentSetup.ts",
-    "kind": "ConditionalExpression",
-    "fingerprint": "project.kind === \"known\" ? project.value.can : undefined",
     "owner": "maintainers",
     "reason": "Setup permissions and project assembly conservatively include only known authorized records; setup state remains separate.",
     "expires": "never",

@@ -43,9 +43,7 @@ import {
   type CreationRecipe,
   type NewMateDoorAction,
   type NewMateDoorClosed,
-  type PressStepView,
 } from "./ZeropsEnvironmentCreationDialog.logic";
-import { ProcessSteps, type ProcessStep } from "./primitives";
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import type { DraftPeople } from "./projects/accessDraft.logic";
@@ -113,36 +111,6 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly git?:
     | Omit<GitEnvironmentFormProps, "groupName" | "tier" | "defaultName" | "onCancel" | "onBack">
     | undefined;
-}
-
-const PRESS_STEP_STATES: Readonly<
-  Record<PressStepView["state"], { readonly state: ProcessStep["state"]; readonly label: string }>
-> = {
-  waiting: { state: "queued", label: "Waiting" },
-  active: { state: "running", label: "In progress" },
-  done: { state: "done", label: "Done" },
-  failed: { state: "failed", label: "Failed" },
-};
-
-/** A press's steps, as *Finish setup* on a Mate's view draws them. */
-export function PressSteps({
-  name,
-  steps,
-}: {
-  readonly name: string;
-  readonly steps: ReadonlyArray<PressStepView>;
-}) {
-  return (
-    <ProcessSteps
-      aria-label={`Setting up ${name}`}
-      steps={steps.map((step) => ({
-        id: step.label,
-        label: step.label,
-        state: PRESS_STEP_STATES[step.state].state,
-        stateLabel: PRESS_STEP_STATES[step.state].label,
-      }))}
-    />
-  );
 }
 
 /** The form on its own, so it can be rendered and read without a portal. */

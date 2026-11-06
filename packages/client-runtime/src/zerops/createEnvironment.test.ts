@@ -8,10 +8,13 @@ import {
   type EnvironmentCreationStep,
 } from "./createEnvironment.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
+import { buildZcpServiceImportYaml } from "./newProject.ts";
+import { mateBirthImportYaml } from "./recipeTier.ts";
 
 /** A tier as the group repo's `main` holds it. */
 const TIER = {
   kind: "tier" as const,
+  revision: "recipe-revision",
   tier: "production" as const,
   yaml: "services:\n  - hostname: api\n    startWithoutCode: true\n",
 };
@@ -80,25 +83,17 @@ describe("planEnvironmentCreation", () => {
     expect(stepKinds(plan.steps)).toEqual(["create-project", "register"]);
   });
 
-  it("gives a dev environment its agent, its key with it, and closes it off before the press returns", () => {
-    // The container comes with the key the person minted for it, and the project is closed off in
-    // the press: no browser is needed after it, and the runtimes zcp imports on boot never start
-    // in an open project.
+  it("gives a dev environment its agent, its key with it, in one import before the press returns", () => {
+    // The container comes with the key the person minted for it, isolated in its own import: no
+    // browser is needed after it, and nothing is closed off after.
     const plan = planEnvironmentCreation({ ...BASE, role: "dev", name: "dev" });
     if (!plan.ok) throw new Error("expected a plan");
     expect(stepKinds(plan.steps)).toEqual([
       "create-project",
       "register",
       "import-container",
-      "close-off",
       "await-ready",
     ]);
-  });
-
-  it("closes off only an environment with a container: one without has no key to keep in", () => {
-    const plan = planEnvironmentCreation(BASE);
-    if (!plan.ok) throw new Error("expected a plan");
-    expect(stepKinds(plan.steps)).not.toContain("close-off");
   });
 
   it.each([
@@ -108,7 +103,7 @@ describe("planEnvironmentCreation", () => {
       // Its record in its application before its container (F6b, 2026-10-03): a press that stops
       // after leaves a Mate HQ holds there, which any browser finishes under its name. A refused
       // registration stops the press before any container.
-      steps: ["create-project", "register", "import-container", "close-off", "await-ready"],
+      steps: ["create-project", "register", "import-container", "await-ready"],
     },
     {
       case: "a production",
@@ -185,10 +180,8 @@ describe("environmentCreationStepLabel", () => {
 
     expect(plan.steps.map((step) => environmentCreationStepLabel(step))).toEqual([
       "Creating it",
-      "Adding its databases and storage",
       "Adding it to HQ",
-      "Adding its Mate's computer",
-      "Making its network private",
+      "Adding its Mate's computer and services",
       "Waiting for its Mate",
     ]);
   });
@@ -280,7 +273,7 @@ describe("nothing of a Mate's place on its project", () => {
     {
       case: "a Mate from a whole-project recipe",
       recipe: { ...TIER, yaml: WHOLE },
-      step: "import-project",
+      step: "create-project",
     },
   ])("is written at birth for $case: the marker alone", ({ recipe, step }) => {
     const plan = planEnvironmentCreation({
@@ -291,9 +284,6 @@ describe("nothing of a Mate's place on its project", () => {
     });
     expect(plan.ok && plan.steps[0]?.kind).toBe(step);
     expect(birthTags(plan)).toEqual(["mate"]);
-    if (plan.ok && plan.steps[0]?.kind === "import-project") {
-      expect(plan.steps[0].yaml).toContain("  tags:\n    - mate\n");
-    }
   });
 });
 
@@ -345,7 +335,6 @@ describe("the recipe choice", () => {
       "create-project",
       "register",
       "import-container",
-      "close-off",
       "await-ready",
     ]);
     const container = plan.steps.find((step) => step.kind === "import-container");
@@ -359,9 +348,9 @@ describe("the recipe choice", () => {
 });
 
 /**
- * A Mate's tier goes in as two imports: its project with the managed services first, and its
- * runtimes with its container, for zcp to import on boot once the press has closed the project
- * off. Nothing that runs code ever starts in an open project.
+ * A Mate's birth is three steps: its project, its registration, and one import of its container
+ * with its whole tier — the container first by `priority`, every service isolated but to it from
+ * its creation. Nothing is closed off after, so nothing restarts.
  */
 describe("planEnvironmentCreation — a Mate's tier", () => {
   const MATE_TIER = `#zeropsPreprocessor=on
@@ -384,14 +373,14 @@ services:
     priority: 10
 `;
   const SERVICES_ONLY = MATE_TIER.replace(/^project:\n(?: {2}.*\n)+/mu, "");
-  const CONTAINER_STEPS = ["register", "import-container", "close-off"] as const;
+  const BIRTH = ["create-project", "register", "import-container", "await-ready"] as const;
 
   function plan(yaml: string, extra: Partial<EnvironmentCreationInput> = {}) {
     const result = planEnvironmentCreation({
       clientId: "c1",
       role: "dev",
       name: "Acme - Wren",
-      recipe: { kind: "tier", tier: "mate", yaml },
+      recipe: { kind: "tier", revision: "recipe-revision", tier: "mate", yaml },
       ...extra,
     });
     if (!result.ok) throw new Error(result.reason);
@@ -399,78 +388,34 @@ services:
   }
 
   it.each([
-    {
-      case: "a tier that describes its project",
-      yaml: MATE_TIER,
-      extra: {},
-      steps: ["import-project", ...CONTAINER_STEPS, "await-ready"],
-    },
-    {
-      case: "a tier of services only",
-      yaml: SERVICES_ONLY,
-      extra: {},
-      steps: ["create-project", "import-managed", ...CONTAINER_STEPS, "await-ready"],
-    },
-    {
-      case: "a tier placed in a region",
-      yaml: MATE_TIER,
-      extra: { location: "eu-central" },
-      steps: ["create-project", "import-managed", ...CONTAINER_STEPS, "await-ready"],
-    },
+    { case: "a tier that describes its project", yaml: MATE_TIER, extra: {} },
+    { case: "a tier of services only", yaml: SERVICES_ONLY, extra: {} },
+    { case: "a tier placed in a region", yaml: MATE_TIER, extra: { location: "eu-central" } },
     {
       case: "a tier of runtimes alone",
       yaml: "services:\n  - hostname: appdev\n    buildFromGit: https://hq.test/git/acme/app.git\n",
       extra: {},
-      steps: ["create-project", ...CONTAINER_STEPS, "await-ready"],
     },
     {
       case: "a tier of managed services alone",
       yaml: "project:\n  name: x\nservices:\n  - hostname: db\n    type: postgresql@17\n",
       extra: {},
-      steps: ["import-project", ...CONTAINER_STEPS, "await-ready"],
     },
-    {
-      case: "a stage given an agent",
-      yaml: MATE_TIER,
-      extra: { role: "stage", withAgent: true },
-      steps: ["import-project", ...CONTAINER_STEPS, "await-ready"],
-    },
+    { case: "a stage given an agent", yaml: MATE_TIER, extra: { role: "stage", withAgent: true } },
   ] satisfies ReadonlyArray<{
     case: string;
     yaml: string;
     extra: Partial<EnvironmentCreationInput>;
-    steps: ReadonlyArray<EnvironmentCreationStep["kind"]>;
-  }>)("plans $case: managed first, runtimes with the container", ({ yaml, extra, steps }) => {
-    expect(stepKinds(plan(yaml, extra))).toEqual(steps);
-  });
+  }>)(
+    "plans $case as three steps: its project, its registration, one import",
+    ({ yaml, extra }) => {
+      expect(stepKinds(plan(yaml, extra))).toEqual(BIRTH);
+    },
+  );
 
-  it("creates the project with its managed services alone, its variables evaluated there", () => {
-    const [step] = plan(MATE_TIER);
-    if (step?.kind !== "import-project") throw new Error("expected import-project");
-    expect(step.yaml).toBe(`#zeropsPreprocessor=on
-project:
-  name: Acme - Wren
-  tags:
-    - mate
-  envVariables:
-    APP_KEY: <@generateRandomString(<32>)>
-services:
-  - hostname: db
-    type: postgresql@17
-    priority: 10
-`);
-  });
-
-  it("adds the managed services, services only, to a project it created", () => {
-    const managed = plan(SERVICES_ONLY).find((step) => step.kind === "import-managed");
-    expect(managed?.kind === "import-managed" && managed.yaml).toBe(
-      "#zeropsPreprocessor=on\nservices:\n  - hostname: db\n    type: postgresql@17\n    priority: 10\n",
-    );
-  });
-
-  it("hands the runtimes to the container, in one wave, each as it comes up", () => {
+  it("hands the whole tier to the container's one import: runtimes converted, priorities kept", () => {
     const container = plan(MATE_TIER).find((step) => step.kind === "import-container");
-    expect(container?.kind === "import-container" && container.runtimes).toEqual({
+    expect(container?.kind === "import-container" && container.tier).toEqual({
       yaml: `#zeropsPreprocessor=on
 services:
   - hostname: appdev
@@ -478,12 +423,39 @@ services:
     startWithoutCode: true
   - hostname: appstage
     type: nodejs@22
+    priority: 5
+  - hostname: db
+    type: postgresql@17
+    priority: 10
 `,
-      services: [
+      managed: ["db"],
+      projectVariables: [
+        { key: "APP_KEY", value: "<@generateRandomString(<32>)>", sensitive: false },
+      ],
+      runtimes: [
         { hostname: "appdev", role: "dev" },
         { hostname: "appstage", role: "stage" },
       ],
     });
+  });
+
+  it("imports the container above the tier's highest priority, every service isolated but to it", () => {
+    const container = plan(MATE_TIER).find((step) => step.kind === "import-container");
+    if (container?.kind !== "import-container" || container.tier === undefined)
+      throw new Error("expected the tier in the container's import");
+    const yaml = mateBirthImportYaml(
+      buildZcpServiceImportYaml({ serviceName: "zcp", vscodePassword: "pw", apiKey: "key" }),
+      container.tier.yaml,
+    );
+    const services = yaml.split(/^ {2}- hostname: /mu).slice(1);
+    expect(services.map((service) => service.split("\n")[0])).toEqual([
+      "zcp",
+      "appdev",
+      "appstage",
+      "db",
+    ]);
+    for (const service of services) expect(service).toContain("    envIsolation: service@zcp\n");
+    expect(services[0]).toContain("    priority: 11\n");
   });
 
   it("refuses a tier that declares no services: nothing has been merged yet", () => {
@@ -491,7 +463,12 @@ services:
       clientId: "c1",
       role: "dev",
       name: "Acme - Wren",
-      recipe: { kind: "tier", tier: "mate", yaml: "project:\n  name: x\n" },
+      recipe: {
+        kind: "tier",
+        revision: "recipe-revision",
+        tier: "mate",
+        yaml: "project:\n  name: x\n",
+      },
     });
     expect(result).toEqual({ ok: false, reason: "This project has no recipe merged yet." });
   });
@@ -517,7 +494,7 @@ services:
         clientId: "c1",
         role: "dev",
         name: "Acme - Wren",
-        recipe: { kind: "tier", tier: "mate", yaml },
+        recipe: { kind: "tier", revision: "recipe-revision", tier: "mate", yaml },
         ...extra,
       });
       expect(result.ok ? undefined : result.reason).toBe(
@@ -545,7 +522,12 @@ services:
       clientId: "c1",
       role: "stage",
       name: "Aurora - production",
-      recipe: { kind: "tier" as const, tier: "production" as const, yaml: recipe },
+      recipe: {
+        kind: "tier" as const,
+        revision: "recipe-revision",
+        tier: "production" as const,
+        yaml: recipe,
+      },
       withAgent: false,
       ...extra,
     });
@@ -568,12 +550,11 @@ services:
     expect(step.yaml).not.toContain("published-name");
   });
 
-  it("still adds the agent's container after it", () => {
+  it("with an agent, makes no project call of its own: the tier rides the container's one import", () => {
     expect(plan(WHOLE, { withAgent: true }).map((step) => step.kind)).toEqual([
-      "import-project",
+      "create-project",
       "register",
       "import-container",
-      "close-off",
       "await-ready",
     ]);
   });

@@ -36,10 +36,10 @@ import { useWakeAt } from "./useNowMs";
 import { useCreations } from "./creations";
 import { madeOf } from "./newProjectBirth";
 import { useProjectCreations } from "./useProjectCreations";
-import { useCloseOffHolds } from "./accountEnvironments";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
 import { usePressesElsewhere } from "./usePressesElsewhere";
-import { closeOffOpenOf, pressComingInput, useMatePresses } from "./matePress";
+import { pressComingInput, useMatePresses } from "./matePress";
+import { sharedBirthPresentation, useSharedBirthState } from "./sharedBirths";
 
 /**
  * What a Mate's row says (`useMatesActivity`), for a candidate the menu lists: by its project, else
@@ -202,10 +202,10 @@ const hqMatesWithMainAtom = Atom.make((get) => {
 export function useMateComingOf(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): (candidate: ZeropsCandidate) => MateComing | undefined {
+  const { open: births, readyProjectIds } = useSharedBirthState();
   const presses = useMatePresses();
   const creations = useCreations();
   const { mateLink } = useEnvironmentLinks();
-  const closeOffHolds = useCloseOffHolds();
   const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
   const processFacts = useProjectsActivityRead(candidates.map((candidate) => candidate.project.id));
@@ -213,18 +213,16 @@ export function useMateComingOf(
   const wokeAt = useComingClock(candidates);
   return useCallback(
     (candidate: ZeropsCandidate) => {
+      const birth = births.find((entry) => entry.projectId === candidate.project.id);
+      if (birth !== undefined) {
+        const shown = sharedBirthPresentation(birth);
+        return { kind: "coming", line: shown.line, birth: { attention: shown.attention } };
+      }
+      if (readyProjectIds.includes(candidate.project.id)) return undefined;
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
       const made = madeOf(creations, candidate.project.id);
       return mateArrival({
         press,
-        // A row says only the hold it offers Finish setup for; the others, its own view.
-        closeOffHold: closeOffOpenOf(
-          closeOffHolds,
-          candidate.project.id,
-          presses.find((entry) => entry.projectId === candidate.project.id),
-        )
-          ? "open"
-          : undefined,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
         setUpFailed: setUpFailed ?? made?.failed?.reason,
         // A new getter at each deadline (`useComingClock`): the menu is memoised, and nothing
@@ -239,13 +237,14 @@ export function useMateComingOf(
       }).coming;
     },
     [
+      births,
+      readyProjectIds,
       presses,
       creations,
       firstBuilds,
       mateLink,
       pressOf,
       verdicts,
-      closeOffHolds,
       wokeAt,
       processFacts,
     ],

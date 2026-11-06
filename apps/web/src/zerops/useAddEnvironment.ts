@@ -25,6 +25,7 @@ import { HeldInventoryContext } from "./inventoryContext";
 import { placedPressesIn, useMatePresses } from "./matePress";
 import { useCreations } from "./creations";
 import { placedNewProjects } from "./newProjectBirth";
+import { placedSharedBirths, useSharedBirths } from "./sharedBirths";
 import type { ZeropsProjectFlow } from "./projectFlows";
 import { useSetUpEnvironment } from "./setUpEnvironment";
 import { useZeropsCandidates } from "./useZeropsCandidates";
@@ -44,26 +45,35 @@ function useGroupProjects(): (groupId: string) => ReadonlyArray<ZeropsProject> {
 
 /**
  * The stages and productions of an application the platform accepted and HQ does not hold yet, as
- * the group tree draws them from this tab's presses (`placedPressesIn`).
+ * the group tree draws them from this tab's presses (`placedPressesIn`): a Mate that is also the
+ * stage is a stage.
  */
 export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<HeldEnvironment> {
   const { listing } = useZeropsCandidates();
   const presses = useMatePresses();
   const made = useCreations();
-  const organizationId = useZeropsSession().activeOrganization?.id;
+  const births = useSharedBirths();
+  const { activeOrganization, user } = useZeropsSession();
+  const organizationId = activeOrganization?.id;
   return useMemo(
     () =>
       (
         buildZeropsGroupTree(heldCandidates(listing).rows, {
           order: "name",
-          births: placedPressesIn(presses, organizationId, placedNewProjects(made, organizationId)),
+          births: placedSharedBirths(
+            births,
+            placedPressesIn(presses, organizationId, placedNewProjects(made, organizationId)),
+            user?.id,
+          ),
         }).groups.find((entry) => entry.group.groupId === groupId)?.group.pending ?? []
       ).flatMap((member): ReadonlyArray<HeldEnvironment> =>
-        member.kind === "stage" || member.kind === "production"
-          ? [{ id: member.projectId, tier: member.kind }]
-          : [],
+        member.kind === "stage" || member.kind === "devstage"
+          ? [{ id: member.projectId, tier: "stage" }]
+          : member.kind === "production"
+            ? [{ id: member.projectId, tier: "production" }]
+            : [],
       ),
-    [groupId, listing, made, organizationId, presses],
+    [births, groupId, listing, made, organizationId, presses, user?.id],
   );
 }
 

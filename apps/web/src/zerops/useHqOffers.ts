@@ -1,7 +1,8 @@
 /**
- * HQ's offers as its structure last streamed them (`can`, `@t3tools/shared/hqOffers`), for the
- * organization in view: whether HQ answers now, each verb's state, and its words. Drawn, never
- * decided here.
+ * The offers of the organization in view as its structure holds them (`can`,
+ * `@t3tools/shared/hqOffers`), decided from the person's live Zerops roles
+ * (`@t3tools/shared/zeropsOffers`): whether HQ answers now, each verb's state, and its words.
+ * Drawn, never decided here.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -12,9 +13,6 @@ import {
 import { type HqOfferState, type HqOffers, hqOffer } from "@t3tools/shared/hqOffers";
 import { useCallback, useMemo } from "react";
 
-import { useAccountDataOptional } from "./accountData";
-import { usePlatformCapabilities } from "./usePlatformCapabilities";
-
 import { useClientSettings } from "../hooks/useSettings";
 import { hqDown, hqDownSinceAtom, hqNavigationAtom, zeropsSessionAtom } from "../state/zerops";
 import { formatShortTimestamp } from "../timestampFormat";
@@ -24,8 +22,6 @@ import { formatShortTimestamp } from "../timestampFormat";
  * state reads in words.
  */
 export function useHqOffers() {
-  const account = useAccountDataOptional();
-  const capabilities = usePlatformCapabilities(null);
   const view = useAtomValue(hqNavigationAtom);
   const downSince = useAtomValue(hqDownSinceAtom);
   const organizationId = useAtomValue(zeropsSessionAtom)?.activeOrganization?.organizationId;
@@ -38,18 +34,10 @@ export function useHqOffers() {
       structure,
       hq,
       at,
-      state: (can: HqOffers | undefined, verb: string): HqOfferState => {
-        // The current native membership can revoke creation before HQ streams its next offer.
-        if (account != null && (verb === "create_app" || verb === "add_mate")) {
-          if (account.viewer === undefined) return { kind: "unknown" };
-          if (!capabilities.createProject)
-            return { kind: "refused", reason: "cannot_create_projects" };
-        }
-        return hqOffer(can, verb, hq);
-      },
-      words: (state: HqOfferState) => hqOfferWords(state, { at, rolesAnsweredAt: null }),
+      state: (can: HqOffers | undefined, verb: string): HqOfferState => hqOffer(can, verb, hq),
+      words: (state: HqOfferState) => hqOfferWords(state, { at }),
     };
-  }, [account, capabilities.createProject, downSince, organizationId, timestampFormat, view]);
+  }, [downSince, organizationId, timestampFormat, view]);
 }
 
 /**

@@ -10,10 +10,11 @@
  * turn is about to spend, and refuse the ones that are not theirs (D6).
  *
  * The record is what this server saw: the person whose door session started
- * the sign-in that succeeded here (`ZeropsAgentLogin`), kept across restarts
- * beside the logins' homes (`zeropsSignIns`). Nobody writes it from outside —
- * not a project member by API, not the app. Forging it needs access to this
- * container, and that access already holds the login's credential.
+ * the sign-in that succeeded here (`ZeropsAgentLogin`), and what HQ holds as
+ * each login's last signer, sent on the link (`zeropsSignIns`) — how it
+ * outlives a restart. No project member writes it by API, and neither does the
+ * app. Forging it needs access to this container or to HQ's link, and the
+ * container already holds the login's credential.
  *
  * Said out loud, because it matters: this is a guardrail, not a lock. Everyone
  * who can open a Mate can also write in it and open a terminal as the agent's
@@ -27,8 +28,8 @@
  * `hasProjectAccess` is the one answer to whether a person may use this Mate
  * at all — the one that keeps their session open — for a turn no session of
  * theirs stands behind (X3), and for offboarding, which signs every login of a
- * person it says no for out (`ZeropsOffboarding`, X4). It reads HQ's access list
- * (`ZeropsMateAccessList`) and nothing of Zerops.
+ * person it says no for out (`ZeropsOffboarding`, X4). It reads the access list the Mate
+ * computes from its own read of Zerops (`ZeropsMateAccessList`): an opener, not a mere member.
  *
  * @module ZeropsProjectSigners
  */
@@ -51,9 +52,11 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import { subscribeChanges } from "./zeropsChanges.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
 /**
@@ -101,13 +104,20 @@ export function isTurnStartingCommand(
  * 2026-09-30 and 2026-10-01).
  */
 export const SIGN_IN_CHECK_WAIT = Duration.seconds(30);
-const SIGN_IN_CHECK_POLL = Duration.seconds(1);
+
+/** A login as it stands now, and when it may have changed (`ZeropsAgentLogin`'s pair). */
+export interface CurrentLogin {
+  readonly latest: Effect.Effect<ZeropsAgentLoginState | undefined>;
+  readonly changes: Stream.Stream<unknown>;
+}
 
 export class ZeropsProjectSigners extends Context.Service<
   ZeropsProjectSigners,
   {
-    /** Who this server saw sign each login in (`zeropsSignIns`). */
+    /** Whose each login is, by this server's sign-ins and HQ's map (`zeropsSignIns`). */
     readonly signers: Effect.Effect<ProjectSigners>;
+    /** Fires after each sign-in record is written, cleared or moved by HQ: `signers` may have moved. */
+    readonly changes: Stream.Stream<void>;
     /**
      * {@link turnRefusal} for this session on `agentId`, against who this server saw sign it in.
      * While a code is being checked on it whose outcome decides this turn, the turn waits up to
@@ -119,8 +129,8 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly subject: string | undefined;
       /** The agent's server-driven login as this server holds it (`ZeropsAgentLogin`). */
       readonly login?: ZeropsAgentLoginState | undefined;
-      /** That login as it stands now, read again while the turn waits on it. */
-      readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
+      /** That login as it stands now, read again at each change while the turn waits on it. */
+      readonly currentLogin?: CurrentLogin | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /** {@link loginTurnRefusal} for this session on the login keyed `key`, as `turnRefusal`. */
     readonly loginRefusal: (input: {
@@ -130,15 +140,15 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly subject: string | undefined;
       /** That login's server-driven sign-in as this server holds it (`ZeropsAgentLogin`). */
       readonly login?: ZeropsAgentLoginState | undefined;
-      /** That login as it stands now, read again while the turn waits on it. */
-      readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
+      /** That login as it stands now, read again at each change while the turn waits on it. */
+      readonly currentLogin?: CurrentLogin | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
-     * Whether this project opens for `userId`, as HQ's latest access list says — the answer that
-     * keeps a connection open (`ZeropsConnections`). What admits a turn no session stands behind:
-     * the crew's, the stand-up's (X3). The list holds at most 15 min from the frame that brought it
-     * (`ACCESS_LIST_HOLDS`); past that, with none yet, or while HQ says the organisation's key was
-     * refused, `undefined`: nobody is vouched for, and nobody's logins are taken on a guess.
+     * Whether `userId` is an opener of this project, as the Mate's access list says — the
+     * answer that keeps a connection open (`ZeropsConnections`). What admits a turn no session
+     * stands behind: the crew's, the stand-up's (X3). The list holds at most 15 min from the read
+     * that brought it (`ACCESS_LIST_HOLDS`); past that, or with none yet, `undefined`: nobody is
+     * vouched for, and nobody's logins are taken on a guess.
      */
     readonly hasProjectAccess: (userId: string) => Effect.Effect<boolean | undefined>;
   }
@@ -155,9 +165,10 @@ export const make = Effect.gen(function* () {
   const hasProjectAccess: ZeropsProjectSigners["Service"]["hasProjectAccess"] = (userId) =>
     environment === undefined
       ? Effect.succeed(undefined)
-      : Effect.map(accessList.current, (current) => {
-          const list = Option.getOrUndefined(current);
-          if (list === undefined || list.refused) return undefined;
+      : Effect.gen(function* () {
+          const list = Option.getOrUndefined(yield* accessList.current);
+          const now = yield* Clock.currentTimeMillis;
+          if (list === undefined || now > list.expiresAtMs) return undefined;
           return list.members.some(
             (member) => member.userId === userId && member.visibility === "open",
           );
@@ -171,8 +182,8 @@ export const make = Effect.gen(function* () {
    * `base` against the signer of `key`, with the sign-in this server walks for that login. A
    * code being checked decides the turn when its person's success would change the answer — it
    * is this person's own sign-in over somebody else's, or somebody else's over this person's:
-   * the turn waits for the check to settle, re-reading the login and the signer about a second
-   * at a time, up to {@link SIGN_IN_CHECK_WAIT}. A check still deciding then refuses. A login at
+   * the turn waits for the check to settle, re-reading the login and the signer at each change of
+   * either, up to {@link SIGN_IN_CHECK_WAIT}. A check still deciding then refuses. A login at
    * its menu, its page or its code prompt has written nothing, and holds no turn.
    */
   const gateSignedIn = (
@@ -182,7 +193,7 @@ export const make = Effect.gen(function* () {
       readonly token: boolean;
       readonly subject: string | undefined;
       readonly login: ZeropsAgentLoginState | undefined;
-      readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
+      readonly currentLogin?: CurrentLogin | undefined;
     },
   ) =>
     Effect.gen(function* () {
@@ -197,12 +208,21 @@ export const make = Effect.gen(function* () {
       let signer = (yield* signers)[key];
       const refusal = base(signer);
       if (refusal?.kind === "not-signed-in" || !decides(login, signer)) return refusal;
-      const deadline = (yield* Clock.currentTimeMillis) + Duration.toMillis(SIGN_IN_CHECK_WAIT);
-      while (decides(login, signer) && (yield* Clock.currentTimeMillis) < deadline) {
-        yield* Effect.sleep(SIGN_IN_CHECK_POLL);
-        login = input.currentLogin === undefined ? input.login : yield* input.currentLogin;
+      const look = Effect.gen(function* () {
+        if (input.currentLogin !== undefined) login = yield* input.currentLogin.latest;
         signer = (yield* signers)[key];
-      }
+      });
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          // Subscribed before the look, so no change after it goes unheard.
+          const moved = yield* subscribeChanges([
+            signIns.changes,
+            ...(input.currentLogin === undefined ? [] : [input.currentLogin.changes]),
+          ]);
+          yield* look;
+          while (decides(login, signer)) yield* moved.pipe(Effect.andThen(look));
+        }),
+      ).pipe(Effect.timeoutOrElse({ duration: SIGN_IN_CHECK_WAIT, orElse: () => Effect.void }));
       return decides(login, signer)
         ? (base(signer) ?? { kind: "someone-else" as const })
         : base(signer);
@@ -239,6 +259,7 @@ export const make = Effect.gen(function* () {
 
   return ZeropsProjectSigners.of({
     signers,
+    changes: signIns.changes,
     turnRefusal: gateTurn,
     loginRefusal: gateLogin,
     hasProjectAccess,

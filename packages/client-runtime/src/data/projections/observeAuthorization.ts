@@ -29,13 +29,13 @@ export function authorizesObserveByItself(input: {
   );
 }
 
-/** To a viewer who may operate the Mate (HQ's `mayWrite`) while it reads not authorized. */
+/** To a viewer who operates the Mate (its `observe_mate` offer) while it reads not authorized. */
 export function offersObserveAuthorize(input: {
-  readonly mayWrite: boolean | undefined;
+  readonly operates: boolean;
   readonly metadata: Metadata;
 }): boolean {
   const { metadata } = input;
-  return input.mayWrite === true && metadata.state === "known" && !metadata.value.authorized;
+  return input.operates && metadata.state === "known" && !metadata.value.authorized;
 }
 
 /** The one request a session makes by itself for a Mate: a second open finds it held. */

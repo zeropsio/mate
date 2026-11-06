@@ -21,11 +21,11 @@ import { lifecycleReceipt } from "../families/hqLifecycle.ts";
  * @module data/adapters/hq
  */
 import {
+  HQ_PROTECTED_SCOPE_KINDS,
   hqScopeKey,
   hqStreamCloseFailure,
   HqStreamMessage,
   type HqCursor,
-  type HqHandoverCandidate,
   type HqScope,
   type HqScopeDelivery,
   type HqStreamRequest,
@@ -91,6 +91,14 @@ export interface HqWire {
     request: import("../families/hqReleaseReview.ts").ReleaseReviewRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqRelease").ReleaseServicePlan, StreamFault>;
   readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
+  /**
+   * A frame HQ decides on the person's role, with their current Zerops access token
+   * (`HqApi.withAccess`): comparisons, the move picker's ask, seen acknowledgements, and each
+   * subscribe naming a protected scope.
+   */
+  readonly withAccess?: <T extends object>(
+    frame: T,
+  ) => Effect.Effect<T & { readonly accessToken: string }, StreamFault>;
 }
 
 /** How an HQ socket's ending classifies, its planned segment end aside. */
@@ -139,9 +147,6 @@ const ON_THE_SOCKET: StreamEvent = {
 /** The link's socket exists; its upgrade is waited for. */
 const SOCKET_CREATED: StreamEvent = { kind: "socket-created" };
 
-/** Whom a Mate may be handed over to, as HQ answers when the hand-over opens. */
-export type HqHandoverCandidates = ReadonlyArray<HqHandoverCandidate>;
-
 const protocolIdentity = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 
@@ -167,14 +172,16 @@ export function hqNavigationLink(options: {
   readonly store: AccountStore;
 }): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt" | "childMoved"> & {
   readonly retryDetail: (demand: DetailDemand) => void;
+  /**
+   * The person's role on a project changed in the client's own Zerops data
+   * (`zerops/account/mateRoles.ts`): each refused scope of it — its Mate's, and those of the
+   * application HQ places it in — is asked again.
+   */
+  readonly roleChanged: (projectId: string) => void;
   /** A screen's hold on a detail scope; the release lets it go once nothing holds it. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /** Asks HQ where a Mate may move, on the open socket. */
   readonly moveOffers: (projectId: string) => Effect.Effect<HqMoveOffers, StreamFault>;
-  /** Asks HQ whom a Mate may be handed over to, on the open socket. */
-  readonly handoverCandidates: (
-    projectId: string,
-  ) => Effect.Effect<HqHandoverCandidates, StreamFault>;
   /** Asks HQ what lies between two commits of an application's repository, on the open socket. */
   readonly compare: (
     ask: { readonly appId: string; readonly repo: string } & CompareQuery,
@@ -315,15 +322,30 @@ export function hqNavigationLink(options: {
 
   /** The segment open now, if any: what a request is sent on. */
   let open: HqSegment | null = null;
-  /** What the person saw while no socket was open, by project: told HQ on the next one. */
+  /** What the person saw but has not yet sent to HQ, by project. */
   const untold = new Map<string, Set<string>>();
+  /** A token lookup may outlive its segment; leave its results for the current one to send. */
+  const tellSeen = (segment: HqSegment, projectId: string) =>
+    Effect.gen(function* () {
+      const held = untold.get(projectId);
+      if (held === undefined || wire.withAccess === undefined) return;
+      const resultIds = [...held];
+      const frame = yield* wire.withAccess({ type: "seen" as const, projectId, resultIds });
+      if (open !== segment) return;
+      const pending = untold.get(projectId);
+      const unsent = resultIds.filter((id) => pending?.has(id));
+      if (pending === undefined || unsent.length === 0) return;
+      yield* segment.send({ ...frame, resultIds: unsent });
+      for (const id of unsent) pending.delete(id);
+      if (pending.size === 0) untold.delete(projectId);
+    });
   /** The asks sent on the open socket that HQ has not answered yet, by request id. */
   const pendingOffers = new Map<string, Deferred.Deferred<unknown, StreamFault>>();
   let requests = 0;
   /** Looks at the demanded details again in the attempt under way, if one is. */
   const refresh = new Set<ScopeKey>();
   let wakeAttempt: (() => void) | null = null;
-  /** The scopes HQ refused, by key: asked again only with the person's explicit `retry`. */
+  /** The scopes HQ refused, by key: asked again with `retry`, by the person or a role change. */
   const refused = new Set<string>();
   /** HQ refused the whole socket (`4403`): the next one opens with the person's `retry`. */
   let refusedWhole = false;
@@ -384,6 +406,23 @@ export function hqNavigationLink(options: {
           knownKeys: knownKeys(registered),
         };
       };
+      /**
+       * Asks HQ for registrations on a segment. A frame naming a protected scope carries the
+       * person's current access token: HQ admits it on one read of their role with it.
+       */
+      const subscribe = (segment: HqSegment, registrations: ReadonlyArray<Registered>) =>
+        Effect.gen(function* () {
+          const frame = { type: "subscribe" as const, scopes: registrations.map(subscription) };
+          const guarded = registrations.some((registered) =>
+            HQ_PROTECTED_SCOPE_KINDS.has(registered.wire.kind),
+          );
+          yield* segment.send(
+            guarded && wire.withAccess !== undefined ? yield* wire.withAccess(frame) : frame,
+          );
+          for (const registered of registrations) asked.add(hqScopeKey(registered.wire));
+        });
+      /** The scopes asked once more after HQ answered `token_required`, until one is admitted. */
+      const tokenReasked = new Set<string>();
 
       /** Starts a registration of each store scope: a new generation, its handshake made. */
       const register = (registered: Registered) =>
@@ -482,24 +521,25 @@ export function hqNavigationLink(options: {
        */
       const again = (registrations: ReadonlyArray<Registered>) =>
         Effect.gen(function* () {
-          if (open === null || registrations.length === 0) return;
+          const segment = open;
+          if (segment === null || registrations.length === 0) return;
           // HQ knows only what this segment asked.
           const known = registrations.filter((registered) =>
             asked.has(hqScopeKey(registered.wire)),
           );
           for (const registered of registrations) yield* register(registered);
-          // A refused scope comes back only by the person's explicit retry, sent before asking.
+          // A refused scope comes back only by the person's explicit retry or their role on its
+          // project changing (`roleChanged`), sent before asking.
           const retried = registrations.filter(({ wire }) => refused.delete(hqScopeKey(wire)));
           if (retried.length > 0)
-            yield* open.send({ type: "retry", scopes: retried.map(({ wire }) => wire) });
+            yield* segment.send({ type: "retry", scopes: retried.map(({ wire }) => wire) });
           if (known.length > 0)
-            yield* open.send({ type: "unsubscribe", scopes: known.map(({ wire }) => wire) });
-          yield* open.send({ type: "subscribe", scopes: registrations.map(subscription) });
-          for (const { wire } of registrations) asked.add(hqScopeKey(wire));
+            yield* segment.send({ type: "unsubscribe", scopes: known.map(({ wire }) => wire) });
+          yield* subscribe(segment, registrations);
         });
       const resubscribe = (registered: Registered) => again([registered]);
 
-      const onMessage = (encoded: string): Effect.Effect<void> =>
+      const onMessage = (encoded: string): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
           if (stopped) return;
           heardAt = yield* Clock.currentTimeMillis;
@@ -521,6 +561,7 @@ export function hqNavigationLink(options: {
               const scopeKey = hqScopeKey(message.scope);
               const entry = subscribed.get(scopeKey);
               if (entry === undefined) return;
+              tokenReasked.delete(scopeKey);
               cursors.set(scopeKey, {
                 incarnation: message.incarnation,
                 revision: message.revision,
@@ -577,8 +618,16 @@ export function hqNavigationLink(options: {
               return;
             }
             case "scope-error": {
-              const entry = subscribed.get(hqScopeKey(message.scope));
+              const scopeKey = hqScopeKey(message.scope);
+              const entry = subscribed.get(scopeKey);
               if (entry === undefined) return;
+              // Asked without the person's token: this client's own fault, never HQ's outage.
+              // Asked once more with it; HQ answering the same again is the scope's error.
+              const tokenless = message.code === "token_required";
+              if (tokenless && !tokenReasked.has(scopeKey)) {
+                tokenReasked.add(scopeKey);
+                return yield* resubscribe(entry.registered);
+              }
               // Only HQ's authoritative access denial purges facts; a host probe's refusal is data.
               const accessDenied =
                 message.disposition === "refused" &&
@@ -587,7 +636,6 @@ export function hqNavigationLink(options: {
                   message.code === "chief_owner_required");
               if (accessDenied) {
                 deny(entry.registered.families.map(({ scope }) => scope));
-                const scopeKey = hqScopeKey(message.scope);
                 subscribed.delete(scopeKey);
                 if (asked.delete(scopeKey) && open !== null)
                   yield* open.send({ type: "unsubscribe", scopes: [message.scope] });
@@ -595,13 +643,15 @@ export function hqNavigationLink(options: {
               const fault: StreamFault = {
                 outcome: accessDenied
                   ? "authoritative-denial"
-                  : message.disposition === "refused"
+                  : message.disposition === "refused" || tokenless
                     ? "definitive-refusal"
                     : "transient",
-                message: message.reason ?? `HQ could not read this (${message.code}).`,
+                message: tokenless
+                  ? "Mate asked HQ for this without your Zerops access token. Try again."
+                  : (message.reason ?? `HQ could not read this (${message.code}).`),
                 code: message.code,
               };
-              if (message.disposition === "refused") refused.add(hqScopeKey(message.scope));
+              if (message.disposition === "refused") refused.add(scopeKey);
               const jitter = yield* Random.next;
               for (const { scope } of entry.generations)
                 yield* signal(scope, { kind: "fault", fault, jitter });
@@ -609,8 +659,6 @@ export function hqNavigationLink(options: {
             }
             case "move-offers":
             case "move-offers-error":
-            case "handover-candidates":
-            case "handover-candidates-error":
             case "compare":
             case "compare-error": {
               const waiting = pendingOffers.get(message.requestId);
@@ -621,8 +669,6 @@ export function hqNavigationLink(options: {
                   moveTo: message.moveTo,
                   refused: message.refused ?? {},
                 });
-              if (message.type === "handover-candidates")
-                return yield* Deferred.succeed(waiting, message.candidates);
               if (message.type === "compare")
                 return yield* Deferred.succeed(waiting, message.result);
               return yield* Deferred.fail(waiting, {
@@ -636,9 +682,9 @@ export function hqNavigationLink(options: {
 
       /**
        * Every scope as this attempt must observe it — the navigation, and each detail demanded
-       * now: one not asked yet, or moved to a new registration (the person's try again, its retry
-       * come due), asked; a detail let go, unsubscribed. A refused one is never asked again by
-       * itself.
+       * now: one not asked yet, or moved to a new registration (the person's try again, their
+       * role on its project changing, its retry come due), asked; a detail let go, unsubscribed. A
+       * refused one is never asked again by itself.
        */
       const observe = Effect.gen(function* () {
         if (open === null) return Number.POSITIVE_INFINITY;
@@ -783,12 +829,9 @@ export function hqNavigationLink(options: {
             asked.clear();
             if (resumed.length > 0) {
               for (const registered of resumed) yield* register(registered);
-              yield* opened.send({ type: "subscribe", scopes: resumed.map(subscription) });
-              for (const { wire } of resumed) asked.add(hqScopeKey(wire));
+              yield* subscribe(opened, resumed);
             }
-            for (const [projectId, resultIds] of untold)
-              yield* opened.send({ type: "seen", projectId, resultIds: [...resultIds] });
-            untold.clear();
+            for (const projectId of untold.keys()) yield* tellSeen(opened, projectId);
             wake();
             const watching = Effect.forever(
               Effect.gen(function* () {
@@ -821,8 +864,8 @@ export function hqNavigationLink(options: {
 
   /** One question to HQ on the open socket, answered by its request id; none without a socket. */
   const ask = <A>(
-    type: "move-offers" | "handover-candidates" | "compare",
-    request: (requestId: string) => HqStreamRequest,
+    type: "move-offers" | "compare",
+    request: (requestId: string) => Effect.Effect<HqStreamRequest, StreamFault>,
   ): Effect.Effect<A, StreamFault> =>
     Effect.suspend(() => {
       const segment = open;
@@ -832,12 +875,14 @@ export function hqNavigationLink(options: {
           message: "HQ's stream is not open.",
         });
       const requestId = `${type}-${(requests += 1)}`;
-      const answer = Deferred.makeUnsafe<unknown, StreamFault>();
-      pendingOffers.set(requestId, answer);
-      return Effect.andThen(
-        segment.send(request(requestId)),
-        Deferred.await(answer) as Effect.Effect<A, StreamFault>,
-      );
+      return Effect.flatMap(request(requestId), (asked) => {
+        const answer = Deferred.makeUnsafe<unknown, StreamFault>();
+        pendingOffers.set(requestId, answer);
+        return Effect.andThen(
+          segment.send(asked),
+          Deferred.await(answer) as Effect.Effect<A, StreamFault>,
+        );
+      });
     });
 
   return {
@@ -864,28 +909,55 @@ export function hqNavigationLink(options: {
         }),
       );
     },
+    roleChanged: (projectId) => {
+      const fact = store.state().facts.get(factKey("placement", projectId));
+      const appId =
+        fact?.content.kind === "value" ? (fact.content.value as PlacementValue).appId : null;
+      const now = Effect.runSync(Clock.currentTimeMillis);
+      for (const demanded of demands.scopes()) {
+        const registered = detailOf(demanded);
+        if (registered === null) continue;
+        const { wire: scope } = registered;
+        const ofProject =
+          "projectId" in scope
+            ? scope.projectId === projectId
+            : "appId" in scope && appId !== null && scope.appId === appId;
+        if (!ofProject) continue;
+        for (const { scope: fed } of registered.families)
+          if (streamOf(store.state(), fed).phase === "refused")
+            store.dispatch({ kind: "stream", key: fed, now, event: { kind: "input-changed" } });
+      }
+      wakeAttempt?.();
+    },
     demandDetail: (demand) => (stopped ? () => {} : demands.hold(detailScopeOf(orgId, demand))),
     moveOffers: (projectId) =>
-      ask<HqMoveOffers>("move-offers", (requestId) => ({
-        type: "move-offers",
-        requestId,
-        projectId,
-      })),
-    handoverCandidates: (projectId) =>
-      ask<HqHandoverCandidates>("handover-candidates", (requestId) => ({
-        type: "handover-candidates",
-        requestId,
-        projectId,
-      })),
+      ask<HqMoveOffers>(
+        "move-offers",
+        (requestId) =>
+          wire.withAccess?.({ type: "move-offers" as const, requestId, projectId }) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "This HQ cannot say where a Mate may move.",
+          }),
+      ),
     compare: (asked) =>
-      ask<CompareResponse>("compare", (requestId) => ({ type: "compare", requestId, ...asked })),
+      ask<CompareResponse>(
+        "compare",
+        (requestId) =>
+          wire.withAccess?.({ type: "compare" as const, requestId, ...asked }) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "This HQ cannot compare the repository's commits.",
+          }),
+      ),
     seen: (projectId, resultIds) =>
       Effect.suspend(() => {
-        if (open !== null) return open.send({ type: "seen", projectId, resultIds });
         const held = untold.get(projectId) ?? new Set<string>();
         for (const id of resultIds) held.add(id);
         untold.set(projectId, held);
-        return Effect.void;
+        return open === null
+          ? Effect.void
+          : tellSeen(open, projectId).pipe(Effect.catch(() => Effect.void));
       }),
     rewire: (next) => {
       wire = next;

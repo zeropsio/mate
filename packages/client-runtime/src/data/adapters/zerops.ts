@@ -40,10 +40,12 @@ import {
   type Registration,
 } from "../demand.ts";
 import { familySpec, scopeListing, scopeSpec } from "../families/index.ts";
+import { projectsScope } from "../families/project.ts";
+import { servicesScope } from "../families/service.ts";
 import { factKey, linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
 import { factOf, streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
-import { readsOfState, type AccountStore } from "../store.ts";
-import { scopeOf } from "../families/spec.ts";
+import { readsOfState, type AccountStore, type ProjectionReads } from "../store.ts";
+import { scopeOf, type ScopeOwner } from "../families/spec.ts";
 import { retryDelayMs, type StreamEvent, type StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
 
@@ -159,6 +161,23 @@ function agesNow(
   value: unknown,
 ): boolean {
   return sampled.agesWhile?.(value as never) === true;
+}
+
+/**
+ * When a sampled value read at `readAt` stops being fresh: its family's age, where it names one
+ * and the value does not still change without our write; the sampled cadence otherwise.
+ */
+function freshUntil(
+  sampled: {
+    readonly freshMs: number | null;
+    readonly agesWhile?: ((value: never) => boolean) | undefined;
+  },
+  readAt: number,
+  value: unknown,
+): number | undefined {
+  return sampled.freshMs !== null && sampled.freshMs > 0 && !agesNow(sampled, value)
+    ? readAt + sampled.freshMs
+    : undefined;
 }
 
 /** Each row its family decodes; a damaged row is refused alone, its neighbours admitted. */
@@ -351,8 +370,7 @@ export function zeropsNavigationLink(options: {
    * session read before is not theirs.
    */
   const askedAfresh = new Set<ScopeKey>();
-  const tellDetail = (demand: DetailDemand, event: StreamEvent) => {
-    const scope = detailScopeOf(orgId, demand);
+  const tellScope = (scope: ScopeKey, event: StreamEvent) => {
     Effect.runSync(
       Effect.map(Clock.currentTimeMillis, (now) =>
         store.dispatch({ kind: "stream", key: scope, now, event }),
@@ -360,6 +378,25 @@ export function zeropsNavigationLink(options: {
     );
     wakeAttempt?.();
   };
+  /**
+   * A sampled detail's value changed — our own write, or a push that says so: read it again now
+   * while it is demanded, and on its next demand whatever its age. A read under way may predate
+   * the change, so it is read once more after it.
+   */
+  const revalidateScope = (scope: ScopeKey) => {
+    sampledAt.delete(scope);
+    askedAfresh.add(scope);
+    const { phase, mode } = streamOf(store.state(), scope);
+    if (
+      phase === "connecting" ||
+      phase === "baselining" ||
+      (phase === "live" && mode === "realtime")
+    )
+      written.add(scope);
+    tellScope(scope, { kind: "revalidate" });
+  };
+  /** The entity a detail scope observes: `zerops:org:services:p1` → `p1`. */
+  const ownerOf = (scope: ScopeKey) => scope.split(":").slice(3).join(":");
 
   // A refused filtered pair stays refused across remounts and receiver rotations. Only a
   // changed generation of its navigation scope (manual retry / changed input) permits it again.
@@ -444,6 +481,7 @@ export function zeropsNavigationLink(options: {
       // has since replaced carries the old one, and the reducer fences it out.
       const generations = new Map<ScopeKey, number>();
       const generationOf = (scope: ScopeKey) => generations.get(scope) ?? -1;
+      const navigationReady = new Map(scopes.map((scope) => [scope, Deferred.makeUnsafe<void>()]));
       /** What ends this attempt from its side work: the credential refused, or access changed. */
       const ended = yield* Deferred.make<never, StreamFault>();
       const end = () => Deferred.doneUnsafe(ended, Effect.fail(ACCESS_CHANGED));
@@ -514,6 +552,15 @@ export function zeropsNavigationLink(options: {
           const family = familyOf(scope);
           const entity = familySpec(family).zerops?.entity;
           if (entity === undefined) return;
+          if (
+            family === "project" &&
+            ids.some((id) => {
+              const fact = factOf(store.state(), family, id);
+              return fact === undefined || fact.content.kind === "purged";
+            }) &&
+            !(yield* refreshProjectServices())
+          )
+            return;
           const generation = generationOf(scope);
           const ownerId = scope.split(":").slice(3).join(":");
           const filter = scopeListing(scope).detail?.zerops.subscription?.({ orgId, ownerId }) ?? [
@@ -581,17 +628,139 @@ export function zeropsNavigationLink(options: {
         const changed = rows.filter(
           (row) => factOf(before, row.family, row.id) !== factOf(store.state(), row.family, row.id),
         );
+        if (changed.length === 0) return carryOut(directives);
+        const previous = readsOfState(before);
+        const says = (
+          refresh:
+            | ((owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean)
+            | undefined,
+          ownerId: string | null,
+        ) =>
+          refresh !== undefined &&
+          changed.some((row) => refresh({ orgId, ownerId }, row, previous));
         for (const detailScope of demands.scopes()) {
           if (!refusedPairs.has(detailScope)) continue;
-          const refresh = scopeListing(detailScope).detail?.zerops.refreshOn;
-          const ownerId = detailScope.split(":").slice(3).join(":");
-          if (changed.some((row) => refresh?.({ orgId, ownerId }, row, readsOfState(before)))) {
+          if (says(scopeListing(detailScope).detail?.zerops.refreshOn, ownerOf(detailScope))) {
             dirtyDetails.add(detailScope);
             wakeAttempt?.();
           }
         }
-        return carryOut(directives);
+        // A sampled value the push says changed: read again now if demanded, else on its next demand.
+        const demanded = new Set(demands.scopes());
+        for (const detailScope of new Set([...demanded, ...sampledAt.keys()])) {
+          const { spec, detail } = scopeListing(detailScope);
+          if (detail !== null || !says(spec.sampled?.refreshOn, ownerOf(detailScope))) continue;
+          if (demanded.has(detailScope)) revalidateScope(detailScope);
+          else sampledAt.delete(detailScope);
+        }
+        return Effect.andThen(
+          carryOut(directives),
+          Effect.forEach(
+            scopes.filter((navigation) => says(scopeSpec(navigation).zerops?.refreshOn, null)),
+            (scope) =>
+              rereadMembership(scope).pipe(
+                Effect.catch(sessionEnds),
+                Effect.forkIn(attemptScope),
+                Effect.asVoid,
+              ),
+            { discard: true },
+          ),
+        );
       };
+      /** Concurrent requests share their read, with one further read if asked during it. */
+      const rereading = new Map<
+        ScopeKey,
+        { again: boolean; done: Deferred.Deferred<void, StreamFault> }
+      >();
+      /**
+       * Reads a navigation scope's membership again, its answer the scope's baseline under the
+       * registrations it has: the frames arriving meanwhile wait behind it. One at a time; a push
+       * asking again meanwhile reads once more after it. A read that cannot finish ends the
+       * attempt, whose next one registers every scope again.
+       */
+      const rereadMembership = (scope: ScopeKey): Effect.Effect<void, StreamFault> =>
+        Effect.suspend(() => {
+          const current = rereading.get(scope);
+          if (current !== undefined) {
+            current.again = true;
+            return Deferred.await(current.done);
+          }
+          const registration = registrations.find(
+            (entry) => entry.scope === scope && entry.role === "membership",
+          );
+          if (registration === undefined || streamOf(store.state(), scope).phase !== "live")
+            return Effect.void;
+          const pending = { again: false, done: Deferred.makeUnsafe<void, StreamFault>() };
+          rereading.set(scope, pending);
+          const generation = generationOf(scope);
+          const read = Effect.gen(function* () {
+            do {
+              pending.again = false;
+              const membersBefore = store.state().memberships.get(scope)?.members;
+              store.dispatch({ kind: "baseline-begin", scope, generation });
+              const answer = yield* readAgain(
+                link.post(registration.path, {
+                  search: registration.search,
+                  sort: [],
+                  limit: ORGANIZATION_SEARCH_LIMIT,
+                }),
+              );
+              const list = Option.getOrUndefined(decodeList(answer));
+              if (list === undefined)
+                return yield* Effect.fail(corrupt("A baseline answer is malformed."));
+              const rows = rowsOf(registration.family, list.items);
+              if (
+                scope === projectsScope(orgId) &&
+                rows.some(
+                  (row) =>
+                    membersBefore?.get(row.id) !== "member" &&
+                    factOf(store.state(), "project", row.id)?.content.kind !== "purged",
+                )
+              ) {
+                if (!(yield* refreshProjectServices())) return yield* Effect.fail(ACCESS_CHANGED);
+              }
+              yield* carryOut(
+                store.dispatch({
+                  kind: "baseline-commit",
+                  scope,
+                  generation,
+                  via: "zerops-read",
+                  members: membersOf(list.items),
+                  rows: baselineRows(registration.family, rows),
+                  partial: partialAnswer(list.items, rows, list.totalHits),
+                }),
+              );
+            } while (pending.again);
+            rereading.delete(scope);
+          });
+          return Effect.gen(function* () {
+            yield* Effect.forkIn(
+              Effect.gen(function* () {
+                const result = yield* Effect.exit(
+                  read.pipe(Effect.tapError((fault) => Deferred.fail(ended, fault))),
+                );
+                if (rereading.get(scope) === pending) rereading.delete(scope);
+                yield* Deferred.done(pending.done, result);
+              }),
+              attemptScope,
+            );
+            yield* Deferred.await(pending.done);
+          });
+        });
+      /** A service baseline taken before a grant cannot describe a newly listed project. */
+      const refreshProjectServices = (): Effect.Effect<boolean, StreamFault> =>
+        Effect.gen(function* () {
+          const services = servicesScope(orgId);
+          yield* Deferred.await(navigationReady.get(services)!);
+          if (streamOf(store.state(), services).phase !== "live") return false;
+          yield* rereadMembership(services);
+          return true;
+        });
+      /** Resolve a returned project beside the baseline, so its service read holds no other row. */
+      const baselineRows = (family: Family, rows: ReadonlyArray<Row>): ReadonlyArray<Row> =>
+        family === "project"
+          ? rows.filter((row) => factOf(store.state(), family, row.id)?.content.kind !== "purged")
+          : rows;
       /**
        * Each demanded query's registration, by its subscription: the scope and generation it was
        * made for, and its frames held back until its answer is the scope's baseline. A released
@@ -666,23 +835,50 @@ export function zeropsNavigationLink(options: {
           if (registration.role === "membership") {
             const delta = Option.getOrUndefined(decodeMembership(frame.data));
             if (delta === undefined) return Effect.void;
+            const addedProjects =
+              scope === projectsScope(orgId) &&
+              registration.generation === streamOf(store.state(), scope).generation &&
+              new Set(
+                (delta.add ?? []).filter(
+                  (id) => store.state().memberships.get(scope)?.members.get(id) !== "member",
+                ),
+              );
             // Some listStream frames carry rows too; admit them before resolving id-only adds.
             const rows = rowsOf(registration.family, delta.update ?? []);
+            const admittedRows = addedProjects
+              ? rows.filter(
+                  (row) =>
+                    !addedProjects.has(row.id) ||
+                    factOf(store.state(), "project", row.id) !== undefined,
+                )
+              : rows;
             store.dispatch({
               kind: "rows",
               scope,
               generation: registration.generation,
               method: "push",
               via: "zerops-realtime",
-              rows,
+              rows: admittedRows,
             });
-            return carryOut(
-              store.dispatch({
-                kind: "membership",
-                scope,
-                generation: registration.generation,
-                delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
-              }),
+            return Effect.andThen(
+              carryOut(
+                store.dispatch({
+                  kind: "membership",
+                  scope,
+                  generation: registration.generation,
+                  delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
+                }),
+              ),
+              addedProjects &&
+                [...addedProjects].some(
+                  (id) => factOf(store.state(), "project", id)?.content.kind === "value",
+                )
+                ? refreshProjectServices().pipe(
+                    Effect.catch(sessionEnds),
+                    Effect.forkIn(attemptScope),
+                    Effect.asVoid,
+                  )
+                : Effect.void,
             );
           }
           const updates = Option.getOrUndefined(decodeUpdates(frame.data));
@@ -791,8 +987,8 @@ export function zeropsNavigationLink(options: {
           const readAt = sampledAt.get(scope);
           const now = yield* Clock.currentTimeMillis;
           // A sampled value read within its freshness is the answer to a new demand: nothing is
-          // read, and its next revalidation comes on the cadence. A value that still ages is
-          // never fresh.
+          // read, and its next revalidation comes when that read stops being fresh. A value that
+          // still ages is never fresh.
           const held = store.state().facts.get(factKey(spec.family, ownerId));
           if (
             sampled !== undefined &&
@@ -801,7 +997,13 @@ export function zeropsNavigationLink(options: {
             held !== undefined &&
             !(held.content.kind === "value" && agesNow(sampled, held.content.value))
           )
-            return yield* signal(scope, { kind: "baseline-committed" });
+            return yield* signal(scope, {
+              kind: "baseline-committed",
+              freshUntil:
+                held.content.kind === "value"
+                  ? freshUntil(sampled, readAt, held.content.value)
+                  : undefined,
+            });
           store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
           const navigationGeneration = streamOf(store.state(), scopeOf(spec, orgId)).generation;
           const search = detail?.zerops.subscription?.({ orgId, ownerId });
@@ -957,12 +1159,14 @@ export function zeropsNavigationLink(options: {
               members: [ownerId],
               rows: [row],
             });
-            sampledAt.set(scope, heldAnswer?.atMs ?? (yield* Clock.currentTimeMillis));
+            const answeredAt = heldAnswer?.atMs ?? (yield* Clock.currentTimeMillis);
+            sampledAt.set(scope, answeredAt);
             // Only the platform's own answer settles a request to read it afresh.
             if (heldAnswer === undefined) askedAfresh.delete(scope);
             return yield* signal(scope, {
               kind: "baseline-committed",
               ages: agesNow(sampled, value),
+              freshUntil: freshUntil(sampled, answeredAt, value),
             });
           }
           const items = detail?.zerops.items(answer.body, owner);
@@ -1152,14 +1356,31 @@ export function zeropsNavigationLink(options: {
                   via: "zerops-realtime",
                   // Membership is every item's id: a damaged row keeps its member and its last value.
                   members: membersOf(list.items),
-                  rows,
+                  rows: baselineRows(registration.family, rows),
                   partial: partialAnswer(list.items, rows, list.totalHits),
                 }),
               );
               yield* signal(scope, { kind: "baseline-committed" });
             }
+            // A family observed by its updates alone has no listing to answer: its scope is live
+            // once they are registered, and lists nothing.
+            if (
+              streamOf(store.state(), scope).phase === "baselining" &&
+              !registrations.some((entry) => entry.scope === scope && entry.role === "membership")
+            ) {
+              store.dispatch({
+                kind: "baseline-commit",
+                scope,
+                generation: generationOf(scope),
+                via: "zerops-realtime",
+                members: [],
+                rows: [],
+                partial: true,
+              });
+              yield* signal(scope, { kind: "baseline-committed" });
+            }
             wake();
-          }),
+          }).pipe(Effect.ensuring(Deferred.succeed(navigationReady.get(scope)!, undefined))),
         { concurrency: "unbounded", discard: true },
       );
       const observeForever = Effect.forever(
@@ -1195,22 +1416,11 @@ export function zeropsNavigationLink(options: {
     // A detail the person tried again, or whose read passed its deadline: look at it now.
     childMoved: () => wakeAttempt?.(),
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
-    revalidate: (demand) => {
-      const scope = detailScopeOf(orgId, demand);
-      sampledAt.delete(scope);
-      askedAfresh.add(scope);
-      const { phase, mode } = streamOf(store.state(), scope);
-      if (
-        phase === "connecting" ||
-        phase === "baselining" ||
-        (phase === "live" && mode === "realtime")
-      )
-        written.add(scope);
-      tellDetail(demand, { kind: "revalidate" });
-    },
+    revalidate: (demand) => revalidateScope(detailScopeOf(orgId, demand)),
     retryDetail: (demand) => {
-      askedAfresh.add(detailScopeOf(orgId, demand));
-      tellDetail(demand, { kind: "manual-retry" });
+      const scope = detailScopeOf(orgId, demand);
+      askedAfresh.add(scope);
+      tellScope(scope, { kind: "manual-retry" });
     },
     renew: (demand) => demands.renew(detailScopeOf(orgId, demand)),
     reread: () => endAttempt?.(),

@@ -15,6 +15,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import { CommandId, ConversationId, ThreadId } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
@@ -47,6 +48,7 @@ import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import * as ZeropsGitCredentialFileModule from "./ZeropsGitCredentialFile.ts";
 import * as ZeropsObserveCredentialFileModule from "./ZeropsObserveCredentialFile.ts";
+import * as ZeropsAccessReadModule from "./ZeropsAccessRead.ts";
 import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { mateAutoUpdatePolicyLayer } from "./MateAutoUpdatePolicy.ts";
@@ -56,7 +58,6 @@ import * as ZeropsConnectionsModule from "./ZeropsConnections.ts";
 import * as ZeropsTicketDoorModule from "./ZeropsTicketDoor.ts";
 import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";
 import * as ZeropsRestartReadModule from "./ZeropsRestartRead.ts";
-import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./ZeropsSetup.ts";
 import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
@@ -72,12 +73,19 @@ import * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 
 /**
  * One access list for the auth boundary, the door, the watch and the link to HQ, with the own-key
- * reader the door still reads Zerops with.
+ * reader it reads Zerops with: computed by the Mate in a Zerops container, empty elsewhere.
  */
-export const ZeropsMateAccessListLive = ZeropsMateAccessListModule.layer.pipe(
-  Layer.provideMerge(ZeropsOrgReadModule.layer),
-  Layer.provideMerge(ZeropsMateKeyModule.layer),
-);
+export const ZeropsMateAccessListLive = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* ServerConfig;
+    const zerops = config.zeropsFixtures === undefined ? config.zerops : undefined;
+    return zerops === undefined
+      ? ZeropsMateAccessListModule.emptyLayer
+      : ZeropsMateAccessListModule.layer(zerops).pipe(
+          Layer.provide(ZeropsAccessReadModule.layer(zerops)),
+        );
+  }),
+).pipe(Layer.provideMerge(ZeropsMateKeyModule.layer));
 
 /** One connection registry shared by the HQ link, WebSocket and HTTP transports. */
 export const ZeropsConnectionsLive = ZeropsConnectionsModule.layer.pipe(
@@ -99,7 +107,6 @@ export const ZeropsSessionAdmissionLive = Layer.effect(
               Option.match(current, {
                 onNone: () => false,
                 onSome: (list) =>
-                  !list.refused &&
                   list.members.some(
                     (member) =>
                       member.userId === zeropsUserIdOf(subject) && member.visibility === "open",
@@ -140,17 +147,23 @@ const ZeropsTurnAdmissionLive = ZeropsTurnAdmissionModule.layer.pipe(
  * until a crew is applied. It admits its turns through the same gate instance. One value, so the
  * link below reads the very engine the merge runs.
  */
-/** Crew's port to the platform's process list: whether a deploy a restart cut off still runs. */
+/**
+ * Crew's port to the platform's process list: whether a deploy a restart cut off still runs, read
+ * when the Mate's socket pushes a process of the project or (re)connects.
+ */
 const CrewPlatformProcessesLive = Layer.effect(
   CrewPlatformProcesses,
-  Effect.map(ZeropsRestartReadModule.ZeropsRestartRead, (reader) =>
-    CrewPlatformProcesses.of({
+  Effect.gen(function* () {
+    const reader = yield* ZeropsRestartReadModule.ZeropsRestartRead;
+    const access = yield* ZeropsMateAccessListModule.ZeropsMateAccessList;
+    return CrewPlatformProcesses.of({
       read: reader.read.pipe(
         Effect.map((evidence) => evidence.processes),
         Effect.orElseSucceed(() => undefined),
       ),
-    }),
-  ),
+      moved: Effect.map(access.processes, Stream.as(undefined)),
+    });
+  }),
 ).pipe(Layer.provide(ZeropsRestartReadModule.layer));
 
 /**
@@ -374,7 +387,7 @@ const liveLayer = Layer.mergeAll(
 ).pipe(
   // Startup's one read of why running turns were interrupted, over the same own-key reader.
   Layer.provideMerge(ZeropsRestartReadModule.layer),
-  // Reuse the exact layer the auth boundary reads; a second instance would miss HQ's list.
+  // Reuse the exact layer the auth boundary reads; a second instance would be a second list.
   Layer.provideMerge(ZeropsConnectionsLive),
   // The Mate's Git credential file: written by the link, read by the setup's git step.
   Layer.provide(ZeropsGitCredentialFileModule.layer),

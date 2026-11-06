@@ -79,10 +79,7 @@ export interface BuildZeropsGroupTreeOptions<T> extends Omit<DeriveZeropsGroupsO
   readonly apps?: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
-    readonly environments?:
-      | ReadonlyArray<HqEnvironment | CanonicalHqEnvironment>
-      | { readonly refused: string }
-      | undefined;
+    readonly environments?: ReadonlyArray<HqEnvironment | CanonicalHqEnvironment> | undefined;
   }>;
   /**
    * A primary sort key applied to the ungrouped list ahead of the name —
@@ -110,12 +107,7 @@ function canonicalGroupsOptions<T>(
             return {
               ...rest,
               ...(Object.hasOwn(app, "environments")
-                ? {
-                    environments:
-                      environments !== undefined && "refused" in environments
-                        ? environments
-                        : canonicalEnvironmentsOf(environments),
-                  }
+                ? { environments: canonicalEnvironmentsOf(environments) }
                 : {}),
             };
           }),

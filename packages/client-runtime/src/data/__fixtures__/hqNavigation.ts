@@ -29,8 +29,20 @@ import type { Row } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 
+/**
+ * A structure as HQ's stream carries it: no verdict anywhere (`can`), which the client decides from
+ * live Zerops data instead.
+ */
+type Unoffered<T> = T extends string | number | boolean | null | undefined
+  ? T
+  : T extends ReadonlyArray<infer E>
+    ? ReadonlyArray<Unoffered<E>>
+    : T extends object
+      ? { readonly [K in keyof T as K extends "can" ? never : K]: Unoffered<T[K]> }
+      : T;
+
 export interface SeededHq {
-  readonly structure?: HqStructure | CanonicalHqStructure;
+  readonly structure?: Unoffered<HqStructure> | Unoffered<CanonicalHqStructure>;
   readonly lifecycle?: ReadonlyArray<HqLifecycleRecord>;
   /** Each Mate HQ relays, by project. */
   readonly mates?: Readonly<Record<string, MateLiveView>>;
@@ -44,7 +56,7 @@ export interface SeededHq {
   readonly people?: Readonly<
     Record<string, { readonly name: string; readonly clientUserId?: string }>
   >;
-  /** HQ's presses, each held for `heldForMs` from HQ's read. */
+  /** HQ's presses and the hold status HQ last wrote. */
   readonly presses?: Readonly<Record<string, HqPressValue>>;
   /** HQ answers now; `false` leaves it as it was read, its link down. */
   readonly live?: boolean;
@@ -55,8 +67,6 @@ export interface SeededHq {
 }
 
 const PERSON: HqPersonFacts = {
-  role: "DEVELOPER",
-  mayWrite: true,
   mine: false,
   ownerUserId: null,
   waitsOnViewer: false,
@@ -86,7 +96,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     event(linkKeys.hq(orgId), { kind: "baseline-committed" });
   }
   // HQ relays only the Mates it places: those a seed names alone are placed in no application.
-  const structure: HqStructure | CanonicalHqStructure | undefined =
+  const structure: SeededHq["structure"] =
     seed.structure ??
     (seed.mates === undefined
       ? undefined
@@ -133,12 +143,11 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     face: mate.face,
     madeBy: mate.madeBy ?? null,
     standupRequestedBy: mate.standupRequestedBy ?? null,
-    closedOff: mate.closedOff ?? false,
-    setupMarker: mate.setupMarker ?? null,
     ...(mate.birthId == null ? {} : { birthId: mate.birthId }),
     ...(mate.importProcessId === undefined ? {} : { importProcessId: mate.importProcessId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),
     ...(mate.task === undefined ? {} : { task: mate.task }),
+    ...(mate.keyRefused === true ? { keyRefused: true as const } : {}),
   });
   const rows: Row[] = [
     ...(seed.lifecycle ?? []).map((record): Row => ({
@@ -151,11 +160,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
       family: "hqOrganization",
       id: orgId,
       revision,
-      value: {
-        can: structure?.can ?? {},
-        unheld: structure?.unheld ?? {},
-        build: "",
-      },
+      value: { build: "" },
     },
     {
       family: "hqStatus",
@@ -173,14 +178,13 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
         value: {
           id: app.id,
           name: app.name,
-          can: (app.can ?? {}) as HqAppValue["can"],
           contents: app.contents ?? { empty: app.projects.length === 0, deletingProjectIds: [] },
           projectIds: app.projects.map(({ projectId }) => projectId),
           births: app.births ?? [],
           ...(app.intake === undefined ? {} : { intake: app.intake }),
-          environments: (app.environments !== undefined && "refused" in app.environments
-            ? app.environments
-            : canonicalEnvironmentsOf(app.environments ?? [])) as HqAppValue["environments"],
+          environments: canonicalEnvironmentsOf(
+            app.environments ?? [],
+          ) as HqAppValue["environments"],
           changes: seed.changes?.[app.id] ?? [],
           releaseOffer: seed.releaseOffers?.[app.id] ?? null,
         },
@@ -195,7 +199,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           name: project.name,
           kind: project.kind,
           mate: project.mate == null ? null : mateOf(project.mate),
-          ...(project.can === undefined ? {} : { can: project.can as HqAppValue["can"] }),
           person: seed.person ?? PERSON,
           signedInNow: {},
           everSignedIn: project.mate?.signers ?? {},
@@ -212,7 +215,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
         name: project.name,
         kind: "mate",
         mate: mateOf(project.mate),
-        ...(project.can === undefined ? {} : { can: project.can as HqAppValue["can"] }),
         person: seed.person ?? PERSON,
         signedInNow: {},
         everSignedIn: project.mate.signers ?? {},

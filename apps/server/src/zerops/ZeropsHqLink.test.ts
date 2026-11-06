@@ -1,4 +1,5 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
   ConversationRow,
@@ -11,13 +12,21 @@ import {
   type MateAttention,
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
-import { KeyLinkUp, type LinkedMate, type MateOverview } from "@t3tools/shared/mateLink";
+import {
+  type AccessReport,
+  KeyLinkUp,
+  type LinkedMate,
+  MATE_OVERVIEW_EVERY_MS,
+  type MateOverview,
+} from "@t3tools/shared/mateLink";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -27,21 +36,26 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 
+import type { AccessRead } from "./ZeropsAccessRead.ts";
+import type { AccessLiveEvent } from "./ZeropsAccessSocket.ts";
 import * as Access from "./ZeropsMateAccessList.ts";
 import * as Tickets from "./ZeropsTicketDoor.ts";
 import * as Connections from "./ZeropsConnections.ts";
+import { makeAccessScene } from "./testing/accessScene.ts";
+import { makeChangesFile } from "./ZeropsChangesFile.ts";
 import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
 import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
+import { memorySignInStore } from "./zeropsSignIns.ts";
 import {
   type LinkSocket,
-  HQ_LINK_ADDRESS_ORDER,
+  connectLinkSocket,
   makeZeropsHqLink,
-  MATE_LINK_ROTATE_MS,
   HQ_AUTO_UPDATE_VERIFY_BUDGET,
   mateOverviewFeed,
-  preferringIpv6,
+  lookupIpv6,
   readsAlongOnly,
   type OverviewSources,
+  type ZeropsHqLinkOptions,
 } from "./ZeropsHqLink.ts";
 
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -63,11 +77,6 @@ class FakeSocket implements LinkSocket {
   >();
   closed = false;
   onSent: (message: Sent) => void = () => {};
-  /** The address family it went over; unknown unless a test says. */
-  over: "IPv4" | "IPv6" | undefined = undefined;
-  family() {
-    return this.over;
-  }
   constructor(url: string) {
     this.url = url;
   }
@@ -151,8 +160,6 @@ const STATE: LinkedMate = {
   name: "Ada",
   face: "face-1",
   standupRequestedBy: "owner",
-  closedOff: true,
-  signers: {},
   appId: null,
   appName: null,
   changes: [],
@@ -169,7 +176,7 @@ const hello = (key: string) => ({
 
 /** HQ admits the key: its first state on the link. */
 const admit = (socket: FakeSocket, mate: LinkedMate = STATE) =>
-  socket.hear({ type: "state", mate });
+  socket.hear({ type: "state", mate: { ...mate, repos: [] } });
 
 /**
  * A link over a fake HQ, a socket per connect, the project's key `zk-1` unless a test takes it. It
@@ -190,6 +197,12 @@ const rig = (
     /** What a credential's write waits on before it lands, as a file write in flight does. */
     readonly credentialLands?: (credential: string | null) => Effect.Effect<void>;
     readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
+    /** The Mate's own verdict on each ticket HQ sends; no tickets unless a test says. */
+    readonly ticket?: ZeropsHqLinkOptions["ticket"];
+    readonly closeSession?: ZeropsHqLinkOptions["closeSession"];
+    /** The Mate's own access reports; none unless a test says. */
+    readonly accessReports?: Stream.Stream<AccessReport>;
+    readonly mateChanges?: ZeropsHqLinkOptions["mateChanges"];
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -203,7 +216,6 @@ const rig = (
     const sockets: Array<FakeSocket> = [];
     const connected = yield* Queue.unbounded<FakeSocket>();
     /** The access frames HQ sent, as the link handed them on. */
-    const relayed: Array<unknown> = [];
     /** The Git credentials HQ sent, as the link handed them on. */
     const credentials: Array<string | null> = [];
     /** The Chief mark's project of each state HQ sent, as the link handed it on. */
@@ -213,6 +225,8 @@ const rig = (
     /** The tasks the link handed on; each is answered `accepted`, and the latest is `task-0`. */
     const taken: Array<string> = [];
     const autoUpdatePolicy = yield* makeMateAutoUpdatePolicy;
+    /** Whose each login is, as the link's `signers` frames leave it. */
+    const signIns = yield* memorySignInStore();
     const link = yield* makeZeropsHqLink({
       autoUpdatePolicy,
       hqOrigin: "https://hq.test/",
@@ -234,7 +248,10 @@ const rig = (
       changes: Stream.fromPubSub(changes),
       attention: options.attention ?? Stream.never,
       ...(options.health === undefined ? {} : { health: options.health }),
-      access: (frame) => Effect.sync(() => void relayed.push(frame)),
+      ...(options.ticket === undefined ? {} : { ticket: options.ticket }),
+      ...(options.closeSession === undefined ? {} : { closeSession: options.closeSession }),
+      ...(options.accessReports === undefined ? {} : { accessReports: options.accessReports }),
+      ...(options.mateChanges === undefined ? {} : { mateChanges: options.mateChanges }),
       gitCredential: (credential) =>
         Effect.uninterruptible(
           (options.credentialLands?.(credential) ?? Effect.void).pipe(
@@ -244,6 +261,7 @@ const rig = (
       ...(options.observeCredential === undefined
         ? {}
         : { observeCredential: options.observeCredential }),
+      signers: signIns.heard,
       gitFingerprint: Ref.get(fingerprint),
       chief: (projectId) => Effect.sync(() => void chiefs.push(projectId)),
       automation: {
@@ -289,11 +307,11 @@ const rig = (
       connected,
       until,
       reads,
-      relayed,
       credentials,
       chiefs,
       automation,
       taken,
+      signIns,
     };
   });
 
@@ -319,6 +337,66 @@ const linked = (sockets: ReadonlyArray<FakeSocket>, index: number) =>
 
 describe("ZeropsHqLink", () => {
   it.effect(
+    "A link whose HQ sends no state within the handshake budget closes and reconnects",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { sockets } = yield* rig({
+            everyMs: 10_000_000,
+            reconnectDelaysMs: [100, 1_000],
+          });
+          const first = yield* opened(sockets, 0);
+          assert.deepStrictEqual(first.sent, [hello("zk-1")]);
+
+          yield* TestClock.adjust(Duration.seconds(29));
+          first.hear({ type: "ping" });
+          yield* TestClock.adjust(Duration.millis(999));
+          assert.deepStrictEqual(first.sent.at(-1), { type: "pong" });
+          assert.isFalse(first.closed);
+          assert.lengthOf(sockets, 1);
+
+          yield* TestClock.adjust(Duration.millis(1));
+          assert.isTrue(first.closed);
+          yield* TestClock.adjust(Duration.millis(130));
+          const next = yield* opened(sockets, 1);
+          assert.deepStrictEqual(next.sent, [hello("zk-1")]);
+          yield* TestClock.adjust(Duration.seconds(30));
+          assert.isTrue(next.closed);
+          yield* TestClock.adjust(Duration.millis(130));
+          assert.lengthOf(sockets, 2);
+          yield* TestClock.adjust(Duration.millis(1_120));
+          const admitted = yield* opened(sockets, 2);
+          assert.deepStrictEqual(admitted.sent, [hello("zk-1")]);
+          admit(admitted);
+          yield* TestClock.adjust(Duration.minutes(31));
+          assert.isFalse(admitted.closed);
+          assert.lengthOf(sockets, 3);
+        }),
+      ),
+  );
+
+  it.effect("keeps a healthy link until it closes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets } = yield* rig({ everyMs: 10_000_000 });
+        const first = yield* linked(sockets, 0);
+        yield* TestClock.adjust(Duration.minutes(5));
+        assert.lengthOf(sockets, 1);
+        assert.isFalse(first.closed);
+        first.emit("close");
+        yield* TestClock.adjust(Duration.millis(30));
+        assert.isTrue(first.closed);
+        const failed = sockets[1]!;
+        failed.emit("error");
+        yield* TestClock.adjust(Duration.millis(30));
+        assert.isTrue(failed.closed);
+        const next = yield* linked(sockets, 2);
+        assert.deepStrictEqual(next.sent[0], hello("zk-1"));
+      }),
+    ),
+  );
+
+  it.effect(
     "Decision: A Mate reconnects when its current HQ link stops receiving traffic, even if the socket never reports closed.",
     () =>
       Effect.scoped(
@@ -329,7 +407,6 @@ describe("ZeropsHqLink", () => {
               Effect.gen(function* () {
                 const { sockets } = yield* rig({ everyMs: 10_000_000 });
                 yield* TestClock.adjust(Duration.zero);
-                sockets[0]!.over = "IPv6";
                 const socket = yield* opened(sockets, 0);
                 socket.hear({ type: "state", mate: STATE, pingIntervalMs });
                 yield* TestClock.adjust(Duration.millis(3 * pingIntervalMs - 1));
@@ -352,25 +429,26 @@ describe("ZeropsHqLink", () => {
       Effect.gen(function* () {
         const { sockets } = yield* rig({ everyMs: 10_000_000 });
         const first = yield* opened(sockets, 0);
-        // Rotate before the old generation's silence deadline.
-        first.hear({ type: "state", mate: STATE, pingIntervalMs: MATE_LINK_ROTATE_MS / 2 });
-        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-        sockets[1]!.over = "IPv6";
+        first.hear({ type: "state", mate: STATE, pingIntervalMs: 20_000 });
+        yield* TestClock.adjust(Duration.seconds(10));
+        first.closeWith(4409);
+        yield* TestClock.adjust(Duration.millis(30));
         const successor = yield* opened(sockets, 1);
-        successor.hear({ type: "state", mate: STATE, pingIntervalMs: 20_000 });
+        successor.hear({ type: "state", mate: STATE, pingIntervalMs: 30_000 });
         yield* TestClock.adjust(Duration.zero);
         assert.isTrue(first.closed);
-        // The successor has its own short budget, regardless of its predecessor's.
-        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS / 2 + 1));
+        // The old deadline passes while the successor has its own longer budget.
+        yield* TestClock.adjust(Duration.millis(49_970));
         assert.isFalse(successor.closed);
         assert.lengthOf(sockets, 2);
-        yield* TestClock.adjust(Duration.millis(60_000 - MATE_LINK_ROTATE_MS / 2 - 1));
+        yield* TestClock.adjust(Duration.millis(40_029));
+        assert.isFalse(successor.closed);
+        yield* TestClock.adjust(Duration.millis(1));
         assert.isTrue(successor.closed);
         yield* TestClock.adjust(Duration.millis(30));
-        sockets[2]!.over = "IPv6";
         const legacy = yield* opened(sockets, 2);
         admit(legacy);
-        yield* TestClock.adjust(Duration.millis(3 * MATE_LINK_ROTATE_MS));
+        yield* TestClock.adjust(Duration.minutes(5));
         assert.isFalse(legacy.closed);
         assert.lengthOf(sockets, 3);
       }),
@@ -384,7 +462,6 @@ describe("ZeropsHqLink", () => {
         Effect.gen(function* () {
           const { sockets, key, link, taken, autoUpdatePolicy } = yield* rig();
           yield* TestClock.adjust(Duration.zero);
-          sockets[0]!.over = "IPv6";
           const first = yield* opened(sockets, 0);
           first.hear({
             type: "state",
@@ -439,7 +516,6 @@ describe("ZeropsHqLink", () => {
               Deferred.succeed(writing, undefined).pipe(Effect.andThen(Deferred.await(written))),
           });
           yield* TestClock.adjust(Duration.zero);
-          sockets[0]!.over = "IPv6";
           const socket = yield* opened(sockets, 0);
           socket.hear({ type: "state", mate: STATE, pingIntervalMs: 1_000 });
           socket.hear({ type: "git-credential", credential: "credential-fixture" });
@@ -462,25 +538,6 @@ describe("ZeropsHqLink", () => {
       ),
   );
 
-  it.effect(
-    "an HQ that announces no period leaves the link unguarded before and after its state",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { sockets } = yield* rig({ everyMs: 10_000_000 });
-          yield* TestClock.adjust(Duration.zero);
-          sockets[0]!.over = "IPv6";
-          const socket = yield* opened(sockets, 0);
-          yield* TestClock.adjust(Duration.minutes(31));
-          assert.isFalse(socket.closed);
-          admit(socket);
-          yield* TestClock.adjust(Duration.minutes(31));
-          assert.isFalse(socket.closed);
-          assert.lengthOf(sockets, 1);
-        }),
-      ),
-  );
-
   it.live(
     "checks the current org policy with a fresh correlated reply before granting update permission",
     () =>
@@ -488,7 +545,6 @@ describe("ZeropsHqLink", () => {
         Effect.gen(function* () {
           const { autoUpdatePolicy, connected } = yield* rig();
           const socket = yield* Queue.take(connected);
-          socket.over = "IPv6";
           socket.emit("open");
           socket.hear({
             type: "state",
@@ -523,7 +579,6 @@ describe("ZeropsHqLink", () => {
         Effect.gen(function* () {
           const { autoUpdatePolicy, connected } = yield* rig();
           const socket = yield* Queue.take(connected);
-          socket.over = "IPv6";
           socket.emit("open");
           socket.hear({
             type: "state",
@@ -545,7 +600,6 @@ describe("ZeropsHqLink", () => {
         Effect.gen(function* () {
           const { autoUpdatePolicy, connected } = yield* rig();
           const socket = yield* Queue.take(connected);
-          socket.over = "IPv6";
           socket.emit("open");
           const value = { orgId: "ORG", enabled: true, revision: 0 };
           socket.hear({ type: "state", mate: STATE, autoUpdate: value });
@@ -639,45 +693,123 @@ describe("ZeropsHqLink", () => {
     ),
   );
 
-  // HQ sends who the project opens for and lists, and the time of the view it read; the link hands
-  // each frame on as it lands (`ZeropsMateAccessList`), the refused one too.
-  it.effect("hands on the access HQ relays, with its age", () =>
-    Effect.scoped(
+  /** Who an older HQ said the project opens for, as it sent it: a snapshot, then its refusal. */
+  const olderAccess = [
+    {
+      type: "access",
+      version: 1,
+      viewAt: "2026-10-24T10:00:00.000Z",
+      full: true,
+      members: [{ userId: "bob", role: "OWNER", visibility: "open" }],
+    },
+    { type: "access", version: 2, full: true, refused: true, members: [] },
+  ];
+
+  it.effect(
+    "Decision: The link's hello and state handling are unchanged; a Mate on a new server still links to an older HQ that sends `access` frames and ignores them",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { link, sockets } = yield* rig();
+          const socket = yield* linked(sockets, 0);
+          for (const frame of olderAccess) socket.hear(frame);
+          socket.hear({ type: "ping" });
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(socket.sent[0], hello("zk-1"));
+          assert.deepStrictEqual(socket.sent.at(-1), { type: "pong" });
+          assert.isFalse(socket.closed);
+          assert.strictEqual(sockets.length, 1);
+          assert.deepStrictEqual(yield* link.standing, { kind: "linked", mate: STATE });
+          socket.closeWith(1006);
+          yield* TestClock.adjust(Duration.millis(30));
+          const next = yield* linked(sockets, 1);
+          for (const frame of olderAccess) next.hear(frame);
+          next.hear({ type: "ping" });
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(next.sent.at(-1), { type: "pong" });
+          assert.isFalse(next.closed);
+          assert.deepStrictEqual(yield* link.standing, { kind: "linked", mate: STATE });
+        }),
+      ),
+  );
+
+  it.effect(
+    "Decision: The Mate's admission list is computed from its own Zerops stream and REST pair only; the relayed `access` frame, its `heard` state, its merge into the list, its contract field and its tests are deleted (Drops-test trailers). Decision: What must NOT happen: no new frame; no polling; no second list.",
+    () =>
       Effect.gen(function* () {
-        const { sockets, relayed } = yield* rig();
+        // Zerops names Jan alone; the older HQ's list opens the project for Bob.
+        const scene = yield* makeAccessScene({ jan: "OWNER" });
+        const tickets = yield* Tickets.make;
+        const connections = yield* Connections.make.pipe(
+          Effect.provideService(Access.ZeropsMateAccessList, scene.list),
+          Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
+          Effect.provide(NodeCrypto.layer),
+        );
+        const sockets: Array<FakeSocket> = [];
+        const answers = yield* Queue.unbounded<unknown>();
+        yield* makeZeropsHqLink({
+          hqOrigin: "https://hq.test",
+          serviceId: "svc-mate",
+          publicOrigin: "https://mate.example",
+          readKey: Effect.succeed("project-key"),
+          connect: (url) => {
+            const socket = new FakeSocket(url);
+            socket.onSent = (message) => {
+              if (message.type === "ticket-ack" || message.type === "ticket_refused")
+                Queue.offerUnsafe(answers, message);
+            };
+            sockets.push(socket);
+            return socket;
+          },
+          overview: Effect.succeed(Option.none()),
+          changes: Stream.never,
+          attention: Stream.never,
+          ticket: connections.ticket,
+          closeSession: connections.closeSession,
+          gitCredential: () => Effect.void,
+          gitFingerprint: Effect.succeed(Option.none()),
+        });
         const socket = yield* linked(sockets, 0);
-        const members = [{ userId: "owner", role: "OWNER", visibility: "open" }];
-        const snapshot = {
-          type: "access",
-          version: 1,
-          viewAt: "2026-10-24T10:00:00.000Z",
-          full: true,
-          members,
-        };
-        const refused = { type: "access", version: 2, full: true, refused: true, members: [] };
-        socket.hear(snapshot);
-        socket.hear(refused);
-        // An access frame naming a visibility HQ does not send is no frame.
-        socket.hear({ ...snapshot, members: [{ ...members[0], visibility: "hidden" }] });
-        yield* TestClock.adjust(Duration.zero);
-        assert.deepStrictEqual(relayed, [snapshot, refused]);
-      }),
-    ),
+        const ticket = (userId: string) => ({
+          type: "ticket",
+          ticket: `t-${userId}`,
+          userId,
+          sessionId: "hq-session",
+          expiresIn: 60,
+        });
+        socket.hear(olderAccess[0]);
+        socket.hear(ticket("bob"));
+        assert.deepStrictEqual(yield* Queue.take(answers), {
+          type: "ticket_refused",
+          ticket: "t-bob",
+          reason: "not_in_list",
+        });
+        socket.hear(ticket("jan"));
+        assert.deepStrictEqual(yield* Queue.take(answers), {
+          type: "ticket-ack",
+          ticket: "t-jan",
+        });
+        assert.deepStrictEqual(
+          socket.sent.map((message) => message.type),
+          ["hello", "ticket_refused", "ticket-ack"],
+        );
+      }).pipe(Effect.scoped),
   );
 
   it.effect(
     "TC-6 and TC-8 the HQ link holds tickets before acknowledging and forwards sign-out to live connections",
     () =>
       Effect.gen(function* () {
-        const access = yield* Access.make;
+        const scene = yield* makeAccessScene({ jan: "OWNER" });
         const tickets = yield* Tickets.make;
         const connections = yield* Connections.make.pipe(
-          Effect.provideService(Access.ZeropsMateAccessList, access),
+          Effect.provideService(Access.ZeropsMateAccessList, scene.list),
           Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
           Effect.provide(NodeCrypto.layer),
         );
         const sockets: Array<FakeSocket> = [];
         const pongs = yield* Queue.unbounded<void>();
+        const acks = yield* Queue.unbounded<void>();
         const closed: Array<string> = [];
         const heldAtAcknowledgement: Array<boolean> = [];
         let ticketHeld = false;
@@ -688,9 +820,11 @@ describe("ZeropsHqLink", () => {
           readKey: Effect.succeed("project-key"),
           connect: (url) => {
             const socket = new FakeSocket(url);
-            socket.over = "IPv6";
             socket.onSent = (message) => {
-              if (message.type === "ticket-ack") heldAtAcknowledgement.push(ticketHeld);
+              if (message.type === "ticket-ack") {
+                heldAtAcknowledgement.push(ticketHeld);
+                Queue.offerUnsafe(acks, undefined);
+              }
               if (message.type === "pong") Queue.offerUnsafe(pongs, undefined);
             };
             sockets.push(socket);
@@ -699,13 +833,14 @@ describe("ZeropsHqLink", () => {
           overview: Effect.succeed(Option.none()),
           changes: Stream.never,
           attention: Stream.never,
-          access: connections.heard,
           ticket: (frame) =>
-            tickets.heard(frame).pipe(
-              Effect.tap(() =>
-                Effect.sync(() => {
-                  ticketHeld = true;
-                }),
+            connections.ticket(frame).pipe(
+              Effect.map(
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    ticketHeld = true;
+                  }),
+                ),
               ),
             ),
           closeSession: connections.closeSession,
@@ -714,21 +849,13 @@ describe("ZeropsHqLink", () => {
         });
         const socket = yield* linked(sockets, 0);
         socket.hear({
-          type: "access",
-          version: 1,
-          full: true,
-          viewAt: "2026-10-24T10:00:00.000Z",
-          members: [{ userId: "jan", role: "OWNER", visibility: "open" }],
-        });
-        socket.hear({
           type: "ticket",
           ticket: "browser-ticket",
           userId: "jan",
           sessionId: "hq-session",
           expiresIn: 60,
         });
-        socket.hear({ type: "ping" });
-        yield* Queue.take(pongs);
+        yield* Queue.take(acks);
         assert.deepEqual(heldAtAcknowledgement, [true]);
         assert.deepEqual(
           socket.sent.filter((message) => message.type === "ticket-ack"),
@@ -747,6 +874,209 @@ describe("ZeropsHqLink", () => {
         assert.deepEqual(closed, ["browser"]);
         assert.isTrue(Option.isNone(yield* connections.current("browser-ticket")));
       }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "answers a ticket the Mate's own list does not open for with ticket_refused and its reason, instead of ticket-ack",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const verdicts = { jan: "open", eva: "read_only" } as const;
+          const { sockets } = yield* rig({
+            ticket: (frame) =>
+              Effect.succeed(
+                Effect.succeed(
+                  frame.userId in verdicts
+                    ? verdicts[frame.userId as keyof typeof verdicts]
+                    : "not_in_list",
+                ),
+              ),
+          });
+          const socket = yield* linked(sockets, 0);
+          for (const userId of ["jan", "eva", "token"])
+            socket.hear({
+              type: "ticket",
+              ticket: `t-${userId}`,
+              userId,
+              sessionId: "s",
+              expiresIn: 60,
+            });
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(
+            socket.sent.filter(
+              (message) => message.type === "ticket-ack" || message.type === "ticket_refused",
+            ),
+            [
+              { type: "ticket-ack", ticket: "t-jan" },
+              { type: "ticket_refused", ticket: "t-eva", reason: "read_only" },
+              { type: "ticket_refused", ticket: "t-token", reason: "not_in_list" },
+            ],
+          );
+        }),
+      ),
+  );
+
+  it.effect(
+    "A ticket whose verdict waits on a Zerops read holds back none of the frames after it: ping and close-session are answered at once",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const readAnswers = yield* Deferred.make<void>();
+          const closedSessions: Array<string> = [];
+          const { sockets } = yield* rig({
+            ticket: () =>
+              Effect.succeed(Deferred.await(readAnswers).pipe(Effect.as("open" as const))),
+            closeSession: (sessionId) =>
+              Effect.sync(() => {
+                closedSessions.push(sessionId);
+              }),
+          });
+          const socket = yield* linked(sockets, 0);
+          socket.hear({
+            type: "ticket",
+            ticket: "t-1",
+            userId: "jan",
+            sessionId: "s",
+            expiresIn: 60,
+          });
+          socket.hear({ type: "close-session", sessionId: "other" });
+          socket.hear({ type: "ping" });
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(closedSessions, ["other"]);
+          assert.deepStrictEqual(
+            socket.sent.filter(
+              (message) => message.type === "pong" || message.type === "ticket-ack",
+            ),
+            [{ type: "pong" }],
+          );
+          yield* Deferred.succeed(readAnswers, undefined);
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(
+            socket.sent.filter((message) => message.type === "ticket-ack"),
+            [{ type: "ticket-ack", ticket: "t-1" }],
+          );
+        }),
+      ),
+  );
+
+  it.effect(
+    "reports the Mate's own access list once HQ answered: its latest on every link, then after each recompute",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const named = (at: string, openers: ReadonlyArray<string>): AccessReport => ({
+            at,
+            openers,
+            listed: ["eva"],
+          });
+          const reports = yield* SubscriptionRef.make(
+            named("2026-11-03T10:00:00.000Z", ["jan", "bob"]),
+          );
+          const { sockets } = yield* rig({ accessReports: SubscriptionRef.changes(reports) });
+          const reported = (socket: FakeSocket) =>
+            socket.sent.filter((message) => message.type === "access_report");
+          const first = yield* opened(sockets, 0);
+          assert.deepStrictEqual(reported(first), []);
+          admit(first);
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(reported(first), [
+            { type: "access_report", ...named("2026-11-03T10:00:00.000Z", ["jan", "bob"]) },
+          ]);
+          yield* SubscriptionRef.set(reports, named("2026-11-03T10:05:00.000Z", ["jan"]));
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(reported(first).at(-1), {
+            type: "access_report",
+            ...named("2026-11-03T10:05:00.000Z", ["jan"]),
+          });
+          first.emit("close");
+          yield* TestClock.adjust(Duration.millis(30));
+          const second = yield* linked(sockets, 1);
+          assert.deepStrictEqual(reported(second), [
+            { type: "access_report", ...named("2026-11-03T10:05:00.000Z", ["jan"]) },
+          ]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "Decision: The Mate's access report carries `at`, `openers` and `listed` (full lists every time) and no `missing`; the in-memory baseline and everything that only served it are deleted; the report is still sent on every change of the live list, at start, on reconnect and with the 5 min ± 60 s re-read, unchanged.",
+    () =>
+      Effect.gen(function* () {
+        const member = (userId: string, orgRole: string) => ({
+          clientUserId: `cu-${userId}`,
+          userId,
+          orgRole,
+          status: "ACTIVE",
+          canCreateProjects: false,
+        });
+        const answer = yield* Ref.make<AccessRead>({
+          kind: "read",
+          project: { clientId: "org", overrides: {}, tagList: [] },
+          members: [member("jan", "OWNER"), member("eva", "BASIC_USER")],
+        });
+        /** One run of the Mate's server: its own list and its link, nothing kept in between. */
+        const process = Effect.gen(function* () {
+          const live = yield* Queue.unbounded<AccessLiveEvent>();
+          const list = yield* Access.make({
+            projectId: "P_MATE",
+            read: Ref.get(answer),
+            live: () => Stream.fromQueue(live),
+          });
+          const { sockets } = yield* rig({
+            accessReports: list.reports,
+            reconnectDelaysMs: [1_000],
+          });
+          return { live, sockets };
+        });
+        // When a report was made is the list's own concern; here, what it names.
+        const reported = (socket: FakeSocket): ReadonlyArray<unknown> =>
+          socket.sent.flatMap((message) =>
+            message.type === "access_report" ? [{ ...message, at: "t" }] : [],
+          );
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const { sockets } = yield* process;
+            const first = yield* linked(sockets, 0);
+            assert.deepStrictEqual(reported(first), [
+              { type: "access_report", at: "t", openers: ["jan", "eva"], listed: [] },
+            ]);
+          }),
+        );
+        // Eva is taken away while the Mate restarts: HQ, not the Mate, finds her gone.
+        yield* Ref.set(answer, {
+          kind: "read",
+          project: { clientId: "org", overrides: {}, tagList: [] },
+          members: [member("jan", "OWNER")],
+        });
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const { live, sockets } = yield* process;
+            const first = yield* linked(sockets, 0);
+            assert.deepStrictEqual(reported(first), [
+              { type: "access_report", at: "t", openers: ["jan"], listed: [] },
+            ]);
+            // A frame that lists Ben read-only: the whole list again, HQ never answering a report.
+            yield* Queue.offer(live, {
+              _tag: "frame",
+              frame: { kind: "members", upsert: [member("ben", "READ_ONLY")], remove: [] },
+            });
+            yield* TestClock.adjust(Duration.zero);
+            assert.deepStrictEqual(reported(first).at(-1), {
+              type: "access_report",
+              at: "t",
+              openers: ["jan"],
+              listed: ["ben"],
+            });
+            first.emit("close");
+            // The link's wait and its spread of up to a quarter more.
+            yield* TestClock.adjust(Duration.millis(1_251));
+            const second = yield* linked(sockets, 1);
+            assert.deepStrictEqual(reported(second), [
+              { type: "access_report", at: "t", openers: ["jan"], listed: ["ben"] },
+            ]);
+          }),
+        );
+      }),
   );
 
   it.effect("acknowledges Observe writes and revocation only after their truthful receipt", () =>
@@ -824,23 +1154,58 @@ describe("ZeropsHqLink", () => {
             ),
         });
         const first = yield* linked(sockets, 0);
-        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-        const successor = yield* opened(sockets, 1);
         first.hear({ type: "observe-credential", id: "old", credential: "zobs.old" });
-        // A second old frame is queued behind the in-flight write; it must never land.
-        first.hear({ type: "observe-credential", id: "stale", credential: "zobs.stale" });
         yield* TestClock.adjust(Duration.zero);
-        admit(successor);
-        successor.hear({ type: "observe-credential", id: "new", credential: "zobs.new" });
+        first.closeWith(4409);
+        // A late frame queued after the close must never land.
+        first.hear({ type: "observe-credential", id: "stale", credential: "zobs.stale" });
         yield* TestClock.adjust(Duration.zero);
         assert.deepStrictEqual(written, []);
         yield* Deferred.succeed(oldLands, undefined);
+        yield* TestClock.adjust(Duration.millis(30));
+        const successor = yield* linked(sockets, 1);
+        successor.hear({ type: "observe-credential", id: "new", credential: "zobs.new" });
         yield* TestClock.adjust(Duration.zero);
         assert.deepStrictEqual(written, ["zobs.old", "zobs.new"]);
         assert.deepStrictEqual(successor.sent.at(-1), {
           type: "observe-credential-ack",
           id: "new",
           ok: true,
+        });
+      }),
+    ),
+  );
+
+  it.effect("ignores malformed signer frames and accepts the next valid frame", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets, signIns } = yield* rig();
+        const moved = yield* Stream.runHead(signIns.changes).pipe(
+          Effect.forkScoped({ startImmediately: true }),
+        );
+        const socket = yield* linked(sockets, 0);
+        socket.hear({ type: "signers", signers: null });
+        socket.hear({ type: "signers", signers: { codex: 42 } });
+        socket.hear({ type: "signers", signers: { codex: "U-eva" } });
+        yield* Fiber.join(moved);
+        assert.deepStrictEqual(yield* signIns.load, { codex: { by: "U-eva" } });
+      }),
+    ),
+  );
+
+  it.effect("takes whose each login is from HQ's signers frame, at once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets, signIns } = yield* rig();
+        const moved = yield* Stream.runHead(signIns.changes).pipe(
+          Effect.forkScoped({ startImmediately: true }),
+        );
+        const socket = yield* linked(sockets, 0);
+        socket.hear({ type: "signers", signers: { "claude-code": "U-eva", codex: "U-jan" } });
+        yield* Fiber.join(moved);
+        assert.deepStrictEqual(yield* signIns.load, {
+          "claude-code": { by: "U-eva" },
+          codex: { by: "U-jan" },
         });
       }),
     ),
@@ -872,6 +1237,56 @@ describe("ZeropsHqLink", () => {
           assert.deepStrictEqual(chiefs, [null, "P_MATE", "P_OTHER"]);
         }),
       ),
+  );
+
+  it.effect(
+    "Decision: every state HQ sends lands as the Mate's changes, and only them, in the file zcp reads",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "mate-changes-file-" });
+        const directory = path.join(root, ".zcp", "hq");
+        const at = path.join(directory, "changes.json");
+        const { sockets } = yield* rig({ mateChanges: yield* makeChangesFile(at) });
+        const socket = yield* linked(sockets, 0);
+        const change = {
+          repo: "shop",
+          number: 3,
+          title: "Mate: shop",
+          head: "a".repeat(40),
+          mergedSha: null,
+          landedHead: null,
+          branch: "mate/ada",
+        } as const;
+        admit(socket, {
+          ...STATE,
+          appId: "app-1",
+          appName: "Shop",
+          changes: [{ ...change, state: "open", updatedAt: "2026-11-05T10:00:00.000Z" }],
+          ownerUserId: "owner",
+        });
+        admit(socket, {
+          ...STATE,
+          appId: "app-1",
+          appName: "Shop",
+          changes: [{ ...change, state: "merged", mergedSha: "b".repeat(40) }],
+          ownerUserId: "owner",
+        });
+        // Frames are taken in order: the pong is the receipt that both states were handled.
+        const ponged = yield* Deferred.make<void>();
+        socket.onSent = (message) => {
+          if (message.type === "pong") Deferred.doneUnsafe(ponged, Effect.void);
+        };
+        socket.hear({ type: "ping" });
+        yield* Deferred.await(ponged);
+        assert.deepStrictEqual(JSON.parse(yield* fs.readFileString(at)), {
+          appId: "app-1",
+          appName: "Shop",
+          changes: [{ ...change, state: "merged", mergedSha: "b".repeat(40) }],
+        });
+        assert.deepStrictEqual(yield* fs.readDirectory(directory), ["changes.json"]);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
   // HQ's state carries the application the Mate is in and its changes there: kept whole, as sent.
@@ -1289,110 +1704,120 @@ describe("ZeropsHqLink", () => {
     ),
   );
 
-  it.effect("sends only the sections that changed, at most once per 500 ms", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { sockets, current, changes } = yield* rig();
-        const socket = yield* linked(sockets, 0);
-        // Two changes inside one 500 ms: the second is the one sent, in one frame.
-        yield* TestClock.adjust(Duration.millis(100));
-        yield* Ref.set(current, overview("Add a sign-up page"));
-        yield* PubSub.publish(changes, undefined);
-        yield* TestClock.adjust(Duration.millis(200));
-        yield* Ref.set(current, overview("Add a password reset"));
-        yield* PubSub.publish(changes, undefined);
-        yield* TestClock.adjust(Duration.millis(199));
-        assert.strictEqual(socket.sent.length, 2);
-        yield* TestClock.adjust(Duration.millis(1));
-        assert.deepStrictEqual(socket.sent.slice(2), [
-          {
-            type: "overview",
-            full: false,
-            sections: { threads: overview("Add a password reset").threads },
-          },
-        ]);
-      }),
-    ),
-  );
-
-  // F26: the Zerops L7 cuts every link at 120 s. A Mate opens its successor before that, and lets
-  // the old link go only once HQ answered on the new one: HQ never sees it without a link.
-  it.effect("rotates to a successor before the cut, and closes the old link once HQ answered", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { sockets, relayed } = yield* rig();
-        const first = yield* linked(sockets, 0);
-        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS - 1));
-        assert.strictEqual(sockets.length, 1);
-        yield* TestClock.adjust(Duration.millis(1));
-        const successor = yield* opened(sockets, 1);
-        assert.deepStrictEqual(successor.sent, [hello("zk-1")]);
-        // Until HQ answers on it, the old link stays and still answers HQ.
-        first.hear({ type: "ping" });
-        yield* TestClock.adjust(Duration.zero);
-        assert.deepStrictEqual(first.sent.at(-1), { type: "pong" });
-        assert.isFalse(first.closed);
-
-        admit(successor);
-        yield* TestClock.adjust(Duration.zero);
-        assert.isTrue(first.closed);
-        assert.isFalse(successor.closed);
-        assert.deepStrictEqual(successor.sent.slice(1), [
-          { type: "overview", full: true, overview: overview("Add a login page") },
-        ]);
-        successor.hear({ type: "ping" });
-        yield* TestClock.adjust(Duration.zero);
-        assert.deepStrictEqual(successor.sent.at(-1), { type: "pong" });
-        // It hands on the access HQ sends, as the old link did.
-        const access = {
-          type: "access",
-          version: 1,
-          viewAt: "2026-10-24T10:00:00.000Z",
-          full: true,
-          members: [],
-        };
-        successor.hear(access);
-        yield* TestClock.adjust(Duration.zero);
-        assert.deepStrictEqual(relayed, [access]);
-
-        // The successor rotates in its turn, counted from its own opening.
-        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-        yield* opened(sockets, 2);
-        assert.strictEqual(sockets.length, 3);
-      }),
-    ),
-  );
-
-  // HQ admits the successor's key and closes the old link 4409 before it sends its state on the new.
   it.effect(
-    "waits on its successor when HQ supersedes the old link on admitting it, and links nothing anew",
+    "Decision: The Mate overview goes up at its change, at most once per 500 ms; nothing ticks while nothing changed.",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { sockets, link } = yield* rig();
-          const first = yield* linked(sockets, 0);
-          yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-          const successor = yield* opened(sockets, 1);
-          first.closeWith(4409);
+          const now = yield* Ref.make(overview("Add a login page"));
+          const state = { readable: true, reads: 0 };
+          const { sockets, changes } = yield* rig({
+            overview: Effect.suspend(() => {
+              state.reads += 1;
+              return state.readable
+                ? Ref.get(now).pipe(Effect.map(Option.some))
+                : Effect.succeed(Option.none<MateOverview>());
+            }),
+          });
+          const socket = yield* linked(sockets, 0);
+          const sectionsOf = (title: string) => ({
+            type: "overview",
+            full: false,
+            sections: { threads: overview(title).threads },
+          });
+          const change = (title: string) =>
+            Ref.set(now, overview(title)).pipe(
+              Effect.andThen(PubSub.publish(changes, undefined)),
+              Effect.andThen(TestClock.adjust(Duration.zero)),
+            );
+          // A change after a quiet while goes up at once, not at a next tick.
+          yield* TestClock.adjust(Duration.millis(10_250));
+          assert.strictEqual(state.reads, 1);
+          yield* change("Add a sign-up page");
+          assert.deepStrictEqual(socket.sent.slice(2), [sectionsOf("Add a sign-up page")]);
+          // Changes inside the window wait for its end, and go up as one frame of the last.
+          yield* TestClock.adjust(Duration.millis(100));
+          yield* change("Add a password reset");
+          yield* TestClock.adjust(Duration.millis(200));
+          yield* change("Add a password reset link");
+          yield* TestClock.adjust(Duration.millis(199));
+          assert.strictEqual(socket.sent.length, 3);
+          yield* TestClock.adjust(Duration.millis(1));
+          assert.deepStrictEqual(socket.sent.slice(3), [sectionsOf("Add a password reset link")]);
+          // An overview that cannot be read is read again at the next change, never on a timer.
           yield* TestClock.adjust(Duration.seconds(1));
-          assert.isFalse(successor.closed);
-          assert.lengthOf(sockets, 2);
-          admit(successor, { ...STATE, name: "Ada II" });
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(successor.sent.slice(1), [
-            { type: "overview", full: true, overview: overview("Add a login page") },
-          ]);
-          const standing = yield* link.standing;
-          assert.isTrue(standing.kind === "linked" && standing.mate.name === "Ada II");
-          // The successor is the link now, rotating in its turn.
-          yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-          assert.lengthOf(sockets, 3);
-          assert.isFalse(successor.closed);
+          state.readable = false;
+          const before = state.reads;
+          yield* change("Add a profile page");
+          assert.strictEqual(state.reads, before + 1);
+          yield* TestClock.adjust(Duration.minutes(2));
+          assert.strictEqual(state.reads, before + 1);
+          state.readable = true;
+          yield* change("Add a profile page");
+          assert.deepStrictEqual(socket.sent.at(-1), sectionsOf("Add a profile page"));
+          assert.strictEqual(socket.sent.length, 5);
         }),
       ),
   );
 
-  // During a rotation HQ's older link may still issue a credential the successor already replaced.
+  it.effect("keeps the original link past the IPv4 cut and continues answering HQ", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets } = yield* rig();
+        const first = yield* linked(sockets, 0);
+        yield* TestClock.adjust(Duration.seconds(150));
+        assert.lengthOf(sockets, 1);
+        first.hear({ type: "ping" });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(first.sent.at(-1), { type: "pong" });
+        assert.isFalse(first.closed);
+        assert.lengthOf(sockets, 1);
+      }),
+    ),
+  );
+
+  it.effect("after HQ supersedes the single link, reconnects once and uses its new state", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets, link } = yield* rig();
+        const first = yield* linked(sockets, 0);
+        first.closeWith(4409);
+        yield* TestClock.adjust(Duration.millis(30));
+        const successor = yield* opened(sockets, 1);
+        assert.isFalse(successor.closed);
+        assert.lengthOf(sockets, 2);
+        admit(successor, { ...STATE, name: "Ada II" });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(successor.sent.slice(1), [
+          { type: "overview", full: true, overview: overview("Add a login page") },
+        ]);
+        const standing = yield* link.standing;
+        assert.isTrue(standing.kind === "linked" && standing.mate.name === "Ada II");
+        yield* TestClock.adjust(Duration.seconds(150));
+        assert.lengthOf(sockets, 2);
+        assert.isFalse(successor.closed);
+      }),
+    ),
+  );
+
+  it.effect("reconnects after HQ closes a link before sending its first state", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets, link } = yield* rig();
+        const first = yield* opened(sockets, 0);
+        assert.deepStrictEqual(first.sent, [hello("zk-1")]);
+        first.closeWith(4409);
+        yield* TestClock.adjust(Duration.millis(30));
+        const successor = yield* linked(sockets, 1);
+        assert.isTrue(first.closed);
+        assert.isFalse(successor.closed);
+        assert.lengthOf(sockets, 2);
+        assert.deepStrictEqual(yield* link.standing, { kind: "linked", mate: STATE });
+      }),
+    ),
+  );
+
+  // A closed link's late credential cannot replace one delivered after reconnecting.
   it.effect(
     "a credential frame from a superseded link never overwrites the current link's credential",
     () =>
@@ -1404,58 +1829,17 @@ describe("ZeropsHqLink", () => {
               credential === "ORG.old" ? Deferred.await(oldLands) : Effect.void,
           });
           const first = yield* linked(sockets, 0);
-          yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-          const successor = yield* opened(sockets, 1);
-          // The old link's credential is still being written as HQ answers on the successor.
           first.hear({ type: "git-credential", credential: "ORG.old" });
           yield* TestClock.adjust(Duration.zero);
-          admit(successor);
-          successor.hear({ type: "git-credential", credential: "ORG.new" });
+          first.closeWith(4409);
+          first.hear({ type: "git-credential", credential: "ORG.stale" });
           yield* TestClock.adjust(Duration.zero);
           yield* Deferred.succeed(oldLands, undefined);
+          yield* TestClock.adjust(Duration.millis(30));
+          const successor = yield* linked(sockets, 1);
+          successor.hear({ type: "git-credential", credential: "ORG.new" });
           yield* TestClock.adjust(Duration.zero);
           assert.deepStrictEqual(credentials, ["ORG.old", "ORG.new"]);
-        }),
-      ),
-  );
-
-  // Only the shared IPv4 is cut at 120 s: a link that went over IPv6 is kept as it is.
-  it.effect("never rotates a link that went over IPv6", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { sockets } = yield* rig();
-        yield* TestClock.adjust(Duration.zero);
-        sockets[0]!.over = "IPv6";
-        const first = yield* opened(sockets, 0);
-        yield* TestClock.adjust(Duration.millis(3 * MATE_LINK_ROTATE_MS));
-        assert.strictEqual(sockets.length, 1);
-        assert.isFalse(first.closed);
-      }),
-    ),
-  );
-
-  it.effect(
-    "keeps the old link when its successor never answers, and links again as ever once it closes",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { sockets } = yield* rig();
-          const first = yield* linked(sockets, 0);
-          yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-          const successor = yield* opened(sockets, 1);
-          yield* TestClock.adjust(Duration.seconds(19));
-          assert.isFalse(first.closed);
-
-          // The L7's cut: the old link closes, the successor that never answered goes with it.
-          first.emit("close");
-          yield* TestClock.adjust(Duration.zero);
-          assert.isTrue(successor.closed);
-          yield* TestClock.adjust(Duration.millis(30));
-          const next = yield* linked(sockets, 2);
-          assert.deepStrictEqual(next.sent, [
-            hello("zk-1"),
-            { type: "overview", full: true, overview: overview("Add a login page") },
-          ]);
         }),
       ),
   );
@@ -1478,24 +1862,54 @@ describe("ZeropsHqLink", () => {
   );
 });
 
-// The 120 s cut is the shared IPv4's: a WebSocket over the project's IPv6 holds (verified.md,
-// 2026-10-03). A Mate container has IPv6, so its link asks for HQ's addresses IPv6 first.
 describe("ZeropsHqLink's addresses", () => {
-  it("resolves HQ IPv6 first, whatever else the connection asks", () => {
+  it("resolves HQ only over IPv6 even when the connection asks for IPv4", () => {
     const asked: Array<unknown> = [];
-    const lookup = preferringIpv6((hostname, options, callback) => {
+    const lookup = lookupIpv6((hostname, options, callback) => {
       asked.push({ hostname, options });
-      callback(null, [{ address: "2001:db8::1", family: 6 }]);
+      callback(null, [
+        { address: "::ffff:127.0.0.1", family: 6 },
+        { address: "2001:db8::1", family: 6 },
+      ]);
     });
     let answered: unknown;
-    lookup("hq.example", { all: true, hints: 0 }, (_error, addresses) => {
+    let failure: NodeJS.ErrnoException | null = null;
+    lookup("hq.example", { all: true, hints: 0, family: 4 }, (error, addresses) => {
+      failure = error;
       answered = addresses;
     });
-    assert.strictEqual(HQ_LINK_ADDRESS_ORDER, "ipv6first");
     assert.deepStrictEqual(asked, [
-      { hostname: "hq.example", options: { all: true, hints: 0, order: "ipv6first" } },
+      { hostname: "hq.example", options: { all: true, hints: 0, family: 6 } },
     ]);
+    assert.isNull(failure);
     assert.deepStrictEqual(answered, [{ address: "2001:db8::1", family: 6 }]);
+  });
+
+  it("rejects an IPv4 address without opening a socket", () => {
+    for (const address of ["127.0.0.1", "[::ffff:127.0.0.1]"]) {
+      let socket: LinkSocket | undefined;
+      try {
+        assert.throws(() => {
+          socket = connectLinkSocket(`ws://${address}:9/api/mate/link`);
+          socket.addEventListener("error", () => {});
+        });
+      } finally {
+        socket?.close();
+      }
+    }
+  });
+
+  it("rejects a DNS answer that maps to IPv4", () => {
+    for (const answer of ["::ffff:127.0.0.1", [{ address: "::ffff:7f00:1", family: 6 }]]) {
+      const lookup = lookupIpv6((_hostname, _options, callback) => {
+        callback(null, answer, 6);
+      });
+      const failures: Array<NodeJS.ErrnoException | null> = [];
+      lookup("hq.example", {}, (error) => {
+        failures.push(error);
+      });
+      assert.strictEqual(failures[0]?.code, "ENOTFOUND");
+    }
   });
 });
 
@@ -1519,7 +1933,9 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
       const auth = yield* SubscriptionRef.make<ZeropsAgentAuthSnapshot>(NO_AUTH);
       const update = yield* SubscriptionRef.make<ExecutionEnvironmentUpdate | undefined>(undefined);
       const providers = yield* SubscriptionRef.make<ReadonlyArray<ServerProvider>>([]);
+      const setupMarker = yield* Ref.make(true);
       const feed = yield* mateOverviewFeed({
+        setupMarker: Ref.get(setupMarker),
         providers: {
           latest: SubscriptionRef.get(providers),
           changes: SubscriptionRef.changes(providers).pipe(Stream.drop(1)),
@@ -1555,7 +1971,6 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
           Queue.offerUnsafe(connected, socket);
           return socket;
         },
-        access: () => Effect.void,
         gitCredential: () => Effect.void,
         gitFingerprint: Effect.succeed(Option.none()),
         attention: Stream.never,
@@ -1564,11 +1979,20 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
       yield* TestClock.adjust(Duration.zero);
       const socket = sockets[0];
       if (socket === undefined) return yield* Effect.die("no socket");
+      /** The overview frames the link sends, in order: the receipt of each look. */
+      const overviews = yield* Queue.unbounded<Sent>();
+      socket.onSent = (message) => {
+        if (message.type === "overview") Queue.offerUnsafe(overviews, message);
+      };
       socket.emit("open");
       admit(socket);
-      // Settled: whatever the feeds said as the link subscribed has been looked at, and was sent.
-      yield* TestClock.adjust(Duration.seconds(1));
-      return { socket, crew, auth, update, providers, rows };
+      /** Waits for the next overview frame the link sends, then lets its window pass. */
+      const sent = Queue.take(overviews).pipe(
+        Effect.andThen(TestClock.adjust(Duration.millis(MATE_OVERVIEW_EVERY_MS))),
+      );
+      // Settled: the whole overview went up.
+      yield* sent;
+      return { socket, crew, auth, update, providers, rows, sent, setupMarker };
     });
   const feedRig = feedRigOf(false);
 
@@ -1582,7 +2006,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
   it.effect("relays a ready agent without a sign-in when its provider snapshot changes", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { socket, providers } = yield* feedRig;
+        const { socket, providers, sent } = yield* feedRig;
         const provider: ServerProvider = {
           driver: ProviderDriverKind.make("cursor"),
           instanceId: ProviderInstanceId.make("cursor"),
@@ -1597,7 +2021,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
           skills: [],
         };
         yield* SubscriptionRef.set(providers, [provider]);
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* sent;
         const overview = yield* decodeMateLinkUp(socket.sent.at(-1));
         assert.isTrue(
           overview.type === "overview" &&
@@ -1609,11 +2033,38 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
   );
 
   it.effect(
+    "The overview's identity carries the setup marker the Mate reads of its own service, as it stands at each look",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { socket, update, setupMarker, sent } = yield* feedRig;
+          const first = yield* decodeMateLinkUp(socket.sent[1]);
+          assert.isTrue(
+            first.type === "overview" && first.full && first.overview.identity.setupMarker === true,
+          );
+          // The press's variable gone: the next look at the overview says so.
+          yield* Ref.set(setupMarker, false);
+          yield* SubscriptionRef.set(update, {
+            installed: "0.11.90",
+            latest: "0.11.91",
+            available: true,
+            checkedAt: "2026-10-03T10:00:00Z",
+          });
+          yield* sent;
+          const next = yield* decodeMateLinkUp(socket.sent.at(-1));
+          assert.isTrue(
+            next.type === "overview" && !next.full && next.sections.identity?.setupMarker === false,
+          );
+        }),
+      ),
+  );
+
+  it.effect(
     "A Mate whose coding agent runs on a verified environment token counts as signed in",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { socket, auth } = yield* feedRig;
+          const { socket, auth, sent } = yield* feedRig;
           const token = { ...CLAUDE, credPresent: false, flagOAuth: false, flagToken: true };
           // What HQ holds: the full overview, then each identity section sent since.
           const runsWithoutSignIn = Effect.map(
@@ -1634,13 +2085,13 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
             available: true,
             agents: [{ ...token, providerAuth: "unknown", state: "authorized-token" }],
           });
-          yield* TestClock.adjust(Duration.seconds(1));
+          yield* sent;
           assert.strictEqual(yield* runsWithoutSignIn, false);
           yield* SubscriptionRef.set(auth, {
             available: true,
             agents: [{ ...token, state: "authorized-token" }],
           });
-          yield* TestClock.adjust(Duration.seconds(1));
+          yield* sent;
           assert.strictEqual(yield* runsWithoutSignIn, true);
         }),
       ),
@@ -1679,7 +2130,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
           askedAt: null,
         });
         yield* SubscriptionRef.set(engine.rows, [working]);
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* engine.sent;
         assert.deepStrictEqual(sectionsSent(engine.socket), [{ conversations: [working] }]);
       }),
     ),
@@ -1688,9 +2139,9 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
   it.effect("sends again when the crew's snapshot moves", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { socket, crew } = yield* feedRig;
+        const { socket, crew, sent } = yield* feedRig;
         yield* SubscriptionRef.set(crew, APPLIED);
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* sent;
         assert.deepStrictEqual(sectionsSent(socket), [
           {
             crew: {
@@ -1709,12 +2160,12 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
   it.effect("sends again when a login's signer changes", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { socket, auth } = yield* feedRig;
+        const { socket, auth, sent } = yield* feedRig;
         yield* SubscriptionRef.set(auth, {
           available: true,
           agents: [{ ...CLAUDE, authorizedBy: { subject: "user-ada" } }],
         });
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* sent;
         assert.deepStrictEqual(sectionsSent(socket), [
           { logins: { "claude-code": { signedInBy: "user-ada", present: true, token: false } } },
         ]);
@@ -1725,7 +2176,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
   it.effect("sends again when the Mate's update line changes", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { socket, update } = yield* feedRig;
+        const { socket, update, sent } = yield* feedRig;
         const line: ExecutionEnvironmentUpdate = {
           installed: "0.11.90",
           latest: "0.11.91",
@@ -1733,13 +2184,14 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
           checkedAt: "2026-10-03T10:00:00Z",
         };
         yield* SubscriptionRef.set(update, line);
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* sent;
         assert.deepStrictEqual(sectionsSent(socket), [
           {
             identity: {
               environmentId: "env-1",
               serverVersion: "0.11.90",
               update: line,
+              setupMarker: true,
               runsWithoutSignIn: false,
             },
           },

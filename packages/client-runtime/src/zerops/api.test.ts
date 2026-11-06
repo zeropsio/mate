@@ -643,10 +643,10 @@ describe("ZeropsApiClient.accessToken — the token HQ's sign-in reads", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await expect(client.accessToken()).resolves.toBe("access-1");
+    await expect(client.accessToken()).resolves.toEqual({ token: "access-1" });
     expect(stub.requests).toEqual([]);
-    await expect(client.accessToken("access-1")).resolves.toBe("access-2");
-    await expect(client.accessToken()).resolves.toBe("access-2");
+    await expect(client.accessToken("access-1")).resolves.toEqual({ token: "access-2" });
+    await expect(client.accessToken()).resolves.toEqual({ token: "access-2" });
   });
 
   it("has none to hand out once signed out", async () => {
@@ -838,8 +838,9 @@ describe("ZeropsApiClient renews ahead of expiry, under no request", () => {
     const client = clientWith(stub.fetch);
     client.restoreSession({ ...SESSION, expiresAt: iso(NOW + HOUR) });
 
-    await expect(client.accessToken()).resolves.toBe("access-2");
-    await expect(client.accessToken("access-1")).resolves.toBe("access-2");
+    const renewedAccess = { token: "access-2", expiresAt: iso(NOW + 6 * HOUR) };
+    await expect(client.accessToken()).resolves.toEqual(renewedAccess);
+    await expect(client.accessToken("access-1")).resolves.toEqual(renewedAccess);
     expect(labelsOf(stub.requests)).toEqual(["refresh"]);
   });
 });
@@ -970,119 +971,6 @@ describe("ZeropsApiClient project reads", () => {
     ]);
   });
 
-  it("scopes the project-variable read to the organization, which the platform requires", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, { items: [{ envList: [{ id: "e1", key: "K", content: "v" }] }] }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const entries = await client.readProjectEnv("org-1", "project-1");
-
-    expect(entries.map((entry) => entry.id)).toEqual(["e1"]);
-    // Without the `clientId` term the platform answers
-    // `400 invalidUserInput` — "clientId not defined" — and the whole
-    // isolation step of a Mate's creation fails (measured 2026-09-18).
-    expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({
-      limit: 1,
-      search: [
-        { name: "id", operator: "eq", value: "project-1" },
-        { name: "clientId", operator: "eq", value: "org-1" },
-      ],
-    });
-  });
-
-  it("reports whether its plan restarted anything, for a wait that must not trust a stale boot", async () => {
-    const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [
-            {
-              envList: [
-                { id: "iso", key: "envIsolation", content: "none" },
-                { id: "key", key: "ZCP_API_KEY", content: "secret", sensitive: false },
-              ],
-            },
-          ],
-        });
-      if (request.url.includes("/service-stack")) {
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
-      }
-      return jsonResponse(200, {});
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const result = await client.isolateProjectEnvironment("org-1", "project-1");
-
-    expect(result.restarted).toBe(true);
-    expect(result.steps).toBeGreaterThan(0);
-  });
-
-  it("restarts what runs the project's code, never the container or a managed service", async () => {
-    // A storage's restart fails outright, and a database runs none of the
-    // project's code (the add measured 2026-09-30).
-    const typed = (id: string, name: string, version: string, category: string) => ({
-      id,
-      name,
-      serviceStackTypeInfo: {
-        serviceStackTypeVersionName: version,
-        serviceStackTypeCategory: category,
-      },
-    });
-    const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "none" }] }],
-        });
-      if (request.url.includes("/service-stack?")) {
-        return jsonResponse(200, {
-          list: [
-            typed("svc-zcp", "zcp", "zcp@1", "USER"),
-            typed("svc-app", "appdev", "nodejs@22", "USER"),
-            typed("svc-db", "db", "postgresql@17", "STANDARD"),
-            typed("svc-files", "files", "shared-storage", "SHARED_STORAGE"),
-            typed("svc-s3", "storage", "object-storage", "OBJECT_STORAGE"),
-          ],
-        });
-      }
-      return jsonResponse(200, {});
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await client.isolateProjectEnvironment("org-1", "project-1");
-
-    expect(
-      stub.requests
-        .filter((request) => request.url.endsWith("/restart"))
-        .map((request) => request.url.split("/").at(-2)),
-    ).toEqual(["svc-app"]);
-  });
-
-  it("reports no restart for a project already through isolation", async () => {
-    const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
-        });
-      if (request.url.includes("/service-stack")) {
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
-      }
-      return jsonResponse(200, {});
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const result = await client.isolateProjectEnvironment("org-1", "project-1");
-
-    expect(result).toEqual({ restarted: false, steps: 0 });
-  });
-
   it("hardening lowers the Mate's token from its own read, by its id, under its lock", async () => {
     const log: string[] = [];
     const token = {
@@ -1104,22 +992,6 @@ describe("ZeropsApiClient project reads", () => {
         return jsonResponse(200, { list: [{ id: "del-1", tokenId: "token-1" }] });
       if (request.url.endsWith("/integration-token/token-1/delegation/del-1"))
         return jsonResponse(200, {});
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [
-            {
-              envList: [
-                { id: "iso", key: "envIsolation", content: "none" },
-                { id: "key", key: "ZCP_API_KEY", content: "secret", sensitive: false },
-              ],
-            },
-          ],
-        });
-      if (request.url.includes("/service-stack")) {
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
-      }
       return jsonResponse(200, {});
     });
     const client = new ZeropsApiClient({
@@ -1176,11 +1048,6 @@ describe("ZeropsApiClient project reads", () => {
         );
       if (request.url.includes("/delegation") && request.method === "GET")
         return jsonResponse(200, { list: [] });
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
-        });
-      if (request.url.includes("/service-stack")) return jsonResponse(200, { list: [] });
       return jsonResponse(200, {});
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -1218,22 +1085,6 @@ describe("ZeropsApiClient project reads", () => {
         return jsonResponse(200, { list: [{ id: "del-1", tokenId: "token-1" }] });
       if (request.url.endsWith("/integration-token/token-1/delegation/del-1"))
         return jsonResponse(200, {});
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [
-            {
-              envList: [
-                { id: "iso", key: "envIsolation", content: "none" },
-                { id: "key", key: "ZCP_API_KEY", content: "secret", sensitive: false },
-              ],
-            },
-          ],
-        });
-      if (request.url.includes("/service-stack")) {
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
-      }
       return jsonResponse(200, {});
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -1245,12 +1096,8 @@ describe("ZeropsApiClient project reads", () => {
       tokenLowered: true,
       keyNotLowered: null,
       delegationsDropped: 1,
-      isolationSteps: expect.any(Number),
-      restarted: true,
     });
-    expect(result.isolationSteps).toBeGreaterThan(0);
-    // The token write, the delegation's delete, and the isolation plan's own
-    // writes all happened.
+    // The token write and the delegation's delete both happened.
     expect(
       stub.requests.some(
         (request) => request.method === "PUT" && request.url.endsWith("/integration-token/token-1"),
@@ -1313,14 +1160,6 @@ describe("ZeropsApiClient project reads", () => {
         return jsonResponse(200, token);
       if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
         return jsonResponse(200, { list: [] });
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
-        });
-      if (request.url.includes("/service-stack"))
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
       return jsonResponse(200, {});
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -1349,15 +1188,6 @@ describe("ZeropsApiClient project reads", () => {
         return jsonResponse(200, token);
       if (request.url.endsWith("/integration-token/token-1/delegation") && request.method === "GET")
         return jsonResponse(200, { list: [] });
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
-        });
-      if (request.url.includes("/service-stack")) {
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
-      }
       return jsonResponse(200, {});
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -1369,8 +1199,6 @@ describe("ZeropsApiClient project reads", () => {
       tokenLowered: false,
       keyNotLowered: null,
       delegationsDropped: 0,
-      isolationSteps: 0,
-      restarted: false,
     });
     // No write of any kind — only the reads every idempotent re-run makes
     // (`/project/search` is a read even though it is a POST).
@@ -1396,14 +1224,6 @@ describe("ZeropsApiClient project reads", () => {
         return jsonResponse(200, token);
       if (request.url.includes("/delegation") && request.method === "GET")
         return jsonResponse(200, { list: [] });
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
-        });
-      if (request.url.includes("/service-stack"))
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
       return jsonResponse(200, {});
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -1458,14 +1278,6 @@ describe("ZeropsApiClient project reads", () => {
           return jsonResponse(200, token);
         if (request.url.includes("/delegation") && request.method === "GET")
           return jsonResponse(200, { list: [] });
-        if (request.url.endsWith("/project/search"))
-          return jsonResponse(200, {
-            items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
-          });
-        if (request.url.includes("/service-stack"))
-          return jsonResponse(200, {
-            list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-          });
         return jsonResponse(200, {});
       });
       const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -1501,14 +1313,6 @@ describe("ZeropsApiClient project reads", () => {
         return jsonResponse(200, read);
       if (request.url.includes("/delegation") && request.method === "GET")
         return jsonResponse(200, { list: [{ id: "del-1", tokenId: "token-1" }] });
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
-        });
-      if (request.url.includes("/service-stack"))
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
       return jsonResponse(200, {});
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -1525,8 +1329,8 @@ describe("ZeropsApiClient project reads", () => {
   });
 
   // Step A, A11: an admin adopting a Mate whose key an owner made may not write that key. The
-  // adoption is not failed for it: the harden says so, and closes the project off all the same.
-  it("says a key write it was refused, and still isolates the project", async () => {
+  // adoption is not failed for it: the harden says so.
+  it("says a key write it was refused, and fails nothing for it", async () => {
     const token = {
       id: "token-1",
       name: "zcp-project-1",
@@ -1541,15 +1345,6 @@ describe("ZeropsApiClient project reads", () => {
       if (request.method === "PUT" && request.url.endsWith("/integration-token/token-1"))
         return jsonResponse(403, { error: { code: "forbidden", message: "Not allowed." } });
       if (request.url.includes("/delegation")) return jsonResponse(403, {});
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
-        });
-      if (request.url.includes("/service-stack")) {
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
-      }
       return jsonResponse(200, {});
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -1561,24 +1356,12 @@ describe("ZeropsApiClient project reads", () => {
       tokenLowered: false,
       keyNotLowered: "string",
       delegationsDropped: 0,
-      isolationSteps: 0,
-      restarted: false,
     });
-    expect(stub.requests.some((request) => request.url.endsWith("/project/search"))).toBe(true);
   });
 
-  it("skips the token half when no token matches this project, and still isolates it", async () => {
+  it("skips the token half when no token matches this project", async () => {
     const stub = recordingFetch((request) => {
       if (request.url.endsWith("/integration-token/list")) return jsonResponse(200, { list: [] });
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, {
-          items: [{ envList: [{ id: "iso", key: "envIsolation", content: "service" }] }],
-        });
-      if (request.url.includes("/service-stack")) {
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
-      }
       return jsonResponse(200, {});
     });
     const client = new ZeropsApiClient({ fetch: stub.fetch });
@@ -1590,38 +1373,6 @@ describe("ZeropsApiClient project reads", () => {
     expect(result.delegationsDropped).toBe(0);
     // No delegation read at all — there was no token to ask about.
     expect(stub.requests.some((request) => request.url.includes("/delegation"))).toBe(false);
-  });
-
-  it("writes nothing when the index has not caught up with the project", async () => {
-    // The index trails the write path: a project created a moment ago answers
-    // without the variables the platform gave it at birth. Planning from that
-    // asked for a second `envIsolation`, the platform refused it with
-    // "is not unique", and the refusal failed the creation that called it —
-    // the wizard sat on its form with the platform's words on screen
-    // (measured live 2026-09-20).
-    const stub = recordingFetch((request) => {
-      if (request.url.endsWith("/project/search"))
-        return jsonResponse(200, { items: [{ envList: [] }] });
-      if (request.url.includes("/service-stack")) {
-        return jsonResponse(200, {
-          list: [{ id: "svc-1", name: "zcp", serviceStackTypeId: "zcp" }],
-        });
-      }
-      return jsonResponse(200, {});
-    });
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const error = await client
-      .isolateProjectEnvironment("org-1", "project-1")
-      .catch((cause: unknown) => cause);
-
-    expect(error).toBeInstanceOf(ZeropsApiError);
-    expect(
-      stub.requests.filter(
-        (request) => request.method !== "GET" && !request.url.endsWith("/project/search"),
-      ),
-    ).toEqual([]);
   });
 
   it("does not hide a non-permission failure behind the project search fallback", async () => {
@@ -2430,93 +2181,6 @@ describe("AL-08 / AL-12 inventory completeness and uncertain operations", () => 
       client.createProject({ clientId: "org", name: "Project", tagList: [] }),
     ).rejects.toMatchObject({ kind: "uncertain" });
     expect(stub.requests).toHaveLength(1);
-  });
-});
-
-// E2E F7: `PUT /project/{id}` with `userRoles` replaces the project's whole list, can't name a token
-// (`400 userNotFound`), and a people-only list drops the Mate key's own grant (measured 2026-10-03,
-// f7-handover-probe.json). One person's own role list is the write that moves nobody else.
-describe("ZeropsApiClient.setProjectMemberRole — handing a Mate over", () => {
-  const project = {
-    id: "p1",
-    name: "Fen",
-    status: "ACTIVE",
-    clientId: "org-1",
-    userRoles: [{ clientUserId: "cu-key", roleCode: "BASIC_USER" }],
-  };
-  const answering = (held: ReadonlyArray<{ projectId: string; roleCode: string }>) =>
-    recordingFetch((request) =>
-      request.url.includes("/client-user/")
-        ? jsonResponse(200, { projectRoleList: held.map((role) => ({ id: "r", ...role })) })
-        : jsonResponse(200, project),
-    );
-  const sent = (stub: ReturnType<typeof answering>) =>
-    stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`);
-
-  it("writes the person's own role list with this project's role in it, and never the project", async () => {
-    const stub = answering([{ projectId: "p-other", roleCode: "READ_ONLY" }]);
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    const after = await client.setProjectMemberRole({
-      projectId: "p1",
-      clientUserId: "cu-eva",
-      roleCode: "OWNER",
-    });
-
-    // Read, then write: the person's list is replaced by whatever it is sent.
-    expect(sent(stub)).toEqual([
-      "GET /client-user/cu-eva/roles",
-      "PUT /client-user/cu-eva/roles",
-      "GET /project/p1",
-    ]);
-    expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
-      projectRoleList: [
-        { projectId: "p-other", roleCode: "READ_ONLY" },
-        { projectId: "p1", roleCode: "OWNER" },
-      ],
-    });
-    // The project as the platform holds it after the write: the key's own grant untouched.
-    expect(after.userRoles).toEqual(project.userRoles);
-  });
-
-  // Overrides are measured in both directions: the same call, lowered, takes a Mate away.
-  it("takes a Mate away when it lowers its owner", async () => {
-    const stub = answering([{ projectId: "p1", roleCode: "OWNER" }]);
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await client.setProjectMemberRole({
-      projectId: "p1",
-      clientUserId: "cu-jan",
-      roleCode: "READ_ONLY",
-    });
-
-    expect(JSON.parse(stub.requests[1]?.body ?? "{}").projectRoleList).toEqual([
-      { projectId: "p1", roleCode: "READ_ONLY" },
-    ]);
-  });
-
-  // F23: a hand over takes OWNER from whoever held it — this project off their list, their other
-  // projects kept, as measured in F7 (f7-handover-probe.json: restored by the same call, exact).
-  it("takes this project off a person's list, keeping their others", async () => {
-    const stub = answering([
-      { projectId: "p1", roleCode: "OWNER" },
-      { projectId: "p-elsewhere", roleCode: "OWNER" },
-    ]);
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-
-    await client.setProjectMemberRole({ projectId: "p1", clientUserId: "cu-krls", roleCode: null });
-
-    expect(sent(stub)).toEqual([
-      "GET /client-user/cu-krls/roles",
-      "PUT /client-user/cu-krls/roles",
-      "GET /project/p1",
-    ]);
-    expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
-      projectRoleList: [{ projectId: "p-elsewhere", roleCode: "OWNER" }],
-    });
   });
 });
 

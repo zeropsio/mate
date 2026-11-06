@@ -138,26 +138,21 @@ export interface ZeropsRowInput {
   };
 }
 
-const ROW_VERBS = (offered: boolean): ZeropsRowInput["can"] => ({
-  open: offered,
-  enable: offered,
-  setUpMate: offered,
-  start: offered,
-  restart: offered,
-  remove: offered,
-});
-
 /**
  * A row's verbs for this person, none of them HQ's to enforce: opening is its Mate's door's, the
- * rest Zerops' — each refusal shown as they word it. None where HQ refuses following its Mate
- * (`observe_mate`): the door would refuse them too. Every one otherwise — where HQ offers it, has
- * not said (an HQ from before its offers, a structure not read yet), or does not answer, and on a
- * project HQ holds as no Mate. *Set up Mate* on a plain project only where HQ offers writing its
- * Mate's record (`create_mate_record`), which the press registers and HQ enforces.
+ * rest Zerops' — each refusal shown as they word it. A Mate the person may only see is the row's
+ * `visibility` (`mateVisibility`), never an HQ offer. *Set up Mate* on a plain project only
+ * where HQ offers writing its Mate's record (`create_mate_record`), which the press registers and
+ * HQ enforces.
  */
 export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
   return {
-    ...ROW_VERBS(offers?.held !== true || offers.observe.kind !== "refused"),
+    open: true,
+    enable: true,
+    setUpMate: true,
+    start: true,
+    restart: true,
+    remove: true,
     setUpPlainProject: offers?.held === false && offers.createRecord.kind === "allowed",
   };
 }
@@ -241,6 +236,9 @@ const RUNNING_PROCESS_DETAIL: Readonly<
   "start-service": "Starting the container",
   "start-project": "Starting the project",
 };
+
+/** The line under a Mate whose project is gone on Zerops while HQ still holds it. */
+const MATE_PROJECT_GONE_LINE = "Its project is gone on Zerops. HQ still holds this Mate.";
 
 /**
  * The line under a project the platform failed to create, with the
@@ -474,6 +472,10 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     };
   }
   if (candidate.group === "unavailable") {
+    // Deleted on Zerops while HQ still holds its Mate: said as it is, nothing offered.
+    if (candidate.projectGone === true) {
+      return { status: { label: "Gone", tone: "off" }, detail: MATE_PROJECT_GONE_LINE };
+    }
     // The platform failed to make the project: it will sit in NEW for good,
     // so the row says so in the failed tone rather than "coming up" forever.
     if (candidate.creationFailed !== undefined) {

@@ -104,7 +104,6 @@ function join(input: {
     live: input.live ?? new Map(),
     changes: null,
     changesFailure: undefined,
-    changesRefused: new Map(),
     withheld: input.withheld ?? NOTHING_WITHHELD,
   });
 }

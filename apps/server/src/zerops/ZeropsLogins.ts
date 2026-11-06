@@ -695,17 +695,7 @@ export const make = (options: ZeropsLoginsOptions) =>
           Effect.tap(({ id }) =>
             input.kind !== "apiKey" || signIns === undefined
               ? Effect.void
-              : Clock.currentTimeMillis.pipe(
-                  Effect.flatMap((at) => signIns.save(id, { by: zeropsUserIdOf(subject), at })),
-                  Effect.andThen(publish),
-                  Effect.mapError(
-                    (error) =>
-                      new ZeropsAgentLoginError({
-                        reason: "signer-write-failed",
-                        detail: error.detail,
-                      }),
-                  ),
-                ),
+              : signIns.save(id, { by: zeropsUserIdOf(subject) }).pipe(Effect.andThen(publish)),
           ),
         );
       });

@@ -75,6 +75,16 @@ export const HqScope = Schema.Union([
   }),
 ]);
 export type HqScope = typeof HqScope.Type;
+/**
+ * The scopes HQ admits only on a fresh read of the person's Zerops role, with the access token
+ * their `subscribe` frame carries; asked without it, HQ answers `token_required`.
+ */
+export const HQ_PROTECTED_SCOPE_KINDS: ReadonlySet<HqScope["kind"]> = new Set([
+  "app-detail",
+  "change",
+  "discussion",
+  "attention",
+]);
 export const HqCursor = Schema.Struct({
   incarnation: Schema.String,
   revision: Schema.Int.check(
@@ -112,6 +122,11 @@ export const HqStreamRequest = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("subscribe"),
     scopes: Schema.Array(HqSubscription).check(Schema.isMaxLength(128)),
+    /**
+     * The person's current Zerops access token, which a frame asking a
+     * {@link HQ_PROTECTED_SCOPE_KINDS protected scope} carries: HQ admits it on one read with it.
+     */
+    accessToken: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("unsubscribe"),
@@ -121,16 +136,14 @@ export const HqStreamRequest = Schema.Union([
     type: Schema.Literal("seen"),
     projectId: Schema.String,
     resultIds: Schema.Array(Schema.String).check(Schema.isMaxLength(50)),
+    accessToken: Schema.String,
   }),
   Schema.Struct({
     type: Schema.Literal("move-offers"),
     requestId: Schema.String,
     projectId: Schema.String,
-  }),
-  Schema.Struct({
-    type: Schema.Literal("handover-candidates"),
-    requestId: Schema.String,
-    projectId: Schema.String,
+    /** The person's current Zerops access token: HQ decides the offers on a fresh read of their role. */
+    accessToken: Schema.String,
   }),
   Schema.Struct({
     type: Schema.Literal("compare"),
@@ -138,6 +151,7 @@ export const HqStreamRequest = Schema.Union([
     appId: Schema.String,
     repo: RepoName,
     ...CompareQuery.fields,
+    accessToken: Schema.String,
   }),
   Schema.Struct({ type: Schema.Literal("pong") }),
 ]);
@@ -201,25 +215,6 @@ export const HqNavigationPerson = Schema.Struct({
   avatarUrl: Schema.NullOr(Schema.String),
 });
 export type HqNavigationPerson = typeof HqNavigationPerson.Type;
-export const HqHandoverCandidate = Schema.Struct({
-  userId: Schema.String,
-  ...HqNavigationPerson.fields,
-});
-export type HqHandoverCandidate = typeof HqHandoverCandidate.Type;
-export const HqHandoverCandidatesMessage = Schema.Struct({
-  type: Schema.Literal("handover-candidates"),
-  requestId: Schema.String,
-  projectId: Schema.String,
-  candidates: Schema.Array(HqHandoverCandidate),
-});
-export const HqHandoverCandidatesError = Schema.Struct({
-  type: Schema.Literal("handover-candidates-error"),
-  requestId: Schema.String,
-  projectId: Schema.String,
-  code: Schema.String,
-  reason: Schema.NullOr(Schema.String),
-  disposition: Schema.Literals(["refused", "transient"]),
-});
 /** On-demand read; the result has the same shape as Changes.compare. Never broadcast. */
 export const HqCompareMessage = Schema.Struct({
   type: Schema.Literal("compare"),
@@ -243,8 +238,6 @@ export const HqStreamMessage = Schema.Union([
   HqScopeReady,
   HqMoveOffersMessage,
   HqMoveOffersError,
-  HqHandoverCandidatesMessage,
-  HqHandoverCandidatesError,
   HqCompareMessage,
   HqCompareError,
   Schema.Struct({ type: Schema.Literal("ping") }),
@@ -269,8 +262,6 @@ export const hqScopeKey = (scope: HqScope): string => {
 };
 
 export const HqPersonFacts = Schema.Struct({
-  role: Schema.String,
-  mayWrite: Schema.Boolean,
   mine: Schema.Boolean,
   ownerUserId: Schema.NullOr(Schema.String),
   /** This Mate's person's registered Chief; absent from an older HQ. */
@@ -283,7 +274,6 @@ export const HqPersonFacts = Schema.Struct({
 });
 export type HqPersonFacts = typeof HqPersonFacts.Type;
 
-const Decisions = Schema.Record(Schema.String, HqDecision);
 /** The task an automated Mate is on, as its row names it. */
 export const HqNavigationMateTask = Schema.Struct({
   id: Schema.String,
@@ -329,9 +319,8 @@ export const HqNavigationMate = Schema.Struct({
   face: Schema.String,
   madeBy: Schema.NullOr(Schema.String),
   standupRequestedBy: Schema.NullOr(Schema.String),
-  closedOff: Schema.Boolean,
-  /** Presence of the setup press marker; null until HQ has usable evidence. */
-  setupMarker: Schema.NullOr(Schema.Boolean),
+  /** Still sent by HQ; no client reads it since a birth is one import. */
+  setupMarker: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
   /** Still sent by older HQ builds; no client reads it. */
   keyWider: Schema.optionalKey(Schema.Boolean),
   birthId: Schema.optionalKey(Schema.String),
@@ -339,6 +328,11 @@ export const HqNavigationMate = Schema.Struct({
   importProcessId: Schema.optionalKey(Schema.String),
   /** An automated Mate (`MateState.automated`); absent from an older HQ: not one. */
   automated: Schema.optionalKey(Schema.Boolean),
+  /**
+   * Zerops refused the Mate's key and HQ has admitted none since: it cannot connect until somebody
+   * hands it over. Present only as `true`.
+   */
+  keyRefused: Schema.optionalKey(Schema.Literal(true)),
   /** The task an automated Mate is on, or none: what its row names while it works. */
   task: Schema.optionalKey(Schema.NullOr(HqNavigationMateTask)),
 });
@@ -410,8 +404,13 @@ export const HqNavigationEnvironment = Schema.Struct({
   order: Schema.Number,
   keyHeld: Schema.Boolean,
   keyInvalid: Schema.Boolean,
+  /**
+   * The Zerops id of the deploy token HQ keeps, never its value: the client deletes it on Zerops
+   * once HQ keeps another or confirms the environment's removal. Absent from an HQ that records
+   * none: the client deletes nothing and says so.
+   */
+  keyId: Schema.optionalKey(Schema.String),
   deleteProjectOnRemoval: Schema.optionalKey(Schema.Boolean),
-  can: Decisions,
   jobs: Schema.Array(HqNavigationJob),
   release: Schema.NullOr(ReleaseRollout),
   birth: Schema.NullOr(EnvironmentBirth),
@@ -419,10 +418,7 @@ export const HqNavigationEnvironment = Schema.Struct({
 });
 export type HqNavigationEnvironment = typeof HqNavigationEnvironment.Type;
 /** @deprecated Use CanonicalHqNavigationEnvironments at the HQ read boundary. */
-export const HqNavigationEnvironments = Schema.Union([
-  Schema.Array(HqNavigationEnvironment),
-  Schema.Struct({ refused: Schema.String }),
-]);
+export const HqNavigationEnvironments = Schema.Array(HqNavigationEnvironment);
 /** Canonical readers normalize older HQ rows at this boundary only. */
 export const CanonicalHqNavigationEnvironment = hqEnvironmentCodec(
   Struct.omit(HqNavigationEnvironment.fields, ["projectId"]),
@@ -436,17 +432,13 @@ export const HqGitNavigationEnvironment = Schema.Struct({
 });
 export type HqGitNavigationEnvironment = typeof HqGitNavigationEnvironment.Type;
 
-export const CanonicalHqNavigationEnvironments = Schema.Union([
-  Schema.Array(CanonicalHqNavigationEnvironment),
-  Schema.Struct({ refused: Schema.String }),
-]);
+export const CanonicalHqNavigationEnvironments = Schema.Array(CanonicalHqNavigationEnvironment);
 export type CanonicalHqNavigationEnvironments = typeof CanonicalHqNavigationEnvironments.Type;
-/** Remaining hold duration from HQ's read; transport silence never decides its outcome. */
+/** HQ's current hold; transport silence never decides its outcome. */
 export const HqNavigationPress = Schema.Struct({
   kind: Schema.Literals(["mate", "stage", "production"]),
   appId: Schema.optionalKey(Schema.String),
-  heldForMs: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
-  until: Schema.String,
+  held: Schema.Boolean,
   importProcessId: Schema.optionalKey(Schema.String),
 });
 export type HqNavigationPress = typeof HqNavigationPress.Type;
@@ -466,10 +458,7 @@ export const HqNavigationChange = Schema.Struct({
   pullRequest: HqChange.fields.pullRequest,
 });
 export type HqNavigationChange = typeof HqNavigationChange.Type;
-export const HqNavigationChanges = Schema.Union([
-  Schema.Array(HqNavigationChange),
-  Schema.Struct({ refused: Schema.String }),
-]);
+export const HqNavigationChanges = Schema.Array(HqNavigationChange);
 /** Compact navigation offer; review contents and service entries remain in detail. */
 export const HqNavigationReleaseOffer = Schema.Struct({
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
@@ -496,10 +485,7 @@ export const HqNavigationReleaseOffer = Schema.Struct({
   inFlight: Schema.NullOr(Schema.String),
 });
 export type HqNavigationReleaseOffer = typeof HqNavigationReleaseOffer.Type;
-export const HqNavigationRelease = Schema.Union([
-  Schema.NullOr(HqNavigationReleaseOffer),
-  Schema.Struct({ refused: Schema.String }),
-]);
+export const HqNavigationRelease = Schema.NullOr(HqNavigationReleaseOffer);
 
 /** An application's intake as its menu reads it: where its tasks come from, and how many wait. */
 export const HqNavigationIntake = Schema.Struct({
@@ -528,7 +514,6 @@ export const HqNavigationApp = Schema.Struct({
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
   id: Schema.String,
   name: Schema.String,
-  can: Decisions,
   contents: Schema.Struct({
     empty: Schema.Boolean,
     deletingProjectIds: Schema.Array(Schema.String),
@@ -562,8 +547,6 @@ export const HqNavigationProject = Schema.Struct({
   name: Schema.String,
   kind: Schema.String,
   mate: Schema.NullOr(HqNavigationMate),
-  /** Environment projects include finish: the attach decision for their current placement. */
-  can: Schema.optionalKey(Decisions),
   person: HqPersonFacts,
   /** Login ID to current person; only credentials present and not API tokens. */
   signedInNow: Schema.Record(Schema.String, Schema.String),

@@ -68,7 +68,7 @@ const answerOf = (read: RecipeTierResponse | undefined, tier: RecipeTier): Answe
     ? UNREADABLE
     : {
         state: "present",
-        tier: { kind: "tier", tier, yaml: read.importYaml },
+        tier: { kind: "tier", tier, revision: read.mainHead, yaml: read.importYaml },
         services: services.map((service) => service.hostname),
       };
 };

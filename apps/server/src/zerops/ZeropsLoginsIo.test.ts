@@ -84,9 +84,7 @@ const makeHarness = (input: {
     const reconciliation = yield* Queue.unbounded<string>();
     const fakeWatch = makeFakeWatch();
     const signIns = yield* memorySignInStore(
-      Object.fromEntries(
-        Object.entries(input.signers ?? {}).map(([key, by]) => [key, { by, at: 1 }]),
-      ),
+      Object.fromEntries(Object.entries(input.signers ?? {}).map(([key, by]) => [key, { by }])),
     );
     const logins = yield* ZeropsLogins.make({
       ...settings.options,
@@ -309,7 +307,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
         fakeWatch.trigger(`${homeDir}/.mate/logins/${id}/.credentials.json`);
         yield* listWhere(subscription, (rows) => rows[0]?.signedInBy === "u-jan");
 
-        yield* signIns.save(id, { by: "u-eva", at: 2 });
+        yield* signIns.save(id, { by: "u-eva" });
         yield* logins.recheckNow(id);
         const landed = yield* listWhere(subscription, (rows) => rows[0]?.signedInBy === "u-eva");
 
@@ -337,7 +335,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           "{}",
         );
 
-        const store = yield* memorySignInStore({ [id]: { by: "u-eva", at: 1 } });
+        const store = yield* memorySignInStore({ [id]: { by: "u-eva" } });
         const restarted = yield* ZeropsLogins.make({
           ...before.settings.options,
           isZeropsEnvironment: true,
@@ -379,7 +377,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("ZeropsLogins", (it)
           },
           SESSION,
         );
-        const store = yield* memorySignInStore({ [id]: { by: "u-eva", at: 1 } });
+        const store = yield* memorySignInStore({ [id]: { by: "u-eva" } });
         const cleared = yield* Deferred.make<void>();
         yield* ZeropsAgentLoginModule.make({
           terminalManager: {} as Parameters<

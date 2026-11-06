@@ -139,12 +139,7 @@ const changeOf = (read: ProjectionReads, link: ChangeLink): HqChange | undefined
 /** The jobs HQ's navigation lists for one of the application's environments. */
 const jobsOf = (read: ProjectionReads, appId: string, projectId: ProjectId) => {
   const app = read.fact("hqApp", appId);
-  if (
-    app.kind !== "known" ||
-    app.value.environments === undefined ||
-    "refused" in app.value.environments
-  )
-    return undefined;
+  if (app.kind !== "known" || app.value.environments === undefined) return undefined;
   return canonicalEnvironmentsOf(app.value.environments)?.find(
     (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
   );

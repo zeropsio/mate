@@ -10,19 +10,14 @@ import {
   type PersonaTemplateWrite,
 } from "@t3tools/client-runtime/data";
 import type { PersonaTemplate } from "@t3tools/shared/personaTemplates";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
-import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import { useState } from "react";
 
 import { randomUUID } from "~/lib/utils";
 import { useAccountOperationsOptional, type AccountOperations } from "./accountOperations";
-import {
-  useAccountDataOptional,
-  useAccountOrgId,
-  useAccountStoreForAdapters,
-} from "./ZeropsAccountData";
+import { useAccountDataOptional, useAccountOrgId, useProjection } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import { usePlatformCapabilities } from "./usePlatformCapabilities";
 
 export interface OrgPersonaTemplatesView {
   /** `unavailable`: the organization's HQ offers no persona templates (an HQ that predates them). */
@@ -42,17 +37,15 @@ const UNREAD = Atom.make<OrgPersonaTemplates>({ state: "loading" });
 
 export function useOrgPersonaTemplates(): OrgPersonaTemplatesView {
   const account = useAccountDataOptional();
-  const store = useAccountStoreForAdapters();
   const orgId = useAccountOrgId();
   const { activeOrganization } = useZeropsSession();
-  const read = useAtomValue(
-    store === null || orgId === null ? UNREAD : store.data.project(orgPersonaTemplates, orgId),
-  );
+  const { manageOrganization } = usePlatformCapabilities(null);
+  const read = useProjection(orgPersonaTemplates, orgId, UNREAD);
   return {
     state: read.state,
     templates: read.state === "ready" ? read.templates : [],
     orgName: activeOrganization?.name ?? null,
-    mayWrite: roleAtLeast(activeOrganization?.roleCode, "ADMIN"),
+    mayWrite: manageOrganization,
     failure: read.state === "ready" || read.state === "failed" ? read.failure : null,
     retry: () => account?.retry(),
   };
@@ -86,15 +79,10 @@ const IDLE = Atom.make<PersonaTemplateWrite>({ stage: "idle" });
 
 /** Saves and deletes the organization's templates, one at a time, each its own operation. */
 export function usePersonaTemplateWriter(): PersonaTemplateWriter {
-  const store = useAccountStoreForAdapters();
   const operations = useAccountOperationsOptional();
   const orgId = useAccountOrgId();
   const [requestId, setRequestId] = useState<string | null>(null);
-  const write = useAtomValue(
-    store === null || requestId === null
-      ? IDLE
-      : store.data.project(personaTemplateWrite, requestId),
-  );
+  const write = useProjection(personaTemplateWrite, requestId, IDLE);
   const submit = (intent: Parameters<AccountOperations["submit"]>[0]) => {
     if (operations === null) return;
     const id = randomUUID();

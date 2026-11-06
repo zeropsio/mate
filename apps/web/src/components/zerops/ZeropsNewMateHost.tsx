@@ -6,7 +6,7 @@
  * Mounted once, above every view, so a creation outlives the dialog and whatever the person opens
  * next. Add closes the dialog and lands on the new Mate's own view at once (`/mate/new/$birthId`,
  * the owner, 2026-10-03: "why are these two screens separate?"): the steps this tab runs with the
- * person's session — its project, its container, closed off, registered — run on in the account's
+ * person's session — its project, registered, its one import — run on in the account's
  * creations (`newProjectBirth.ts`), and the view draws them under its copy's row, saying to keep
  * the tab open only while they run. Once the platform takes its project the view hands the route
  * to the Mate's own (`/mate/$projectId`), in place. A step that stops says why there, with *Try
@@ -20,12 +20,7 @@
  * changing under the person paints the view's last frame, never a loading pane.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import {
-  buildZeropsGroupTree,
-  generateBotName,
-  generateZeropsGroupId,
-  newMateTint,
-} from "@t3tools/client-runtime/zerops";
+import { buildZeropsGroupTree, generateBotName, newMateTint } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -35,6 +30,7 @@ import { useContext, useMemo, useState } from "react";
 import { AccountDataContext } from "../../zerops/accountData";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
+import { randomUUID } from "~/lib/utils";
 import { configuredHq } from "~/zerops/accountHq";
 import { hqNavigationAtom } from "~/state/zerops";
 import { useAccountOperations } from "~/zerops/accountOperations";
@@ -215,11 +211,12 @@ function NewMateDialog({
     const face = choice.face ?? { tint: "slate", shape: "squircle" };
     const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
     // Its own id, its view's: a random one, as a New project's group's.
-    const id = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
+    const id = randomUUID();
     const organizationId = activeOrganization.id;
     beginCreation({
       ask: {
         organizationId,
+        creator: activeOrganization.membershipId,
         birthId: id,
         name: group.name,
         botName: name,
@@ -251,6 +248,7 @@ function NewMateDialog({
                 role: "dev",
                 choice,
                 creationId,
+                birthId: held.ask.birthId,
                 pressedAt: held.startedAt,
               }),
             (reason) => refuseAddHere(id, reason),

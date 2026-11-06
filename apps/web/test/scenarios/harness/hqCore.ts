@@ -3,6 +3,7 @@ import {
   hqScopeKey,
   HqStreamMessage,
   HqStreamRequest,
+  HQ_PROTECTED_SCOPE_KINDS,
   type HqScope,
 } from "@t3tools/shared/hqStream";
 import * as Effect from "effect/Effect";
@@ -23,8 +24,12 @@ export const openScenarioNavigation = (
   ready: (message: HqStreamMessage) => boolean = (message) =>
     message.type === "scope-ready" && message.scope.kind === "navigation",
   scope: HqScope = { kind: "navigation" },
+  accessToken?: string,
 ) =>
   Effect.gen(function* () {
+    const protectedScope = HQ_PROTECTED_SCOPE_KINDS.has(scope.kind);
+    if (protectedScope && accessToken === undefined)
+      return yield* Effect.die(new Error("A protected HQ scope needs its person's access token"));
     const socket = yield* Effect.acquireRelease(
       Effect.sync(
         () => new WebSocket(`${origin.replace("http:", "ws:")}/api/structure/ws?ticket=${ticket}`),
@@ -41,6 +46,7 @@ export const openScenarioNavigation = (
               encodeRequest({
                 type: "subscribe",
                 scopes: [{ scope }],
+                ...(protectedScope && accessToken !== undefined ? { accessToken } : {}),
               }),
             ),
           );
@@ -68,17 +74,11 @@ export const openScenarioNavigation = (
     return socket;
   });
 
-/** Milliseconds; overrides are local to one scenario. */
-export interface HqTimings {
-  pingEvery?: number;
-  reconcileEvery?: number;
-  streamRecheck?: number;
-}
-
-export function startScenarioCore(
-  zeropsHttp: { baseUrl: string; world: FakeWorld; github?: GithubAddress },
-  timings: HqTimings = {},
-) {
+export function startScenarioCore(zeropsHttp: {
+  baseUrl: string;
+  world: FakeWorld;
+  github?: GithubAddress;
+}) {
   return Effect.suspend(() => {
     const command = process.env.MATE_HQ_TEST_COMMAND;
     if (!command)
@@ -87,7 +87,7 @@ export function startScenarioCore(
           "Scenarios run against mate-hq's test HQ: set MATE_HQ_TEST_COMMAND to `node <mate-hq>/conformance/scripts/test-hq.ts`",
         ),
       );
-    return startExternalCore(command, zeropsHttp, timings);
+    return startExternalCore(command, zeropsHttp);
   });
 }
 

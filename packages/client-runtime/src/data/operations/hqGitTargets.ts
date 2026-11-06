@@ -90,7 +90,7 @@ function gitSettled(
   const app = read.fact("hqApp", intent.appId);
   if (app.kind !== "known") return null;
   const environments = app.value.environments;
-  if (environments === undefined || "refused" in environments) return null;
+  if (environments === undefined) return null;
   const environment = environments.find(
     (entry) => entry.id === intent.environmentId && entry.target.kind === "git",
   );

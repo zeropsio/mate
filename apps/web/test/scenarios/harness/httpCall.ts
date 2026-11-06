@@ -26,7 +26,8 @@ export const makeHttpCall = (
   observers = new Map<string, (step: ReadinessStep) => void>(),
 ) => {
   let requestId = 0;
-  return (
+  const access = new Map<string, string>();
+  const call = (
     method: string,
     path: string,
     options: {
@@ -40,7 +41,17 @@ export const makeHttpCall = (
     } = {},
   ) =>
     Effect.promise(async () => {
-      const raw = options.body instanceof Uint8Array;
+      const token = options.session === undefined ? undefined : access.get(options.session);
+      const input = options.body;
+      const body =
+        token === undefined || method === "GET" || method === "HEAD" || input instanceof Uint8Array
+          ? input
+          : input === undefined
+            ? { accessToken: token }
+            : typeof input === "object" && input !== null && !Array.isArray(input)
+              ? { ...input, accessToken: token }
+              : input;
+      const raw = body instanceof Uint8Array;
       const observer = options.onReadinessStep;
       const id = observer === undefined ? undefined : String(++requestId);
       if (id !== undefined && observer !== undefined) observers.set(id, observer);
@@ -56,9 +67,7 @@ export const makeHttpCall = (
               agent: false,
               ...(options.signal === undefined ? {} : { signal: options.signal }),
               headers: {
-                ...(options.body === undefined || raw
-                  ? {}
-                  : { "content-type": "application/json" }),
+                ...(body === undefined || raw ? {} : { "content-type": "application/json" }),
                 ...(options.session === undefined
                   ? {}
                   : { authorization: `Bearer ${options.session}` }),
@@ -80,11 +89,7 @@ export const makeHttpCall = (
           }
           request.once("error", reject);
           request.end(
-            options.body === undefined
-              ? undefined
-              : options.body instanceof Uint8Array
-                ? options.body
-                : encodeJson(options.body),
+            body === undefined ? undefined : body instanceof Uint8Array ? body : encodeJson(body),
           );
         });
         if (response.statusCode === undefined) throw new Error("Core's HTTP answer has no status");
@@ -96,16 +101,38 @@ export const makeHttpCall = (
         observer?.("body");
         const text = new TextDecoder().decode(bytes);
         const isJson = headers.get("content-type")?.includes("json") ?? false;
-        return {
+        const answer = {
           status: response.statusCode,
           body: text === "" ? null : isJson ? decodeJson(text) : text,
           bytes,
           headers,
         };
+        if (
+          method === "POST" &&
+          path === "/api/door" &&
+          answer.status === 200 &&
+          typeof input === "object" &&
+          input !== null &&
+          "accessToken" in input &&
+          typeof input.accessToken === "string" &&
+          typeof answer.body === "object" &&
+          answer.body !== null &&
+          "session" in answer.body &&
+          typeof answer.body.session === "string"
+        )
+          access.set(answer.body.session, input.accessToken);
+        return answer;
       } finally {
         if (id !== undefined) observers.delete(id);
       }
     });
+  return Object.assign(call, {
+    accessOf: (session: string) => {
+      const token = access.get(session);
+      if (token === undefined) throw new Error("No person access token for the HQ session");
+      return token;
+    },
+  });
 };
 
 export type Call = ReturnType<typeof makeHttpCall>;

@@ -17,9 +17,10 @@
  * On demand: connects on the FIRST subscriber, disconnects on the LAST
  * unsubscribe — never keeps a browser session alive for the user's sake
  * (spec §0 rule 3). While at least one subscriber remains, a dropped
- * connection (daemon restart, no browser open yet) retries with backoff,
- * re-reading the port file every attempt, so a daemon that comes back on a
- * new port is picked up without restarting mate.
+ * connection (daemon restart) retries with backoff, re-reading the port file
+ * every attempt, so a daemon that comes back on a new port is picked up
+ * without restarting mate; while no port is published (no browser open yet)
+ * the port file is read again at its change, never on a timer.
  *
  * ## Wire shapes — agent-browser's own streaming reference
  *
@@ -102,6 +103,7 @@ import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../config.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
+import { watchFiles, type WatchFiles } from "./fileWatch.ts";
 import { makeBrowserCallFrames } from "./ZeropsBrowserCallFrames.ts";
 
 /**
@@ -124,6 +126,8 @@ export type ConnectSocket = (url: string) => BrowserSocket;
 export interface ZeropsBrowserStreamOptions {
   /** Reads `~/.agent-browser/default.stream`; `undefined` when absent or unparsable. Called fresh on every connect attempt — never cached. */
   readonly readStreamPort: Effect.Effect<number | undefined>;
+  /** A watch on the port file: with no port published, it is read again at the file's change. */
+  readonly watchPort: WatchFiles;
   readonly connect: ConnectSocket;
   /** Backoff schedule while a subscriber remains and the daemon is unreachable; the last entry repeats. Defaults to {@link DEFAULT_RECONNECT_DELAYS_MS}. */
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
@@ -430,16 +434,18 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
 
     /** Runs for as long as at least one subscriber exists — forked on 0→1, interrupted on 1→0. */
     const connectionLoop: Effect.Effect<void> = Effect.gen(function* () {
+      const portChanges = yield* options.watchPort;
       let attempt = 0;
       while (true) {
         const port = yield* options.readStreamPort;
-        let openedForMs = 0;
         if (port === undefined) {
           yield* publishState({ status: "no-browser" });
-        } else {
-          yield* publishState({ status: "connecting" });
-          openedForMs = yield* runOneConnection(port);
+          yield* portChanges.next;
+          attempt = 0;
+          continue;
         }
+        yield* publishState({ status: "connecting" });
+        const openedForMs = yield* runOneConnection(port);
         if (isConnectionStable(openedForMs, stableThresholdMs)) {
           attempt = 0;
           continue;
@@ -448,7 +454,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
         attempt += 1;
         yield* Effect.sleep(Duration.millis(delayMs));
       }
-    });
+    }).pipe(Effect.scoped);
 
     /** Sent from inside a subscriber's own stream, only once THAT subscriber actually pulls the marker — see the module doc comment's "Ack pacing" section. Deduplicated across subscribers via `lastAckedSeq` (acks are cumulative): the compare-and-set is one `Ref.modify` so two subscribers' concurrent pulls of the same seq can never both read "not yet acked" before either writes. */
     const ackDaemonFrame = (seq: number): Effect.Effect<void> =>
@@ -589,6 +595,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const service = yield* make({
       readStreamPort: readStreamPortFromFile(fs, path, config.homeDir),
+      watchPort: watchFiles([path.join(config.homeDir, ...STREAM_PORT_FILE_SEGMENTS)]),
       connect: connectReal,
     });
     yield* Stream.runForEach(bus.events, service.ingestCall).pipe(Effect.forkScoped);

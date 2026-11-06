@@ -12,10 +12,10 @@ import {
 import type { PressElsewhere } from "../../zerops/hq/index.ts";
 import {
   isTerminalReachability,
-  type MateLink,
   type Reachability,
   reachabilityPhrase,
-} from "../../zerops/environments/index.ts";
+} from "../../zerops/environments/reachability.ts";
+import type { MateLink } from "../../zerops/environments/mateLink.ts";
 import type { MateRecovery } from "./mateRecovery.ts";
 import { NO_RESTARTS, readRestartRecovery } from "./restart.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
@@ -61,11 +61,6 @@ export type MateComingVerb =
   | "remove"
   /** A press stopped at a step safe to ask again: it resumes there, on the same project. */
   | "try-again"
-  /**
-   * A press that stopped before its container, in any browser: an owner or an admin finishes it
-   * (*Finish setup*), the same steps the press makes.
-   */
-  | "finish-setup"
   /** Its container has no deployment; create one through the same recipe as setup. */
   | "redeploy"
   /** The platform may have taken it anyway: the projects page lists it if it did. */
@@ -78,6 +73,8 @@ export type MateComing =
       readonly kind: "coming";
       /** How far it has got, as the projects page says it. */
       readonly line: string;
+      /** A shared HQ birth carries its proven phase and does not use the local arrival clock. */
+      readonly birth?: { readonly attention: boolean };
       /** When its setup began, wall ms, where this browser pressed it: its first press, its clock. */
       readonly since?: number | undefined;
     }
@@ -155,13 +152,6 @@ export interface MateComingInput {
   readonly firstBuild?: FirstBuildState | undefined;
   /** Its link still waits for its first answer (`arrivalAwaitsAnswer`). */
   readonly answerAwaited?: boolean | undefined;
-  /**
-   * Why the close-off gate holds it (`closeOffGate`), never silent: `open`, its container carries
-   * the press's marker and HQ says its project is not closed off, so nobody is let in; `checking`,
-   * its marker is not read yet; `awaiting-hq`, HQ says nothing and this browser knows its close-off
-   * has not happened. Left out while a Finish setup runs on it in this tab.
-   */
-  readonly closeOffHold?: "open" | "checking" | "awaiting-hq" | undefined;
 }
 
 /**
@@ -204,37 +194,6 @@ const containerCatchingUp = (input: Pick<MateComingInput, "madeAt" | "nowMs">): 
   input.madeAt !== undefined &&
   input.nowMs !== undefined &&
   input.nowMs - input.madeAt < CONTAINER_CATCH_UP_MS;
-
-/** A Mate whose press stopped before its container: half-made, and *Finish setup* completes it. */
-export const HALF_MADE_LINE = "Its setup stopped before its workspace. Finish setup completes it.";
-
-/** The same Mate, for a viewer who may not finish it: who can. */
-export const HALF_MADE_OWNER_LINE =
-  "Its setup stopped before its workspace; an owner or admin can finish it.";
-
-/**
- * A Mate held because HQ says its project is not closed off (`closeOffHold` `open`), until HQ says
- * it is: a press may be closing it off, and *Finish setup* in its menu does.
- */
-export const CLOSING_OFF_LINE = "Closing off its project…";
-
-/** A Mate held while its container's marker is read (`closeOffHold` `checking`). */
-export const CHECKING_SETUP_LINE = "Checking that its setup finished…";
-
-/** A Mate held until HQ confirms its close-off (`closeOffHold` `awaiting-hq`). */
-export const AWAITING_HQ_LINE = "Waiting for HQ to confirm its setup finished.";
-
-/** Accepted identity without a container or a current owner result is still unresolved. */
-export const AWAITING_SETUP_LINE = "Waiting for evidence of its workspace setup.";
-
-/**
- * A half-made Mate as its viewer may act on it: the line names Finish setup only where the
- * viewer has it, and says who can where they do not.
- */
-export function halfMadeFor(coming: MateComing, canFinish: boolean): MateComing {
-  if (coming.kind !== "failed" || coming.verb !== "finish-setup" || canFinish) return coming;
-  return { ...coming, line: HALF_MADE_OWNER_LINE };
-}
 
 /** A reason, as a sentence: capitalised, and ended; empty where it says nothing. */
 export function asSentence(reason: string): string {
@@ -302,7 +261,6 @@ function comingWords(input: MateComingInput): MateComing | undefined {
       : (input.setupFailure ??
         (input.press !== undefined ||
         created ||
-        input.closeOffHold !== undefined ||
         input.candidate?.service?.status === "READY_TO_DEPLOY"
           ? failedSetupProcess(input.processes, input.candidate?.service?.id)
           : undefined));
@@ -329,16 +287,6 @@ function comingWords(input: MateComingInput): MateComing | undefined {
       verb: "remove",
     };
   }
-  // Held because its project is not closed off: said, closing off until HQ says it is — never
-  // failed on a clock (2026-10-05); Finish setup is in its menu. A press of this tab's bringing its
-  // container says that instead.
-  if (input.closeOffHold === "checking") return { kind: "coming", line: CHECKING_SETUP_LINE };
-  if (input.closeOffHold === "awaiting-hq" && press?.container !== true) {
-    return { kind: "coming", line: AWAITING_HQ_LINE };
-  }
-  if (input.closeOffHold === "open" && press?.container !== true) {
-    return { kind: "coming", line: CLOSING_OFF_LINE };
-  }
   // The machine ends the arrival wait when its container or link needs attention, whatever this
   // tab pressed. Until a machine names it, the platform can still say its container is down.
   const reachability = input.link?.reachability;
@@ -357,15 +305,9 @@ function comingWords(input: MateComingInput): MateComing | undefined {
     };
   }
   if (press === undefined && candidate?.missingContainer === true) {
-    // A hold is caller ownership, not a setup result. Only the exact import's terminal receipt
-    // can say it stopped; an empty listing and absent/expired hold await owner evidence.
-    if (input.pressElsewhere === "pressing" || (created && containerCatchingUp(input))) {
-      return { kind: "coming", line: COMING_UP_LINE };
-    }
-    if (input.pressElsewhere === "stopped") {
-      return { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
-    }
-    return { kind: "coming", line: AWAITING_SETUP_LINE };
+    return created && containerCatchingUp(input)
+      ? { kind: "coming", line: COMING_UP_LINE }
+      : undefined;
   }
   // Past its grace a first build is taking longer, however long — a slow or queued one looks the
   // same from its status as one whose process is not read yet — with no verb that cannot work on a

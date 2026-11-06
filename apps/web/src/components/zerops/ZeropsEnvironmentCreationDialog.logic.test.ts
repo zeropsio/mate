@@ -37,7 +37,6 @@ import {
   validateCreationForm,
   type NewMateDoor,
   type RecipeOption,
-  pressSteps,
   pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
@@ -45,6 +44,7 @@ import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
 /** A tier as the group repo's `main` hands it over, already import-ready. */
 const TIER = {
   kind: "tier" as const,
+  revision: "recipe-revision",
   tier: "stage" as const,
   yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
 };
@@ -995,13 +995,12 @@ describe("recipeChangeView — where Review the change goes", () => {
 
 // The Add dialog stays on the press until the Mate needs no browser (live, 2026-10-01: a tab
 // closed 2 s after the dialog left a Mate with no container).
-describe("pressSteps — the press as the Add dialog draws it", () => {
-  // As a Mate's press runs (F6b): its record in its application before its container.
+describe("pressThrough — when the press needs no browser", () => {
+  // As a Mate's press runs (F6b): its record in its application before its one import.
   const plan: ReadonlyArray<EnvironmentCreationStep> = [
     { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
     { kind: "register" },
     { kind: "import-container", agents: [] },
-    { kind: "close-off" },
     { kind: "await-ready", withAgent: true },
   ];
   const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>, error?: string) =>
@@ -1010,88 +1009,18 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
       state: states[index]!,
       ...(error !== undefined && states[index] === "failed" ? { error } : {}),
     }));
-  const drawn = (progress: ReadonlyArray<EnvironmentCreationStepProgress>) =>
-    pressSteps(progress).map((step) => `${step.label}:${step.state}`);
-
   it.each([
+    { case: "registering", states: ["done", "running", "queued", "queued"], want: false },
+    { case: "importing", states: ["done", "done", "running", "queued"], want: false },
+    { case: "registered and imported", states: ["done", "done", "done", "running"], want: true },
     {
-      case: "creating the project",
-      states: ["running", "queued", "queued", "queued", "queued"],
-      want: [
-        "Project:active",
-        "Registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:waiting",
-      ],
-    },
-    {
-      case: "registering it, before its container",
-      states: ["done", "running", "queued", "queued", "queued"],
-      want: [
-        "Project:done",
-        "Registered:active",
-        "Its computer:waiting",
-        "Private network ready:waiting",
-      ],
-    },
-    {
-      case: "a container that would not come",
-      states: ["done", "done", "failed", "queued", "queued"],
-      want: [
-        "Project:done",
-        "Registered:done",
-        "Its computer:failed",
-        "Private network ready:waiting",
-      ],
-    },
-  ] as const)("draws $case", ({ states, want }) => {
-    expect(drawn(at(states))).toEqual(want);
-  });
-
-  // The dialog stays through the registration — a call or two — and goes before the wait for it,
-  // which the container covers.
-  it("says nothing of what comes after the registration", () => {
-    expect(pressSteps(at(["done", "done", "done", "done", "running"]))).toHaveLength(4);
-  });
-
-  it("leaves Registered out of a press that writes no registration", () => {
-    const progress = at(["done", "done", "done", "done", "running"]).filter(
-      (entry) => entry.step.kind !== "register",
-    );
-    expect(drawn(progress)).toEqual([
-      "Project:done",
-      "Its computer:done",
-      "Private network ready:done",
-    ]);
-  });
-
-  it.each([
-    {
-      case: "registering",
-      states: ["done", "running", "queued", "queued", "queued"],
-      want: false,
-    },
-    {
-      case: "closing off",
-      states: ["done", "done", "done", "running", "queued"],
-      want: false,
-    },
-    {
-      case: "registered and closed off",
-      states: ["done", "done", "done", "done", "running"],
+      case: "its registration refused, imported",
+      states: ["done", "failed", "done", "running"],
       want: true,
     },
-    {
-      case: "its registration refused, closed off",
-      states: ["done", "failed", "done", "done", "running"],
-      want: true,
-    },
-  ] as const)(
-    "is through once closed off and registered, or refused: $case",
-    ({ states, want }) => {
-      expect(pressThrough(at(states))).toBe(want);
-    },
-  );
+  ] as const)("is through once imported and registered, or refused: $case", ({ states, want }) => {
+    expect(pressThrough(at(states))).toBe(want);
+  });
 });
 
 describe("environmentSheetSubmit — what a stage's or a production's one sheet sends", () => {

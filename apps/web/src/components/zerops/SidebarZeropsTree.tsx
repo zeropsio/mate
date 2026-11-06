@@ -141,7 +141,7 @@ import { cn } from "~/lib/utils";
 import { formatShortTimestamp, formatUpcomingTimestamp } from "~/timestampFormat";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
-import { SidebarComingEnds } from "./SidebarComingEnds";
+import { SidebarBirthMenu, SidebarComingEnds, type SharedBirthRow } from "./SidebarComingEnds";
 import { Row } from "../ui/row";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateAutomatedMark } from "./MateAutomatedMark";
@@ -283,10 +283,9 @@ import {
   mateBornLineText,
   mateComingRowView,
   mateLifeOf,
-  mateRowOffersMenu,
+  mateRowMenu,
   mateCrewItem,
   mateDeletingView,
-  mateFinishingView,
   mateDotLabel,
   mateNotYours,
   mateOwnerView,
@@ -314,7 +313,7 @@ import {
   type BadgeSeat,
 } from "./SidebarMateRow.logic";
 import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
-import { finishSetupRowLine, useMatePress } from "~/zerops/matePress";
+import { useMatePress } from "~/zerops/matePress";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
@@ -612,6 +611,7 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly getMateActions?:
     | ((candidate: T, activity: ZeropsAgentActivity | undefined) => MateRowActions | undefined)
     | undefined;
+  readonly getBirth?: ((birthId: string) => SharedBirthRow | undefined) | undefined;
   /**
    * Opens a Mate's conversation on its Crew tab, with the setup sheet over it
    * for *Set up a crew* — its menu's crew item (`mateCrewItem`). Absent, the
@@ -731,14 +731,25 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   hold = false,
   onNoticeAct,
   className,
-  births = NO_BIRTHS,
+  births: placedBirths = NO_BIRTHS,
   timestampFormat = "locale",
   getMateActions,
+  getBirth,
   onOpenCrew,
   shown,
   onShowEveryone,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
+  const births = useMemo(
+    () =>
+      placedBirths.filter(
+        (birth) =>
+          birth.placement.kind !== "mate" ||
+          birth.intent === undefined ||
+          getBirth?.(birth.intent) !== undefined,
+      ),
+    [getBirth, placedBirths],
+  );
   const structureView = useAtomValue(shownCanonicalHqListNavigationAtom);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const accountOrgId = useAccountOrgId();
@@ -1863,6 +1874,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         <MateUnit active={active} key={`coming:${member.projectId}`} projectId={member.projectId}>
           <ComingMateRow
             active={active}
+            shared={member.intent === undefined ? undefined : getBirth?.(member.intent)}
             coming={member}
             kid={at === "kid"}
             name={member.name}
@@ -1968,6 +1980,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       [...ordered.map((entry) => entry.projectId), ...coming.map((member) => member.projectId)],
       lead,
     );
+    const birthNeedsAttention = (member: ZeropsGroupPendingMember) =>
+      (member.intent === undefined ? undefined : getBirth?.(member.intent)?.attention) ??
+      member.failed === true;
     const faces: ReadonlyArray<ClusterFace> = cluster.shown.flatMap((projectId) => {
       const entry = ordered.find((candidate) => candidate.projectId === projectId);
       if (entry === undefined) {
@@ -1980,7 +1995,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             name: member.name,
             tint,
             shape: member.face?.shape ?? mateShapeOf(undefined, tint),
-            state: mateBirthFace(member.failed === true),
+            state: mateBirthFace(birthNeedsAttention(member)),
             known: true,
             badge: null,
           },
@@ -2054,6 +2069,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         menu={projectMenu()}
         more={cluster.more}
         name={projectName}
+        pendingNeedsAttention={leadEntry === undefined && coming.some(birthNeedsAttention)}
         onDragStart={dragOf}
         onInto={() => {
           treeRef.current
@@ -2777,10 +2793,8 @@ function GroupRowWords<T extends RosterCandidate>({
                 <MateSecondLine
                   askChanged={state.askChanged}
                   askLine={state.askLine}
-                  finishing={state.finishing}
                   known={state.known}
                   second={state.second}
-                  timestampFormat={timestampFormat}
                   view={state.view}
                 />
               ) : (
@@ -2838,6 +2852,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
   faces,
   more,
   mates,
+  pendingNeedsAttention,
   lead,
   asksMore,
   keyedReadings,
@@ -2860,6 +2875,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
   readonly more: number;
   /** How many Mates it holds, for its name in words. */
   readonly mates: number;
+  readonly pendingNeedsAttention: boolean;
   /** Its lead, where one of its Mates is listed; none while all of them are still being made. */
   readonly lead: GroupLeadInput<T> | undefined;
   readonly asksMore: number;
@@ -2977,7 +2993,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
           const cluster = <ProjectCluster faces={faces} more={more} />;
           return lead === undefined ? (
             <Row
-              line={`${String(mates)} Mates coming up`}
+              line={`${String(mates)} Mates${pendingNeedsAttention ? " · setup needs attention" : " coming up"}`}
               lead={cluster}
               meta={<span className="min-w-16" />}
               pressable="band"
@@ -3371,7 +3387,7 @@ export function MenuMateLine<T extends RosterCandidate>({
   const viewer = useZeropsSessionOptional()?.user?.id;
   const linked = useMateLinkedInHq(candidate.project.id);
   const hqMates = useMatesLinkedInHq();
-  const { view, second, askLine, askChanged, known, finishing } = useMateRowState({
+  const { view, second, askLine, askChanged, known } = useMateRowState({
     candidate,
     activity,
     up: mateAwake(candidate, hqMates) || linked,
@@ -3390,10 +3406,8 @@ export function MenuMateLine<T extends RosterCandidate>({
       <MateSecondLine
         askChanged={askChanged}
         askLine={askLine}
-        finishing={finishing}
         known={known}
         second={second}
-        timestampFormat={timestampFormat}
         view={view}
       />
     ),
@@ -3433,22 +3447,14 @@ function useMateRowState<T extends RosterCandidate>({
   // offers no menu and does not open, until the listing lets it go.
   const deletingIds = useDeletingMates();
   const deleting = mateDeleting(candidate.project, deletingIds);
-  // *Finish setup* running on it, from whichever screen it was pressed (`finishSetupRowLine`):
-  // its own view draws the steps only while its container is missing, so its row says so. A stop
-  // is said for a moment, and never over a Mate that is connected: this tab's socket to it, or its
-  // link to HQ — not a container that only runs, whose stop is what the row says.
   const press = useMatePress(candidate.project.id);
-  const linkedInHq = useMateLinkedInHq(candidate.project.id);
   const overviewInHq = useMateOverviewInHq(candidate.project.id);
-  const linkedNow = candidate.group === "connected" || linkedInHq;
   const placedKnown = useAtomValue(menuPlacementKnownAtom);
   const outsideHq = mateOutsideHq(
     candidate.project,
     placedKnown,
     coming !== undefined || press !== undefined,
   );
-  const finishing =
-    deleting || coming !== undefined ? undefined : finishSetupRowLine(press, { up: linkedNow });
   // What the row says in its state (`mateRowView`, M7): the face, the right of
   // the name, what was asked and the third line — the face and the words from
   // the one reading of it (`mateRowReading`): what it is on, or was last on,
@@ -3488,9 +3494,7 @@ function useMateRowState<T extends RosterCandidate>({
     ? mateDeletingView(read)
     : coming !== undefined
       ? mateComingRowView(read, coming)
-      : finishing !== undefined
-        ? mateFinishingView(read)
-        : read;
+      : read;
   const retainedReply =
     view.reply?.kind === "words" && view.reply.lastKnown === true ? view.reply : undefined;
   // Whose seat it is, and whether anybody has signed its agent in — read off
@@ -3516,7 +3520,7 @@ function useMateRowState<T extends RosterCandidate>({
   // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
   // added it, that it waits on them — with the amber dot of what needs them.
   const signIn =
-    outsideHq || deleting || finishing !== undefined || view.coming !== undefined || containerless
+    outsideHq || deleting || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
   const admissionOrgId = useAccountOrgId();
@@ -3585,7 +3589,6 @@ function useMateRowState<T extends RosterCandidate>({
         ? sentAsk.text
         : undefined,
     deleting,
-    finishing: finishing !== undefined,
     read: conversationsRead,
     asker: mateAsker(owner),
   });
@@ -3613,7 +3616,6 @@ function useMateRowState<T extends RosterCandidate>({
     view,
     askLine,
     deleting,
-    finishing: finishing !== undefined,
     outsideHq,
     mine: hqPeople?.waitsOnViewer,
     waitsOn,
@@ -3632,7 +3634,6 @@ function useMateRowState<T extends RosterCandidate>({
     name,
     deleting,
     outsideHq,
-    finishing,
     view,
     retainedReply,
     status,
@@ -3860,7 +3861,6 @@ function MateRowView<T extends RosterCandidate>({
     name,
     deleting,
     outsideHq,
-    finishing,
     view,
     retainedReply,
     status,
@@ -3886,11 +3886,13 @@ function MateRowView<T extends RosterCandidate>({
     reviewWaits,
     inReview,
   });
-  // Nothing on its menu is about a Mate still being made, or one going: it
-  // offers none — until its setup stopped, when *Finish setup* is on it.
-  const actions = !outsideHq && mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
-  // Its project access detail is held while the row is drawn with its menu (`useDrawnProjectAccess`).
-  const drawn = actions?.drawn;
+  // A birth's menu offers its shared actions, and a Mate on its way out offers none.
+  const actions: MateRowActions | undefined = outsideHq
+    ? undefined
+    : mateRowMenu({ deleting, coming, actions: offered });
+  // Its project access detail is held while the row is drawn with a menu, or one on its way, whose
+  // Delete stands on it (`useDrawnProjectAccess`).
+  const drawn = outsideHq || deleting ? undefined : offered?.drawn;
   useEffect(() => drawn?.(), [drawn]);
   const warmIntent = useWarmIntent(activity?.threadKey);
   // Its menu's door to its crew (`mateCrewItem`): crew mode off, on with no crew yet, or a crew
@@ -4235,9 +4237,7 @@ function MateRowView<T extends RosterCandidate>({
                 askLine={askLine}
                 known={known}
                 second={second}
-                timestampFormat={timestampFormat}
                 view={view}
-                finishing={finishing}
               />
             ) : (
               <span
@@ -4453,7 +4453,7 @@ function MateNameMarks({ mateProjectId }: { readonly mateProjectId: string }) {
 /**
  * Whether a crew's need may take its Mate's line: where the Mate's own line is its words or its
  * step, the person's ask, or nothing — never over an error, a sign-in, a Mate coming up, going,
- * finishing its setup or outside HQ.
+ * or outside HQ.
  */
 function crewMayTakeLine(second: MateRowSecond, view: MateRowReading): boolean {
   if (second.kind === "ask" || second.kind === "none") return true;
@@ -4467,24 +4467,18 @@ function MateSecondLine({
   askLine,
   askChanged,
   known,
-  finishing,
-  timestampFormat,
 }: {
   readonly second: MateRowSecond;
   readonly view: MateRowReading;
   readonly askLine: MateRowAskLine;
   readonly askChanged: boolean;
   readonly known: boolean;
-  readonly finishing: string | undefined;
-  readonly timestampFormat: TimestampFormat;
 }) {
   switch (second.kind) {
     case "coming":
       return view.coming === undefined ? null : <MateComingLine line={mateBornLine(view.coming)} />;
     case "deleting":
       return <MateDeletingLine />;
-    case "finishing":
-      return finishing === undefined ? null : <MateFinishingLine words={finishing} />;
     case "outside":
       return <span className="menu-line2 truncate text-muted-foreground">{NOT_IN_HQ_LINE}</span>;
     case "sign-in":
@@ -4870,21 +4864,6 @@ function MateDeletingLine() {
 }
 
 /**
- * The row's last line while *Finish setup* runs on its Mate (`mateFinishingView`): what is being
- * done, in the muted ink, where its words stood.
- */
-function MateFinishingLine({ words }: { readonly words: string }) {
-  return (
-    <span
-      className="truncate menu-line2 text-muted-foreground"
-      data-zerops-surface="sidebar-mate-finishing"
-    >
-      {words}
-    </span>
-  );
-}
-
-/**
  * The row's one line while its Mate is being born (`mateBornLine`): "Coming
  * up" on a clock counting from the press — muted, in tabular figures so its
  * ticks move nothing — or that setting it up stopped, in red. It stands where
@@ -4934,6 +4913,7 @@ function ComingMateRow({
   onOpen,
   project,
   kid = false,
+  shared,
 }: {
   readonly name: string;
   readonly coming: ZeropsGroupPendingMember;
@@ -4943,6 +4923,7 @@ function ComingMateRow({
   readonly project?: string | undefined;
   /** It stands under its project's row, the group open. */
   readonly kid?: boolean;
+  readonly shared?: SharedBirthRow | undefined;
 }) {
   const tint = coming.face?.tint ?? "slate";
   const row = (
@@ -4959,14 +4940,26 @@ function ComingMateRow({
               className={kid ? "size-7" : "size-9"}
               shape={coming.face?.shape ?? mateShapeOf(undefined, tint)}
               size={kid ? 24 : 32}
-              state={mateBirthFace(coming.failed === true)}
+              state={mateBirthFace(shared?.attention ?? coming.failed === true)}
               tint={tint}
             />
           </span>
           {COMING_SEAT === null ? null : <MateOwnerMark seat={COMING_SEAT} />}
         </span>
       }
-      line={<MateComingLine line={pendingBornLine(coming)} />}
+      line={
+        <MateComingLine
+          line={
+            shared === undefined
+              ? pendingBornLine(coming)
+              : {
+                  words: shared.line,
+                  since: undefined,
+                  tone: shared.attention ? "attention" : "muted",
+                }
+          }
+        />
+      }
       onClick={() => {
         onOpen?.(coming.projectId);
       }}
@@ -4988,10 +4981,14 @@ function ComingMateRow({
     />
   );
   // A creation that stopped before Zerops took it: its ⋯ ends it, or starts it over.
-  return (
+  return shared === undefined ? (
     <SidebarComingEnds birthId={coming.projectId} name={name}>
       {row}
     </SidebarComingEnds>
+  ) : (
+    <SidebarBirthMenu entries={shared.entries} name={name}>
+      {row}
+    </SidebarBirthMenu>
   );
 }
 

@@ -1,9 +1,9 @@
 /**
  * An organization's members (`GET /client/{id}/user/list`): names, roles and pictures — metadata,
- * never a credential. No stream carries them, so the list is read once while a screen needs it —
- * its official HQ's anchor, and a person a surface names whom HQ does not — and again only after
- * our own write or the person's Try again. While somebody is invited it is read again on the
- * cadence: they join on Zerops, and nothing tells us.
+ * never a credential. The list is read once while a screen needs it — its official HQ's anchor,
+ * and a person a surface names whom HQ does not — and again after our own write, the person's Try
+ * again, or a membership change Zerops pushes (`clientUser`). While somebody is invited it is read
+ * again on the cadence: they join on Zerops, and nothing tells us.
  *
  * @module data/families/organizationMembers
  */
@@ -56,6 +56,8 @@ export const organizationMembersFamily: FamilySpec<"organizationMembers"> = {
       members.some(
         (member) => member.status !== undefined && member.status !== ZEROPS_ACTIVE_MEMBER_STATUS,
       ),
+    // Any member's role or status Zerops pushes is read again whole: the frame names no person.
+    refreshOn: ({ ownerId }, row) => row.family === "clientUser" && row.value.clientId === ownerId,
   },
 };
 

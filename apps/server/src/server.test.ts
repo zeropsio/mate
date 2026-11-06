@@ -143,10 +143,10 @@ import sharp from "sharp";
 import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
-import * as ZeropsOrgReadModule from "./zerops/ZeropsOrgRead.ts";
 import * as ZeropsConnectionsModule from "./zerops/ZeropsConnections.ts";
 import * as ZeropsTicketDoorModule from "./zerops/ZeropsTicketDoor.ts";
 import * as ZeropsMateAccessListModule from "./zerops/ZeropsMateAccessList.ts";
+import { accessSceneLayer } from "./zerops/testing/accessScene.ts";
 import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
 import { FIXTURE_ATTENTION, makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -381,7 +381,6 @@ const testTicketStateByPort = new Map<
   number,
   {
     connections: ZeropsConnectionsModule.ZeropsConnections["Service"];
-    tickets: ZeropsTicketDoorModule.ZeropsTicketDoor["Service"];
   }
 >();
 const testTicketState = Effect.gen(function* () {
@@ -394,7 +393,7 @@ const ticketAuthTestLayer = EnvironmentAuth.zeropsLayer.pipe(
   Layer.provideMerge(
     ZeropsConnectionsModule.layer.pipe(
       Layer.provideMerge(ZeropsTicketDoorModule.layer),
-      Layer.provideMerge(ZeropsMateAccessListModule.layer),
+      Layer.provideMerge(accessSceneLayer({ owner: "OWNER" })),
     ),
   ),
 );
@@ -1060,17 +1059,13 @@ const buildAppUnderTest = (options?: {
           // the fixture/feeds bundle the next `Layer.provide` supplies: a
           // test machine has no live env store either, so the reader
           // answers the boot snapshot (`undefined`, same as `config.zerops`
-          // being unset), the member list has no key to be read with, no HQ
-          // sends who the project opens for, and the status starts `"unknown"`.
-          ZeropsMateAccessListModule.layer.pipe(
+          // being unset), the member list has no key to be read with, the
+          // access list names nobody, and the status starts `"unknown"`.
+          ZeropsMateAccessListModule.emptyLayer.pipe(
             Layer.provideMerge(
-              ZeropsOrgReadModule.layer.pipe(
-                Layer.provideMerge(
-                  Layer.succeed(
-                    ZeropsMateKeyModule.ZeropsMateKey,
-                    ZeropsMateKeyModule.snapshotOnlyReader(undefined),
-                  ),
-                ),
+              Layer.succeed(
+                ZeropsMateKeyModule.ZeropsMateKey,
+                ZeropsMateKeyModule.snapshotOnlyReader(undefined),
               ),
             ),
           ),
@@ -1403,9 +1398,6 @@ const buildAppUnderTest = (options?: {
       testTicketStateByPort.set(port, {
         connections: Option.getOrThrow(
           Context.getOption(context, ZeropsConnectionsModule.ZeropsConnections),
-        ),
-        tickets: Option.getOrThrow(
-          Context.getOption(context, ZeropsTicketDoorModule.ZeropsTicketDoor),
         ),
       });
     yield* Effect.addFinalizer(() =>
@@ -1886,22 +1878,17 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           config: { zerops: zeropsTestEnvironment() },
           layers: { terminalManager: { closeOpenedBy: () => Effect.succeed(0) } },
         });
-        const { connections, tickets } = yield* testTicketState;
-        yield* connections.heard({
-          type: "access",
-          version: 1,
-          full: true,
-          viewAt: "1970-01-01T00:00:00.000Z",
-          members: [{ userId: "owner", role: "OWNER", visibility: "open" }],
-        });
+        const { connections } = yield* testTicketState;
         const ticket = "ticket-on-the-first-frame";
-        yield* tickets.heard({
-          type: "ticket",
-          ticket,
-          userId: "owner",
-          sessionId: "hq-owner",
-          expiresIn: 60,
-        });
+        yield* Effect.flatten(
+          connections.ticket({
+            type: "ticket",
+            ticket,
+            userId: "owner",
+            sessionId: "hq-owner",
+            expiresIn: 60,
+          }),
+        );
         const before = yield* HttpClient.get("/api/auth/session", {
           headers: { authorization: `Bearer ${ticket}` },
         });
@@ -5090,22 +5077,17 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("serves a bearer call from any origin inside a Zerops project", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
-      const { connections, tickets } = yield* testTicketState;
-      yield* connections.heard({
-        type: "access",
-        version: 1,
-        full: true,
-        viewAt: "1970-01-01T00:00:00.000Z",
-        members: [{ userId: "owner", role: "OWNER", visibility: "open" }],
-      });
+      const { connections } = yield* testTicketState;
       const session = { token: "http-origin-ticket" };
-      yield* tickets.heard({
-        type: "ticket",
-        ticket: session.token,
-        userId: "owner",
-        sessionId: "hq-owner",
-        expiresIn: 60,
-      });
+      yield* Effect.flatten(
+        connections.ticket({
+          type: "ticket",
+          ticket: session.token,
+          userId: "owner",
+          sessionId: "hq-owner",
+          expiresIn: 60,
+        }),
+      );
       assert.isTrue(
         Option.isSome(yield* connections.admit({ ticket: session.token }, Effect.void)),
       );
@@ -6656,18 +6638,18 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("subscribeZeropsBrowserStream applies flow control (Ack after every Chunk)", () =>
     Effect.gen(function* () {
       // A real (non-mocked) service instance publishing "no-browser" forever
-      // (`readStreamPort` never resolves, `reconnectDelaysMs: [0]`) so a
-      // real acking `RpcClient` pulling MORE THAN ONE Chunk is proof the
+      // (`readStreamPort` never resolves, its port file changes without end)
+      // so a real acking `RpcClient` pulling MORE THAN ONE Chunk is proof the
       // per-request Ack loop the effect-rpc protocol requires (spec-mate.md
       // §5.5) actually runs over the real websocket, not just proof the
       // handler exists — a client that never acked would receive exactly
       // one Chunk and stall.
       const browserStream = yield* ZeropsBrowserStreamModule.make({
         readStreamPort: Effect.succeed(undefined),
+        watchPort: Effect.succeed({ next: Effect.void }),
         connect: () => {
           throw new Error("unreachable: readStreamPort never resolves a port");
         },
-        reconnectDelaysMs: [0],
       });
       yield* buildAppUnderTest({
         layers: {

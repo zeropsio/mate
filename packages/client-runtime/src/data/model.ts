@@ -177,6 +177,10 @@ export interface OperationReceipt {
         readonly reason: string;
         /** The owner's own code for the refusal (`projectEnvDuplicateKey`), where it named one. */
         readonly code?: string;
+        /** The target write itself received a synchronous refusal from its owner. */
+        readonly synchronousRefusal?: true;
+        /** The target write was never sent, even if its preparation made other writes. */
+        readonly writeNotSent?: true;
       };
   readonly outcome:
     | { readonly kind: "pending" }

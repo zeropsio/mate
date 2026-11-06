@@ -61,7 +61,6 @@
         "apps/web/src/zerops/accountLifetime.test.ts",
         "apps/web/src/zerops/draftStorage.test.ts",
         "apps/web/src/zerops/signIn.guards.test.tsx",
-        "apps/web/src/zerops/zeropsDataContext.test.tsx",
         "apps/web/src/zerops/environmentPorts.test.ts",
         "apps/mobile/src/features/zerops/ZeropsAccountEnvironmentProvider.test.tsx",
         "packages/client-runtime/src/data/account.test.ts"

@@ -5,7 +5,6 @@ import * as NodeUtil from "node:util";
 
 import { assert, describe, it } from "@effect/vitest";
 import { type CrewCommand, type CrewCommandError } from "@t3tools/contracts";
-import * as Deferred from "effect/Deferred";
 import * as TestClock from "effect/testing/TestClock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -1164,49 +1163,51 @@ describe("CrewEngine", () => {
     ]),
   );
 
-  it.live("an unreadable redeploy is asked less and less, then offered to the person to thaw", () =>
-    crewJourney([
-      (world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          yield* world.deploy("started");
-          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
-        }),
-      (world) =>
-        Effect.gen(function* () {
-          yield* world.deployState("unreadable");
-          yield* world.serverReady;
-          const offered = yield* world.snapshotWhere((snapshot) =>
-            snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
-          );
-          // Asked at boot, then after 50, 100, 200, 200 ms: a handful, not one every tick.
-          assert.isAtMost(yield* world.deployReads, 8);
-          const observed = yield* Deferred.make<void>();
-          const frames = yield* world.frames.pipe(
-            Stream.tap(() => Deferred.succeed(observed, undefined)),
-            Stream.interruptWhen(
-              Deferred.await(observed).pipe(Effect.andThen(world.advanceTime(700))),
-            ),
-            Stream.runCount,
-          );
-          // Nothing moved meanwhile: the feed holds still, its current frame alone.
-          assert.isAtMost(frames, 1);
-          assert.strictEqual(
-            offered.attention.find((need) => need.kind === "deploy-unreadable")!.host,
-            TEST_HOST,
-          );
-          yield* world.press({ _tag: "thawHost", host: TEST_HOST });
-          yield* world.snapshotWhere(
-            (snapshot) =>
-              snapshot.crewmates[0]!.lane?.state === "ready" &&
-              !snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
-          );
-          // Thawed, it stops asking.
-          const after = yield* world.deployReads;
-          yield* world.advanceTime(600);
-          assert.strictEqual(yield* world.deployReads, after);
-        }),
-    ]),
+  it.live(
+    "an unreadable redeploy is read again only when Zerops pushes a process, then offered to the person to thaw",
+    () =>
+      crewJourney([
+        (world) =>
+          Effect.gen(function* () {
+            yield* applied(world);
+            yield* world.deploy("started");
+            yield* world.snapshotWhere(
+              (snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen",
+            );
+          }),
+        (world) =>
+          Effect.gen(function* () {
+            yield* world.deployState("unreadable");
+            yield* world.serverReady;
+            const offered = yield* world.snapshotWhere((snapshot) =>
+              snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
+            );
+            assert.strictEqual(
+              offered.attention.find((need) => need.kind === "deploy-unreadable")!.host,
+              TEST_HOST,
+            );
+            // No push, no read: time passing alone asks Zerops nothing.
+            yield* world.settled;
+            const quiet = yield* world.deployReads;
+            yield* world.advanceTime(700);
+            yield* world.settled;
+            assert.strictEqual(yield* world.deployReads, quiet);
+            yield* world.deployState("unreadable");
+            yield* eventually(Effect.map(world.deployReads, (reads) => reads > quiet));
+            yield* world.press({ _tag: "thawHost", host: TEST_HOST });
+            yield* world.snapshotWhere(
+              (snapshot) =>
+                snapshot.crewmates[0]!.lane?.state === "ready" &&
+                !snapshot.attention.some((need) => need.kind === "deploy-unreadable"),
+            );
+            // Thawed, it stops asking.
+            yield* world.settled;
+            const after = yield* world.deployReads;
+            yield* world.advanceTime(700);
+            yield* world.settled;
+            assert.strictEqual(yield* world.deployReads, after);
+          }),
+      ]),
   );
 
   it.live(

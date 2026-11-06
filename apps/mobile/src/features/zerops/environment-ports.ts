@@ -36,7 +36,6 @@ import { environmentCatalog } from "../../connection/catalog";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { hqAbsent, memoryIntents } from "./account-ports";
-import { closeOffFacts } from "./close-off";
 import { mateDescriptors } from "./mate-descriptors";
 import { openMateRoute } from "./open-mate";
 import { mobilePlatformSignals } from "./platform-signals";
@@ -228,8 +227,6 @@ export async function mobileAccountPorts(): Promise<MobileAccountPorts> {
       catalog: catalogPort,
       // The Mate whose screen is open as the stage starts: its target is wanted first.
       route: openMateRoute,
-      // The open action reports holds from HQ navigation setup evidence (`close-off.ts`).
-      closeOffPending: closeOffFacts,
       ...hqAbsent(),
     },
   };

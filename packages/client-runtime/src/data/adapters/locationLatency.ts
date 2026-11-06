@@ -17,7 +17,7 @@ export function demandLocationLatency({
   readonly store: AccountStore;
   readonly orgId: string;
   readonly location: ZeropsLocation;
-  readonly fetch?: typeof globalThis.fetch;
+  readonly fetch?: typeof browserTransportFetch;
   readonly now?: () => number;
 }): () => void {
   let held = demands.get(store);

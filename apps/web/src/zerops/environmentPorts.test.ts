@@ -6,7 +6,6 @@ import {
 } from "@t3tools/client-runtime/connection";
 import { makeAccountStore, makeMateAdapter, type MateAdapter } from "@t3tools/client-runtime/data";
 import {
-  closedOffOf,
   initialEnvironment,
   selectReachability,
   mateVoice,
@@ -23,7 +22,7 @@ import { vi } from "vite-plus/test";
 
 import { zeropsSessionAtom } from "../state/zerops";
 import { setMateTicketHq } from "~/connection/platform";
-import { closeOffPort, hqIndexPort, linkPhaseOf, webEnvironmentPorts } from "./environmentPorts";
+import { hqIndexPort, linkPhaseOf, webEnvironmentPorts } from "./environmentPorts";
 import { mateDescriptors } from "./mateDescriptors";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
@@ -245,32 +244,6 @@ describe("repair is the Mate adapter's", () => {
   });
 });
 
-describe("closeOffPort: HQ's word on which Mates' projects are closed off", () => {
-  const structure = {
-    ungrouped: [
-      { projectId: "p-closed", name: "Ada", mate: { closedOff: true } },
-      { projectId: "p-open", name: "Bo", mate: { closedOff: false } },
-    ],
-    apps: [],
-  } as never;
-  const word = (current: boolean | null) => {
-    const registry = AtomRegistry.make();
-    if (current !== null) {
-      mountHqNavigation(registry, "org-1", { structure: structure, live: current });
-    }
-    return closeOffPort(registry).read();
-  };
-  it.each([
-    { case: "HQ's answer now, closed off", current: true, projectId: "p-closed", want: true },
-    { case: "HQ's answer now, not closed off", current: true, projectId: "p-open", want: false },
-    { case: "a stale word, closed off", current: false, projectId: "p-closed", want: true },
-    { case: "a stale word, not closed off", current: false, projectId: "p-open", want: "unknown" },
-    { case: "no word", current: null, projectId: "p-closed", want: "unknown" },
-  ] as const)("$case: $want", ({ current, projectId, want }) => {
-    expect(closedOffOf(word(current), "org-1", projectId)).toBe(want);
-  });
-});
-
 const presence = (online: boolean) => ({
   presence: { online, since: "2026-10-03T10:00:00.000Z", overview: online ? "live" : "stored" },
 });
@@ -328,7 +301,7 @@ describe("HQ ticket refusal on the Mate's state", () => {
         const hq = makeHqApi({
           address: "https://hq.example",
           orgId: "org-1",
-          accessToken: async () => "access",
+          accessToken: async () => ({ token: "access" }),
           openSocket: () => {
             throw new Error("unexpected socket");
           },

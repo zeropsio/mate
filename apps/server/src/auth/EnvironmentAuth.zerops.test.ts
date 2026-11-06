@@ -7,6 +7,7 @@ import * as Option from "effect/Option";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
 import * as ServerConfig from "../config.ts";
 import * as Access from "../zerops/ZeropsMateAccessList.ts";
+import { makeAccessScene } from "../zerops/testing/accessScene.ts";
 import * as Tickets from "../zerops/ZeropsTicketDoor.ts";
 import * as Connections from "../zerops/ZeropsConnections.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
@@ -28,10 +29,10 @@ const request = (headers: Record<string, string> = {}, query = "") =>
   HttpServerRequest.fromWeb(new Request(`https://mate.example/api/shell${query}`, { headers }));
 
 const setup = Effect.gen(function* () {
-  const access = yield* Access.make;
+  const scene = yield* makeAccessScene({ jan: "OWNER" });
   const tickets = yield* Tickets.make;
   const connections = yield* Connections.make.pipe(
-    Effect.provideService(Access.ZeropsMateAccessList, access),
+    Effect.provideService(Access.ZeropsMateAccessList, scene.list),
     Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
   );
   const auth = yield* Auth.EnvironmentAuth.pipe(
@@ -42,21 +43,16 @@ const setup = Effect.gen(function* () {
       ),
     ),
   );
-  yield* connections.heard({
-    type: "access",
-    version: 1,
-    full: true,
-    viewAt: "2026-10-24T10:00:00.000Z",
-    members: [{ userId: "jan", role: "OWNER", visibility: "open" }],
-  });
-  yield* tickets.heard({
-    type: "ticket",
-    ticket: "opaque-ticket",
-    userId: "jan",
-    sessionId: "hq-session",
-    expiresIn: 60,
-  });
-  return { auth, connections };
+  yield* Effect.flatten(
+    connections.ticket({
+      type: "ticket",
+      ticket: "opaque-ticket",
+      userId: "jan",
+      sessionId: "hq-session",
+      expiresIn: 60,
+    }),
+  );
+  return { auth, connections, set: scene.set };
 });
 
 it.layer(NodeServices.layer)("EnvironmentAuth Zerops connections", (it) => {
@@ -122,17 +118,11 @@ it.layer(NodeServices.layer)("EnvironmentAuth Zerops connections", (it) => {
     Effect.gen(function* () {
       for (const cause of ["sign-out", "refusal"] as const) {
         yield* Effect.gen(function* () {
-          const { auth, connections } = yield* setup;
+          const { auth, connections, set } = yield* setup;
           yield* connections.admit({ ticket: "opaque-ticket" }, Effect.void);
           if (cause === "sign-out") yield* connections.closeSession("hq-session");
-          else
-            yield* connections.heard({
-              type: "access",
-              version: 2,
-              full: true,
-              refused: true,
-              members: [],
-            });
+          // Zerops no longer lets Jan in: the list refuses him.
+          else yield* set({ jan: "NO_ACCESS" });
           assert.isTrue(
             Exit.isFailure(
               yield* Effect.exit(

@@ -4,34 +4,26 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 
-import type {
-  TerminalAttachStreamEvent,
-  TerminalSessionSnapshot,
-  ZeropsAgentLoginState,
-} from "@t3tools/contracts";
-import type { KeyLinkAccess, LinkAccessMember } from "@t3tools/shared/mateLink";
+import type { ZeropsAgentLoginState } from "@t3tools/contracts";
 import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import * as ServerConfig from "../config.ts";
-import { make as makeAgentLogin } from "./ZeropsAgentLogin.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
-import { makeLoginHomes } from "./zeropsLoginHomes.ts";
 import {
-  fileSignInStore,
   memorySignInStore,
-  signInsPath,
   ZeropsSignIns,
   type SignInRecords,
   type SignInStore,
 } from "./zeropsSignIns.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import type { AccessRead } from "./ZeropsAccessRead.ts";
 import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
+import { makeAccessScene } from "./testing/accessScene.ts";
 import {
   isTurnStartingCommand,
   make as makeProjectSigners,
@@ -267,15 +259,15 @@ describe("the turn gate", () => {
   } as const;
 
   /**
-   * The service over the sign-ins this server saw. HQ has sent no access list, so the leave check
-   * never signs anybody out.
+   * The service over the sign-ins this server saw. Its access list reads nothing, so the leave
+   * check never signs anybody out.
    */
   const gateOver = (signIns: SignInStore) =>
     Effect.gen(function* () {
       const signers = yield* makeProjectSigners.pipe(
         Effect.provide(
           Layer.mergeAll(
-            ZeropsMateAccessListModule.layer,
+            ZeropsMateAccessListModule.emptyLayer,
             ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
             NodeServices.layer,
             Layer.succeed(ZeropsSignIns, signIns),
@@ -286,18 +278,28 @@ describe("the turn gate", () => {
       return { signers, signIns };
     });
   const gate = (kept: SignInRecords = {}) => memorySignInStore(kept).pipe(Effect.flatMap(gateOver));
-  const by = (userId: string) => ({ by: userId, at: 1 });
+  const by = (userId: string) => ({ by: userId });
   /** A login whose code is being checked, started by `startedBy`. */
   const checking = (startedBy: string) =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;
-      return yield* Ref.make<ZeropsAgentLoginState>({
+      return yield* SubscriptionRef.make<ZeropsAgentLoginState>({
         phase: "verifying-code",
         terminalId: "t",
         startedAt: now,
         startedBy,
       });
     });
+  /** The login as the walker holds it, told at each of its changes. */
+  const watching = (login: SubscriptionRef.SubscriptionRef<ZeropsAgentLoginState>) => ({
+    latest: SubscriptionRef.get(login),
+    changes: SubscriptionRef.changes(login),
+  });
+  /** A login that stays as it is. */
+  const still = (login: ZeropsAgentLoginState) => ({
+    latest: Effect.succeed(login),
+    changes: Stream.never,
+  });
 
   it.effect("goes by who this server saw sign the login in, and nobody else", () =>
     Effect.gen(function* () {
@@ -352,15 +354,15 @@ describe("the turn gate", () => {
           agentId: "claude-code",
           agent: signedIn,
           subject: EVA,
-          login: yield* Ref.get(login),
-          currentLogin: Ref.get(login),
+          login: yield* SubscriptionRef.get(login),
+          currentLogin: watching(login),
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.seconds(2));
       assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
       // As the walker settles it: a success is kept before anything else hears of it.
       if (succeeds) yield* signIns.save("claude-code", by(JAN));
-      yield* Ref.update(login, (current) => ({
+      yield* SubscriptionRef.update(login, (current) => ({
         ...current,
         phase: succeeds ? ("succeeded" as const) : ("failed" as const),
       }));
@@ -382,17 +384,58 @@ describe("the turn gate", () => {
           agentId: "claude-code",
           agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
           subject: JAN,
-          login: yield* Ref.get(login),
-          currentLogin: Ref.get(login),
+          login: yield* SubscriptionRef.get(login),
+          currentLogin: watching(login),
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.seconds(2));
       assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
       yield* signIns.save("claude-code", by(JAN));
-      yield* Ref.update(login, (current) => ({ ...current, phase: "succeeded" as const }));
+      yield* SubscriptionRef.update(login, (current) => ({
+        ...current,
+        phase: "succeeded" as const,
+      }));
       yield* TestClock.adjust(Duration.seconds(2));
 
       assert.isUndefined(yield* Fiber.join(fiber));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(
+    Array.from(
+      [
+        ["his sign-in fails: hers again", "login", undefined],
+        ["his sign-in is kept: refused", "signer", { kind: "someone-else" }],
+      ] as const,
+      ([name, moves, expected]) => ({
+        title: `Decision: A sign-in check settles at the signer or login change; no 1 s look. — ${name}`,
+        moves,
+        expected,
+      }),
+    ),
+  )("$title", ({ moves, expected }) =>
+    Effect.gen(function* () {
+      const { signers, signIns } = yield* gate({ "claude-code": by(EVA) });
+      const login = yield* checking(JAN);
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent: signedIn,
+          subject: EVA,
+          login: yield* SubscriptionRef.get(login),
+          currentLogin: watching(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.seconds(5));
+      assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
+      if (moves === "signer") yield* signIns.save("claude-code", by(JAN));
+      else
+        yield* SubscriptionRef.update(login, (current) => ({
+          ...current,
+          phase: "failed" as const,
+        }));
+      // The clock stands still from here: only the change itself can settle it.
+      assert.deepStrictEqual(yield* Fiber.join(fiber), expected);
     }).pipe(Effect.scoped),
   );
 
@@ -435,14 +478,14 @@ describe("the turn gate", () => {
   )("$title", ({ kept, subject, agent, expected }) =>
     Effect.gen(function* () {
       const { signers } = yield* gate(kept === undefined ? {} : { "claude-code": by(kept) });
-      const login = yield* Ref.get(yield* checking(JAN));
+      const login = yield* SubscriptionRef.get(yield* checking(JAN));
       const fiber = yield* signers
         .turnRefusal({
           agentId: "claude-code",
           agent,
           subject,
           login,
-          currentLogin: Effect.succeed(login),
+          currentLogin: still(login),
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.zero);
@@ -462,14 +505,14 @@ describe("the turn gate", () => {
   )("$title", ({ phase }) =>
     Effect.gen(function* () {
       const { signers } = yield* gate({ "claude-code": by(EVA) });
-      const login = { ...(yield* Ref.get(yield* checking(JAN))), phase };
+      const login = { ...(yield* SubscriptionRef.get(yield* checking(JAN))), phase };
       const fiber = yield* signers
         .turnRefusal({
           agentId: "claude-code",
           agent: signedIn,
           subject: JAN,
           login,
-          currentLogin: Effect.succeed(login),
+          currentLogin: still(login),
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.zero);
@@ -495,14 +538,14 @@ describe("the turn gate", () => {
   )("$title", ({ subject }) =>
     Effect.gen(function* () {
       const { signers } = yield* gate({ "claude-code": by(EVA) });
-      const login = yield* Ref.get(yield* checking(JAN));
+      const login = yield* SubscriptionRef.get(yield* checking(JAN));
       const fiber = yield* signers
         .turnRefusal({
           agentId: "claude-code",
           agent: signedIn,
           subject,
           login,
-          currentLogin: Effect.succeed(login),
+          currentLogin: still(login),
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(SIGN_IN_CHECK_WAIT);
@@ -512,164 +555,156 @@ describe("the turn gate", () => {
     }).pipe(Effect.scoped),
   );
 
-  // Eva signs in; the server restarts. The credential is still Eva's — it lives on under the
-  // home — and so does who signed it in.
-  describe("across a restart", () => {
-    const terminal = () => {
-      const listeners = new Map<
-        string,
-        (event: TerminalAttachStreamEvent) => Effect.Effect<void>
-      >();
-      const manager = {
-        open: () => Effect.succeed({} as TerminalSessionSnapshot),
-        write: () => Effect.void,
-        close: () => Effect.void,
-        attachStream: (
-          input: { readonly terminalId: string },
-          listener: (event: TerminalAttachStreamEvent) => Effect.Effect<void>,
-        ) =>
-          Effect.sync(() => {
-            listeners.set(input.terminalId, listener);
-            return () => listeners.delete(input.terminalId);
-          }),
-      } as unknown as Parameters<typeof makeAgentLogin>[0]["terminalManager"];
-      const succeed = (terminalId: string) =>
-        listeners.get(terminalId)?.({
-          type: "output",
-          threadId: "thread-1",
-          terminalId,
-          data: "Login successful. Press Enter to continue…\n",
-        }) ?? Effect.void;
-      return { manager, succeed };
-    };
+  it.effect("who signed a login in survives a restart when HQ sends its signers frame", () =>
+    Effect.gen(function* () {
+      const before = yield* memorySignInStore();
+      yield* before.save("claude-code", by(EVA));
+      const rememberedByHq = yield* before.lastSigners;
 
-    it.effect("who signed a login in here outlives a restart", () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const home = yield* fs.makeTempDirectoryScoped({ prefix: "mate-sign-ins-" });
-        const file = signInsPath(path, home);
+      const after = yield* memorySignInStore();
+      const { signers } = yield* gateOver(after);
+      yield* after.heard(rememberedByHq);
+      const on = (subject: string) =>
+        signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject });
+      assert.isUndefined(yield* on(EVA));
+      assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
+    }).pipe(Effect.scoped),
+  );
 
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const { manager, succeed } = terminal();
-            const logins = yield* makeAgentLogin({
-              terminalManager: manager,
-              zeropsAgentAuth: { recheckNow: () => Effect.void },
-              isZeropsEnvironment: true,
-              homes: yield* makeLoginHomes(home),
-              signIns: yield* fileSignInStore(file),
-            });
-            yield* logins.start("claude-code", "thread-1", `${ZEROPS_SUBJECT_PREFIX}${EVA}`);
-            // The CLI signs in in its scratch home.
-            yield* fs.writeFileString(`${home}/.mate/pending/claude-code/.credentials.json`, "{}");
-            yield* succeed("agent-login-claude-code");
-          }),
-        );
+  it.effect("HQ's signer history after a restart does not authorize a logged-out credential", () =>
+    Effect.gen(function* () {
+      const before = yield* memorySignInStore();
+      yield* before.save("claude-code", by(EVA));
+      yield* before.clear("claude-code");
+      const rememberedByHq = yield* before.lastSigners;
+      const after = yield* memorySignInStore();
+      yield* after.heard(rememberedByHq);
+      assert.deepStrictEqual(yield* after.lastSigners, { "claude-code": EVA });
 
-        const { signers } = yield* gateOver(yield* fileSignInStore(file));
-        const on = (subject: string) =>
-          signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject });
-
-        assert.isUndefined(yield* on(EVA));
-        assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-    );
-  });
+      assert.deepStrictEqual(
+        turnRefusal({
+          agent: {
+            state: "not-authorized",
+            providerAuth: "unauthenticated",
+            credPresent: false,
+            flagToken: false,
+          },
+          signer: (yield* after.load)["claude-code"]?.by,
+          subject: EVA,
+        }),
+        { kind: "not-signed-in", auth: "not-authorized" },
+      );
+    }),
+  );
 });
 
 // X3, D7: a turn no live session stands behind — the crew's, the stand-up's — is admitted by the
-// same answer that keeps a session open: HQ's access list, by the person's entry in it.
+// same answer that keeps a session open: the Mate's access list, by the person's entry in it.
 describe("hasProjectAccess", () => {
-  /** The service over HQ's access list, whose frames the test sends. */
+  /** The service over the Mate's own access list `list`. */
+  const signersOver = (list: ZeropsMateAccessListModule.ZeropsMateAccessList["Service"]) =>
+    Effect.gen(function* () {
+      const signIns = yield* memorySignInStore();
+      return yield* makeProjectSigners.pipe(
+        Effect.provideService(ZeropsMateAccessListModule.ZeropsMateAccessList, list),
+        Effect.provide(
+          Layer.mergeAll(
+            ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+            NodeServices.layer,
+            Layer.succeed(ZeropsSignIns, signIns),
+          ),
+        ),
+      );
+    });
+  /** The service over the Mate's own list of an organisation the test sets. */
   const access = Effect.gen(function* () {
-    const signIns = yield* memorySignInStore();
-    const { signers, list } = yield* Effect.all({
-      signers: makeProjectSigners,
-      list: ZeropsMateAccessListModule.ZeropsMateAccessList,
-    }).pipe(
-      Effect.provide(
-        ZeropsMateAccessListModule.layer.pipe(
-          Layer.provideMerge(
+    const scene = yield* makeAccessScene({});
+    return { signers: yield* signersOver(scene.list), set: scene.set };
+  });
+
+  it.effect.each(
+    Array.from(
+      [
+        ["an org member who builds", { [JAN]: "BASIC_USER" }, true],
+        // Kept in the org, taken out of this project: their crew stops with their session (X3).
+        ["an org member this project shuts out", {}, false],
+        ["a member let in here alone", { [JAN]: "BASIC_USER" }, true],
+        ["a read-only member", { [JAN]: "READ_ONLY" }, false],
+        ["an admin who is not active", {}, false],
+      ] as const,
+      ([name, roles, expected]) => ({
+        title: `answers by this project's door: ${name}, ${String(expected)}`,
+        roles,
+        expected,
+      }),
+    ),
+  )("$title", ({ roles, expected }) =>
+    Effect.gen(function* () {
+      const { signers, set } = yield* access;
+      yield* set({ ...roles, [EVA]: "OWNER" });
+      assert.strictEqual(yield* signers.hasProjectAccess(JAN), expected);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("answers no for somebody the org does not list", () =>
+    Effect.gen(function* () {
+      const { signers, set } = yield* access;
+      yield* set({ [EVA]: "OWNER" });
+      assert.isFalse(yield* signers.hasProjectAccess(JAN));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("answers nothing when nothing could be read", () =>
+    Effect.gen(function* () {
+      const list = yield* ZeropsMateAccessListModule.make({
+        projectId: "P_MATE",
+        read: Effect.succeed({ kind: "failed", reason: "unreachable" }),
+      });
+      const signers = yield* signersOver(list);
+      yield* TestClock.adjust(Duration.zero);
+      assert.isUndefined(yield* signers.hasProjectAccess(JAN));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "The signer check for unattended work uses is-an-opener on the Mate's own list, and vouches for nobody once that list is older than 15 minutes",
+    () =>
+      Effect.gen(function* () {
+        const member = (userId: string, orgRole: string) => ({
+          clientUserId: `cu-${userId}`,
+          userId,
+          orgRole,
+          status: "ACTIVE",
+          canCreateProjects: false,
+        });
+        const answer = yield* Ref.make<AccessRead>({
+          kind: "read",
+          project: { clientId: "org", overrides: { [`cu-${EVA}`]: "READ_ONLY" }, tagList: [] },
+          members: [member(JAN, "BASIC_USER"), member(EVA, "OWNER")],
+        });
+        const list = yield* ZeropsMateAccessListModule.make({
+          projectId: "P_MATE",
+          read: Ref.get(answer),
+        });
+        yield* TestClock.adjust(Duration.zero);
+        const signIns = yield* memorySignInStore();
+        const signers = yield* makeProjectSigners.pipe(
+          Effect.provideService(ZeropsMateAccessListModule.ZeropsMateAccessList, list),
+          Effect.provide(
             Layer.mergeAll(
               ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
               NodeServices.layer,
               Layer.succeed(ZeropsSignIns, signIns),
             ),
           ),
-        ),
-      ),
-    );
-    let version = 0;
-    /** HQ's full list, naming `members`. */
-    const listed = (members: KeyLinkAccess["members"]) =>
-      list.heard({ type: "access", version: ++version, viewAt: AT, full: true, members });
-    return { signers, list, listed };
-  });
-  const AT = "2026-10-24T10:00:00.000Z";
-  const entry = (userId: string, role: LinkAccessMember["role"], visibility: "open" | "listed") =>
-    ({ userId, role, visibility }) as const;
-
-  it.effect.each(
-    Array.from(
-      [
-        ["an org member who builds", [entry(JAN, "BASIC_USER", "open")], true],
-        // Kept in the org, taken out of this project: their crew stops with their session (X3).
-        ["an org member this project shuts out", [], false],
-        ["a member let in here alone", [entry(JAN, "BASIC_USER", "open")], true],
-        ["a read-only member", [entry(JAN, "READ_ONLY", "listed")], false],
-        ["an admin who is not active", [], false],
-      ] as const,
-      ([name, entries, expected]) => ({
-        title: `answers by this project's door: ${name}, ${String(expected)}`,
-        entries,
-        expected,
-      }),
-    ),
-  )("$title", ({ entries, expected }) =>
-    Effect.gen(function* () {
-      const { signers, listed } = yield* access;
-      yield* listed([...entries, entry(EVA, "OWNER", "open")]);
-      assert.strictEqual(yield* signers.hasProjectAccess(JAN), expected);
-    }),
-  );
-
-  it.effect("answers from HQ's relay while it holds, reading nothing of Zerops", () =>
-    Effect.gen(function* () {
-      // Nothing of Zerops is provided: the list is the only answer.
-      const { signers, listed } = yield* access;
-      yield* listed([entry(JAN, "BASIC_USER", "open"), entry(EVA, "READ_ONLY", "listed")]);
-      assert.isTrue(yield* signers.hasProjectAccess(JAN));
-      assert.isFalse(yield* signers.hasProjectAccess(EVA));
-    }),
-  );
-
-  it.effect("answers no for somebody the org does not list", () =>
-    Effect.gen(function* () {
-      const { signers, listed } = yield* access;
-      yield* listed([entry(EVA, "OWNER", "open")]);
-      assert.isFalse(yield* signers.hasProjectAccess(JAN));
-    }),
-  );
-
-  // Answering no would sign every signer's logins out (`ZeropsOffboarding`); running work goes on.
-  it.effect(
-    "vouches for nobody while HQ says the organisation's key was refused, and takes nobody's access",
-    () =>
-      Effect.gen(function* () {
-        const { signers, list, listed } = yield* access;
-        yield* listed([entry(JAN, "BASIC_USER", "open")]);
-        yield* list.heard({ type: "access", version: 9, full: true, refused: true, members: [] });
-        assert.isUndefined(yield* signers.hasProjectAccess(JAN));
-        yield* listed([entry(JAN, "BASIC_USER", "open")]);
+        );
         assert.isTrue(yield* signers.hasProjectAccess(JAN));
-      }),
-  );
-
-  it.effect("answers nothing when nothing could be read", () =>
-    Effect.gen(function* () {
-      const { signers } = yield* access;
-      assert.isUndefined(yield* signers.hasProjectAccess(JAN));
-    }),
+        // An org owner this project lowers to Read only is a member, and no opener.
+        assert.isFalse(yield* signers.hasProjectAccess(EVA));
+        assert.isFalse(yield* signers.hasProjectAccess("someone-else"));
+        yield* Ref.set(answer, { kind: "failed", reason: "unreachable" });
+        yield* TestClock.adjust(Duration.minutes(16));
+        assert.isUndefined(yield* signers.hasProjectAccess(JAN));
+      }).pipe(Effect.scoped),
   );
 });

@@ -1,3 +1,4 @@
+import { ownerAtAdd } from "@t3tools/client-runtime/zerops/projectAccess";
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
@@ -39,8 +40,13 @@ import { PlayIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { shownHqPersonFactsAtom, shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
+import {
+  shownHqPersonFactsAtom,
+  shownHqProjectPeopleAtom,
+  shownMateVisibilitiesAtom,
+} from "@t3tools/client-runtime/data";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { hqDown, hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
@@ -51,10 +57,7 @@ import {
   normalizeOrigin,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  resolveMateVisibility,
-  type RoleMateVisibility,
-} from "@t3tools/client-runtime/zerops/mateAccess";
+import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   deployBuilding,
@@ -103,6 +106,11 @@ import {
 } from "~/zerops/matePress";
 import { useCreations } from "~/zerops/creations";
 import { placedNewProjects } from "~/zerops/newProjectBirth";
+import {
+  placedSharedBirths,
+  sharedBirthPresentation,
+  useSharedBirthState,
+} from "~/zerops/sharedBirths";
 import {
   useTakenBotNames,
   useZeropsCandidates,
@@ -204,7 +212,6 @@ import { useHqOffers, useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { configuredHq } from "~/zerops/accountHq";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
-import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import {
   useCompactProjectFlows,
@@ -874,6 +881,7 @@ export function ZeropsProjectsContent({
     organizationStatus,
     selectOrganization,
     status,
+    user,
   } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
@@ -980,19 +988,10 @@ export function ZeropsProjectsContent({
     readonly groupId: string;
     readonly tier: GroupEnvironmentTier;
   } | null>(null);
-  // Ticks once a second while a creation runs, so the checklist's durations
+  // The shared second while a creation runs, so the checklist's durations
   // move; stops the moment it settles.
-  const [creationNowMs, setCreationNowMs] = useState(() => Date.now());
   const creationRunning = creation !== null && creation.outcome === undefined;
-  useEffect(() => {
-    if (!creationRunning) return;
-    const timer = setInterval(() => {
-      setCreationNowMs(Date.now());
-    }, 1000);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [creationRunning]);
+  const creationNowMs = useSecondsNowMs(creationRunning);
   const projectOrder = useProjectOrderOptions();
   // A creation the platform accepted is drawn in its group before the
   // listing holds its project, and a New project this tab is making from the
@@ -1000,15 +999,20 @@ export function ZeropsProjectsContent({
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
   const hqStructure = useAtomValue(shownCanonicalHqListNavigationAtom);
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
+  const { open: sharedBirths, readyProjectIds } = useSharedBirthState();
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure.live;
   const groupTree = useProjectsInventory(
     candidates,
     projectOrder,
-    placedPressesIn(
-      presses,
-      activeOrganization?.id,
-      placedNewProjects(made, activeOrganization?.id),
+    placedSharedBirths(
+      sharedBirths,
+      placedPressesIn(
+        presses,
+        activeOrganization?.id,
+        placedNewProjects(made, activeOrganization?.id),
+      ),
+      user?.id,
     ),
   );
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
@@ -1021,19 +1025,13 @@ export function ZeropsProjectsContent({
   // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
   const comingOf = useMateComingOf(observedCandidates);
   const updates = useMateUpdateStates();
-  // What this person may do with each Mate, from the one role function the
-  // door runs too (D5). A `listed` row is shown and never opened.
-  const viewer =
-    activeOrganization === null
-      ? null
-      : {
-          id: activeOrganization.id,
-          membershipId: activeOrganization.membershipId,
-          roleCode: activeOrganization.roleCode,
-          canCreateProjects: activeOrganization.canCreateProjects,
-        };
+  // What this person may do with each Mate, as the account reads it from live Zerops data
+  // (`mateVisibility`). A `listed` row is shown, never opened; one not judged yet is not held back.
+  const visibilities = useAtomValue(
+    shownMateVisibilitiesAtom(candidates.map((candidate) => candidate.project.id).join(",")),
+  );
   const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
-    viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
+    visibilities[candidate.project.id];
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
@@ -1146,7 +1144,7 @@ export function ZeropsProjectsContent({
               );
         if (!isCurrent()) return;
         const hq = configuredHq();
-        // What it registers, by the rule Finish setup registers by, before its container: in the
+        // Register before the container: in the
         // application HQ or the press this tab holds places it in, under that face (F6b);
         // a new Mate in no application only where neither does.
         const held = readMatePress(projectId);
@@ -1172,7 +1170,12 @@ export function ZeropsProjectsContent({
           container: true,
           placement: matePressPlacement(held) ?? null,
         });
-        // Its container with its own key, and its project closed off before anyone is let in.
+        // Its owner marked first where the project names none and the person may (`ownerAtAdd`),
+        // then its container with its own key, isolated in its own import.
+        const owner = ownerAtAdd({
+          userRoles: candidate.project.userRoles,
+          adder: activeOrganization,
+        });
         const pressed = await finishMateSetup({
           inputs: { client, operations, organizationId: activeOrganization.id },
           projectId,
@@ -1181,6 +1184,7 @@ export function ZeropsProjectsContent({
           registration,
           hq,
           isCurrent,
+          ...(owner === null ? {} : { owner }),
         });
         if (!pressed.ok) throw new Error(pressed.error);
         if (!isCurrent()) return;
@@ -1265,17 +1269,22 @@ export function ZeropsProjectsContent({
     updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
   ): React.ReactNode => {
     if (isZeropsToolCandidate(candidate)) return undefined;
+    const birth = mate ? mateActions.birthForProject(candidate.project.id) : undefined;
     return (
       <ZeropsProjectMenu
         actions={mate ? mateActions.actionsFor(candidate, tags, updateMenuActions ?? []) : []}
         enablingServiceId={route.enablingServiceId}
         label={`More for ${projectNameInApp(candidate.project)}`}
-        projectId={tags.role === "prod" || tags.role === "stage" ? candidate.project.id : undefined}
-        offers={candidate.routeOffers}
+        projectId={
+          birth === undefined && (tags.role === "prod" || tags.role === "stage")
+            ? candidate.project.id
+            : undefined
+        }
+        offers={birth === undefined ? candidate.routeOffers : undefined}
         onEnableRoute={(offer) => {
           void route.enable(candidate.project.id, offer.serviceId);
         }}
-        routes={candidate.routes}
+        routes={birth === undefined ? candidate.routes : undefined}
       />
     );
   };
@@ -1405,6 +1414,9 @@ export function ZeropsProjectsContent({
     live: ZeropsAgentActivity | undefined,
     busy: boolean,
   ): React.ReactNode => {
+    const birth = sharedBirths.find((entry) => entry.projectId === candidate.project.id);
+    if (birth !== undefined)
+      return <span data-zerops-surface="mate-subject">{sharedBirthPresentation(birth).line}</span>;
     if (action.kind === "not-in-hq") return presentation.detail;
     if (candidate.group === "connected" || live !== undefined) {
       return live?.subject === undefined ? null : (
@@ -1419,6 +1431,7 @@ export function ZeropsProjectsContent({
     // checklist (`birthProgress.ts`), read off the platform's processes and
     // statuses — whenever the wait has nothing more pressing to say.
     if (
+      !readyProjectIds.includes(candidate.project.id) &&
       showsZeropsBirthLine({
         projectId: candidate.project.id,
         birthProjectIds,
@@ -1681,12 +1694,9 @@ export function ZeropsProjectsContent({
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
-  // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
-  const registryState = useZeropsRegistry();
-
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.
-  const mateActions = useMateActions({ registry: registryState, serverVersions });
+  const mateActions = useMateActions({ serverVersions });
 
   // The recipe is the application's, read as the person through its HQ (guide
   // 4.3) — never a sibling's export, which carried service shapes without their
@@ -1854,7 +1864,6 @@ export function ZeropsProjectsContent({
         choice,
         onPlanned: (steps) => {
           setToolError(null);
-          setCreationNowMs(Date.now());
           setCreation((current) =>
             current === null
               ? current
@@ -1963,8 +1972,8 @@ export function ZeropsProjectsContent({
   // for the new account, preferred over inferring it from a candidate's
   // status. A returning account never infers a new setup flow from an
   // unrelated provisioning project in the inventory. The claimed project is
-  // finished like any other once the inventory lists it — its key lowered and
-  // its project closed off: a claim hands over a brand-new project, so the
+  // finished like any other once the inventory lists it — its key lowered: a
+  // claim hands over a brand-new project, so the
   // newest one of its organization is it.
   const claimRef = useRef<string | null>(null);
   useEffect(() => {
@@ -2006,6 +2015,7 @@ export function ZeropsProjectsContent({
       isCurrent: captureAccountLifetime(),
       // A container the pool made: its key at ADMIN, lowered.
       harden: true,
+      onKeyNotLowered: setConnectError,
     });
   }, [clearLastRegistration, client, inventory.projects, lastRegistration, operations]);
 
@@ -2675,6 +2685,22 @@ export function ZeropsProjectsContent({
         renderEnvironment={renderEnvironment}
         renderGroupMenu={renderGroupMenu}
         renderMate={renderMate}
+        renderComingBirth={(projectId) => {
+          const birth = sharedBirths.find(
+            (entry) => entry.projectId === projectId || entry.id === projectId,
+          );
+          return birth === undefined
+            ? undefined
+            : {
+                line: sharedBirthPresentation(birth).line,
+                menu: (
+                  <ZeropsProjectMenu
+                    actions={mateActions.birthActionsFor(birth.id)}
+                    label={`More for ${birth.intent?.placement.name ?? "Mate"}`}
+                  />
+                ),
+              };
+        }}
         renderMateFace={(candidate: ZeropsCandidatePresentation, size) => {
           const tint = tints.get(candidate.project.id) ?? "slate";
           return (

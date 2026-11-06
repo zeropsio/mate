@@ -39,7 +39,7 @@ function automaticStatusRig(options: {
   const api = makeHqApi({
     address: "https://hq.example.test",
     orgId: "org",
-    accessToken: async () => "person-native-access",
+    accessToken: async () => ({ token: "person-native-access" }),
     openSocket: () => {
       throw new Error("No stream needed");
     },
@@ -63,6 +63,10 @@ function automaticStatusRig(options: {
     baseUrl: "https://api.example.test",
     fetch: async (url, init) => {
       const path = new URL(url).pathname;
+      if (path.endsWith("/service-stack/import")) {
+        calls.push("import");
+        return Response.json({ serviceStacks: [] });
+      }
       if (path.includes("service-stack")) return Response.json({ list: [] });
       if (path.endsWith("integration-token/list")) return Response.json({ list: [] });
       if (path.endsWith("process/search")) return Response.json({ items: [] });
@@ -71,10 +75,6 @@ function automaticStatusRig(options: {
         return Response.json({ id: "new-key", token: "actual-key" });
       }
       if (path.includes("integration-token/")) return Response.json({});
-      if (path.includes("first-class-recipe")) {
-        calls.push("import");
-        return Response.json({});
-      }
       throw new Error(`Unexpected native request ${path}`);
     },
   });
@@ -266,7 +266,7 @@ it.each(["mint", "regenerate"] as const)(
       makeHqApi({
         address: "https://hq.example.test",
         orgId: "org",
-        accessToken: async () => "person-native-access",
+        accessToken: async () => ({ token: "person-native-access" }),
         openSocket: () => {
           throw new Error("No stream needed");
         },
@@ -295,6 +295,10 @@ it.each(["mint", "regenerate"] as const)(
       baseUrl: "https://api.example.test",
       fetch: async (url, init) => {
         const path = new URL(url).pathname;
+        if (path.endsWith("/service-stack/import")) {
+          order.push("import");
+          return Response.json({ serviceStacks: [] });
+        }
         if (path.includes("service-stack")) {
           releaseNext = holdHqWrites("org", writer("later-viewer"), "hq");
           return Response.json({ list: [] });
@@ -311,10 +315,6 @@ it.each(["mint", "regenerate"] as const)(
           return Response.json({ token: "actual-key" });
         }
         if (path.includes("integration-token/")) return Response.json({});
-        if (path.includes("first-class-recipe")) {
-          order.push("import");
-          return Response.json({});
-        }
         throw new Error(`Unexpected native request ${path}`);
       },
     });
@@ -341,7 +341,10 @@ it.each(["mint", "regenerate"] as const)(
         {
           path: "/api/mates/p/zcp-authorization",
           person: "Bearer actual-finisher",
-          body: { keyHash: "4b8ea91d2ae14171d28e8d578b07bf090e4d3af8b3c9577549b2fc8c66bad650" },
+          body: {
+            keyHash: "4b8ea91d2ae14171d28e8d578b07bf090e4d3af8b3c9577549b2fc8c66bad650",
+            accessToken: "person-native-access",
+          },
         },
       ]);
       expect(JSON.stringify([...store.state().operations])).not.toContain("actual-key");
@@ -368,6 +371,10 @@ it.each([false, true])(
       baseUrl: "https://api.example.test",
       fetch: async (url, init) => {
         const path = new URL(url).pathname;
+        if (path.endsWith("/service-stack/import")) {
+          writes.push("import");
+          return Response.json({ serviceStacks: [] });
+        }
         if (path.includes("service-stack"))
           return Response.json({
             list: existing
@@ -384,10 +391,6 @@ it.each([false, true])(
         if (init?.method === "POST" && path.endsWith("integration-token")) {
           writes.push("mint");
           return Response.json({ id: "key", token: "actual-key" });
-        }
-        if (path.includes("first-class-recipe")) {
-          writes.push("import");
-          return Response.json({});
         }
         throw new Error(`Unexpected request: ${path}`);
       },
@@ -413,7 +416,11 @@ it.each([false, true])(
       expect(store.state().operations.get(result.requestId)?.receipt?.acceptance).toEqual(
         existing
           ? { kind: "accepted", result: { serviceName: "zcp", imported: false } }
-          : { kind: "refused", reason: "HQ is not ready to record this Mate's ZCP authorization." },
+          : {
+              kind: "refused",
+              reason: "HQ is not ready to record this Mate's ZCP authorization.",
+              writeNotSent: true,
+            },
       );
     } finally {
       registry.dispose();

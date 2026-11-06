@@ -1,7 +1,7 @@
 /**
  * Whether the new press made this Mate, and so whether its server stands it
- * up: the press always sets the tier's runtimes plan on zcp
- * (`MATE_SETUP_RUNTIMES`), empty or not; a Mate made before carries none.
+ * up: the press's one import sets the marker (`MATE_SETUP`) on zcp beside its
+ * key; a Mate made before carries none.
  *
  * Read off this process's environment and the platform's live env store
  * (`ZeropsEnvironment.envStorePath`, rewritten seconds after a service variable
@@ -12,7 +12,7 @@
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 
-export const SETUP_MARKER_VARIABLE = "MATE_SETUP_RUNTIMES";
+export const SETUP_MARKER_VARIABLE = "MATE_SETUP";
 
 const parseJson = (text: string): unknown => {
   try {

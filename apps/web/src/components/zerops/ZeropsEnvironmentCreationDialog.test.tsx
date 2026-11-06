@@ -52,6 +52,7 @@ function render(
           takenBotNames={{ names: ["Fen"], complete: true }}
           tier={{
             kind: "tier",
+            revision: "recipe-revision",
             tier: "stage",
             yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
           }}
@@ -224,6 +225,7 @@ it("Adding a stage is one sheet: what it is for, where, and one button", () => {
     withAgent: true,
     recipe: {
       kind: "tier",
+      revision: "recipe-revision",
       tier: "stage",
       yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
     },
@@ -326,7 +328,7 @@ function gitAuthority(can: HqOffers | undefined, current = true) {
     repos: [],
     takenNames: [],
     offered: { add: add.kind === "allowed", connect: false, replace: false },
-    unavailableReason: hqOfferWords(add, { at: () => "12:00", rolesAnsweredAt: null }),
+    unavailableReason: hqOfferWords(add, { at: () => "12:00" }),
     setup: {
       connect: async () => ({ ok: false as const, reason: "refused" }),
       preview: async () => [],
@@ -339,7 +341,7 @@ function gitAuthority(can: HqOffers | undefined, current = true) {
 it.each([
   {
     situation: "a developer cannot add a Git production",
-    can: { add_git_environment: { allow: false, reason: "not_structure_writer" } },
+    can: { add_git_environment: { allow: false, reason: "not_structure_writer" } as const },
     current: true,
     reason: "Only an owner or admin of the organization can do this.",
   },
@@ -351,7 +353,7 @@ it.each([
   },
   {
     situation: "HQ stopped answering Git production setup",
-    can: { add_git_environment: { allow: true } },
+    can: { add_git_environment: { allow: true } as const },
     current: false,
     reason: "HQ unavailable since 12:00.",
   },
@@ -364,12 +366,14 @@ it.each([
 it("updates the Git choice's reason when HQ refuses setup after the form opens", () => {
   const initial = render({
     role: "prod",
-    git: gitAuthority({ add_git_environment: { allow: true } }),
+    git: gitAuthority({ add_git_environment: { allow: true } as const }),
   });
   expect(initial).not.toContain("Only an owner or admin of the organization can do this.");
   const html = render({
     role: "prod",
-    git: gitAuthority({ add_git_environment: { allow: false, reason: "not_structure_writer" } }),
+    git: gitAuthority({
+      add_git_environment: { allow: false, reason: "not_structure_writer" } as const,
+    }),
   });
   expect(html).toContain("Only an owner or admin of the organization can do this.");
   expect(gitChoice()?.hasAttribute("disabled")).toBe(true);

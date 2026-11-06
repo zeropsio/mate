@@ -244,7 +244,10 @@ export interface CrewWorld {
     phase: "started" | "finished",
     options?: { readonly opens?: "item.started" | "item.updated" },
   ) => Effect.Effect<void>;
-  /** The project's processes as the platform lists them; `unreadable` fails the read. */
+  /**
+   * The project's processes as the platform lists them, pushed over the Mate's socket;
+   * `unreadable` fails the read.
+   */
   readonly deployState: (processes: ReadonlyArray<unknown> | "unreadable") => Effect.Effect<void>;
   /** A usage window of the Mate's agent stands at `usedPercent`. */
   readonly usage: (usedPercent: number) => Effect.Effect<void>;

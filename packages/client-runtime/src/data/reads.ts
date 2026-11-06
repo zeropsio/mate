@@ -7,7 +7,10 @@ import {
   EMPTY_MATE_DIRECTORY,
 } from "./projections/hqMateDirectory.ts";
 import { zeropsStructure } from "../zerops/hq/structure.ts";
+import type { RoleMateVisibility } from "../zerops/mateAccess.ts";
+import { mateVisibility } from "./projections/mateVisibility.ts";
 import { mateHealth } from "./projections/mateHealth.ts";
+import { sharedBirths, type SharedBirthState } from "./projections/birthProgress.ts";
 /**
  * What a screen, and the account runtime's derivations outside React, may reach of the account's
  * data: the store's reads and the hold on a detail — never its writer. An app sets
@@ -23,7 +26,6 @@ import type { DetailDemand } from "./demand.ts";
 import type { StreamState } from "./streamMachine.ts";
 import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
-import { hqMateSetup, UNKNOWN_MATE_SETUP, type HqMateSetup } from "./projections/hqMateSetup.ts";
 import { mateVariables } from "./projections/mateVariables.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
 import { ROUTE_PROJECT, type ProjectValue } from "./families/project.ts";
@@ -87,6 +89,48 @@ export const accountReadsAtom = Atom.make<AccountReads | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("data:account-reads"),
 );
+
+/** The open births of the account's organization, as both sources prove them. */
+export const sharedBirthsAtom = Atom.family((personId: string) => {
+  const source = Atom.make((get): SharedBirthState => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return { open: [], readyProjectIds: [] };
+    return get(account.data.project(sharedBirths, { orgId: account.orgId, personId }));
+  });
+  // Status changes do not release and reacquire reads whose identities did not change.
+  const details = Atom.make((get) => {
+    const births = get(source).open;
+    return JSON.stringify([
+      [
+        ...new Set(births.flatMap(({ projectId }) => (projectId === null ? [] : [projectId]))),
+      ].sort(),
+      [
+        ...new Set(
+          births.flatMap(({ importProcessId }) =>
+            importProcessId === null ? [] : [importProcessId],
+          ),
+        ),
+      ].sort(),
+    ]);
+  }).pipe(Atom.withEquality(Object.is));
+  const demand = Atom.make((get) => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return;
+    const [projects, imports] = JSON.parse(get(details)) as [string[], string[]];
+    for (const projectId of projects)
+      get.addFinalizer(
+        account.demandDetail({ family: "process", listing: "history", ownerId: projectId }),
+      );
+    for (const importId of imports)
+      get.addFinalizer(
+        account.demandDetail({ family: "process", listing: "process", ownerId: importId }),
+      );
+  });
+  return Atom.make((get): SharedBirthState => {
+    get(demand);
+    return get(source);
+  }).pipe(Atom.withLabel(`data:shared-births:${personId}`));
+});
 
 export const NOT_READ_PROCESSES: ProjectProcesses = {
   retained: undefined,
@@ -290,6 +334,32 @@ export const listedProjectAtom = Atom.family((projectId: string) =>
     if (account === null || account.orgId === null) return null;
     return get(account.data.project(listedProject, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:listed-project:${projectId}`)),
+);
+
+/** A Mate's visibility for the person, as the mounted account reads it (`mateVisibility`). */
+export const shownMateVisibilityAtom = Atom.family((projectId: string) =>
+  Atom.make((get): RoleMateVisibility | "unknown" => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return "unknown";
+    return get(account.data.project(mateVisibility, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:mate-visibility:${projectId}`)),
+);
+
+/**
+ * Several Mates' visibility for the person at once, by project id, as the mounted account reads it
+ * (`mateVisibility`); a Mate not judged yet (`unknown`) is absent: nothing is hidden on a guess.
+ * Keyed by the ids joined with `,`.
+ */
+export const shownMateVisibilitiesAtom = Atom.family((projectIds: string) =>
+  Atom.make((get): Readonly<Record<string, RoleMateVisibility>> => {
+    const judged: Record<string, RoleMateVisibility> = {};
+    if (projectIds === "") return judged;
+    for (const projectId of projectIds.split(",")) {
+      const visibility = get(shownMateVisibilityAtom(projectId));
+      if (visibility !== "unknown") judged[projectId] = visibility;
+    }
+    return judged;
+  }).pipe(Atom.withLabel(`data:mate-visibilities:${projectIds}`)),
 );
 
 /** Whether the mounted account's owner proved a project deleted; `false` without an account. */
@@ -601,15 +671,6 @@ export async function readMateFlagOnceLive(
   });
   return live ? readMateFlag(registry, serviceId) : flag;
 }
-
-/** A Mate’s setup evidence, already delivered by the organization’s navigation. No detail demand. */
-export const hqMateSetupAtom = Atom.family((projectId: string) =>
-  Atom.make((get): HqMateSetup => {
-    const account = get(accountReadsAtom);
-    if (account === null || account.orgId === null) return UNKNOWN_MATE_SETUP;
-    return get(account.data.project(hqMateSetup, { orgId: account.orgId, projectId }));
-  }),
-);
 
 /** Account/org switching replaces dependencies; every surface shares the same project reader. */
 function projectReader<Key, Value>(

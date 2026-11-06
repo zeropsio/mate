@@ -10,14 +10,13 @@
 import {
   NOT_READ_VAULT,
   accountReadsAtom,
-  hqProjectPerson,
   initialStream,
   REVEAL_UNRECORDABLE,
   OperationStopped,
   organizationMembers,
+  projectOperator,
   projectsGrants,
   vaultAtom,
-  type HqProjectPeople,
   type MembersRead,
   type ProjectGrantsRead,
 } from "@t3tools/client-runtime/data";
@@ -52,7 +51,7 @@ import {
 } from "./reveal.logic";
 
 const UNREAD_VAULT = Atom.make(NOT_READ_VAULT);
-const UNKNOWN_PERSON = Atom.make<HqProjectPeople | undefined>(undefined);
+const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 const UNREAD_GRANTS = Atom.make<Readonly<Record<string, ProjectGrantsRead>>>({});
 const UNREAD_MEMBERS = Atom.make<MembersRead>({
   fact: { kind: "unknown" },
@@ -99,17 +98,15 @@ export function RevealAsk({
   useDetailDemand("serviceVariable", undefined, reading);
   const view = useAtomValue(reading === null ? UNREAD_VAULT : vaultAtom(reading));
 
-  // Whether the viewer may reveal it, as HQ says of them in its project; who may, where not.
+  // Whether the viewer works in this project, from their own Zerops evidence.
   const target = useMemo(
     () => (home === undefined ? null : { orgId: home.orgId, projectId: proposal.projectId }),
     [home, proposal.projectId],
   );
-  const targetPerson = useProjection(hqProjectPerson, target, UNKNOWN_PERSON);
-  // Someone else's to reveal: HQ says the viewer may not work there, or Zerops refused their role.
+  const operates = useProjection(projectOperator, target, UNDECIDED);
+  // Someone else's to reveal: the viewer cannot work there, or Zerops refused their role.
   const others =
-    target !== null && (targetPerson?.mayWrite === false || phase.kind === "refused")
-      ? target
-      : null;
+    target !== null && (operates === false || phase.kind === "refused") ? target : null;
   useDetailDemand("organizationMembers", undefined, others?.orgId ?? null);
   const members = useProjection(
     organizationMembers,
@@ -145,7 +142,9 @@ export function RevealAsk({
         ? "Reaching your organization's HQ…"
         : !known
           ? "Reading what was decided…"
-          : undefined;
+          : operates === undefined
+            ? "Reading your project access…"
+            : undefined;
 
   // Once the vault answered: the value revealed with the person's access, recorded, then shown.
   const going = useRef(false);

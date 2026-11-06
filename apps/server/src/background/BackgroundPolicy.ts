@@ -55,8 +55,11 @@ export class BackgroundPolicy extends Context.Service<
   }
 >()("t3/background/BackgroundPolicy") {}
 
-const DEFAULT_LEASE_TTL_MS = 45_000;
-const MAX_LEASE_TTL_MS = 120_000;
+/**
+ * How long after the person's last interaction a visible client still counts as in use without
+ * focus. Measured on the server's clock when asked, so no client re-sends to keep it true.
+ */
+const RECENT_INTERACTION_WINDOW_MS = 45_000;
 export const MAX_CLIENT_ACTIVITY_LEASES_PER_RPC_CLIENT = 16;
 
 function scopeKey(scope: BackgroundScope): string {
@@ -74,10 +77,6 @@ function scopeKey(scope: BackgroundScope): string {
   }
 }
 
-function isLeaseActive(lease: ClientActivityLease, now: DateTime.Utc): boolean {
-  return DateTime.isGreaterThan(lease.expiresAt, now);
-}
-
 function leaseKey(lease: Pick<ClientActivityLease, "sessionId" | "rpcClientId" | "clientId">) {
   return JSON.stringify([lease.sessionId, lease.rpcClientId, lease.clientId]);
 }
@@ -85,15 +84,8 @@ function leaseKey(lease: Pick<ClientActivityLease, "sessionId" | "rpcClientId" |
 function upsertClientActivityLease(
   leases: ReadonlyMap<string, ClientActivityLease>,
   lease: ClientActivityLease,
-  now: DateTime.Utc,
 ): Map<string, ClientActivityLease> {
   const next = new Map(leases);
-  for (const [key, current] of next) {
-    if (!isLeaseActive(current, now)) {
-      next.delete(key);
-    }
-  }
-
   const key = leaseKey(lease);
   if (!next.has(key)) {
     let connectionLeaseCount = 0;
@@ -125,8 +117,16 @@ function upsertClientActivityLease(
   return next;
 }
 
+function wasRecentlyInteracted(lease: ClientActivityLease, now: DateTime.Utc): boolean {
+  return (
+    lease.lastInteractionAt !== undefined &&
+    DateTime.toEpochMillis(now) - DateTime.toEpochMillis(lease.lastInteractionAt) <=
+      RECENT_INTERACTION_WINDOW_MS
+  );
+}
+
 function isForegroundLease(lease: ClientActivityLease, now: DateTime.Utc): boolean {
-  return isLeaseActive(lease, now) && lease.visible && (lease.focused || lease.recentlyInteracted);
+  return lease.visible && (lease.focused || wasRecentlyInteracted(lease, now));
 }
 
 function leaseHasScope(lease: ClientActivityLease, scope: BackgroundScope): boolean {
@@ -168,8 +168,7 @@ function leaseMayRunScopedWork(
   now: DateTime.Utc,
   settings: ResolvedBackgroundActivitySettings,
 ): boolean {
-  const activeWithScope = isLeaseActive(lease, now) && leaseHasScope(lease, scope);
-  if (!activeWithScope || isClientConstrained(lease, settings)) {
+  if (!leaseHasScope(lease, scope) || isClientConstrained(lease, settings)) {
     return false;
   }
   if (settings.profile === "performance") {
@@ -185,9 +184,7 @@ function computeSnapshot(input: {
   readonly settings: ResolvedBackgroundActivitySettings;
   readonly updatedAt: DateTime.Utc;
 }): BackgroundPolicySnapshot {
-  const activeLeases = [...input.leases.values()].filter((lease) =>
-    isLeaseActive(lease, input.now),
-  );
+  const activeLeases = [...input.leases.values()];
   const foregroundLeases = activeLeases.filter((lease) => isForegroundLease(lease, input.now));
   const activeScopeKeys = new Set<string>();
   for (const lease of activeLeases) {
@@ -243,12 +240,7 @@ export const make = Effect.fn("background.policy.make")(function* () {
   ) =>
     publishMutex.withPermits(1)(
       Effect.gen(function* () {
-        const ttlMs = Math.min(
-          Math.max(input.ttlMs ?? DEFAULT_LEASE_TTL_MS, 1_000),
-          MAX_LEASE_TTL_MS,
-        );
         const now = yield* DateTime.now;
-        const expiresAt = DateTime.add(now, { milliseconds: ttlMs });
         const lease: ClientActivityLease = {
           sessionId,
           rpcClientId,
@@ -256,16 +248,17 @@ export const make = Effect.fn("background.policy.make")(function* () {
           clientKind: input.clientKind,
           visible: input.visible,
           focused: input.focused,
-          recentlyInteracted: input.recentlyInteracted,
+          ...(input.idleMs !== undefined
+            ? { lastInteractionAt: DateTime.subtract(now, { milliseconds: input.idleMs }) }
+            : {}),
           ...(input.appState !== undefined ? { appState: input.appState } : {}),
           ...(input.lowPowerMode !== undefined ? { lowPowerMode: input.lowPowerMode } : {}),
           ...(input.batteryState !== undefined ? { batteryState: input.batteryState } : {}),
           ...(input.networkType !== undefined ? { networkType: input.networkType } : {}),
           scopes: input.scopes,
           updatedAt: now,
-          expiresAt,
         };
-        yield* Ref.update(leasesRef, (leases) => upsertClientActivityLease(leases, lease, now));
+        yield* Ref.update(leasesRef, (leases) => upsertClientActivityLease(leases, lease));
         yield* publishSnapshotUnlocked;
       }),
     );
@@ -311,28 +304,6 @@ export const make = Effect.fn("background.policy.make")(function* () {
   yield* Stream.runForEach(serverSettings.streamChanges, () => publishSnapshot).pipe(
     Effect.forkScoped,
   );
-
-  yield* Effect.forever(
-    Effect.sleep("15 seconds").pipe(
-      Effect.andThen(
-        publishMutex.withPermits(1)(
-          Effect.gen(function* () {
-            const now = yield* DateTime.now;
-            yield* Ref.update(leasesRef, (leases) => {
-              const next = new Map(leases);
-              for (const [key, lease] of next) {
-                if (!isLeaseActive(lease, now)) {
-                  next.delete(key);
-                }
-              }
-              return next;
-            });
-            yield* publishSnapshotUnlocked;
-          }),
-        ),
-      ),
-    ),
-  ).pipe(Effect.forkScoped);
 
   return BackgroundPolicy.of({
     reportClientActivity,

@@ -9,9 +9,9 @@ import { runToEnd, type RunToEnd } from "../data/operations/runToEnd.ts";
 import { makeAccountStore } from "../data/store.ts";
 import { ZeropsApiError } from "./api.ts";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
+import { withZeropsMateTag } from "./groups.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
-  resumableEnvironmentCreationStep,
   runEnvironmentCreation,
   servicesSettled,
   type EnvironmentCreationPlatform,
@@ -21,7 +21,7 @@ import {
 /** A tier as `main` holds it: a runtime built from the group's own repository, and a database. */
 const TIER_YAML =
   "services:\n  - hostname: api\n    buildFromGit: https://hq.test/git/acme/api.git\n    zeropsSetup: api\n  - hostname: db\n    type: postgresql@17\n";
-/** What a Mate's creation imports itself: the managed services, with its project. */
+/** A tier of managed services alone, as a whole-project import brings it. */
 const MANAGED_YAML = "services:\n  - hostname: db\n    type: postgresql@17\n";
 
 function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationStep> {
@@ -30,6 +30,7 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
     name: `Go Hello World - ${role}`,
     recipe: {
       kind: "tier",
+      revision: "recipe-revision",
       tier: role === "prod" ? "production" : "mate",
       yaml: TIER_YAML,
     },
@@ -59,7 +60,7 @@ interface FakeWrites {
     readonly projectId: string;
     readonly projectName: string;
     readonly agents: ReadonlyArray<string>;
-    readonly setupRuntimesYaml?: string;
+    readonly tierYaml?: string;
   }) => Promise<{
     readonly serviceName: string;
     readonly imported: boolean;
@@ -67,8 +68,6 @@ interface FakeWrites {
   }>;
   readonly importServices: (projectId: string, yaml: string) => Promise<unknown>;
   readonly importProject: (yaml: string) => Promise<{ readonly projectId: string }>;
-  /** The project read, closed off where it is not, and read back closed off. */
-  readonly harden: (projectId: string) => Promise<void>;
 }
 
 type FakeOverrides = Partial<FakeWrites> & Partial<Omit<EnvironmentCreationPlatform, "run">>;
@@ -90,7 +89,7 @@ function fakePlatform(overrides: FakeOverrides = {}) {
     projectCreated: () => Promise.resolve(),
     importDevelopmentContainer: (input) => {
       calls.push(
-        `container:${input.projectId}:${input.projectName}:${input.agents.join("|")}:${input.setupRuntimesYaml?.length ?? "none"}`,
+        `container:${input.projectId}:${input.projectName}:${input.agents.join("|")}:${input.tierYaml?.length ?? "none"}`,
       );
       return Promise.resolve({ serviceName: "zcp", imported: true });
     },
@@ -101,10 +100,6 @@ function fakePlatform(overrides: FakeOverrides = {}) {
     importProject: (yaml) => {
       calls.push(`importProject:${yaml.length}`);
       return Promise.resolve({ projectId: "proj-1" });
-    },
-    harden: (projectId) => {
-      calls.push(`harden:${projectId}`);
-      return Promise.resolve();
     },
     ...overrides,
   };
@@ -123,26 +118,29 @@ function fakePlatform(overrides: FakeOverrides = {}) {
       case "import-services":
         await writes.importServices(intent.projectId, intent.yaml);
         return undefined;
+      case "prepare-tier-variables":
+        calls.push(
+          `prepare:${intent.projectId}:${intent.variables.map(({ key }) => key).join(",")}`,
+        );
+        return undefined;
       case "import-container":
         return writes.importDevelopmentContainer(intent);
-      case "harden-project":
-        await writes.harden(intent.projectId);
-        return { keyNotLowered: null };
       case "grant-new-project-access":
         calls.push(
           `access:${intent.projectId}:${intent.userRoles.map(({ clientUserId, roleCode }) => `${clientUserId}=${roleCode}`).join("|")}`,
         );
         return { projectId: intent.projectId };
+      case "set-project-access":
+        calls.push(
+          `roles:${intent.changes.map(({ clientUserId, roleCode, projectId }) => `${clientUserId}=${roleCode}@${projectId}`).join("|")}`,
+        );
+        return { written: intent.changes.length };
       default:
         throw new Error(`No ${intent.kind} in a creation.`);
     }
   }) as RunToEnd;
   const platform: EnvironmentCreationPlatform = {
     run: runWrite,
-    markClosedOff: (projectId) => {
-      calls.push(`closedOff:${projectId}`);
-      return Promise.resolve();
-    },
     register: (projectId) => {
       calls.push(`register:${projectId}`);
       return Promise.resolve();
@@ -154,7 +152,6 @@ function fakePlatform(overrides: FakeOverrides = {}) {
         { name: "db", status: "ACTIVE" },
       ]);
     },
-    ...(overrides.markClosedOff === undefined ? {} : { markClosedOff: overrides.markClosedOff }),
     ...(overrides.register === undefined ? {} : { register: overrides.register }),
     ...(overrides.untilServicesSettled === undefined
       ? {}
@@ -181,6 +178,120 @@ function run(
 }
 
 describe("runEnvironmentCreation", () => {
+  it("prepares project variables before claiming the single import", async () => {
+    const creation = planEnvironmentCreation({
+      clientId: "client-1",
+      role: "dev",
+      name: "Shop",
+      recipe: {
+        kind: "tier",
+        tier: "mate",
+        revision: "r1",
+        yaml: `project:
+  vault:
+    APP_KEY: {value: <@generateRandomString(<32>)>, sensitive: true}
+${TIER_YAML}`,
+      },
+    });
+    if (!creation.ok) throw new Error(creation.reason);
+    const step = creation.steps.find((item) => item.kind === "import-container");
+    if (step === undefined) throw new Error("Missing import step.");
+    const { platform, calls } = fakePlatform();
+    const result = await runEnvironmentCreation({
+      clientId: "client-1",
+      steps: [step],
+      platform,
+      resume: { from: 0, projectId: "proj-1", projectName: "Shop" },
+      birth: {
+        id: "birth-1",
+        attempt: async <T>(kind: "create" | "import", send: () => Promise<T>) => {
+          expect(kind).toBe("import");
+          expect(calls).toEqual(["prepare:proj-1:APP_KEY"]);
+          calls.push("claim:import");
+          return send();
+        },
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(calls[0]).toBe("prepare:proj-1:APP_KEY");
+    expect(calls[1]).toBe("claim:import");
+    expect(calls[2]).toMatch(/^container:proj-1:/u);
+  });
+
+  it("records an accepted import before stopping for a lapsed press", async () => {
+    let lapsed = false;
+    const handles: string[] = [];
+    const { platform } = fakePlatform({
+      importDevelopmentContainer: async () => {
+        lapsed = true;
+        return { serviceName: "zcp", imported: true, processId: "process-1" };
+      },
+    });
+    const result = await runEnvironmentCreation({
+      clientId: "client-1",
+      steps: [{ kind: "import-container", agents: [] }],
+      platform,
+      resume: { from: 0, projectId: "proj-1", projectName: "Shop - Ada" },
+      stopped: () => (lapsed ? "Press lapsed." : undefined),
+      onContainerImported: ({ processId }) => {
+        if (processId !== undefined) handles.push(processId);
+      },
+    });
+    expect(handles).toEqual(["process-1"]);
+    expect(result).toMatchObject({ ok: false, error: "Press lapsed." });
+  });
+
+  it("Decision: Continue never sends a create or an import without first holding that step's attempt", async () => {
+    let imports = 0;
+    let claimed = false;
+    const { platform } = fakePlatform({
+      importDevelopmentContainer: async () => {
+        imports += 1;
+        throw new ZeropsApiError("The answer was lost.", "uncertain");
+      },
+    });
+    const attempt = async <T>(step: "create" | "import", send: () => Promise<T>): Promise<T> => {
+      expect(step).toBe("import");
+      if (claimed) throw new Error("attempt_taken");
+      claimed = true;
+      return send();
+    };
+    const input = {
+      clientId: "client-1",
+      steps: [{ kind: "import-container" as const, agents: ["claude-code" as const] }],
+      platform,
+      resume: { from: 0, projectId: "proj-1", projectName: "Shop - Ada" },
+      birth: { id: "birth-1", attempt },
+    };
+    const results = await Promise.all([
+      runEnvironmentCreation(input),
+      runEnvironmentCreation(input),
+    ]);
+    expect(imports).toBe(1);
+    expect(results).toMatchObject([
+      { ok: false, uncertain: true },
+      { ok: false, error: "attempt_taken" },
+    ]);
+
+    const second = fakePlatform();
+    const refused = {
+      clientId: "client-1",
+      steps: plan("dev"),
+      platform: second.platform,
+      birth: {
+        id: "birth-1",
+        attempt: async <T>(_step: "create" | "import", _send: () => Promise<T>): Promise<T> => {
+          throw new Error("attempt_taken");
+        },
+      },
+    };
+    expect(await runEnvironmentCreation(refused)).toMatchObject({
+      ok: false,
+      error: "attempt_taken",
+    });
+    expect(second.calls).toEqual([]);
+  });
+
   it.each([
     { case: "services only", yaml: TIER_YAML },
     { case: "a bundled project", yaml: `project:\n  name: published\n${TIER_YAML}` },
@@ -197,7 +308,10 @@ describe("runEnvironmentCreation", () => {
         clientId: "client-1",
         role: "prod",
         name: "Production",
-        recipe: yaml === undefined ? { kind: "none" } : { kind: "tier", tier: "production", yaml },
+        recipe:
+          yaml === undefined
+            ? { kind: "none" }
+            : { kind: "tier", revision: "recipe-revision", tier: "production", yaml },
         ...(location === undefined ? {} : { location }),
         ...(withAgent === undefined ? {} : { withAgent }),
         userRoles,
@@ -232,7 +346,7 @@ describe("runEnvironmentCreation", () => {
       clientId: "client-1",
       role: "stage",
       name: "Stage",
-      recipe: { kind: "tier", tier: "stage", yaml },
+      recipe: { kind: "tier", revision: "recipe-revision", tier: "stage", yaml },
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -307,7 +421,7 @@ describe("runEnvironmentCreation", () => {
     expect(outcome).toMatchObject({ ok: false, error: "This account session has ended." });
   });
 
-  it.each(["create-project", "import-project", "import-container", "close-off"] as const)(
+  it.each(["create-project", "import-project", "import-container"] as const)(
     "keeps the original handles but sends no setup continuation after logout during %s",
     async (kind) => {
       let current = true;
@@ -325,27 +439,19 @@ describe("runEnvironmentCreation", () => {
           current = false;
           return { serviceName: "zcp", imported: true, processId: "original-import" };
         },
-        harden: async () => {
-          current = false;
-        },
-        markClosedOff: async () => {
-          continuations.push("mark-closed-off");
-        },
       });
       const steps: ReadonlyArray<EnvironmentCreationStep> =
         kind === "create-project"
           ? [{ kind, name: "Shop - Nova", tagList: [], location: undefined }]
           : kind === "import-project"
             ? [{ kind, name: "Shop - Nova", yaml: MANAGED_YAML, tagList: [] }]
-            : kind === "import-container"
-              ? [{ kind, agents: [] }]
-              : [{ kind }];
+            : [{ kind, agents: [] }];
       const outcome = await runEnvironmentCreation({
         clientId: "client-1",
         steps,
         platform,
         isCurrent: () => current,
-        ...(kind === "import-container" || kind === "close-off"
+        ...(kind === "import-container"
           ? { resume: { from: 0, projectId: "proj-1", projectName: "Shop - Nova" } }
           : {}),
         onProjectAccepted: async () => {
@@ -378,18 +484,12 @@ describe("runEnvironmentCreation", () => {
     expect(calls).toEqual([
       // The project's operation ends with its `project.create` process: the step waits for it.
       "create:Go Hello World - dev:mate",
-      // The managed services, with the project: nothing in them runs code.
-      `import:proj-1:${MANAGED_YAML.length}`,
       // Its record in its application before its container: a press that stops after leaves a
       // Mate HQ holds there, which any browser finishes under its name (F6b, 2026-10-03).
       "register:proj-1",
-      // The group's agents reach the container import, not just the plan, and the runtimes ride
-      // with it for zcp to import on boot: no runtime import of the press's own.
-      `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n".length}`,
-      // Hardened — read closed, closed off where it was not, read back — and marked: zcp imports
-      // the runtimes on the mark alone, and the Mate needs no browser any more.
-      "harden:proj-1",
-      "closedOff:proj-1",
+      // The group's agents reach the container import, not just the plan, and the whole tier
+      // rides in the same import: nothing is imported or closed off after it.
+      `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n  - hostname: db\n    type: postgresql@17\n".length}`,
     ]);
   });
 
@@ -412,7 +512,7 @@ describe("runEnvironmentCreation", () => {
     const planned = planEnvironmentCreation({
       clientId: "client-1",
       name: "Go Hello World - stage",
-      recipe: { kind: "tier", tier: "stage", yaml },
+      recipe: { kind: "tier", revision: "recipe-revision", tier: "stage", yaml },
       role: "stage",
       withAgent: false,
       userRoles: [
@@ -429,16 +529,68 @@ describe("runEnvironmentCreation", () => {
     ).toEqual(expected);
   });
 
+  // Decision: Adding a Mate to an existing project whose row carries no OWNER override, by a person
+  // whose org role is ADMIN or OWNER, writes that person's OWNER override on the project before
+  // the Mate record is made. Whole-project recipes set access after import the same way.
+  it.each([
+    {
+      title:
+        "A whole-project recipe's Mate marks its creator its owner after its people, before its record",
+      yaml: `project:\n  name: x\n${TIER_YAML}`,
+      role: "dev" as const,
+      calls: [
+        `create:Sia:${withZeropsMateTag([]).join(",")}:cu-bo=READ_ONLY|cu-me=OWNER`,
+        "register:proj-1",
+      ],
+    },
+    {
+      title: "A created Mate's project is sent with its creator marked its owner",
+      yaml: TIER_YAML,
+      role: "dev" as const,
+      calls: [
+        `create:Sia:${withZeropsMateTag([]).join(",")}:cu-bo=READ_ONLY|cu-me=OWNER`,
+        "register:proj-1",
+      ],
+    },
+    {
+      title: "An environment without a Mate marks no owner",
+      yaml: `project:\n  name: x\n${TIER_YAML}`,
+      role: "stage" as const,
+      calls: ["importProject:0", "access:proj-1:cu-bo=READ_ONLY", "register:proj-1"],
+    },
+  ])("$title", async ({ yaml, role, calls: expected }) => {
+    const { platform, calls } = fakePlatform();
+    const planned = planEnvironmentCreation({
+      clientId: "client-1",
+      name: "Sia",
+      recipe: {
+        kind: "tier",
+        revision: "recipe-revision",
+        tier: role === "dev" ? "mate" : "stage",
+        yaml,
+      },
+      role,
+      userRoles: [{ clientUserId: "cu-bo", roleCode: "READ_ONLY" }],
+      owner: "cu-me",
+    });
+    if (!planned.ok) throw new Error(planned.reason);
+    await run(planned.steps, platform);
+    // Who reaches it and its record, in order; its services' imports are not this case's.
+    expect(
+      calls
+        .filter((call) => /^(create|importProject|access|roles|register):/u.test(call))
+        .map((call) => call.replace(/^importProject:\d+$/u, "importProject:0")),
+    ).toEqual(expected);
+  });
+
   it("A Mate added by someone other than the owner is created and its people get their access", async () => {
     // The account's own registry runs every step: a kind it lacks stops the press at once.
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
     liveZerops({ running: [] }).forEach(store.dispatch);
     const answers: Partial<Record<OperationIntent["kind"], OperationResult>> = {
-      "import-project": { projectId: "proj-1" },
-      "grant-new-project-access": { projectId: "proj-1" },
+      "create-project": { projectId: "proj-1" },
       "import-container": { serviceName: "zcp", imported: true },
-      "harden-project": { keyNotLowered: null },
     };
     const sent: Array<string> = [];
     const operations = makeOperations({
@@ -466,7 +618,12 @@ describe("runEnvironmentCreation", () => {
     const planned = planEnvironmentCreation({
       clientId: "client-1",
       name: "Sia",
-      recipe: { kind: "tier", tier: "mate", yaml: `project:\n  name: x\n${TIER_YAML}` },
+      recipe: {
+        kind: "tier",
+        revision: "recipe-revision",
+        tier: "mate",
+        yaml: `project:\n  name: x\n${TIER_YAML}`,
+      },
       role: "dev",
       agents: ["claude-code"],
       userRoles: [{ clientUserId: "cu-owner", roleCode: "ADMIN" }],
@@ -484,7 +641,7 @@ describe("runEnvironmentCreation", () => {
       serviceName: "zcp",
       awaitingAgent: true,
     });
-    expect(sent.slice(0, 2)).toEqual(["import-project", "grant-new-project-access"]);
+    expect(sent).toEqual(["create-project", "import-container"]);
   });
 
   it("imports a stage's tier whole, every runtime empty for HQ", async () => {
@@ -511,10 +668,8 @@ describe("runEnvironmentCreation", () => {
     const last = reports.at(-1)!;
     expect(last.map((entry) => [entry.step.kind, entry.state])).toEqual([
       ["create-project", "done"],
-      ["import-managed", "done"],
       ["register", "done"],
       ["import-container", "done"],
-      ["close-off", "done"],
       ["await-ready", "running"],
     ]);
   });
@@ -607,28 +762,21 @@ describe("runEnvironmentCreation", () => {
 
   it("stops at the first failure and says which half was built", async () => {
     const { platform, calls } = fakePlatform({
-      importServices: () => Promise.reject(new Error("projectImportProjectIncluded")),
+      register: () => Promise.reject(new Error("mate_not_in_app")),
     });
     const { outcome, reports } = await run(plan("dev"), platform);
 
     expect(outcome).toEqual({
       ok: false,
       projectId: "proj-1",
-      failedStep: expect.objectContaining({ kind: "import-managed" }),
-      error: "projectImportProjectIncluded",
+      failedStep: expect.objectContaining({ kind: "register" }),
+      error: "mate_not_in_app",
     });
     // Nothing after the failure runs.
     expect(calls.some((call) => call.startsWith("container:"))).toBe(false);
     const last = reports.at(-1)!;
-    expect(last.map((entry) => entry.state)).toEqual([
-      "done",
-      "failed",
-      "queued",
-      "queued",
-      "queued",
-      "queued",
-    ]);
-    expect(last[1]?.error).toBe("projectImportProjectIncluded");
+    expect(last.map((entry) => entry.state)).toEqual(["done", "failed", "queued", "queued"]);
+    expect(last[1]?.error).toBe("mate_not_in_app");
   });
 
   it("reports no project when creating it is what failed", async () => {
@@ -644,8 +792,6 @@ describe("runEnvironmentCreation", () => {
     const { platform } = fakePlatform();
     const { reports } = await run(plan("dev"), platform);
     expect(reports[0]!.map((entry) => entry.state)).toEqual([
-      "queued",
-      "queued",
       "queued",
       "queued",
       "queued",
@@ -687,7 +833,7 @@ describe("runEnvironmentCreation — the platform's verdict on the project", () 
 });
 
 describe("runEnvironmentCreation — one attempt per step", () => {
-  it.each(["importDevelopmentContainer", "markClosedOff", "register", "harden"] as const)(
+  it.each(["importDevelopmentContainer", "register"] as const)(
     "stops on the first failed %s, retaining the project and completed steps",
     async (operation) => {
       let attempts = 0;
@@ -708,101 +854,9 @@ describe("runEnvironmentCreation — one attempt per step", () => {
         expect(calls.some((call) => call.startsWith("container:"))).toBe(false);
     },
   );
-
-  it("retains the imported container when its mark fails and resumes only the stopped step", async () => {
-    let marks = 0;
-    const { platform, calls } = fakePlatform({
-      markClosedOff: async () => {
-        marks += 1;
-        if (marks === 1) throw new Error("HQ is unavailable.");
-      },
-    });
-    const steps = plan("dev");
-    const { outcome } = await run(steps, platform);
-    expect(outcome).toMatchObject({
-      ok: false,
-      projectId: "proj-1",
-      serviceName: "zcp",
-      failedStep: { kind: "close-off" },
-    });
-    if (outcome.ok) throw new Error("expected a stop");
-    const before = calls.length;
-    const resumed = await runEnvironmentCreation({
-      clientId: "client-1",
-      steps,
-      platform,
-      resume: {
-        from: steps.indexOf(outcome.failedStep),
-        projectId: "proj-1",
-        projectName: "Go Hello World - dev",
-        serviceName: "zcp",
-      },
-    });
-    expect(resumed).toMatchObject({ ok: true, serviceName: "zcp", awaitingAgent: true });
-    expect(marks).toBe(2);
-    expect(calls.slice(before)).toEqual(["harden:proj-1"]);
-  });
 });
 
-describe("runEnvironmentCreation — closing the project off", () => {
-  // The mark — which zcp imports the runtimes on — is written only after the project reads closed
-  // off: its hardening reads it, closes it off where it is not, and reads it back
-  // (`data/operations/hardenProject.ts`). One that does not confirm stops for the creator.
-  it("marks the project once its hardening confirms it closed off", async () => {
-    const { platform, calls } = fakePlatform();
-    const { outcome } = await run(plan("dev"), platform);
-    expect(outcome.ok).toBe(true);
-    expect(calls.slice(-2)).toEqual(["harden:proj-1", "closedOff:proj-1"]);
-  });
-
-  // Finish setup on an older Mate isolates it first (`hardenMate`): its close-off trusts that and
-  // reads no trailing index to isolate it a second time.
-  it("marks a project the press has just isolated, reading nothing", async () => {
-    const { platform, calls } = fakePlatform();
-    const outcome = await runEnvironmentCreation({
-      clientId: "client-1",
-      steps: [{ kind: "close-off", isolated: true }],
-      platform,
-      resume: { from: 0, projectId: "proj-1", projectName: "Go Hello World - dev" },
-    });
-    expect(outcome).toMatchObject({ ok: true });
-    expect(calls).toEqual(["closedOff:proj-1"]);
-  });
-
-  it("stops unmarked, to be tried again, where the hardening does not confirm it", async () => {
-    const { platform, calls } = fakePlatform({
-      harden: async () => {
-        throw new Error("The project does not read as closed off yet.");
-      },
-    });
-    const { outcome } = await run(plan("dev"), platform);
-    expect(outcome).toMatchObject({
-      ok: false,
-      failedStep: { kind: "close-off" },
-      error: "The project does not read as closed off yet.",
-    });
-    if (outcome.ok) throw new Error("expected a stop");
-    expect(resumableEnvironmentCreationStep(outcome.failedStep)).toBe(true);
-    expect(calls).not.toContain("closedOff:proj-1");
-  });
-
-  // A harden's isolation is trusted only where no container came after it: a container imported
-  // in the same press brings the recipe's write, which may open the project again.
-  it("hardens again a project the harden isolated once a container was imported after it", async () => {
-    const { platform, calls } = fakePlatform();
-    await runEnvironmentCreation({
-      clientId: "client-1",
-      steps: [
-        { kind: "import-container", agents: [] },
-        { kind: "close-off", isolated: true },
-      ],
-      platform,
-      resume: { from: 0, projectId: "proj-1", projectName: "Go Hello World - dev" },
-    });
-    expect(calls.filter((call) => call === "harden:proj-1").length).toBe(1);
-    expect(calls.at(-1)).toBe("closedOff:proj-1");
-  });
-
+describe("runEnvironmentCreation — a Mate's one import", () => {
   it("a Mate's container is imported with the HQ and the web it is born from", async () => {
     const birthplace = {
       hqOrigin: "https://hq-31d9-8080.prg1.zerops.app",
@@ -819,12 +873,12 @@ describe("runEnvironmentCreation — closing the project off", () => {
     expect(imported).toEqual([expect.objectContaining({ birthplace })]);
   });
 
-  it("registers a Mate before its container, and closes it off after", async () => {
+  it("registers a Mate before its container, and writes nothing after its import", async () => {
     const { platform, calls } = fakePlatform();
     await run(plan("dev"), platform);
     const at = (prefix: string) => calls.findIndex((call) => call.startsWith(prefix));
     expect(at("register:")).toBeLessThan(at("container:"));
-    expect(at("container:")).toBeLessThan(at("closedOff:"));
+    expect(at("container:")).toBe(calls.length - 1);
   });
 
   // A refused registration leaves the accepted project and birth intent for Finish setup.
@@ -841,7 +895,6 @@ describe("runEnvironmentCreation — closing the project off", () => {
       failedStep: { kind: "register" },
     });
     expect(calls.some((call) => call.startsWith("container:proj-1"))).toBe(false);
-    expect(calls).not.toContain("closedOff:proj-1");
     expect(reports.at(-1)!.find((entry) => entry.step.kind === "register")).toMatchObject({
       state: "failed",
       error: "Only an owner may register it.",
@@ -875,27 +928,11 @@ describe("runEnvironmentCreation — a press tried again", () => {
       resume: { from, projectId: "proj-1", projectName: "Go Hello World - dev" },
     });
     expect(outcome).toMatchObject({ ok: true, projectId: "proj-1" });
-    // From its registration on: its container and its close-off after it, on the same project.
+    // From its registration on: its one import, on the same project.
     expect(calls).toEqual([
       "register:proj-1",
-      `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n".length}`,
-      "harden:proj-1",
-      "closedOff:proj-1",
+      `container:proj-1:Go Hello World - dev:claude-code:${"services:\n  - hostname: api\n    startWithoutCode: true\n  - hostname: db\n    type: postgresql@17\n".length}`,
     ]);
-  });
-
-  it("resumed at its close-off, hardens it once, then marks it", async () => {
-    const { platform, calls } = fakePlatform();
-    const steps = plan("dev");
-    const from = steps.findIndex((step) => step.kind === "close-off");
-    const outcome = await runEnvironmentCreation({
-      clientId: "client-1",
-      steps,
-      platform,
-      resume: { from, projectId: "proj-1", projectName: "Go Hello World - dev" },
-    });
-    expect(outcome).toMatchObject({ ok: true, projectId: "proj-1" });
-    expect(calls).toEqual(["harden:proj-1", "closedOff:proj-1"]);
   });
 
   it("says the project the press made the moment the platform takes it", async () => {

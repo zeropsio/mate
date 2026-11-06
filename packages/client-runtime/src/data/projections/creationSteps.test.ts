@@ -19,7 +19,13 @@ import {
 } from "./creationSteps.ts";
 
 const APP: OperationIntent = { kind: "create-app", orgId: ORG, name: "Garden" };
-const BIRTH: OperationIntent = { kind: "record-birth", orgId: ORG, appId: "app-1", face: "tint" };
+const BIRTH: OperationIntent = {
+  kind: "record-birth",
+  orgId: ORG,
+  appId: "app-1",
+  id: "b1",
+  face: "tint",
+};
 const PROJECT: OperationIntent = {
   kind: "create-project",
   orgId: ORG,

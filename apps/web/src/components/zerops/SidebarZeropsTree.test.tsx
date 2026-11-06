@@ -1,5 +1,10 @@
 import { HQ_SLOW } from "@t3tools/client-runtime/data";
-import { hqDrops, graceOver } from "@t3tools/client-runtime/data/fixtures";
+import {
+  hqDrops,
+  graceOver,
+  liveProjects,
+  membershipInputs,
+} from "@t3tools/client-runtime/data/fixtures";
 import { markupDom } from "../../../test/markupDom";
 import {
   buildZeropsGroupTree,
@@ -1211,6 +1216,62 @@ describe("a creation under way in the menu", () => {
     stored.opened = new Set(["aaa"]);
   });
 
+  it("a stopped birth never renders as Coming up", () => {
+    const pending = { ...birth(), intent: "b1" };
+    const beforeSharedRecord = render([CRM_DEV], { births: [pending] });
+    expect(beforeSharedRecord).not.toContain("Coming up");
+
+    const afterSharedRecord = render([CRM_DEV], {
+      births: [pending],
+      getBirth: (id: string) =>
+        id === "b1"
+          ? { line: "Project created · Quota reached.", attention: true, entries: [] }
+          : undefined,
+    });
+    expect(afterSharedRecord).toContain("Project created · Quota reached.");
+    expect(afterSharedRecord).not.toContain("Coming up");
+  });
+
+  it("a project of stopped births never says its Mates are coming up", () => {
+    const births = [
+      { ...birth({ projectId: "vera-dev" }), intent: "b1" },
+      { ...birth({ projectId: "bea-dev", displayName: "Bea" }), intent: "b2" },
+    ];
+    const presentation = { line: "Project created · Quota reached.", entries: [] };
+    const html = render([], {
+      births,
+      getBirth: () => ({ ...presentation, attention: true }),
+    });
+    expect(html).toContain("2 Mates · setup needs attention");
+    expect(html.toLowerCase()).not.toContain("coming up");
+
+    const mixed = render([], {
+      births,
+      getBirth: (id: string) => ({ ...presentation, attention: id === "b1" }),
+    });
+    expect(mixed).toContain("2 Mates · setup needs attention");
+  });
+
+  it("a pending shared birth shows the phase and reason received from its shared record", () => {
+    const html = render([CRM_DEV], {
+      births: [{ ...birth(), intent: "b1" }],
+      getBirth: (id: string) =>
+        id === "b1"
+          ? {
+              line: "Project created · Quota reached.",
+              attention: true,
+              entries: [
+                { id: "continue", label: "Continue", onSelect: () => {} },
+                { id: "delete", label: "Delete", variant: "destructive", onSelect: () => {} },
+              ],
+            }
+          : undefined,
+    });
+    expect(html).toContain("Project created · Quota reached.");
+    expect(html).toContain('aria-label="More for Vera"');
+    expect(html).not.toContain("Coming up ·");
+  });
+
   it("draws a Mate being created after the listed ones: waking, named, how far it has got", () => {
     const html = render([CRM_DEV], { births: [birth()] });
     expect(comingRows(html)).toHaveLength(1);
@@ -1425,16 +1486,56 @@ describe("a listed Mate still coming up", () => {
     },
   );
 
+  it("a listed stopped shared birth shows its reason and rests", () => {
+    const html = render([CRM_DEV], {
+      getComing: () => ({
+        kind: "coming",
+        line: "Project created · Quota reached.",
+        birth: { attention: true },
+      }),
+    });
+    const row = rowOf(html);
+    expect(row.match(/data-mate-face-state="([^"]+)"/u)?.[1]).toBe("sleep");
+    expect(row).toContain(">Project created · Quota reached.<");
+    expect(row).toContain('data-zerops-coming-tone="attention"');
+    expect(row).not.toContain(">Coming up");
+  });
+
   it("counts its clock from when the platform took it, where its birth is held here", () => {
     const since = Date.now() - 42_000;
     const html = render([CRM_DEV], { getComing: () => ({ ...COMING, since }) });
     expect(rowOf(html)).toMatch(/>Coming up · 0:4[1-3]</u);
   });
 
-  it("offers no menu while it comes up: nothing on it is about a Mate still being made", () => {
+  // Brief W7 (Karel, 2026-11-04): a Mate that never came up could not be deleted from the web.
+  it("A Mate that has not come up offers Delete in its row's menu, and nothing else of a Mate on its way", () => {
+    const remove = { id: "delete", label: "Delete crm-dev…", onSelect: () => {} };
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        getComing={() => COMING}
+        getMateActions={() => ({
+          muted: false,
+          entries: [
+            { id: "redeploy", label: "Redeploy", onSelect: () => {} },
+            { id: "delete-apart", separator: true },
+            { ...remove, variant: "destructive" },
+          ],
+        })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(mounted.root.findByType(MateMenu).props.actions.entries).toEqual([
+      { ...remove, variant: "destructive" },
+    ]);
+  });
+
+  it("offers no Mate menu while it comes up where the person may not delete it", () => {
     const html = render([CRM_DEV], {
       getComing: () => COMING,
-      getMateActions: () => ({ entries: [] }),
+      getMateActions: () => ({ muted: false, entries: [] }),
     });
     // Its project's own verbs stay on its row's ···; none of the Mate's join them.
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-more"');
@@ -1559,22 +1660,18 @@ describe("a Mate's face follows its work in the menu", () => {
         organizationStatus: "selected",
         activeOrganization: organization,
       });
-      mountHqNavigation(registry, organization.organizationId, {
+      const { store } = mountHqNavigation(registry, organization.organizationId, {
         structure: {
-          can: {
-            delete_app: may ? { allow: true } : { allow: false, reason: "not_structure_writer" },
-          },
-          apps: [
-            {
-              id: "aaa",
-              name: "Beviro CRM",
-              projects: [],
-              can: { add_mate: { allow: true } },
-            },
-          ],
+          apps: [{ id: "aaa", name: "Beviro CRM", projects: [] }],
           ungrouped: [],
         },
       });
+      // Deleting an application writes the organization's structure: an owner or admin there.
+      for (const input of [
+        ...membershipInputs(may ? "ADMIN" : "BASIC_USER", true, 1, organization.organizationId),
+        ...liveProjects(organization.organizationId, []),
+      ])
+        store.dispatch(input);
       useDeleteApplicationDialog.getState().close();
       const mounted = mount(
         <RegistryContext.Provider value={registry}>
@@ -2946,6 +3043,44 @@ describe("a group of Mates folded to its row", () => {
     expect(face?.state).toBe(rowFace);
     expect(face?.state).not.toBe("needs");
     expect(face?.moment).toBeUndefined();
+  });
+
+  it("a stopped shared birth rests in its folded project and in its row", () => {
+    const pending: ZeropsPlacedBirth = {
+      intent: "b1",
+      projectId: "vera-dev",
+      placement: {
+        groupId: "aaa",
+        groupName: "Beviro CRM",
+        kind: "mate",
+        displayName: "Vera",
+      },
+    };
+    const props = {
+      births: [pending],
+      getBirth: () => ({
+        line: "Project created · Quota reached.",
+        attention: true,
+        entries: [],
+      }),
+    };
+    const folded = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+        {...props}
+      />,
+    );
+    const face = clusterOf(folded, ["crm-dev", "vera-dev"]).find(({ key }) => key === "vera-dev");
+    stored.opened = new Set(["aaa"]);
+    const open = render([CRM_DEV], props);
+    const at = open.indexOf('data-zerops-surface="sidebar-mate-coming"');
+    const row = open.slice(open.lastIndexOf("<button", at), open.indexOf("</button>", at));
+    expect(face?.state).toBe("sleep");
+    expect(row.match(/data-mate-face-state="([^"]+)"/u)?.[1]).toBe("sleep");
+    expect(row).toContain(">Project created · Quota reached.<");
   });
 
   it("greets nothing its folded group's faces only stood in for until the Mate's state was read", () => {
@@ -4565,7 +4700,6 @@ describe("the menu's release offer", () => {
       retry: unexpectedRead,
       showHq: unexpectedRead,
       moveOffers: unexpectedRead,
-      handoverCandidates: unexpectedRead,
       readDetail: unexpectedRead,
       revalidate: unexpectedRead,
       retryDetail: unexpectedRead,
@@ -5104,8 +5238,6 @@ it("a reader sees the protocol notice without an update action", () => {
   const { store } = mountHqNavigation(registry, "org", {
     structure: { apps: [], ungrouped: [{ projectId: "Ada", name: "Ada", mate: { face: "" } }] },
     person: {
-      role: "READER",
-      mayWrite: false,
       mine: false,
       ownerUserId: null,
       waitsOnViewer: false,

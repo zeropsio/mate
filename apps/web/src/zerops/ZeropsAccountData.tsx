@@ -16,6 +16,8 @@ import {
   observeAccount,
   repairZeropsSession,
   accountReadsAtom,
+  followMateRoles,
+  finishGoneProjects,
   platformMembership,
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
@@ -24,11 +26,13 @@ import { useContext, useEffect, useMemo, type ReactNode } from "react";
 import { MateBrowserFrames } from "./browserStreamLinks";
 import { MateMacViews } from "./macViewLinks";
 import { useAccountWorkspace } from "./accountWorkspace";
+import { holdPressStreams } from "./pressStreams";
 import { useAccountDatabase } from "./accountDatabase";
 import { useAccountBuildLogs } from "./accountBuildLogs";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { accountOperations, AccountOperationsContext } from "./accountOperations";
+import { configuredHq } from "./accountHq";
 import { useMateResultsSeen, useOpenMatesAttention } from "./mateAttentionLinks";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -100,6 +104,10 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   useEffect(() => {
     observation.show(orgId);
   }, [observation, orgId]);
+  // The person's role on a project moving in Zerops' own data asks what HQ refused of it again.
+  useEffect(() => followMateRoles(registry, observation.roleChanged), [observation, registry]);
+  // A running press keeps its organization's HQ stream open through this account's observation.
+  useEffect(() => holdPressStreams(observation.keepPress), [observation]);
   useEffect(() => () => observation.stop(), [observation]);
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
@@ -133,7 +141,6 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       retry: observation.retry,
       showHq: observation.showHq,
       moveOffers: observation.moveOffers,
-      handoverCandidates: observation.handoverCandidates,
       logs,
       reveal,
       compare: observation.compare,
@@ -156,6 +163,16 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       ),
     [client, observation, registry, store],
   );
+  // A project HQ still places that the person's own read proved gone is told to HQ once.
+  useEffect(() => {
+    if (orgId === null) return;
+    return finishGoneProjects({
+      store,
+      orgId,
+      hqProjectId: configuredHq().projectId,
+      submit: ({ intent, requestId }) => void operations.submit(intent, requestId),
+    });
+  }, [operations, orgId, store]);
   // The account's reads move to each new value as it comes, never unset between: a moment without
   // them would read every organization's listing as gone. They go only with this mount.
   useEffect(() => {

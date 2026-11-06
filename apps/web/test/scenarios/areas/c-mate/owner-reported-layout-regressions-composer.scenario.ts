@@ -50,7 +50,7 @@ describe("owner-reported layout regressions", () => {
             .locator('[data-sidebar="sidebar"] [data-zerops-surface="sidebar-chief-row"]')
             .click(),
         );
-        yield* Effect.promise(() => s.page.waitForSelector('[role="textbox"]', { visible: true }));
+        yield* s.then.conversation.appears;
         const question = "Look into my organization.";
         const answer = "I will look into your organization.";
         const mate = s.drivers.realMates.get("Chief")!;

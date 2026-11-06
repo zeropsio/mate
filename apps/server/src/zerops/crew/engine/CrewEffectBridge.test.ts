@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import * as Layer from "effect/Layer";
 import {
   ConversationId,
@@ -166,7 +167,10 @@ interface Told {
 
 const ports = <A = never, E = never>(told: Told, delivery?: Layer.Layer<A | CrewDelivery, E>) =>
   Layer.mergeAll(
-    Layer.succeed(CrewPlatformProcesses, { read: Effect.sync(() => told.platform) }),
+    Layer.succeed(CrewPlatformProcesses, {
+      read: Effect.sync(() => told.platform),
+      moved: Effect.succeed(Stream.never),
+    }),
     delivery ??
       Layer.succeed(CrewDelivery, {
         deliver: (envelope) =>

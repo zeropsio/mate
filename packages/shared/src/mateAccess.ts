@@ -68,24 +68,27 @@ export interface ProjectRoles {
   readonly overrides: Readonly<Record<string, string>>;
 }
 
+/** A project's `userRoles`, as a read or a websocket frame carries it: `clientUserId` → role. */
+export function readUserRoles(userRoles: unknown): Readonly<Record<string, string>> {
+  const overrides: Record<string, string> = {};
+  if (!Array.isArray(userRoles)) return overrides;
+  for (const entry of userRoles) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const row = entry as Record<string, unknown>;
+    if (typeof row["clientUserId"] === "string" && typeof row["roleCode"] === "string") {
+      overrides[row["clientUserId"]] = row["roleCode"];
+    }
+  }
+  return overrides;
+}
+
 /** The two fields of a project read the rule needs, or `null` if neither is there. */
 export function readProjectRoles(body: unknown): ProjectRoles | null {
   if (typeof body !== "object" || body === null) return null;
   const record = body as Record<string, unknown>;
   const clientId = record["clientId"];
   if (typeof clientId !== "string" || clientId.length === 0) return null;
-  const overrides: Record<string, string> = {};
-  const userRoles = record["userRoles"];
-  if (Array.isArray(userRoles)) {
-    for (const entry of userRoles) {
-      if (typeof entry !== "object" || entry === null) continue;
-      const row = entry as Record<string, unknown>;
-      if (typeof row["clientUserId"] === "string" && typeof row["roleCode"] === "string") {
-        overrides[row["clientUserId"]] = row["roleCode"];
-      }
-    }
-  }
-  return { clientId, overrides };
+  return { clientId, overrides: readUserRoles(record["userRoles"]) };
 }
 
 /**
@@ -123,6 +126,24 @@ export function resolveDoorVisibility(input: {
   };
 }
 
+/**
+ * Whom the project's own row names its owner: each member its `OWNER` override names (the owner
+ * marker a birth writes and a hand-over moves), in the member list's order — never an organization
+ * role, which reaches every project and marks none of them anyone's.
+ */
+export function projectOwners(input: {
+  readonly members: ReadonlyArray<ZeropsOrgMember>;
+  readonly overrides: Readonly<Record<string, string>>;
+}): ReadonlyArray<string> {
+  return input.members.flatMap((member) =>
+    member.userId.length > 0 &&
+    member.clientUserId.length > 0 &&
+    asOrgRole(input.overrides[member.clientUserId]) === "OWNER"
+      ? [member.userId]
+      : [],
+  );
+}
+
 /** One member the project lets in: open, or listed (the door refuses them as read-only). */
 export const MateAccessMember = Schema.Struct({
   userId: Schema.String,
@@ -154,17 +175,4 @@ export function projectAccess(input: {
     if (visibility !== "hidden") access.push({ userId: member.userId, role, visibility });
   }
   return restrictChiefAccess(access, input.chief);
-}
-
-/** Every user the project `projectId` opens for: what keeps a session open in its Mate. */
-export function opensForOf(
-  projectId: string,
-  project: ProjectRoles,
-  entries: ReadonlyArray<unknown>,
-): ReadonlySet<string> {
-  return new Set(
-    projectAccess({ projectId, members: readOrgMembers(entries), overrides: project.overrides })
-      .filter((member) => member.visibility === "open")
-      .map((member) => member.userId),
-  );
 }

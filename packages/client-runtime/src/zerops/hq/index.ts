@@ -56,7 +56,6 @@ export {
   type HqPlacement,
 } from "./placement.ts";
 export {
-  nextPressExpiry,
   pressElsewhere,
   type HqPressHold,
   type HqPresses,
@@ -79,6 +78,7 @@ export {
 } from "./environments.ts";
 export {
   enrollmentRefusalWords,
+  HQ_HANDOVER_UNFINISHED,
   HQ_NOT_OPEN,
   hqOfferWords,
   hqRefusalWords,

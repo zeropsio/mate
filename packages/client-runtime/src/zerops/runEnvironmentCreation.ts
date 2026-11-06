@@ -12,17 +12,15 @@
  * The last steps are where the two kinds of environment part ways:
  *
  * - An environment **with an agent** is handed back at `await-ready`, every
- *   step that needs the person's rights done: its container imported with
- *   its key and its runtimes, its project closed off, its registration
- *   written. The container then sets itself up (zcp imports the runtimes on
- *   boot); the container wait is already a product surface — the
+ *   step that needs the person's rights done: its registration written, its
+ *   container and its tier imported as one, which Zerops finishes whether the
+ *   browser stays or not; the container wait is already a product surface — the
  *   provisioning state machine, its panel, its retry and enable paths — and
  *   duplicating it here would be a second opinion about when a container is
  *   ready.
  * - An environment **without one** has nothing to hand off to: no container,
  *   no health probe. So this waits for its services itself, on the account's
- *   services listing, until every one of them has settled — or the
- *   platform's patience for them runs out, which stops the step as uncertain.
+ *   services listing as Zerops pushes it, until every one of them has settled.
  *
  * The platform is a parameter (R1): this package may not reach for a client,
  * a clock or a timer, and the tests must not either.
@@ -45,11 +43,6 @@ import type { MateBirthplace } from "./newProject.ts";
 export interface EnvironmentCreationPlatform {
   readonly run: RunToEnd;
   /**
-   * The close-off recorded in the Mate's birth at HQ, as the person: zcp's boot import of the
-   * runtimes waits for it (pass 28). Idempotent.
-   */
-  readonly markClosedOff: (projectId: string) => Promise<void>;
-  /**
    * The environment's group registration (`addGroupEnvironment.ts`); safe to ask again. Throws
    * with the reason a write did not go through.
    */
@@ -58,10 +51,9 @@ export interface EnvironmentCreationPlatform {
   readonly birthplace?: MateBirthplace;
   /**
    * Resolves with the project's services once every one of them has settled
-   * (`servicesSettled`), as the account's services listing holds them: read as they change,
-   * performing no platform request. Rejects where that listing can no longer be followed, and —
-   * uncertain (`isUncertainZeropsFailure`) — once the platform's patience for them ran out: the
-   * bound is the platform's, since this package holds no clock.
+   * (`servicesSettled`), as the account's services listing holds them: read once, then at each
+   * frame Zerops pushes, performing no platform request. Rejects where that listing can no longer
+   * be followed.
    */
   readonly untilServicesSettled: (
     projectId: string,
@@ -130,6 +122,8 @@ export interface RunEnvironmentCreationInput {
   readonly platform: EnvironmentCreationPlatform;
   /** Captured account lifetime; a later login must never resume this operation. */
   readonly isCurrent?: () => boolean;
+  /** Why the press may write nothing more, once it may not: its hold at HQ lapsed. */
+  readonly stopped?: () => string | undefined;
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
   /** Turns an unknown failure into the sentence the checklist shows. */
   readonly describeError?: (cause: unknown) => string;
@@ -150,6 +144,11 @@ export interface RunEnvironmentCreationInput {
   readonly onContainerImported?: (imported: {
     readonly processId?: string;
   }) => void | Promise<void>;
+  /** A birth's durable, exclusive claim around each non-idempotent platform write. */
+  readonly birth?: {
+    readonly id: string;
+    readonly attempt: <T>(step: "create" | "import", send: () => Promise<T>) => Promise<T>;
+  };
 }
 
 /**
@@ -158,7 +157,7 @@ export interface RunEnvironmentCreationInput {
  * there, or at the project itself, is removed rather than resumed.
  */
 export function resumableEnvironmentCreationStep(step: EnvironmentCreationStep): boolean {
-  return step.kind === "import-container" || step.kind === "close-off" || step.kind === "register";
+  return step.kind === "import-container" || step.kind === "register";
 }
 
 /** Where the project's `project.create` can no longer be followed to its end. */
@@ -178,6 +177,8 @@ export async function runEnvironmentCreation(
   const describeError = input.describeError ?? defaultDescribeError;
   const assertCurrent = () => {
     if (input.isCurrent?.() === false) throw new Error("This account session has ended.");
+    const stopped = input.stopped?.();
+    if (stopped !== undefined) throw new Error(stopped);
   };
 
   const progress: Array<EnvironmentCreationStepProgress> = input.steps.map((step) => ({
@@ -196,10 +197,10 @@ export async function runEnvironmentCreation(
   let projectName: string | undefined = input.resume?.projectName;
   let serviceName: string | undefined = input.resume?.serviceName;
   let deployments: ReadonlyArray<ServiceDeployment> = [];
-  /** This press imported a container: a harden before it is no longer the last word. */
-  let containerImported = false;
   const run = input.platform.run;
   const orgId = input.clientId;
+  const attempt = <T>(step: "create" | "import", send: () => Promise<T>): Promise<T> =>
+    input.birth === undefined ? send() : input.birth.attempt(step, send);
   /** The project's acceptance told on, while the create waits for its end. */
   let accepting: Promise<{ readonly error: unknown } | null> = Promise.resolve(null);
   const accept = async (id: string) => {
@@ -226,25 +227,28 @@ export async function runEnvironmentCreation(
           // Named as Zerops takes it, before its end: a creation the platform then fails has
           // still made a project, and the outcome must say which one.
           projectName = step.name;
-          await run(
-            {
-              kind: "create-project",
-              orgId,
-              name: step.name,
-              tagList: step.tagList,
-              ...(step.location === undefined ? {} : { location: step.location }),
-              ...(step.userRoles === undefined ? {} : { userRoles: step.userRoles }),
-            },
-            {
-              orgId,
-              unobserved: UNCONFIRMED_PROJECT,
-              accepted: ({ projectId: id }) => {
-                accepting = accept(id).then(
-                  () => null,
-                  (error: unknown) => ({ error }),
-                );
+          await attempt("create", () =>
+            run(
+              {
+                kind: "create-project",
+                orgId,
+                name: step.name,
+                ...(input.birth === undefined ? {} : { birthId: input.birth.id }),
+                tagList: step.tagList,
+                ...(step.location === undefined ? {} : { location: step.location }),
+                ...(step.userRoles === undefined ? {} : { userRoles: step.userRoles }),
               },
-            },
+              {
+                orgId,
+                unobserved: UNCONFIRMED_PROJECT,
+                accepted: ({ projectId: id }) => {
+                  accepting = accept(id).then(
+                    () => null,
+                    (error: unknown) => ({ error }),
+                  );
+                },
+              },
+            ),
           ).finally(async () => {
             const stopped = await accepting;
             if (stopped !== null) throw stopped.error;
@@ -276,38 +280,39 @@ export async function runEnvironmentCreation(
           break;
         }
         case "import-container": {
-          const imported = await run(
-            {
-              kind: "import-container",
-              orgId,
-              projectId: requireProject(projectId),
-              projectName: projectName ?? "",
-              agents: step.agents,
-              ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
-              ...(input.platform.birthplace === undefined
-                ? {}
-                : { birthplace: input.platform.birthplace }),
-            },
-            { orgId, unobserved: UNCONFIRMED_WRITE },
-          );
-          serviceName = imported.serviceName;
-          if (imported.imported) containerImported = true;
-          assertCurrent();
-          await input.onContainerImported?.(imported);
-          break;
-        }
-        case "close-off": {
-          const target = requireProject(projectId);
-          // A container imported after hardening may have changed isolation: the project is read,
-          // closed off where it is not, and read back. One that does not read closed off stops
-          // here; the creator's next action owns another check.
-          if (step.isolated !== true || containerImported)
+          if (step.tier?.projectVariables !== undefined)
             await run(
-              { kind: "harden-project", orgId, projectId: target, confirm: true },
+              {
+                kind: "prepare-tier-variables",
+                orgId,
+                projectId: requireProject(projectId),
+                variables: step.tier.projectVariables,
+              },
               { orgId, unobserved: UNCONFIRMED_WRITE },
             );
           assertCurrent();
-          await input.platform.markClosedOff(target);
+          const imported = await attempt("import", () =>
+            run(
+              {
+                kind: "import-container",
+                orgId,
+                projectId: requireProject(projectId),
+                projectName: projectName ?? "",
+                agents: step.agents,
+                ...(step.tier === undefined ? {} : { tierYaml: step.tier.yaml }),
+                ...(input.platform.birthplace === undefined
+                  ? {}
+                  : { birthplace: input.platform.birthplace }),
+              },
+              { orgId, unobserved: UNCONFIRMED_WRITE },
+            ),
+          );
+          serviceName = imported.serviceName;
+          // A lapsed presence hold does not erase the accepted import's receipt. The original
+          // account alone may report it; after sign-out no continuation may use its session.
+          if (input.isCurrent?.() === false) throw new Error("This account session has ended.");
+          await input.onContainerImported?.(imported);
+          assertCurrent();
           break;
         }
         case "register": {
@@ -317,8 +322,7 @@ export async function runEnvironmentCreation(
           await input.platform.register(target);
           break;
         }
-        case "import-recipe":
-        case "import-managed": {
+        case "import-recipe": {
           await run(
             {
               kind: "import-services",

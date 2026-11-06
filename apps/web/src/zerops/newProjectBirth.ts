@@ -29,11 +29,12 @@ import {
 import {
   appProjectName,
   formatMateFace,
+  mateTier,
   recipeTierServices,
-  splitRecipeTier,
   UNCONFIRMED_PROJECT,
   UNCONFIRMED_WRITE,
   type BirthPlacement,
+  type BirthIntent,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -48,7 +49,7 @@ import {
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
-import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
+import { type ProjectGrant, withProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 
 import type {
   BirthLineProgress,
@@ -67,6 +68,8 @@ export type NewProjectStep = "registry" | "create";
 /** What Create or Add asked for: the project, its Mate, and where. */
 export interface NewProjectAsk {
   readonly organizationId: string;
+  /** Who presses it: their membership (`clientUser`) id in the organization. */
+  readonly creator: string;
   /** The creation's own id, made on the press: where its view is, and its group until HQ names one. */
   readonly birthId: string;
   /** The project's name. */
@@ -222,8 +225,11 @@ export interface NewProjectCreation {
   readonly appId: string;
   /** The birth intent HQ holds of its Mate. */
   readonly birth: string;
-  /** Who reaches it from birth beyond their organization role. */
-  readonly userRoles?: ReadonlyArray<ProjectGrant>;
+  /**
+   * Who reaches it from birth beyond their organization role: its creator as its `OWNER`, the
+   * Mate's owner marker, beside the access chosen at Create.
+   */
+  readonly userRoles: ReadonlyArray<ProjectGrant>;
 }
 
 /**
@@ -249,8 +255,20 @@ export interface NewProjectPorts {
    */
   readonly recordBirth: (
     requestId: string,
-    birth: { readonly appId: string; readonly face: string },
+    birth: {
+      readonly appId: string;
+      readonly id: string;
+      readonly face: string;
+      readonly createdApp: true;
+      readonly intent: BirthIntent;
+      readonly chief?: true;
+    },
   ) => Promise<{ readonly birthId: string }>;
+  /** Holds the birth's create attempt around its one project write. */
+  readonly attemptProject: (
+    birthId: string,
+    send: () => Promise<{ readonly projectId: string }>,
+  ) => Promise<{ readonly projectId: string }>;
   /**
    * Creates the first Mate's project, alone, and waits for its creation process to finish. Its
    * accepted receipt already places it in the UI; setup then attaches it and imports its container.
@@ -480,29 +498,53 @@ export async function runNewProjectBirth(
     async (requestId) => (await ports.registerGroup(requestId, ask.name)).appId,
   );
   if (appId === null) return;
+  const projectName = appProjectName(ask.name, ask.botName);
+  const userRoles = withProjectGrant(ask.userRoles ?? [], ask.creator, "OWNER");
+  const creationIntent: BirthIntent = {
+    projectName,
+    recipe: { kind: "none" },
+    agents: ask.agents,
+    standUp: false,
+    automated: false,
+    placement: { role: "dev", name: ask.botName, chief: ask.chief === true },
+    location: ask.locationId,
+    userRoles,
+  };
   // Recorded once: a creation tried again goes on under the intent it holds.
   const intent = await step(
     "birth",
     (now) => now.birthId,
     async (requestId) =>
-      (await ports.recordBirth(requestId, { appId, face: formatMateFace(ask.face) })).birthId,
+      (
+        await ports.recordBirth(requestId, {
+          appId,
+          id,
+          face: formatMateFace(ask.face),
+          createdApp: true,
+          intent: creationIntent,
+          ...(ask.chief === true ? { chief: true as const } : {}),
+        })
+      ).birthId,
   );
   if (intent === null) return;
   const projectId = await step(
     "project",
     (now) => now.projectId,
-    async (requestId) =>
-      (
-        await ports.createProject(requestId, {
-          name: appProjectName(ask.name, ask.botName),
-          appId,
-          ...(ask.locationId === null ? {} : { location: ask.locationId }),
-          birth: intent,
-          ...(ask.userRoles === undefined || ask.userRoles.length === 0
-            ? {}
-            : { userRoles: ask.userRoles }),
-        })
-      ).projectId,
+    async (requestId) => {
+      return (
+        await ports.attemptProject(intent, () =>
+          ports.createProject(requestId, {
+            name: projectName,
+            appId,
+            ...(ask.locationId === null ? {} : { location: ask.locationId }),
+            birth: intent,
+            // Every Mate carries its owner marker from birth, whatever its creator's organization
+            // role: their own `OWNER` override, which a hand-over later moves.
+            userRoles,
+          }),
+        )
+      ).projectId;
+    },
   );
   if (projectId !== null) ports.accepted(projectId, { hq, appId, intent });
 }
@@ -586,9 +628,10 @@ export function creationManaged(birth: NewProjectBirth): ReadonlyArray<string> |
   return birth.adds?.managed;
 }
 
-/** The runtimes a recipe's tier brings up once its Mate is closed off: none where it names none. */
+/** The runtimes a recipe's tier brings up in its Mate's one import: none where it names none. */
 export function recipeRuntimes(yaml: string): ReadonlyArray<RecipeRuntime> | undefined {
-  return splitRecipeTier(yaml)?.runtimes?.services;
+  const runtimes = mateTier(yaml)?.runtimes;
+  return runtimes === undefined || runtimes.length === 0 ? undefined : runtimes;
 }
 
 /**
@@ -629,9 +672,8 @@ const REGISTRATION_REFUSED = "It was refused.";
 
 /** Each step of a press, by the runner's steps that make it. */
 const PRESS_KINDS = {
-  created: ["create-project", "import-project", "import-managed"],
+  created: ["create-project", "import-project"],
   container: ["import-container"],
-  "closed-off": ["close-off"],
 } as const satisfies Record<string, ReadonlyArray<EnvironmentCreationStep["kind"]>>;
 
 /** A step of the press as its entries say it: stopped, through, under way, or not begun. */
@@ -699,10 +741,10 @@ export function registrationSubstep(name: string, registration: MateRegistration
 
 /**
  * The steps this tab runs for a creation, as its view draws them under its project's row: a New
- * project registered and created, then its Mate registered, its container imported and closed
- * off; an added Mate follows the same HQ order after its copy is created. Each step carries its
- * state and the full reason when it stops. A refused registration offers Finish setup. Its Mate's
- * steps are its press's (`progress`, null before the press begins).
+ * project registered and created, then its Mate registered and its one import accepted; an added
+ * Mate follows the same HQ order after its copy is created. Each step carries its
+ * state and the full reason when it stops. Its Mate's steps are its press's (`progress`, null
+ * before the press begins).
  */
 export function creationSubsteps(
   birth: NewProjectBirth,
@@ -731,7 +773,6 @@ export function creationSubsteps(
       own("created", "Created", "create"),
       registered,
       fromPress("container", "Its computer"),
-      fromPress("closed-off", "Private network ready"),
     ];
   }
   // Before the platform took its project the creation says where it stands; after, its press.
@@ -753,6 +794,5 @@ export function creationSubsteps(
     created,
     ...(birth.adds.registers ? [registered] : []),
     fromPress("container", "Its computer"),
-    fromPress("closed-off", "Private network ready"),
   ];
 }

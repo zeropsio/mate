@@ -91,7 +91,7 @@ export function namedProject(input: {
   if (input.rows !== null)
     return input.rows.some((row) => row.service !== undefined) ? "with-mate" : "without-mate";
   const listed = input.row !== null && input.row.clientId === input.orgId;
-  // HQ naming a project the listing lacks has it read again (`zerops/account/hqView.ts`): until
+  // HQ naming a project the listing lacks has it read again (`placedRowsWanted`): until
   // that read answers, the listing's silence is not absence.
   return input.listingAnswered && !listed ? "without-mate" : "reading";
 }

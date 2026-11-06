@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
+import type { HqStructure } from "./client.ts";
 import { canonicalHqStructureOf } from "./structure.ts";
 import type { Known } from "../knowledge/known.ts";
 import {
@@ -281,9 +282,9 @@ describe("birthFaceOf", () => {
 
 describe("hqMateOffers — what HQ offers of a Mate, or of a project it holds nowhere", () => {
   const LIVE = { current: true, unavailableSince: null } as const;
-  const OFFERED = {
+  const OFFERED: HqStructure = {
     ...STRUCTURE,
-    unheld: { "p-free": { create_mate_record: { allow: true } } },
+    placeable: { "p-free": { create_mate_record: { allow: true } } },
     ungrouped: [
       {
         ...STRUCTURE.ungrouped[0]!,
@@ -299,7 +300,6 @@ describe("hqMateOffers — what HQ offers of a Mate, or of a project it holds no
   it("reads a Mate's verbs as HQ streamed them", () => {
     expect(hqMateOffers(OFFERED, "p-ada", LIVE)).toEqual({
       held: true,
-      observe: { kind: "allowed" },
       edit: { kind: "refused", reason: "not_project_admin" },
       detach: { kind: "refused", reason: "not_project_admin" },
     });
@@ -308,7 +308,6 @@ describe("hqMateOffers — what HQ offers of a Mate, or of a project it holds no
   it("reads a Mate HQ sent no offers for as unknown", () => {
     expect(hqMateOffers(OFFERED, "p-vera", LIVE)).toEqual({
       held: true,
-      observe: { kind: "unknown" },
       edit: { kind: "unknown" },
       detach: { kind: "unknown" },
     });
@@ -324,13 +323,12 @@ describe("hqMateOffers — what HQ offers of a Mate, or of a project it holds no
   it("keeps what HQ said while it is read again before any outage", () => {
     expect(
       hqMateOffers(OFFERED, "p-ada", { current: false, unavailableSince: null }),
-    ).toMatchObject({ held: true, observe: { kind: "allowed" } });
+    ).toMatchObject({ held: true, edit: { kind: "refused", reason: "not_project_admin" } });
   });
 
   it("is unavailable since HQ stopped answering", () => {
     expect(hqMateOffers(OFFERED, "p-ada", { current: false, unavailableSince: 9 })).toEqual({
       held: true,
-      observe: { kind: "unavailable", since: 9 },
       edit: { kind: "unavailable", since: 9 },
       detach: { kind: "unavailable", since: 9 },
     });

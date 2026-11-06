@@ -11,6 +11,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -367,7 +368,9 @@ export const make = (
     const promptDispatchSemaphore = yield* Semaphore.make(1);
     const activePromptRef = yield* Ref.make<Option.Option<AcpActivePrompt>>(Option.none());
     const assistantUpdatesOpenRef = yield* Ref.make(true);
-    const sessionLoadGateRef = yield* Ref.make<Option.Option<SessionLoadGate>>(Option.none());
+    const sessionLoadGateRef = yield* SubscriptionRef.make<Option.Option<SessionLoadGate>>(
+      Option.none(),
+    );
 
     const ensureConnected = Effect.gen(function* () {
       const error = yield* Ref.get(terminationErrorRef);
@@ -558,14 +561,14 @@ export const make = (
           if (Option.isSome(yield* Ref.get(terminationErrorRef))) {
             return;
           }
-          const gate = yield* Ref.get(sessionLoadGateRef);
+          const gate = yield* SubscriptionRef.get(sessionLoadGateRef);
           if (
             Option.isSome(gate) &&
             gate.value.active &&
             notification.sessionId === options.resumeSessionId
           ) {
             const lastActivityAtMillis = yield* Clock.currentTimeMillis;
-            yield* Ref.set(
+            yield* SubscriptionRef.set(
               sessionLoadGateRef,
               Option.some({
                 ...gate.value,
@@ -822,7 +825,7 @@ export const make = (
           options.sessionLoadReplayIdleGap ?? defaultSessionLoadReplayIdleGap,
         );
 
-        yield* Ref.set(
+        yield* SubscriptionRef.set(
           sessionLoadGateRef,
           Option.some({
             active: true,
@@ -879,7 +882,7 @@ export const make = (
           );
 
           return loaded;
-        }).pipe(Effect.ensuring(Ref.set(sessionLoadGateRef, Option.none())));
+        }).pipe(Effect.ensuring(SubscriptionRef.set(sessionLoadGateRef, Option.none())));
       } else {
         const createPayload = {
           cwd: options.cwd,

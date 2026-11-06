@@ -12,8 +12,8 @@
  * rows a person sees, whether *Add Mate* is offered) and a Mate's door (open, listed or hidden for
  * the project it runs in). `zeropsRoles.fixtures.json` holds the cases; it is the only copy since
  * the broker and its Go twin went (ADR 0004). What else a person may do — the structure, a Mate's
- * credential — is HQ's `can` (`mate-hq apps/hq/src/permissions.ts`), over the same normalisation, and HQ
- * streams its decisions to the client (`hqOffers.ts`).
+ * credential — is the verb rule (`zeropsPermissions.ts`), over the same normalisation: the client
+ * runs it over its own live read of Zerops, HQ over the fresh read each of its verbs carries.
  *
  * Pure: no clock, no network, no platform types.
  *
@@ -119,8 +119,14 @@ export interface RoleAnswer {
  * raises a read-only member — both directions are measured.
  */
 export function effectiveProjectRole(input: RoleInput, projectId: string): ZeropsOrgRole {
-  return asOrgRole(input.overrides[projectId] ?? input.person.orgRole);
+  return effectiveRole(input.overrides[projectId], input.person.orgRole);
 }
+
+/** The one effective-role function: a project's override for the person, else their org role. */
+export const effectiveRole = (
+  override: string | undefined,
+  orgRole: string | undefined,
+): ZeropsOrgRole => asOrgRole(override ?? orgRole);
 
 /** A membership as the session or the member list gives it; active unless it says otherwise. */
 export interface MembershipFacts {
@@ -132,12 +138,26 @@ export interface MembershipFacts {
 const active = (member: MembershipFacts) =>
   (member.status ?? ZEROPS_ACTIVE_MEMBER_STATUS) === ZEROPS_ACTIVE_MEMBER_STATUS;
 
+/** An active owner or admin of the organization. */
+const orgAdmin = (member: MembershipFacts | undefined): boolean =>
+  member !== undefined && active(member) && roleAtLeast(member.roleCode, "ADMIN");
+
+/** The member, where it is an active one; none otherwise. */
+export const activeMember = <M extends MembershipFacts>(member: M | undefined): M | undefined =>
+  member !== undefined && active(member) ? member : undefined;
+
 /**
  * Whether a member bears the organization's HQ and looks after it — before HQ exists, so before it
  * can answer anything: an active owner or admin, whom Zerops lets make and deploy its project.
  */
-export const mayBearHq = (member: MembershipFacts | undefined): boolean =>
-  member !== undefined && active(member) && roleAtLeast(member.roleCode, "ADMIN");
+export const mayBearHq = (member: MembershipFacts | undefined): boolean => orgAdmin(member);
+
+/**
+ * Whether a member hands Mates over: an active owner or admin of the organization, who moves a
+ * project's OWNER override and mints its new key. HQ's hand-over route decides it again on the
+ * person's fresh read.
+ */
+export const handsOverMates = (member: MembershipFacts | undefined): boolean => orgAdmin(member);
 
 /**
  * Zerops' own *can create projects*: an active owner or admin by their role, anyone else by the

@@ -129,7 +129,7 @@ const MANAGED: ReadonlyArray<BirthCopyService> = [
 ];
 
 /**
- * The runtimes its workspace imports once the project is closed off, in the recipe's order: the
+ * The runtimes its one import brings beside its container, in the recipe's order: the
  * utility's build and the dev halves under way, the stage halves waiting for a first deploy.
  */
 const RUNTIMES = {

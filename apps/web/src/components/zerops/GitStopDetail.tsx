@@ -2,6 +2,7 @@ import { Checkbox } from "~/components/ui/checkbox";
 import {
   canonicalAppEnvironments,
   canonicalHqNavigation,
+  hqEnvironmentOffers,
   listedProject,
   type CanonicalAppEnvironmentsRead,
 } from "@t3tools/client-runtime/data";
@@ -61,7 +62,7 @@ function gitRulesetGuide(
 
 type GitEnvironment = Omit<GitDeliveryEnvironment, "target"> & {
   readonly target: Extract<GitDeliveryEnvironment["target"], { readonly kind: "git" }>;
-} & { readonly name: string; readonly can?: HqOffers | undefined };
+} & { readonly name: string };
 /** Mounted only after the existing route resolves an environment inside the current app/account. */
 export function GitStopDetailPage({
   appId,
@@ -82,6 +83,7 @@ export function GitStopDetailPage({
     orgId === null ? null : { orgId, appId },
     UNTOLD,
   ).environments;
+  const can = useEnvironmentOffers(appId, environment.id);
   return (
     <GitStopDetail
       environment={environment}
@@ -89,7 +91,7 @@ export function GitStopDetailPage({
       staged={environments?.some((row) => row.tier === "stage" && row.target.kind === "git")}
       repos={detail.repos}
       releases={detail.releases}
-      can={environment.can}
+      can={can}
       onRemove={
         operations.actions === undefined
           ? undefined
@@ -110,7 +112,7 @@ export function GitStopDetail({
   delivery,
   repos,
   releases,
-  can = environment.can,
+  can,
   staged = false,
   onRemove,
   onRunAgain,
@@ -365,9 +367,19 @@ export function GitEnvironmentRemoval({
 
 const UNTOLD = Atom.make<CanonicalAppEnvironmentsRead>({
   environments: undefined,
-  refused: null,
   unread: [],
 });
+const NO_OFFERS = Atom.make<HqOffers | undefined>(undefined);
+
+/** What the person may do with this environment, as the client decides it from live Zerops data. */
+function useEnvironmentOffers(appId: string, environmentId: string): HqOffers | undefined {
+  const orgId = useAccountOrgId();
+  return useProjection(
+    hqEnvironmentOffers,
+    orgId === null ? null : { orgId, appId, environmentId },
+    NO_OFFERS,
+  );
+}
 
 /** Menu and Settings read the same authoritative environment and its removal verdict. */
 export function ProductionRemoval({
@@ -402,13 +414,14 @@ function GitProductionRemoval({
 }) {
   const detail = useHqAppDetail(appId);
   const operations = useGitTargetOperations(appId);
+  const can = useEnvironmentOffers(appId, environment.id);
   if (environment.target.kind !== "git") return null;
   return (
     <GitEnvironmentRemoval
       environment={{ ...environment, target: environment.target }}
       delivery={gitDeliveryOf(environment, { repos: detail.repos, releases: detail.releases })}
       repos={detail.repos}
-      can={environment.can}
+      can={can}
       live={operations.live && detail.live}
       label="Remove production"
       onRemove={
@@ -442,8 +455,9 @@ function ZeropsProductionRemoval({
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
+  const can = useEnvironmentOffers(appId, environment.id);
   const allowed =
-    hqOffer(environment.can, "remove_production", {
+    hqOffer(can, "remove_production", {
       current: navigation?.live === true,
       unavailableSince: navigation?.live === true ? null : 0,
     }).kind === "allowed";

@@ -45,7 +45,7 @@ export function failedSelection(reports: ReadonlyArray<SignalReport>): {
   files: string[];
   testNamePattern: string;
 } {
-  const failed = failedTests(reports);
+  const failed = failedTests(reports).filter((test) => test.reason === undefined);
   const names = new Set(failed.map((test) => test.path.map(escapeRegExp).join(" > ")));
   return {
     files: [...new Set(failed.map((test) => test.file))].sort(),
@@ -56,7 +56,7 @@ export function failedSelection(reports: ReadonlyArray<SignalReport>): {
 export interface SignalFailure {
   file: string;
   title: string;
-  class: "fail-pass" | "fail-fail";
+  class: "fail-pass" | "fail-fail" | "timed-out";
   run: number;
   /** Set when the case hung (hit the case ceiling, or ran when its shard was killed). */
   reason?: string;
@@ -67,8 +67,11 @@ export function classifyFailures(
   rerun: SignalReport,
   run: number,
 ): SignalFailure[] {
-  return failedTests(initial).map(({ file, title, reason }) => {
-    const test = rerun.tests.find((test) => test.file === file && test.title === title);
+  return failedTests(initial).map(({ file, title, path, reason }) => {
+    if (reason !== undefined) return { file, title, class: "timed-out", run, reason };
+    const test = rerun.tests.find(
+      (test) => test.file === file && test.path.join(" > ") === path.join(" > "),
+    );
     if (!test || !["passed", "failed"].includes(test.status))
       throw new Error(`Signal rerun did not execute ${file}: ${title}`);
     return {
@@ -76,7 +79,6 @@ export function classifyFailures(
       title,
       class: test.status === "passed" ? "fail-pass" : "fail-fail",
       run,
-      ...(reason === undefined ? {} : { reason }),
     };
   });
 }
@@ -131,6 +133,34 @@ export function reportFromProgress(lines: ReadonlyArray<SignalProgress>): Signal
   return { tests: [...cases.values()], errors: [] };
 }
 
+/** The scenario files outside stage C, as repository paths: what the non-C shards run. */
+function nonChatScenarioFiles(): string[] {
+  const areas = "apps/web/test/scenarios/areas";
+  return NodeFS.readdirSync(NodePath.join(root, areas), { recursive: true })
+    .map((path) => `${areas}/${String(path).split(NodePath.sep).join("/")}`)
+    .filter((file) => file.endsWith(".scenario.ts") && !file.startsWith(`${areas}/c-mate/`));
+}
+
+/**
+ * Shard `index` of `count` of a Signal group, by each file's measured time, so its shards finish
+ * together inside their step budget: a file count or a path hash put one shard past it.
+ */
+export function signalShardFiles(
+  group: "c" | "non-c",
+  index: number,
+  count: number,
+  durations: Readonly<Record<string, number>> = scenarioDurations,
+): string[] {
+  const files =
+    group === "c"
+      ? chatGateTestFiles(
+          root,
+          chatGateStages.filter((stage) => stage.id === "C"),
+        )
+      : nonChatScenarioFiles();
+  return spreadShard(files, index, count, durations);
+}
+
 const shardReports = ["c-1", "c-2", "c-3", "c-4", "non-c-1", "non-c-2", "non-c-3"];
 
 export function readSignalReport(output: string): SignalReport {
@@ -148,11 +178,13 @@ export function readSignalReport(output: string): SignalReport {
     tests: evidence.testResults.flatMap((file) =>
       file.assertionResults.map((test) => {
         const found = relativeFile(file.name);
-        const reason = reasons.get(JSON.stringify([found, test.fullName]));
+        const path = [...test.ancestorTitles, test.title];
+        // Reporter.fullName uses " > "; JSON.fullName uses spaces. Join the structural path.
+        const reason = reasons.get(JSON.stringify([found, path.join(" > ")]));
         return {
           file: found,
           title: test.fullName,
-          path: [...test.ancestorTitles, test.title],
+          path,
           status: test.status,
           ...(reason === undefined ? {} : { reason }),
         };
@@ -174,7 +206,7 @@ function runScenarios(args: string[], output: string): SignalReport {
       "test",
       "run",
       "--config",
-      "test/scenarios/vitest.config.ts",
+      "../../scripts/scenario-ci.config.ts",
       "--project",
       "scenarios",
       ...args,
@@ -208,25 +240,11 @@ if (import.meta.main) {
   if (mode === "shard" && ["c", "non-c"].includes(group ?? "") && /^\d+\/\d+$/u.test(shard ?? "")) {
     const [index, count] = shard!.split("/").map(Number) as [number, number];
     if (index < 1 || index > count) throw new Error("Invalid Signal shard");
-    const args =
-      group === "c"
-        ? spreadShard(
-            chatGateTestFiles(
-              root,
-              chatGateStages.filter((stage) => stage.id === "C"),
-            ),
-            index,
-            count,
-            scenarioDurations,
-          ).map((file) => NodePath.join(root, file))
-        : [
-            "test/scenarios/areas",
-            "--exclude",
-            "test/scenarios/areas/c-mate/**",
-            "--shard",
-            shard!,
-          ];
-    runScenarios(args, NodePath.join(directory, `${group}-${index}.json`));
+    const files = signalShardFiles(group as "c" | "non-c", index, count);
+    runScenarios(
+      files.map((file) => NodePath.join(root, file)),
+      NodePath.join(directory, `${group}-${index}.json`),
+    );
   } else if (mode === "classify") {
     const killed: string[] = [];
     const infrastructure: { shard: string; reason: string }[] = [];
@@ -251,7 +269,9 @@ if (import.meta.main) {
       const reason = infrastructureReason(evidence);
       if (reason !== undefined) {
         infrastructure.push({ shard: name, reason });
-        return [];
+        // A budget stop leaves uncertified cases, but its completed timeouts still need names.
+        if (!evidence.tests.some((test) => ["passed", "failed"].includes(test.status))) return [];
+        evidence = { ...evidence, errors: [] };
       }
       if (!NodeFS.existsSync(report)) killed.push(name);
       return [evidence];
@@ -263,20 +283,32 @@ if (import.meta.main) {
     for (const { shard, reason } of infrastructure)
       console.log(`::error title=Signal infrastructure::${shard}: ${reason}`);
     const { files, testNamePattern } = failedSelection(initial);
+    const run = Number(process.env.GITHUB_RUN_ID);
+    if (!Number.isSafeInteger(run) || run <= 0)
+      throw new Error("Signal requires its workflow run id");
+    const timeouts = initial
+      .map((report) => ({
+        ...report,
+        tests: report.tests.filter((test) => test.reason !== undefined),
+      }))
+      .filter((report) => report.tests.length);
+    // Preserve already-known verdicts even if the assertion rerun exhausts its hard budget.
+    NodeFS.writeFileSync(
+      "signal-failures.json",
+      JSON.stringify(classifyFailures(timeouts, { tests: [], errors: [] }, run), null, 2) + "\n",
+    );
+    for (const report of timeouts)
+      for (const failure of report.tests)
+        console.log(
+          `::error file=${failure.file},title=Signal timed out, not rerun::${failure.title}: ${failure.reason}`,
+        );
     const rerun = files.length
       ? runScenarios(
           [...files.map((file) => NodePath.join(root, file)), "--testNamePattern", testNamePattern],
           NodePath.join(directory, "rerun.json"),
         )
       : { tests: [], errors: [] };
-    const run = Number(process.env.GITHUB_RUN_ID);
-    if (!Number.isSafeInteger(run) || run <= 0)
-      throw new Error("Signal requires its workflow run id");
     const failures = classifyFailures(initial, rerun, run);
-    for (const failure of failures.filter((failure) => failure.reason !== undefined))
-      console.log(
-        `::error file=${failure.file},title=Signal case hung::${failure.title}: ${failure.reason}`,
-      );
     NodeFS.writeFileSync("signal-failures.json", JSON.stringify(failures, null, 2) + "\n");
     console.log(`Signal classified ${failures.length} original test failures`);
     // The previous kh-next run's classification, when the workflow fetched one.
