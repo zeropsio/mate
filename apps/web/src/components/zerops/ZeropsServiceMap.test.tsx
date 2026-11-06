@@ -1,7 +1,7 @@
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
@@ -593,19 +593,24 @@ describe("ZeropsServiceDetail — the pop", () => {
   });
 
   it("says what the service is and how it was deployed in one meta line", () => {
-    const html = renderDetail(
-      topology([
-        service({
-          hostname: "app",
-          typeName: "Node.js",
-          version: "v22.22.3",
-          deploy: { source: "CLI", activatedAt: "2026-09-01T08:30:34Z" },
-        }),
-      ]),
-    );
+    const now = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-01T09:30:34Z"));
+    try {
+      const html = renderDetail(
+        topology([
+          service({
+            hostname: "app",
+            typeName: "Node.js",
+            version: "v22.22.3",
+            deploy: { source: "CLI", activatedAt: "2026-09-01T08:30:34Z" },
+          }),
+        ]),
+      );
 
-    expect(html).toContain("data-zerops-service-meta");
-    expect(html).toMatch(/Node\.js v22\.22\.3 · Deployed from CLI [^<]*ago/u);
+      expect(html).toContain("data-zerops-service-meta");
+      expect(html).toContain("Node.js v22.22.3 · Deployed from CLI 1h ago");
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("puts the hostname and port first in the control plane's meta line", () => {
