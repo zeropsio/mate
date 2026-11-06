@@ -21,7 +21,7 @@ const root = NodePath.join(baseDir, "home", ".claude", "projects", "__wf_script_
 NodeFS.mkdirSync(root, { recursive: true });
 const scriptPath = NodePath.join(root, "run.js");
 NodeFS.writeFileSync(scriptPath, "export const meta = {};\n");
-const outside = NodePath.join(NodeOS.tmpdir(), "wf-outside.js");
+const outside = NodePath.join(baseDir, "wf-outside.js");
 NodeFS.writeFileSync(outside, "evil\n");
 const link = NodePath.join(root, "sneaky.js");
 // Planted only where the host allows it; the escape test is skipped
@@ -36,7 +36,6 @@ if (symlinksSupported) {
 
 afterAll(() => {
   NodeFS.rmSync(baseDir, { recursive: true, force: true });
-  NodeFS.rmSync(outside, { force: true });
 });
 
 describe("readWorkflowScript containment", () => {
