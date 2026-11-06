@@ -1,4 +1,5 @@
 import { conversationAccess } from "../../data/projections/conversationAccess.ts";
+import { HQ_SLOW } from "../../data/projections/freshness.ts";
 /**
  * The route gate for `/$environmentId/$threadId` (DESIGN §4.8): what the route renders, from the
  * route target's reachability and whether its shell has content. A pure projection.
@@ -30,7 +31,11 @@ export type RouteDiscovery =
   /** Every source that could name the environment has answered or failed, and none named it. */
   | "settled"
   /** Every source answered or failed without naming it, and no organization is chosen (A5). */
-  | "no-organization";
+  | "no-organization"
+  /** HQ alone can name it, and its answer is due past the patience a first answer gets. */
+  | "hq-slow"
+  /** HQ alone can name it, and it is refused or failing past its grace: nothing says it is gone. */
+  | "hq-unreachable";
 
 export type RouteTarget =
   | { readonly kind: "unresolved"; readonly discovery: RouteDiscovery }
@@ -47,8 +52,15 @@ export type RouteGate =
       readonly banner: Reachability | null;
       readonly composer: "enabled" | "disabled";
     }
-  /** RG2 while the environment is still being looked for (null), RG8 with its verdict. */
-  | { readonly kind: "wait"; readonly reachability: Reachability | null }
+  /**
+   * RG2 while the environment is still being looked for (null), RG8 with its verdict; `hq` when
+   * only HQ can name it and HQ is slow, or cannot be reached, so the wait says so.
+   */
+  | {
+      readonly kind: "wait";
+      readonly reachability: Reachability | null;
+      readonly hq?: "slow" | "unreachable";
+    }
   /** A5: nothing named the environment, and no organization is chosen yet. */
   | { readonly kind: "choose-organization" }
   /** RG3 when no project holds the environment (null), RG4–RG6 with the terminal verdict. */
@@ -67,6 +79,10 @@ export function selectRouteGate(target: RouteTarget | null): RouteGate {
         return { kind: "unavailable", reachability: null };
       case "no-organization":
         return { kind: "choose-organization" };
+      case "hq-slow":
+        return { kind: "wait", reachability: null, hq: "slow" };
+      case "hq-unreachable":
+        return { kind: "wait", reachability: null, hq: "unreachable" };
     }
   }
   const { reachability, content } = target;
@@ -103,6 +119,9 @@ export function routeGatePhrase(
     case "outlet":
       return gate.banner === null ? SILENT : reachabilityPhrase(gate.banner, context);
     case "wait":
+      // HQ's own words for its standing, as the menu says them (`hqOutage`), with its one verb.
+      if (gate.hq === "slow") return { text: HQ_SLOW, actions: ["try-now"] };
+      if (gate.hq === "unreachable") return { text: "HQ unavailable.", actions: ["try-again"] };
       return gate.reachability === null
         ? { text: "Opening this conversation…", actions: [] }
         : reachabilityPhrase(gate.reachability, context);
