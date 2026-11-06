@@ -2858,6 +2858,15 @@ code {
   transition-duration: 0ms;
 }
 
+/* Placement runs again when the draft's conversation mounts; its already visible rows stay shown. */
+[data-timeline-from-draft][data-timeline-placing],
+[data-timeline-from-draft][data-timeline-placing]
+  .timeline-legend-list
+  .legend-list-content-container
+  > div[style*="opacity"] {
+  opacity: 1 !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .timeline-legend-list .legend-list-content-container > div[style*="opacity"] {
     transition: none;

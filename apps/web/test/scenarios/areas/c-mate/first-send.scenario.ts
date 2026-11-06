@@ -75,9 +75,7 @@ describe("owner-reported layout regressions", () => {
             .map((frame) => (frame.opacity === null ? "-" : frame.opacity.toFixed(2)))
             .join(" ");
           expect(
-            frames
-              .slice(promoted)
-              .filter((frame) => frame.opacity !== null && frame.opacity > 0 && frame.opacity < 1),
+            frames.slice(promoted).filter((frame) => frame.opacity !== 1),
             `The conversation shows the message as the draft did, never easing it in again: ${trail}`,
           ).toEqual([]);
           yield* s.then.noExternalNetwork;
