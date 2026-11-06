@@ -86,6 +86,10 @@ describe("the Mates as React reads them", () => {
     const { registry, adapter } = adapterOverStore();
     let connected = -1;
     let commits = 0;
+    let allConnected!: () => void;
+    const connectedCommit = new Promise<void>((resolve) => {
+      allConnected = resolve;
+    });
 
     function Surface() {
       connected = [...useEnvironmentMachines().values()].filter(
@@ -99,13 +103,19 @@ describe("the Mates as React reads them", () => {
       await act(async () =>
         root.render(
           <RegistryContext value={registry}>
-            <Profiler id="surface" onRender={() => void (commits += 1)}>
+            <Profiler
+              id="surface"
+              onRender={() => {
+                commits += 1;
+                if (connected === MATES) allConnected();
+              }}
+            >
               <Surface />
             </Profiler>
           </RegistryContext>,
         ),
       );
-      await vi.waitFor(() => expect(connected).toBe(0));
+      expect(connected).toBe(0);
       commits = 0;
 
       for (let mate = 1; mate <= MATES; mate += 1) {
@@ -117,7 +127,7 @@ describe("the Mates as React reads them", () => {
           await Promise.resolve();
         }
       }
-      await vi.waitFor(() => expect(connected).toBe(MATES));
+      await connectedCommit;
 
       expect(commits).toBe(1);
       expect(connected).toBe(MATES);
