@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { appShellWorkerMode, forgetCachedShell, type AppShellWorkerSite } from "./appShellClient";
 
@@ -56,11 +56,21 @@ describe("where the app-shell worker runs", () => {
 
 describe("the stale-chunk reload", () => {
   it("reloads after a bounded wait even when the Cache API never answers", async () => {
-    const hanging = {
-      has: () => new Promise<boolean>(() => {}),
-      open: () => new Promise<Cache>(() => {}),
-    };
-    expect(await forgetCachedShell(hanging, "https://mate.example.test", 20)).toBe("timed-out");
+    vi.useFakeTimers();
+    try {
+      const hanging = {
+        has: () => new Promise<boolean>(() => {}),
+        open: () => new Promise<Cache>(() => {}),
+      };
+      const answered = vi.fn();
+      void forgetCachedShell(hanging, "https://mate.example.test", 20).then(answered);
+      await vi.advanceTimersByTimeAsync(19);
+      expect(answered).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(answered).toHaveBeenCalledExactlyOnceWith("timed-out");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("creates no cache in a browser that never ran the worker", async () => {
