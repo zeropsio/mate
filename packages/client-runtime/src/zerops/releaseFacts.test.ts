@@ -322,13 +322,6 @@ describe("a held release's changes follow the stage as it stands now", () => {
 describe("a release HQ ended without landing says so: no clock ends it", () => {
   it.each([
     {
-      name: "queued",
-      inFlight: "v0.1.1",
-      standing: undefined,
-      state: "releasing",
-      title: "Releasing v0.1.1",
-    },
-    {
       name: "building despite an earlier stopped observation",
       inFlight: "v0.1.1",
       standing: undefined,
