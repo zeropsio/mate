@@ -14,6 +14,7 @@ import {
   exists,
   read,
   remoteEnvWithSupervisor,
+  stopSupervised,
   supervisedApps,
   TEST_HOST,
   waitUntil,
@@ -24,7 +25,8 @@ import { CREW_EFFECT_KINDS } from "./shared.ts";
 const LANE = { host: TEST_HOST, handle: "backend" } as const;
 
 /** Starts a child and waits - like a dev server; the child's pid lands beside the copy. */
-const DEV_SERVER = 'sleep 30 & printf "%s" "$!" > ../backend.child; wait';
+const DEV_SERVER =
+  'mkfifo ../backend.hold; (read -r _ < ../backend.hold) & printf "%s" "$!" > ../backend.child; wait';
 
 const row = (attemptNumber = 1) =>
   effectRow(CREW_EFFECT_KINDS.appStop, LANE, {
@@ -52,7 +54,7 @@ describe("crew.app.stop", () => {
             { stopped, gone: [alive(pid), alive(child)] },
             { stopped: { state: "stopped" }, gone: [false, false] },
           );
-        }),
+        }).pipe(Effect.ensuring(Effect.sync(() => stopSupervised(root)))),
       SUPERVISED,
     ),
   );
@@ -72,7 +74,7 @@ describe("crew.app.stop", () => {
             { again, entries: Object.keys(supervisedApps(root)) },
             { again: { state: "stopped" }, entries: [] },
           );
-        }),
+        }).pipe(Effect.ensuring(Effect.sync(() => stopSupervised(root)))),
       SUPERVISED,
     ),
   );
