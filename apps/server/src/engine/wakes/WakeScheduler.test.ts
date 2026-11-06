@@ -1,7 +1,11 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Queue from "effect/Queue";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
 import { CommandId, ConversationId, wakeId } from "@t3tools/contracts";
@@ -30,12 +34,45 @@ const arm = (
     conversations.ask(envelope({ _tag: "ArmWake", ...wake }, { conversation })),
   );
 
-/** Lets the scheduler and the actors run what the clock released. */
-const settle = Effect.forEach(Array.from({ length: 100 }), () => Effect.yieldNow, {
-  discard: true,
+/** A receipt means the scheduler has checked its rows and registered its next wait. */
+const observedScheduler = Effect.gen(function* () {
+  const signals = yield* EngineSignals.EngineSignals;
+  const clock = yield* Clock.Clock;
+  const waits = yield* Queue.unbounded<number | undefined>();
+  const timers = new Map<number, number>();
+  let timerId = 0;
+  const observedClock: Clock.Clock = {
+    ...clock,
+    sleep: (duration) =>
+      Effect.gen(function* () {
+        const child = yield* clock
+          .sleep(duration)
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        const id = ++timerId;
+        if (child.pollUnsafe() === undefined)
+          timers.set(id, clock.currentTimeMillisUnsafe() + Duration.toMillis(duration));
+        yield* Fiber.join(child).pipe(Effect.ensuring(Effect.sync(() => timers.delete(id))));
+      }),
+  };
+  const observedSignals = {
+    ...signals,
+    wakes: {
+      ...signals.wakes,
+      wait: Effect.gen(function* () {
+        const child = yield* signals.wakes.wait.pipe(Effect.forkChild({ startImmediately: true }));
+        if (child.pollUnsafe() === undefined) yield* Queue.offer(waits, [...timers.values()][0]);
+        yield* Fiber.join(child);
+      }),
+    },
+  };
+  const scheduler = yield* makeWakeScheduler().pipe(
+    Effect.provideService(EngineSignals.EngineSignals, observedSignals),
+  );
+  return {
+    start: scheduler.start.pipe(Effect.provideService(Clock.Clock, observedClock)),
+    waiting: Queue.take(waits),
+  };
 });
-
-const advance = (millis: number) => Effect.andThen(TestClock.adjust(millis), settle);
 
 const fired = (conversation: ConversationId) =>
   Effect.gen(function* () {
@@ -78,16 +115,19 @@ describe("WakeScheduler", () => {
   it.layer(engine)("timing", (it) => {
     it.effect("fires the earliest wake first", () =>
       Effect.gen(function* () {
+        yield* TestClock.setTime(0);
         yield* arm(ConversationId.make("late"), { kind: "schedule", key: "k", dueAt: 3000 });
         yield* arm(ConversationId.make("early"), { kind: "schedule", key: "k", dueAt: 1000 });
         yield* arm(ConversationId.make("middle"), { kind: "schedule", key: "k", dueAt: 2000 });
-        const scheduler = yield* makeWakeScheduler();
+        const scheduler = yield* observedScheduler;
         yield* scheduler.start;
-        yield* settle;
+        expect(yield* scheduler.waiting).toBe(1000);
         const atStart = yield* wakeStates;
-        yield* advance(1000);
+        yield* TestClock.adjust(1000);
+        expect(yield* scheduler.waiting).toBe(2000);
         const at1000 = yield* wakeStates;
-        yield* advance(1000);
+        yield* TestClock.adjust(1000);
+        expect(yield* scheduler.waiting).toBe(3000);
         const at2000 = yield* wakeStates;
         assert.deepStrictEqual(
           { atStart, at1000, at2000 },
@@ -104,31 +144,52 @@ describe("WakeScheduler", () => {
   it.layer(engine)("re-arm", (it) => {
     it.effect("re-reads when a nearer wake is armed while it sleeps", () =>
       Effect.gen(function* () {
+        yield* TestClock.setTime(0);
         const far = ConversationId.make("far");
         const near = ConversationId.make("near");
         yield* arm(far, { kind: "schedule", key: "k", dueAt: 60_000 });
-        const scheduler = yield* makeWakeScheduler();
+        const scheduler = yield* observedScheduler;
         yield* scheduler.start;
-        yield* settle;
+        expect(yield* scheduler.waiting).toBe(60_000);
         yield* arm(near, { kind: "schedule", key: "k", dueAt: 500 });
-        yield* advance(500);
+        expect(yield* scheduler.waiting).toBe(500);
+        yield* TestClock.adjust(500);
+        expect(yield* scheduler.waiting).toBe(60_000);
         assert.deepStrictEqual(yield* wakeStates, { far: "armed", near: "fired" });
+        yield* (yield* Conversations).ask(
+          envelope(
+            { _tag: "CancelWake", wakeId: wakeId(far, "schedule", "k") },
+            { conversation: far },
+          ),
+        );
       }),
     );
 
     it.effect("a recurring wake fires at each of its cron's times", () =>
       Effect.gen(function* () {
+        yield* TestClock.setTime(0);
         const c = ConversationId.make("standup");
         yield* arm(c, { kind: "standup", key: "daily", cron: "* * * * *", text: "Stand up" });
-        const scheduler = yield* makeWakeScheduler();
+        const scheduler = yield* observedScheduler;
         yield* scheduler.start;
-        yield* advance(60_000);
+        expect(yield* scheduler.waiting).toBe(60_000);
+        yield* TestClock.adjust(60_000);
+        expect(yield* scheduler.waiting).toBe(120_000);
         const once = yield* fired(c);
-        yield* advance(60_000);
+        yield* TestClock.adjust(60_000);
+        expect(yield* scheduler.waiting).toBe(180_000);
         assert.deepStrictEqual(
           { once, twice: yield* fired(c) },
           { once: { fires: 1, runs: 1 }, twice: { fires: 2, runs: 2 } },
         );
+        yield* (yield* Conversations).ask(
+          envelope(
+            { _tag: "CancelWake", wakeId: wakeId(c, "standup", "daily") },
+            { conversation: c },
+          ),
+        );
+        const sql = yield* SqlClient.SqlClient;
+        yield* sql`DELETE FROM engine_wake WHERE owner_conversation_id = ${c}`;
       }),
     );
   });
@@ -136,18 +197,24 @@ describe("WakeScheduler", () => {
   it.layer(engine)("crashes", (it) => {
     it.effect("fires once when the server stops right after the fire committed", () =>
       Effect.gen(function* () {
+        yield* TestClock.setTime(0);
         const c = ConversationId.make("after");
         yield* arm(c, { kind: "schedule", key: "k", dueAt: 1000 });
         yield* Effect.scoped(
           Effect.gen(function* () {
-            yield* (yield* makeWakeScheduler()).start;
-            yield* advance(1000);
+            const scheduler = yield* observedScheduler;
+            yield* scheduler.start;
+            expect(yield* scheduler.waiting).toBe(1000);
+            yield* TestClock.adjust(1000);
+            expect(yield* scheduler.waiting).toBeUndefined();
           }),
         );
         yield* Effect.scoped(
           Effect.gen(function* () {
-            yield* (yield* makeWakeScheduler()).start;
-            yield* advance(1000);
+            const scheduler = yield* observedScheduler;
+            yield* scheduler.start;
+            expect(yield* scheduler.waiting).toBeUndefined();
+            yield* TestClock.adjust(1000);
           }),
         );
         assert.deepStrictEqual(yield* fired(c), { fires: 1, runs: 1 });
@@ -156,25 +223,35 @@ describe("WakeScheduler", () => {
 
     it.effect("fires once when the server stops before the fire committed", () =>
       Effect.gen(function* () {
+        yield* TestClock.setTime(0);
         const c = ConversationId.make("before");
         const conversations = yield* Conversations;
+        const attempted = yield* Deferred.make<void>();
         yield* arm(c, { kind: "schedule", key: "k", dueAt: 1000 });
         yield* Effect.scoped(
           Effect.gen(function* () {
-            yield* (yield* makeWakeScheduler()).start;
-            yield* advance(1000);
+            const scheduler = yield* observedScheduler;
+            yield* scheduler.start;
+            expect(yield* scheduler.waiting).toBe(1000);
+            yield* TestClock.adjust(1000);
+            yield* Deferred.await(attempted);
           }),
         ).pipe(
           Effect.provideService(Conversations, {
             ...conversations,
-            tell: () => Effect.die("the process died mid-fire"),
+            tell: () =>
+              Deferred.succeed(attempted, undefined).pipe(
+                Effect.andThen(Effect.die("the process died mid-fire")),
+              ),
           }),
         );
         const afterCrash = yield* fired(c);
         yield* Effect.scoped(
           Effect.gen(function* () {
-            yield* (yield* makeWakeScheduler()).start;
-            yield* advance(1000);
+            const scheduler = yield* observedScheduler;
+            yield* scheduler.start;
+            expect(yield* scheduler.waiting).toBeUndefined();
+            yield* TestClock.adjust(1000);
           }),
         );
         assert.deepStrictEqual(
@@ -196,13 +273,10 @@ const env = (command: Command, conversation = mate): Envelope => ({
   principal: { kind: "person", subject: "ana" },
   command,
 });
-const yieldMany = Effect.forEach(Array.from({ length: 300 }), () => Effect.yieldNow, {
-  discard: true,
-});
-
 describe("WakeScheduler: one wake never holds another", () => {
   it.effect("a wake of a healthy conversation fires while another conversation cannot load", () =>
     Effect.gen(function* () {
+      yield* TestClock.setTime(0);
       const file = tempDb("r5");
       const world = new World();
       const broken = ConversationId.make("broken");
@@ -223,11 +297,14 @@ describe("WakeScheduler: one wake never holds another", () => {
         yield* sql`UPDATE engine_conversation SET head_seq = 2 WHERE conversation_id = ${broken}`;
       }).pipe(Effect.provide(engineLayer(file, world.handlers())));
       const state = yield* Effect.gen(function* () {
-        yield* (yield* makeWakeScheduler()).start;
-        for (let i = 0; i < 10; i++) {
-          yield* TestClock.adjust(1_000);
-          yield* yieldMany;
-        }
+        const scheduler = yield* observedScheduler;
+        yield* scheduler.start;
+        expect(yield* scheduler.waiting).toBe(1_000);
+        yield* TestClock.adjust(1_000);
+        expect(yield* scheduler.waiting).toBe(2_000);
+        yield* TestClock.adjust(1_000);
+        yield* scheduler.waiting;
+        yield* TestClock.adjust(8_000);
         const sql = yield* SqlClient.SqlClient;
         const [row] = yield* sql<{
           readonly state: string;
@@ -242,6 +319,7 @@ describe("WakeScheduler: one wake never holds another", () => {
 describe("WakeScheduler: a wake fires once per arming", () => {
   it.effect("a wake re-armed at the time it already fired at fires again, once", () =>
     Effect.gen(function* () {
+      yield* TestClock.setTime(0);
       const file = tempDb("r11a");
       const result = yield* Effect.gen(function* () {
         const conversations = yield* Conversations;
@@ -254,20 +332,24 @@ describe("WakeScheduler: a wake fires once per arming", () => {
               conversations.tell(e),
             ),
         };
-        yield* (yield* makeWakeScheduler().pipe(Effect.provideService(Conversations, counting)))
-          .start;
+        const scheduler = yield* observedScheduler.pipe(
+          Effect.provideService(Conversations, counting),
+        );
+        yield* scheduler.start;
+        expect(yield* scheduler.waiting).toBeUndefined();
         yield* conversations.ask(env({ _tag: "Archive" })); // a wake then starts no run
         yield* conversations.ask(
           env({ _tag: "ArmWake", kind: "standup", key: "daily", dueAt: 1_000 }),
         );
+        expect(yield* scheduler.waiting).toBe(1_000);
         yield* TestClock.adjust(1_000);
-        yield* yieldMany;
+        expect(yield* scheduler.waiting).toBeUndefined();
         // The same stand-up armed again for the same moment (a retried arm, a boot re-arm).
+        tells = 0;
         yield* conversations.ask(
           env({ _tag: "ArmWake", kind: "standup", key: "daily", dueAt: 1_000 }),
         );
-        tells = 0;
-        yield* yieldMany; // the clock does not move
+        expect(yield* scheduler.waiting).toBeUndefined(); // the clock does not move
         const { events, problems } = yield* audit(mate);
         return {
           fires: events.filter((e) => e._tag === "WakeFired").length,
