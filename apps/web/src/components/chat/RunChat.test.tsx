@@ -555,26 +555,30 @@ describe("RunChat", () => {
   // Live on Milo, 2026-10-10: the clock read 0:00 well into the run, counting the line that had
   // just begun.
   it("counts the run's own time on its clock, never a line's that just began", () => {
-    const started = new Date(Date.now() - 5 * 60_000).toISOString();
-    const markup = draw(
-      record([], {
-        live: true,
-        status: status({ startedAt: started }),
-        now: {
-          kind: "step",
-          step: stepOf(
-            command("w9", "npm run lint", {
-              createdAt: new Date().toISOString(),
-              toolLifecycleStatus: "inProgress",
-              updatedAt: undefined as never,
-            }),
-          ),
-        },
-      }),
-    );
-    expect(markupDom(markup).querySelector("[data-work-line-clock]")?.textContent).toMatch(
-      /^5:0\d$/u,
-    );
+    const now = at(300);
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse(now));
+    try {
+      const markup = draw(
+        record([], {
+          live: true,
+          status: status({ startedAt: at(0) }),
+          now: {
+            kind: "step",
+            step: stepOf(
+              command("w9", "npm run lint", {
+                createdAt: now,
+                startedAt: now,
+                toolLifecycleStatus: "inProgress",
+                updatedAt: undefined as never,
+              }),
+            ),
+          },
+        }),
+      );
+      expect(markupDom(markup).querySelector("[data-work-line-clock]")?.textContent).toBe("5:00");
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   // The owner, 2026-10-10: "with long answer there is a bit of disconnect with the still 'running'
@@ -701,44 +705,57 @@ describe("RunChat", () => {
   // the background ticks in its bar, never again in the chat; a deploy ticks
   // in its bar, never again as the now line's long-step words.
   it("ticks each running thing once: the run's one clock, never a step's own (K3)", () => {
-    const background: RecordItem = {
-      kind: "step",
-      key: "step:w1",
-      at: at(9),
-      step: stepOf(
-        command("w1", "pnpm dev", {
-          callInput: { description: "Serve the app on port 3000" },
-          toolLifecycleStatus: "inProgress",
-          updatedAt: undefined as never,
-        }),
-      ),
-    };
-    const serving = draw(record([background], { live: true, status: status() }));
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse(at(300)));
+    try {
+      const background: RecordItem = {
+        kind: "step",
+        key: "step:w1",
+        at: at(9),
+        step: stepOf(
+          command("w1", "pnpm dev", {
+            callInput: { description: "Serve the app on port 3000" },
+            toolLifecycleStatus: "inProgress",
+            updatedAt: undefined as never,
+          }),
+        ),
+      };
+      const serving = draw(record([background], { live: true, status: status() }));
 
-    expect(markupDom(serving).body.textContent).toContain("Running");
-    expect(
-      markupDom(serving).querySelector('[data-chat-kind="step:command"]')?.textContent,
-    ).not.toMatch(/\d+:\d\d/u);
-    const since = new Date(Date.now() - 45_000).toISOString();
-    const running = (kind: "deploy" | "browser") => {
-      const entry = operation("o1", "turn-1", 1, {
-        kind,
-        phase: "running",
-        anchorAt: since,
-        subject: kind === "deploy" ? "appdev" : "https://shop.dev/status",
-        voice: kind === "deploy" ? "Deploying appdev." : "Checking /status",
-      });
-      if (entry.kind !== "operation") throw new Error("an operation");
-      const { settledAt: _settled, ...taking } = entry.operation;
-      return draw(
-        record([], { live: true, now: { kind: "operation", operation: taking }, status: status() }),
-      );
-    };
-    // A step past 30 s still says what runs, with no clock of its own beside the run's.
-    for (const kind of ["deploy", "browser"] as const) {
-      expect(running(kind)).not.toMatch(/· 0:4\d/u);
+      expect(markupDom(serving).body.textContent).toContain("Running");
+      expect(
+        markupDom(serving).querySelector('[data-chat-kind="step:command"]')?.textContent,
+      ).not.toMatch(/\d+:\d\d/u);
+      const since = at(255);
+      const running = (kind: "deploy" | "browser") => {
+        const entry = operation("o1", "turn-1", 1, {
+          kind,
+          phase: "running",
+          anchorAt: since,
+          subject: kind === "deploy" ? "appdev" : "https://shop.dev/status",
+          voice: kind === "deploy" ? "Deploying appdev." : "Checking /status",
+        });
+        if (entry.kind !== "operation") throw new Error("an operation");
+        const { settledAt: _settled, ...taking } = entry.operation;
+        return draw(
+          record([], {
+            live: true,
+            now: { kind: "operation", operation: taking },
+            status: status(),
+          }),
+        );
+      };
+      // A step past 30 s still says what runs, with no clock of its own beside the run's.
+      for (const kind of ["deploy", "browser"] as const) {
+        const markup = running(kind);
+        expect(markup).not.toMatch(/· 0:4\d/u);
+        const document = markupDom(markup);
+        expect(document.body.textContent).not.toContain("0:45");
+        expect(document.querySelector("[data-work-line-clock]")?.textContent).toBe("5:00");
+      }
+      expect(running("browser")).toMatch(/Checking [^<]*in the browser/u);
+    } finally {
+      clock.mockRestore();
     }
-    expect(running("browser")).toMatch(/Checking [^<]*in the browser/u);
   });
 
   it("counts the run's time in ink, never in the busy blue", () => {
