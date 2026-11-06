@@ -13,6 +13,7 @@ import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import {
   CommandId,
   ConversationId,
@@ -181,21 +182,18 @@ const playUntilCrash = (file: string, world: World, crash: Crash, played: Played
       if (armed && crash.how === "mid-effect") {
         // The handler acts, then the process dies before it returns.
         const acted = yield* Deferred.make<void>();
-        const before = [...world.acts.values()].reduce((a, b) => a + b, 0);
         for (const kind of [
           "run.prepare",
           "session.open",
+          "session.close",
           "provider.send",
           "provider.respond",
           "provider.interrupt",
         ])
           world.hangAfterAct.add(kind);
-        yield* Effect.forkDetach(worker.runOnce);
-        for (let spin = 0; spin < 1000; spin++) {
-          if ([...world.acts.values()].reduce((a, b) => a + b, 0) > before) break;
-          yield* Effect.yieldNow;
-        }
-        yield* Deferred.succeed(acted, undefined);
+        world.afterAct = Deferred.succeed(acted, undefined).pipe(Effect.asVoid);
+        const running = yield* Effect.forkDetach(worker.runOnce);
+        yield* Effect.raceFirst(Deferred.await(acted), Fiber.await(running));
         return;
       }
       const exit = yield* Effect.exit<unknown, unknown, never>(
@@ -388,8 +386,10 @@ describe("crash injection: what holds", () => {
             now: 0,
           });
           const worker = yield* makeEffectWorker(newBoot());
-          yield* Effect.forkDetach(worker.runOnce); // acts, then the process dies
-          for (let i = 0; i < 100 && world.acts.size === 0; i++) yield* Effect.yieldNow;
+          const acted = yield* Deferred.make<void>();
+          world.afterAct = Deferred.succeed(acted, undefined).pipe(Effect.asVoid);
+          const running = yield* Effect.forkDetach(worker.runOnce);
+          yield* Effect.raceFirst(Deferred.await(acted), Fiber.await(running));
         }).pipe(Effect.provide(engineLayer(file, world.handlers())));
         world.crash();
         const result = yield* Effect.gen(function* () {
