@@ -9,12 +9,19 @@ import type { Invalidation } from "@t3tools/client-runtime/zerops/knowledge";
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import { act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { AnyRouter } from "@tanstack/react-router";
 
 import { TestNode } from "~/zerops/__fixtures__/testDom";
 import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
+import * as presses from "~/zerops/matePress";
+import * as sessionContext from "~/zerops/sessionContext";
+import * as containers from "~/zerops/zeropsContainers";
+import * as environments from "~/zerops/accountEnvironments";
+import * as upgrade from "~/zerops/useMateUpgradeRecovery";
 
 import { useZeropsProjectConnection } from "./ZeropsProjectsPage";
 
@@ -27,46 +34,27 @@ const organizationRef = (organizationId: string): OrganizationRef => ({
   organizationId: ZeropsOrganizationId.make(organizationId),
 });
 
-const mocks = vi.hoisted(() => ({
-  connect: async (_target: unknown): Promise<unknown> => undefined,
-  navigated: [] as Array<unknown>,
-}));
+const { RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = { options: {}, navigate: vi.fn(async () => {}) } as unknown as AnyRouter;
 
-vi.mock("@tanstack/react-router", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useNavigate: () => async (to: unknown) => {
-    mocks.navigated.push(to);
-  },
-}));
-vi.mock("~/zerops/zeropsDataContext", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useZeropsData: () => ({ organizationRef }),
-}));
-vi.mock("~/zerops/matePress", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useMatePresses: () => [],
-}));
-vi.mock("~/zerops/ZeropsSessionProvider", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useZeropsSession: () => ({ activeOrganization: null }),
-}));
-vi.mock("~/zerops/zeropsContainers", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useZeropsContainers: () => ({
+beforeEach(() => {
+  vi.spyOn(presses, "useMatePresses").mockReturnValue([]);
+  vi.spyOn(sessionContext, "useZeropsSession").mockReturnValue({
+    activeOrganization: null,
+  } as unknown as ReturnType<typeof sessionContext.useZeropsSession>);
+  vi.spyOn(containers, "useZeropsContainers").mockReturnValue({
     health: new Map(),
     serverVersions: new Map(),
     mateFlags: new Map(),
-  }),
-}));
-vi.mock("~/zerops/accountEnvironments", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useConnectMate: () => mocks.connect,
-}));
-vi.mock("~/zerops/useMateUpgradeRecovery", () => ({ useMateUpgradeRecovery: () => null }));
+  } as unknown as ReturnType<typeof containers.useZeropsContainers>);
+  vi.spyOn(environments, "useConnectMate").mockReturnValue(
+    vi.fn() as ReturnType<typeof environments.useConnectMate>,
+  );
+  vi.spyOn(upgrade, "useMateUpgradeRecovery").mockReturnValue(null);
+});
 
 afterEach(() => {
-  mocks.connect = async () => undefined;
-  mocks.navigated = [];
   closeAccountLifetime();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -96,7 +84,15 @@ function mountConnection() {
     return null;
   }
   const root = createRoot(document.createElement("div") as unknown as Element);
-  act(() => root.render(<Connection />));
+  act(() =>
+    root.render(
+      <RouterContextProvider router={router}>
+        <ZeropsDataContext.Provider value={{ organizationRef } as ZeropsDataContextValue}>
+          <Connection />
+        </ZeropsDataContext.Provider>
+      </RouterContextProvider>,
+    ),
+  );
   return {
     heard,
     connection: () => mounted.connection!,
