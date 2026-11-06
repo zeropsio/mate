@@ -1245,12 +1245,15 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         retryAt: (yield* Clock.currentTimeMillis) + delayMs,
       });
       let applicationActivated = yield* waitForRetrySignal(delayMs);
-      // A hidden tab asks a Mate for no ticket: the wait holds until the tab is seen again.
+      // A hidden tab asks a Mate for no ticket: the wait holds until the tab is seen again, and
+      // names no time for a try that is not timed.
       while (
         !applicationActivated &&
         target._tag === "ZeropsMateConnectionTarget" &&
         presence.hidden()
       ) {
+        const held = yield* SubscriptionRef.get(state);
+        if (held.retryAt !== null) yield* setState({ ...held, retryAt: null });
         applicationActivated = yield* waitForSignal;
       }
       if (applicationActivated) {

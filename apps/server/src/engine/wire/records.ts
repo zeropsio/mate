@@ -96,6 +96,8 @@ interface RequestRow {
 }
 
 const parse = (text: string | null): unknown => (text === null ? null : JSON.parse(text));
+/** Names as the JSON array SQLite reads with `json_each`. */
+const encodeNames = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 
 export const itemOfRow = (row: ItemRow) =>
   decodeItem({
@@ -164,9 +166,6 @@ export const makeRecords = Effect.gen(function* () {
     Effect.gen(function* () {
       if (rows.length === 0) return [];
       const ids = rows.map((row) => row.run_id);
-      // A run's own calls: what its helpers ran is the helpers' (their card counts it), never the
-      // Mate's (a reload read "15 commands" of a run whose Mate ran 7).
-      const ownCall = sql.literal("json_extract(by_json, '$.kind') IS NOT 'helper'");
       const counts = yield* sql<{
         readonly run_id: string;
         readonly items: number;
@@ -175,48 +174,52 @@ export const makeRecords = Effect.gen(function* () {
         SELECT run_id, COUNT(*) AS items, MAX(opened_seq) AS last_seq FROM engine_item
         WHERE ${sql.in("run_id", ids)} GROUP BY run_id
       `;
-      const calls = yield* sql<{
+      // A run's own calls: what its helpers ran is the helpers' (their card counts it), never the
+      // Mate's (a reload read "15 commands" of a run whose Mate ran 7). Each own call's body is
+      // parsed once (`own`, materialized), however long its result: counted by step, the generic
+      // and MCP ones by tool, each in the order its group sorts in; and the files an edit names
+      // where V1's row reads them (`collectChangedFiles`' keys), and where Claude's Write and Edit
+      // name theirs (`file_path`, a notebook's `notebook_path`), a row for each edit naming none.
+      const tallies = yield* sql<{
+        readonly what: "calls" | "edits" | "tools";
         readonly run_id: string;
-        readonly step: string | null;
-        readonly n: number;
+        readonly key: string | null;
+        readonly n: number | null;
+        readonly item_id: string | null;
       }>`
-        SELECT run_id, json_extract(body_json, '$.step') AS step, COUNT(*) AS n FROM engine_item
-        WHERE ${sql.in("run_id", ids)} AND kind = 'call' AND ${ownCall} GROUP BY run_id, step
+        WITH own AS MATERIALIZED (
+          SELECT run_id, item_id, step, tool,
+            CASE WHEN step = 'edit' THEN body_json END AS edit_json
+          FROM (
+            SELECT run_id, item_id, json_extract(body_json, '$.step') AS step,
+              json_extract(body_json, '$.tool.name') AS tool, body_json
+            FROM engine_item
+            WHERE ${sql.in("run_id", ids)} AND kind = 'call'
+              AND json_extract(by_json, '$.kind') IS NOT 'helper'
+          )
+        )
+        SELECT 'calls' AS what, run_id, step AS key, COUNT(*) AS n, NULL AS item_id FROM own
+        GROUP BY run_id, step
+        UNION ALL
+        SELECT 'tools', run_id, tool, COUNT(*), NULL FROM own
+        WHERE step IN ('tool', 'mcp') GROUP BY run_id, tool
+        UNION ALL
+        SELECT 'edits', own.run_id, tree.value, NULL, own.item_id FROM own
+        LEFT JOIN json_tree(own.edit_json, '$.shows') AS tree
+          ON tree.type = 'text' AND tree.key IN (
+            'path', 'filePath', 'file_path', 'notebook_path', 'relativePath', 'filename',
+            'newPath', 'oldPath'
+          )
+        WHERE own.step = 'edit'
+        ORDER BY what, run_id, key
       `;
-      const tools = yield* sql<{
-        readonly run_id: string;
-        readonly tool: string | null;
-        readonly n: number;
-      }>`
-        SELECT run_id, json_extract(body_json, '$.tool.name') AS tool, COUNT(*) AS n
-        FROM engine_item
-        WHERE ${sql.in("run_id", ids)} AND kind = 'call' AND ${ownCall}
-          AND json_extract(body_json, '$.step') IN ('tool', 'mcp')
-        GROUP BY run_id, tool
-      `;
-      // The files an edit names where V1's row reads them (`collectChangedFiles`' keys), and where
-      // Claude's Write and Edit name theirs (`file_path`, a notebook's `notebook_path`).
-      const edits = yield* sql<{
-        readonly run_id: string;
-        readonly item_id: string;
-        readonly path: string | null;
-      }>`
-        SELECT edit.run_id AS run_id, edit.item_id AS item_id, named.path AS path
-        FROM engine_item AS edit
-        LEFT JOIN (
-          SELECT item.item_id AS item_id, tree.value AS path
-          FROM engine_item AS item, json_tree(item.body_json, '$.shows') AS tree
-          WHERE ${sql.in("item.run_id", ids)} AND item.kind = 'call'
-            AND json_extract(item.body_json, '$.step') = 'edit' AND tree.type = 'text'
-            AND tree.key IN (
-              'path', 'filePath', 'file_path', 'notebook_path', 'relativePath', 'filename',
-              'newPath', 'oldPath'
-            )
-        ) AS named ON named.item_id = edit.item_id
-        WHERE ${sql.in("edit.run_id", ids)} AND edit.kind = 'call'
-          AND json_extract(edit.by_json, '$.kind') IS NOT 'helper'
-          AND json_extract(edit.body_json, '$.step') = 'edit'
-      `;
+      const calls = tallies.filter((row) => row.what === "calls");
+      const tools = tallies.filter((row) => row.what === "tools");
+      const edits = tallies.flatMap((row) =>
+        row.what === "edits" && row.item_id !== null
+          ? [{ run_id: row.run_id, item_id: row.item_id, path: row.key }]
+          : [],
+      );
       const answers = yield* sql<{ readonly run_id: string; readonly item_id: string }>`
         SELECT run_id, item_id FROM engine_item
         WHERE ${sql.in("run_id", ids)} AND kind = 'note' AND state = 'closed'
@@ -234,12 +237,12 @@ export const makeRecords = Effect.gen(function* () {
           calls: Object.fromEntries(
             calls
               .filter((row) => row.run_id === id)
-              .map((row) => [row.step ?? "tool", row.n] as const),
+              .map((row) => [row.key ?? "tool", row.n ?? 0] as const),
           ),
           tools: Object.fromEntries(
             tools
               .filter((row) => row.run_id === id)
-              .map((row) => [row.tool ?? "tool", row.n] as const),
+              .map((row) => [row.key ?? "tool", row.n ?? 0] as const),
           ),
           edited: editedOf(edits.filter((row) => row.run_id === id)),
           answerItemId: answer === undefined ? null : ItemId.make(answer.item_id),
@@ -275,11 +278,14 @@ export const makeRecords = Effect.gen(function* () {
       ).pipe(Effect.map((runs) => runs.map((run) => ({ ...run, turnState: turnStateOf(run) }))));
     });
 
+  // `+conversation_id` keeps SQLite off the conversation's own indexes: it reads the runs named,
+  // never every record an old conversation holds to find them.
   const runsById = (conversation: ConversationId, ids: ReadonlyArray<string>) =>
     ids.length === 0
       ? Effect.succeed([])
       : sql<RunRow>`
-          SELECT * FROM engine_run WHERE conversation_id = ${conversation} AND ${sql.in("run_id", ids)}
+          SELECT * FROM engine_run WHERE +conversation_id = ${conversation}
+            AND ${sql.in("run_id", ids)}
           ORDER BY ordinal
         `.pipe(Effect.flatMap(withSummaries));
 
@@ -379,12 +385,30 @@ export const makeRecords = Effect.gen(function* () {
         startedAt: row.started_at,
         endedAt: row.ended_at,
       }));
+      // `queuedBehind` read from the newest back, and no further than any earlier run worked:
+      // `reach[i]` is the latest a run up to `i` worked until (one not ended works on), so where
+      // it is past, no earlier run was working when the message was queued. A run queued after
+      // its predecessor ended stops at once, not after every run the conversation ever held.
+      const reach: Array<number> = [];
+      let latest = Number.NEGATIVE_INFINITY;
+      for (const run of timed) {
+        if (run.startedAt !== null) latest = Math.max(latest, run.endedAt ?? Infinity);
+        reach.push(latest);
+      }
+      const behind = (index: number) => {
+        const queuedAt = timed[index]!.queuedAt;
+        for (let earlier = index - 1; earlier >= 0 && reach[earlier]! > queuedAt; earlier--) {
+          const run = timed[earlier]!;
+          if (queuedBehind([run], timed[index]!) !== undefined) return run;
+        }
+        return undefined;
+      };
       const parent = new Map<string, string>();
       rows.forEach((row, index) => {
         if (row.joins !== null) parent.set(row.run_id, row.joins);
         else if ((parse(row.trigger_json) as { readonly kind?: string }).kind === "person") {
-          const behind = queuedBehind(timed, timed[index]!);
-          if (behind !== undefined) parent.set(row.run_id, behind.id);
+          const run = behind(index);
+          if (run !== undefined) parent.set(row.run_id, run.id);
         }
       });
       const byId = new Map(rows.map((row) => [row.run_id, row]));
@@ -425,14 +449,15 @@ export const makeRecords = Effect.gen(function* () {
 
   /**
    * What a window shows of its runs: the runs, every person message, request and answer, every
-   * page published above an answer, every open request (wherever it was asked), and the newest
-   * items of each run not ended.
+   * page published above an answer, every open request (wherever it was asked), the newest items
+   * of each run not ended, and the items loose of any run since its oldest run began.
+   *
+   * Read once for the widest window a read may send (`runIds`), then narrowed in memory to the
+   * groups it does send: a window over its budget carries fewer groups without reading again.
+   * A narrower window holds exactly what reading it alone would: each record is there for a run
+   * it holds, an open request, or its oldest run's floor, and each run's summary is its own.
    */
-  const windowOf = (
-    conversation: ConversationId,
-    runIds: ReadonlyArray<string>,
-    window: EngineWindow,
-  ) =>
+  const windowsOf = (conversation: ConversationId, runIds: ReadonlyArray<string>) =>
     Effect.gen(function* () {
       const runs = yield* runsById(conversation, runIds);
       const answers = runs.flatMap((run) =>
@@ -451,11 +476,12 @@ export const makeRecords = Effect.gen(function* () {
                 AND state != 'open'
               ORDER BY seq
             `;
+      // By the runs' items (`+conversation_id`, as `runsById`), never a scan of every item.
       const shown =
         runIds.length === 0
           ? []
           : yield* sql<ItemRow>`
-              SELECT * FROM engine_item WHERE conversation_id = ${conversation}
+              SELECT * FROM engine_item WHERE +conversation_id = ${conversation}
                 AND ${sql.in("run_id", runIds)}
                 AND (kind IN ('person', 'request')
                   OR (kind = 'call' AND json_extract(body_json, '$.result.page') IS NOT NULL)
@@ -480,7 +506,8 @@ export const makeRecords = Effect.gen(function* () {
           `),
         );
       }
-      const floor = runs[0]?.seq;
+      // From the earliest of the runs, whichever a narrower window starts at.
+      const floor = runs.length === 0 ? undefined : Math.min(...runs.map((run) => run.seq));
       const loose =
         floor === undefined
           ? []
@@ -488,15 +515,40 @@ export const makeRecords = Effect.gen(function* () {
               SELECT * FROM engine_item WHERE conversation_id = ${conversation}
                 AND run_id IS NULL AND opened_seq >= ${floor}
             `;
+      // Why each item is there: for its run (shown, a live tail), an open request, or loose.
+      const ofRun = new Set([...shown, ...tails].map((row) => row.item_id));
+      const ofRequest = new Set(asked.map((row) => row.item_id));
       const unique = new Map<string, ItemRow>();
       for (const row of [...shown, ...asked, ...tails, ...loose]) unique.set(row.item_id, row);
       const requestRows = new Map<string, RequestRow>();
       for (const row of [...runRequests, ...openRequests]) requestRows.set(row.request_id, row);
-      return {
-        runs,
-        items: yield* items([...unique.values()].sort((a, b) => a.opened_seq - b.opened_seq)),
-        requests: yield* requests([...requestRows.values()].sort((a, b) => a.seq - b.seq)),
-        window,
+      const openIds = new Set(openRequests.map((row) => row.request_id));
+      const allItems = yield* items(
+        [...unique.values()].sort((a, b) => a.opened_seq - b.opened_seq),
+      );
+      const allRequests = yield* requests([...requestRows.values()].sort((a, b) => a.seq - b.seq));
+      return (held: ReadonlyArray<string>, window: EngineWindow) => {
+        const holds = new Set(held);
+        const kept = runs.filter((run) => holds.has(run.id));
+        const from = kept[0]?.seq;
+        const shownItems = allItems.filter(
+          (item) =>
+            (item.runId !== null && ofRun.has(item.id) && holds.has(item.runId)) ||
+            ofRequest.has(item.id) ||
+            (item.runId === null && from !== undefined && item.seq >= from),
+        );
+        return {
+          runs: kept,
+          items: shownItems,
+          requests: allRequests.filter(
+            (request) => openIds.has(request.id) || holds.has(request.runId),
+          ),
+          window,
+          /** The long messages whose whole was read beside their record (`withWholeNotes`). */
+          wholes: shownItems.flatMap((item) =>
+            item.kind === "note" && item.text.length >= ITEM_TEXT_LIMIT ? [item.id as string] : [],
+          ),
+        };
       };
     });
 
@@ -506,8 +558,8 @@ export const makeRecords = Effect.gen(function* () {
     groups,
     /**
      * A height a client laid a page out at, kept for the page's call in this conversation: the
-     * page's own claim, clamped, the same width again replacing it, the newest widths kept. False
-     * when no page's call is there by that id.
+     * page's own claim, clamped, the same width again replacing it, the newest widths kept, all
+     * or none of it. False when no page's call is there by that id.
      */
     recordPageHeight: (
       conversation: ConversationId,
@@ -542,9 +594,19 @@ export const makeRecords = Effect.gen(function* () {
           )
         `;
         return true;
-      }),
+      }).pipe(sql.withTransaction),
     pickGroups,
-    windowOf,
+    windowsOf,
+    /**
+     * The wholes kept beside these messages' records now: a step can write one with no event of
+     * its own (a message closed again, its body the same, its end longer).
+     */
+    wholeNotes: (ids: ReadonlyArray<string>) =>
+      ids.length === 0
+        ? Effect.succeed(new Map<string, string>())
+        : sql<{ readonly item_id: string; readonly body: string }>`
+            SELECT item_id, body FROM engine_item_detail WHERE ${sql.in("item_id", ids)}
+          `.pipe(Effect.map((rows) => new Map(rows.map((row) => [row.item_id, row.body])))),
     runsById,
     /** How many records changed past a cursor: a resume carries no more than its budget. */
     changedCount: (conversation: ConversationId, after: number) =>
@@ -591,7 +653,10 @@ export const makeRecords = Effect.gen(function* () {
      * A run's items, the newest page; `more` when older ones exist before it. After `afterSeq`,
      * the oldest page; `more` when later ones exist. `only: "outcome"`: the items a closed card
      * draws its result from — its background work with the calls that started it, which its line
-     * of jobs is drawn from.
+     * of jobs is drawn from. `tools` narrows the results to those of the tools it names (a name
+     * ending in `*` names every tool it begins, as a GLOB does) and of every tool a call failed
+     * with in the run's group (the runs a card draws together): a failure a card's face says, and
+     * the calls that may have recovered from it.
      */
     runPage: (
       conversation: ConversationId,
@@ -600,11 +665,30 @@ export const makeRecords = Effect.gen(function* () {
         readonly beforeSeq?: number;
         readonly afterSeq?: number;
         readonly only?: "outcome";
+        readonly tools?: ReadonlyArray<string>;
         readonly limit: number;
       },
     ) =>
       Effect.gen(function* () {
         const forward = options.afterSeq !== undefined;
+        // A card draws the runs of a group together (a continuation, a wake, a message queued
+        // behind it), and a failure one of them made is recovered by a call another made.
+        const card =
+          options.tools === undefined
+            ? [runId]
+            : ((yield* groups(conversation)).find((group) => group.runs.includes(runId))?.runs ?? [
+                runId,
+              ]);
+        const resulted =
+          options.tools === undefined
+            ? sql`json_extract(body_json, '$.result') IS NOT NULL`
+            : sql`(EXISTS (SELECT 1 FROM json_each(${encodeNames(options.tools)}) AS named
+                  WHERE json_extract(body_json, '$.result.toolName') GLOB named.value)
+                OR json_extract(body_json, '$.result.toolName') IN (
+                  SELECT json_extract(failed.body_json, '$.result.toolName') FROM engine_item failed
+                  WHERE failed.conversation_id = ${conversation}
+                    AND failed.run_id IN (SELECT value FROM json_each(${encodeNames(card)}))
+                    AND failed.kind = 'call' AND json_extract(failed.body_json, '$.state') = 'failed'))`;
         const rows = yield* sql<ItemRow>`
           SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND run_id = ${runId}
             ${options.beforeSeq === undefined ? sql`` : sql`AND opened_seq < ${options.beforeSeq}`}
@@ -612,7 +696,7 @@ export const makeRecords = Effect.gen(function* () {
             ${
               options.only === "outcome"
                 ? sql`AND (kind = 'work' OR (kind = 'call' AND (
-                    json_extract(body_json, '$.result') IS NOT NULL
+                    ${resulted}
                     OR json_extract(body_json, '$.step') = 'look'
                     OR item_id IN (
                       SELECT json_extract(body_json, '$.call') FROM engine_item
@@ -687,13 +771,27 @@ export const makeRecords = Effect.gen(function* () {
             return undefined;
         }
       }),
-    /** The keys the live plane names the conversation's open items by. */
+    /**
+     * The keys the live plane names the conversation's open items by, in the order they changed.
+     * Read kind by kind (`kinds` walks the kinds the conversation holds, an index seek each) by the
+     * items' state: a few open items, never a scan of every item an old conversation holds.
+     */
     openItemKeys: (conversation: ConversationId) =>
       sql<{ readonly item_id: string; readonly live_key: string | null }>`
+        WITH RECURSIVE kinds(kind) AS (
+          SELECT MIN(kind) FROM engine_item WHERE conversation_id = ${conversation}
+          UNION ALL
+          SELECT (
+            SELECT MIN(kind) FROM engine_item
+            WHERE conversation_id = ${conversation} AND kind > kinds.kind
+          ) FROM kinds WHERE kinds.kind IS NOT NULL
+        )
         SELECT i.item_id, json_extract(e.payload_json, '$.key') AS live_key
-        FROM engine_item i
+        FROM kinds
+        CROSS JOIN engine_item i
+          ON i.conversation_id = ${conversation} AND i.kind = kinds.kind AND i.state = 'open'
         JOIN engine_event e ON e.conversation_id = i.conversation_id AND e.seq = i.opened_seq
-        WHERE i.conversation_id = ${conversation} AND i.state = 'open'
+        ORDER BY i.rev, i.rowid
       `,
     /** The stored receipt of a command; none while it is unsettled or was never taken. */
     receipt: (conversation: ConversationId, commandId: string) =>

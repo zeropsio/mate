@@ -72,7 +72,15 @@ import { LiveBus, type LiveFrame } from "../LiveBus.ts";
 import { conversationRowOf } from "../read/conversationRow.ts";
 import { runStatusOf } from "../read/runState.ts";
 import { readConversationView, type ConversationView } from "../read/conversationView.ts";
-import { bytesOf, changesFrames, fitRecords, liveFrames, sliceUtf8 } from "./budget.ts";
+import {
+  bytesOf,
+  changesFrames,
+  fitItem,
+  fitRecords,
+  frameSizer,
+  liveFrames,
+  sliceUtf8,
+} from "./budget.ts";
 import { makeRecords } from "./records.ts";
 import type { MessagePictures } from "../ports.ts";
 
@@ -277,6 +285,8 @@ const INBOX = 1024;
 const PENDING_KEYS = 8;
 /** Keys of items whose boundary was sent: their late deltas are dropped. */
 const SETTLED_KEYS = 512;
+/** Conversations whose last snapshot is kept: at most this many window budgets (256 KiB) held. */
+const SNAPSHOTS_KEPT = 8;
 
 export const makeEngineWire = (options: EngineWireOptions = {}) =>
   Effect.gen(function* () {
@@ -308,8 +318,11 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
     const header = (conversation: ConversationId) =>
       Effect.map(conversations.state(conversation), headerOf);
 
-    /** The window snapshot, within its budget: fewer older groups, then a shorter live tail. */
-    const snapshot = (
+    /**
+     * The window snapshot, within its budget: fewer older groups, then a shorter live tail. Read
+     * once, narrowed in memory (`windowsOf`), each record cut and counted once (`frameSizer`).
+     */
+    const readSnapshot = (
       conversation: ConversationId,
       groupsAsked: number,
       head: number,
@@ -320,10 +333,14 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         const all = yield* records.groups(conversation);
         const top = yield* header(conversation);
         let count = Math.min(Math.max(1, groupsAsked), ENGINE_WIRE_BUDGETS.earlierGroupsMax);
+        const narrow = yield* records.windowsOf(
+          conversation,
+          records.pickGroups(all, count).runIds,
+        );
+        const sizer = frameSizer();
         for (;;) {
           const picked = records.pickGroups(all, count);
-          const window = yield* records.windowOf(conversation, picked.runIds, picked.window);
-          const fitted = fitRecords(window);
+          const window = narrow(picked.runIds, picked.window);
           const frame: Extract<EngineConversationFrame, { readonly type: "snapshot" }> = {
             type: "snapshot",
             protocol: Math.max(...MATE_ENGINE_PROTOCOLS),
@@ -331,27 +348,86 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             origin,
             head,
             header: top,
-            runs: fitted.runs,
-            items: fitted.items,
-            requests: fitted.requests,
+            runs: window.runs.map(sizer.fitRun),
+            items: window.items.map(sizer.fitItem),
+            requests: window.requests.map(sizer.fitRequest),
             window: window.window,
           };
-          if (bytesOf(frame) <= snapshotBytes) return frame;
+          let bytes = sizer.bytesOf(frame);
+          if (bytes <= snapshotBytes) return { frame, bytes, wholes: window.wholes };
           if (count > 1) {
             count -= 1;
             continue;
           }
           // The newest group alone is over: its oldest work goes, its messages and asks stay.
           const items = [...frame.items];
-          while (items.length > 0 && bytesOf({ ...frame, items }) > snapshotBytes) {
+          while (items.length > 0 && bytes > snapshotBytes) {
             const index = items.findIndex(
               (item) => item.kind !== "person" && item.kind !== "request",
             );
             if (index === -1) break;
+            bytes -= sizer.listed(items[index]!, items.length);
             items.splice(index, 1);
           }
-          return { ...frame, items };
+          return { frame: { ...frame, items }, bytes, wholes: window.wholes };
         }
+      });
+
+    type Snapshot = Effect.Success<ReturnType<typeof readSnapshot>>;
+
+    /** Whether each long message a snapshot shows still reads as it shows it. */
+    const wholesStand = (kept: Snapshot) =>
+      Effect.map(records.wholeNotes(kept.wholes), (now) =>
+        kept.frame.items.every((shown) => {
+          const whole = now.get(shown.id);
+          if (whole === undefined || shown.kind !== "note") return true;
+          const { cut: _cut, ...bare } = shown;
+          const again = fitItem({ ...bare, text: whole });
+          return (
+            again.kind === "note" &&
+            again.text === shown.text &&
+            again.cut?.total === shown.cut?.total
+          );
+        }),
+      );
+    /**
+     * The snapshot each of the conversations opened last was sent, by what it was read at: a
+     * reload, a second tab or a reconnect of a conversation nothing changed in since is sent it
+     * again, never read again. A commit moves the head past it; a page's height, kept beside its
+     * call and never committed, moves `measured` past every one, before it is written and after;
+     * a long message's whole, which a step may write with no event, is read again on each hit. A
+     * snapshot over its budget (a window of messages that cannot be cut) is never kept.
+     */
+    const snapshots = new Map<ConversationId, { readonly key: string; readonly read: Snapshot }>();
+    let measured = 0;
+    const snapshot = (
+      conversation: ConversationId,
+      groupsAsked: number,
+      head: number,
+      epoch: number,
+      origin: string,
+    ) =>
+      Effect.gen(function* () {
+        const key = `${origin}:${epoch}:${head}:${groupsAsked}:${measured}`;
+        const kept = snapshots.get(conversation);
+        const top = headerJson(yield* header(conversation));
+        if (
+          kept?.key === key &&
+          headerJson(kept.read.frame.header) === top &&
+          (yield* wholesStand(kept.read))
+        ) {
+          snapshots.delete(conversation);
+          snapshots.set(conversation, kept);
+          return kept.read.frame;
+        }
+        const read = yield* readSnapshot(conversation, groupsAsked, head, epoch, origin);
+        snapshots.delete(conversation);
+        if (read.bytes <= snapshotBytes) snapshots.set(conversation, { key, read });
+        for (const oldest of snapshots.keys()) {
+          if (snapshots.size <= SNAPSHOTS_KEPT) break;
+          snapshots.delete(oldest);
+        }
+        return read.frame;
       });
 
     const subscribe: EngineWireShape["subscribe"] = (input, caller) => {
@@ -775,23 +851,28 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       const refused = protocolRefusal(input.protocol);
       if (refused !== undefined) return Effect.succeed({ _tag: "Unserved", unserved: refused });
       const conversation = input.conversationId;
-      return pageOf(
-        (count) =>
-          Effect.gen(function* () {
-            const picked = records.pickGroups(
-              yield* records.groups(conversation),
-              count,
-              input.beforeOrdinal,
-            );
-            const window = yield* records.windowOf(conversation, picked.runIds, picked.window);
-            return { records: window, window: window.window, more: window.window.earlier };
-          }),
-        Math.min(
-          input.groups ?? ENGINE_WIRE_BUDGETS.windowGroups,
-          ENGINE_WIRE_BUDGETS.earlierGroupsMax,
-        ),
-        ENGINE_WIRE_BUDGETS.earlierBytes,
+      const widest = Math.min(
+        input.groups ?? ENGINE_WIRE_BUDGETS.windowGroups,
+        ENGINE_WIRE_BUDGETS.earlierGroupsMax,
       );
+      // Read once for the widest page; a page over its budget is narrowed, never read again.
+      return Effect.gen(function* () {
+        const all = yield* records.groups(conversation);
+        const narrow = yield* records.windowsOf(
+          conversation,
+          records.pickGroups(all, widest, input.beforeOrdinal).runIds,
+        );
+        return yield* pageOf(
+          (count) =>
+            Effect.sync(() => {
+              const picked = records.pickGroups(all, count, input.beforeOrdinal);
+              const window = narrow(picked.runIds, picked.window);
+              return { records: window, window: window.window, more: window.window.earlier };
+            }),
+          widest,
+          ENGINE_WIRE_BUDGETS.earlierBytes,
+        );
+      }).pipe(Effect.catch(wireError(UNREADABLE)));
     };
 
     const readRun: EngineWireShape["readRun"] = (input) => {
@@ -804,6 +885,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
               ...(input.beforeSeq === undefined ? {} : { beforeSeq: input.beforeSeq }),
               ...(input.afterSeq === undefined ? {} : { afterSeq: input.afterSeq }),
               ...(input.only === undefined ? {} : { only: input.only }),
+              ...(input.tools === undefined ? {} : { tools: input.tools }),
               limit,
             });
             return {
@@ -850,8 +932,18 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
     const recordPageHeight: EngineWireShape["recordPageHeight"] = (input) => {
       const refused = protocolRefusal(input.protocol);
       if (refused !== undefined) return Effect.succeed({ _tag: "Unserved", unserved: refused });
-      return records
-        .recordPageHeight(input.conversationId, input.itemId, input.width, input.height)
+      const remeasured = Effect.sync(() => {
+        measured += 1;
+      });
+      // Before the write and after it, whether it was kept or not: no snapshot read across it
+      // is sent again.
+      return remeasured
+        .pipe(
+          Effect.andThen(
+            records.recordPageHeight(input.conversationId, input.itemId, input.width, input.height),
+          ),
+          Effect.ensuring(remeasured),
+        )
         .pipe(
           Effect.map((kept) =>
             kept ? { _tag: "Recorded" as const } : { _tag: "Missing" as const },
