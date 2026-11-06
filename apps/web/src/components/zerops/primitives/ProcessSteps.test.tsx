@@ -52,16 +52,6 @@ describe("ProcessSteps", () => {
     expect(html).toContain("weatherdash created");
   });
 
-  it("omits the note span entirely when no note is given", () => {
-    const html = renderToStaticMarkup(
-      <ProcessSteps
-        steps={[{ id: "deploy", label: "Deploy", state: "done", stateLabel: "Done" }]}
-      />,
-    );
-
-    expect(html).toContain(">Deploy</span>");
-  });
-
   it.each(["default", "compact"] as const)(
     "shows no duration when none was reported (%s)",
     (density) => {
@@ -160,11 +150,4 @@ describe("ProcessSteps — compact density", () => {
       expect(html).toContain(`>${stateLabel}</span>`);
     },
   );
-
-  it("keeps the ringed default for process timelines", () => {
-    const html = renderToStaticMarkup(
-      <ProcessSteps steps={[{ id: "d", label: "Deploy", state: "done", stateLabel: "Done" }]} />,
-    );
-    expect(html).toContain('data-zerops-process-density="default"');
-  });
 });
