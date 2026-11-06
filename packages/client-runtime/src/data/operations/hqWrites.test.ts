@@ -13,7 +13,7 @@ import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { linkKeys, operationResult, type OperationIntent } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
-import { HqError, type HqStructure } from "../../zerops/hq/client.ts";
+import { HqError, makeHqApi, type HqStructure } from "../../zerops/hq/client.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 import { personaTemplatesScope } from "../families/hqPersonaTemplates.ts";
@@ -99,6 +99,51 @@ const progress = (store: AccountStore) =>
 const record = (store: AccountStore) => store.state().operations.get("r1");
 
 describe("a creation's writes at HQ", () => {
+  it.effect("sends application provenance only for the birth that created it", () =>
+    Effect.gen(function* () {
+      const sent: unknown[] = [];
+      const api = makeHqApi({
+        address: "https://hq.test",
+        orgId: ORG,
+        accessToken: async () => ({ token: "test-access" }),
+        openSocket: () => {
+          throw new Error("no socket in this test");
+        },
+        fetch: async (url, init) => {
+          const path = new URL(url).pathname;
+          if (path === "/api/door")
+            return new Response(
+              JSON.stringify({
+                session: "test-session",
+                expiresAt: "2099-01-01T00:00:00.000Z",
+                userId: "u1",
+              }),
+            );
+          if (path !== "/api/births") throw new Error(`Unexpected HQ path: ${path}`);
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          delete body.accessToken;
+          sent.push(body);
+          return new Response(JSON.stringify({ id: "birth-1", face: "tint:shape" }));
+        },
+      });
+      const birth = {
+        kind: "record-birth",
+        orgId: ORG,
+        appId: "app-1",
+        id: "birth-1",
+        face: "tint:shape",
+      } as const;
+      for (const intent of [{ ...birth, createdApp: true as const }, birth]) {
+        const { operations } = operationsOf(account(), { recordBirth: api.recordBirth });
+        yield* operations.submit(intent);
+      }
+      expect(sent).toEqual([
+        { appId: "app-1", id: "birth-1", face: "tint:shape", createdApp: true },
+        { appId: "app-1", id: "birth-1", face: "tint:shape" },
+      ]);
+    }),
+  );
+
   it.effect("sends a Chief birth's top-level flag through the HQ write", () =>
     Effect.gen(function* () {
       const store = account();

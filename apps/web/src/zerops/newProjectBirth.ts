@@ -259,6 +259,7 @@ export interface NewProjectPorts {
       readonly appId: string;
       readonly id: string;
       readonly face: string;
+      readonly createdApp: true;
       readonly intent: BirthIntent;
       readonly chief?: true;
     },
@@ -519,6 +520,7 @@ export async function runNewProjectBirth(
           appId,
           id,
           face: formatMateFace(ask.face),
+          createdApp: true,
           intent: creationIntent,
           ...(ask.chief === true ? { chief: true as const } : {}),
         })

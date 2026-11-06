@@ -32,6 +32,7 @@ declare module "../model.ts" {
       readonly appId: string;
       readonly id: string;
       readonly face: string;
+      readonly createdApp?: true;
       readonly intent?: Readonly<Record<string, unknown>>;
       readonly chief?: true;
       readonly standUp?: boolean;
