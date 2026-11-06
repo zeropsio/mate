@@ -15,7 +15,10 @@ import type { Known } from "../../zerops/knowledge/index.ts";
 import { resolveSpentLogin } from "../../zerops/logins.ts";
 import { signedOutAgent } from "../../zerops/agentSignIn.ts";
 import { MATE_READ_ACCESS_LINE } from "../../zerops/mateAccess.ts";
-import { agentOwnershipComposerNotice, resolveAgentOwnership } from "../../zerops/agentOwnership.ts";
+import {
+  agentOwnershipComposerNotice,
+  resolveAgentOwnership,
+} from "../../zerops/agentOwnership.ts";
 import {
   classifyZeropsAgentAuth,
   zeropsAgentUnavailableReason,
