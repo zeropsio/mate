@@ -46,6 +46,7 @@ function installCli(root: string): void {
   for (const name of [
     "check-test-sentences.ts",
     "gate-changed.ts",
+    "ci-blame.ts",
     "gate-input-scopes.ts",
     "gate-installed-dependencies.ts",
     "state-smoke-cases.ts",

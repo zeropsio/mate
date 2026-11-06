@@ -1890,7 +1890,6 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
   // Unrelated inventory is recorded, but it is not an affected omission.
   const affectedOmissions = omittedWitnesses.filter(({ reason }) => reason !== "unrelated").length;
   const selectionMs = Number(process.hrtime.bigint() - selectionStarted) / 1_000_000;
-  console.log(`Selection completed in ${(selectionMs / 1000).toFixed(2)}s`);
   const reportOmissions = () => {
     if (affectedOmissions) console.log(`${affectedOmissions} affected witnesses omitted`);
   };
