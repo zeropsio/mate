@@ -5,8 +5,25 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as Effect from "effect/Effect";
+import { afterAll, beforeAll } from "vite-plus/test";
 
 import { resolveGitWorktreePath, resolveWorktreeT3Home } from "./devHome.ts";
+
+let fixtureRoot: string;
+
+beforeAll(() => {
+  fixtureRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-devhome-"));
+  for (const kind of ["file", "checkout", "bare"]) {
+    const root = NodePath.join(fixtureRoot, kind);
+    NodeFS.mkdirSync(NodePath.join(root, "apps", "web", "src"), { recursive: true });
+  }
+  NodeFS.writeFileSync(NodePath.join(fixtureRoot, "file", ".git"), "");
+  NodeFS.mkdirSync(NodePath.join(fixtureRoot, "checkout", ".git"));
+});
+
+afterAll(() => {
+  NodeFS.rmSync(fixtureRoot, { recursive: true, force: true });
+});
 
 const makeRepo = (
   kind:
@@ -18,30 +35,23 @@ const makeRepo = (
     | "bare-repo-worktree"
     | "custom-common-dir-worktree",
 ) =>
-  Effect.acquireRelease(
-    Effect.sync(() => {
-      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-devhome-"));
-      if (kind === "worktree") {
-        NodeFS.writeFileSync(NodePath.join(root, ".git"), "gitdir: /elsewhere/.git/worktrees/x\n");
-      } else if (kind === "bare-repo-worktree") {
-        // `git worktree add` from a bare repo: the common dir is `<name>.git`.
-        NodeFS.writeFileSync(NodePath.join(root, ".git"), "gitdir: /srv/myrepo.git/worktrees/x\n");
-      } else if (kind === "custom-common-dir-worktree") {
-        // $GIT_COMMON_DIR need not be named `.git` at all.
-        NodeFS.writeFileSync(NodePath.join(root, ".git"), "gitdir: /srv/store/worktrees/x\n");
-      } else if (kind === "submodule") {
-        NodeFS.writeFileSync(NodePath.join(root, ".git"), "gitdir: ../.git/modules/sub\n");
-      } else if (kind === "unreadable-git-file") {
-        NodeFS.writeFileSync(NodePath.join(root, ".git"), "not a gitdir pointer\n");
-      } else if (kind === "checkout") {
-        NodeFS.mkdirSync(NodePath.join(root, ".git"));
+  Effect.sync(() => {
+    const fixture = kind === "checkout" || kind === "bare" ? kind : "file";
+    const root = NodePath.join(fixtureRoot, fixture);
+    if (fixture === "file") {
+      const pointer = {
+        worktree: "gitdir: /elsewhere/.git/worktrees/x\n",
+        "bare-repo-worktree": "gitdir: /srv/myrepo.git/worktrees/x\n",
+        "custom-common-dir-worktree": "gitdir: /srv/store/worktrees/x\n",
+        submodule: "gitdir: ../.git/modules/sub\n",
+        "unreadable-git-file": "not a gitdir pointer\n",
+      } as const;
+      if (kind !== "checkout" && kind !== "bare") {
+        NodeFS.writeFileSync(NodePath.join(root, ".git"), pointer[kind]);
       }
-      const nested = NodePath.join(root, "apps", "web", "src");
-      NodeFS.mkdirSync(nested, { recursive: true });
-      return { root, nested };
-    }),
-    ({ root }) => Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true })),
-  );
+    }
+    return { root, nested: NodePath.join(root, "apps", "web", "src") };
+  });
 
 describe("resolveGitWorktreePath", () => {
   it.effect("finds a worktree root from a nested directory", () =>
