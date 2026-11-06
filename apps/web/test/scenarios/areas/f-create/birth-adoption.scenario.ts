@@ -45,6 +45,11 @@ describe("an adopted Mate birth", () => {
           },
         });
         expect(born.status).toBe(201);
+        const registered = yield* s.drivers.core.call("POST", "/api/mates", {
+          session: s.owner,
+          body: { projectId: "Existing", face: "rose:seal" },
+        });
+        expect(registered.status).toBe(201);
         const claimed = yield* s.drivers.core.call("PUT", `/api/births/${id}/attempt`, {
           session: s.owner,
           body: { step: "import" },
