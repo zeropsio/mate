@@ -1,4 +1,4 @@
-import { act, useState, useSyncExternalStore } from "react";
+import { act, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "../../zerops/__fixtures__/testDom";
@@ -60,6 +60,11 @@ describe("useSyncStateOnChange", () => {
       const { createRoot } = await import("react-dom/client");
       const store = makeStore();
       const uncaught: unknown[] = [];
+      const commits: number[] = [];
+      let finish = () => {};
+      const finished = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
       let rendered = { written: -1, value: undefined as unknown };
 
       function Composer() {
@@ -68,23 +73,30 @@ describe("useSyncStateOnChange", () => {
         useSyncStateOnChange(value, setValue, (target as (value: unknown) => unknown)(value), [
           written,
         ]);
+        useLayoutEffect(() => {
+          if (written > 0) commits.push(written);
+          if (written === 80) finish();
+        }, [written]);
         rendered = { written, value };
         return <span>{written}</span>;
       }
 
       const root = createRoot(document.createElement("div") as unknown as Element, {
-        onUncaughtError: (error) => uncaught.push(error),
+        onUncaughtError: (error) => {
+          uncaught.push(error);
+          finish();
+        },
       });
       try {
-        root.render(<Composer />);
-        // The store is subscribed once the mount's passive effects ran.
-        await vi.waitFor(() => expect(store.subscribed()).toBe(true));
+        await act(async () => root.render(<Composer />));
+        expect(store.subscribed()).toBe(true);
         for (let write = 1; write <= 80; write += 1) {
           store.write(write);
           await Promise.resolve();
         }
-        await vi.waitFor(() => expect(rendered).toEqual({ written: 80, value: initial }));
+        await finished;
         expect(uncaught).toEqual([]);
+        expect(commits).toEqual(Array.from({ length: 80 }, (_, index) => index + 1));
         expect(rendered).toEqual({ written: 80, value: initial });
       } finally {
         await act(async () => root.unmount());
@@ -109,12 +121,12 @@ describe("useSyncStateOnChange", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(<Composer />);
-      await vi.waitFor(() => expect(store.subscribed()).toBe(true));
-      store.write(1);
-      await vi.waitFor(() => expect(rendered).toEqual({ written: 1, open: true }));
-      store.write(2);
-      await vi.waitFor(() => expect(rendered).toEqual({ written: 2, open: false }));
+      await act(async () => root.render(<Composer />));
+      expect(store.subscribed()).toBe(true);
+      await act(async () => store.write(1));
+      expect(rendered).toEqual({ written: 1, open: true });
+      await act(async () => store.write(2));
+      expect(rendered).toEqual({ written: 2, open: false });
     } finally {
       await act(async () => root.unmount());
     }
