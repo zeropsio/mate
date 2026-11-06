@@ -412,11 +412,13 @@ it.each([{ args: [] }, { args: ["--list"] }])(
 let repositoryFixture: string;
 let repositoryGraph: ReturnType<typeof buildGateGraph>;
 let smallFixture: string;
+const fixtureEnvironment = { ...process.env };
 const sourceRoot = NodePath.resolve(import.meta.dirname, "..");
 const fixtureGit = (...args: string[]) => {
   const result = NodeChildProcess.spawnSync("git", args, {
     cwd: repositoryFixture,
     encoding: "utf8",
+    env: fixtureEnvironment,
   });
   if (result.status !== 0) throw new Error(result.stderr);
   return result.stdout.trim();
@@ -486,7 +488,11 @@ beforeAll(() => {
   fixtureGit("commit", "-qm", "real repository fixture");
   repositoryGraph = buildGateGraph(repositoryFixture);
 }, 30_000);
-afterAll(() => {
+afterAll(async () => {
+  if (chatEditChild) {
+    chatEditChild.kill("SIGTERM");
+    await chatEditResult?.catch(() => undefined);
+  }
   if (repositoryFixture) NodeFS.rmSync(repositoryFixture, { recursive: true, force: true });
 });
 
@@ -649,22 +655,33 @@ function fixtureStages(withScenarios = false) {
   return selection.steps.map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`);
 }
 
-let chatEditResult: NodeChildProcess.SpawnSyncReturns<string> | undefined;
+let chatEditChild: NodeChildProcess.ChildProcess | undefined;
+let chatEditResult: Promise<{ status: number | null; stdout: string; stderr: string }> | undefined;
 function chatEditCli() {
   if (chatEditResult) return chatEditResult;
   const file = NodePath.join(repositoryFixture, "apps/web/src/components/chat/RunChat.tsx");
   const original = NodeFS.readFileSync(file, "utf8");
-  try {
-    NodeFS.writeFileSync(file, original + "\nexport const gateGraphWitness = true;\n");
-    chatEditResult = NodeChildProcess.spawnSync(
-      process.execPath,
-      ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
-      { cwd: repositoryFixture, encoding: "utf8" },
-    );
-    return chatEditResult;
-  } finally {
+  NodeFS.writeFileSync(file, original + "\nexport const gateGraphWitness = true;\n");
+  const child = NodeChildProcess.spawn(
+    process.execPath,
+    ["scripts/gate-changed.ts", "--base", "HEAD", "--list"],
+    { cwd: repositoryFixture, env: fixtureEnvironment },
+  );
+  chatEditChild = child;
+  let stdout = "";
+  let stderr = "";
+  child.stdout!.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+  child.stderr!.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+  chatEditResult = new Promise<{ status: number | null; stdout: string; stderr: string }>(
+    (resolve, reject) => {
+      child.once("error", reject);
+      child.once("close", (status) => resolve({ status, stdout, stderr }));
+    },
+  ).finally(() => {
+    chatEditChild = undefined;
     NodeFS.writeFileSync(file, original);
-  }
+  });
+  return chatEditResult;
 }
 
 const namedAdmissionResults = new Map<string, NodeChildProcess.SpawnSyncReturns<string>>();
@@ -678,6 +695,18 @@ function namedAdmissionCli(consumer: string) {
   );
   namedAdmissionResults.set(consumer, result);
   return result;
+}
+
+// These real inputs do not change between cases; their candidates share one source snapshot.
+const realConsumerGraphs = new Map<string, ReturnType<typeof buildRelatedFileGraph>>();
+function realConsumerSelection(path: string, candidates: string[]) {
+  const key = JSON.stringify(candidates);
+  let graph = realConsumerGraphs.get(key);
+  if (!graph) {
+    graph = buildRelatedFileGraph(sourceRoot, candidates);
+    realConsumerGraphs.set(key, graph);
+  }
+  return graph.select([path]);
 }
 
 it.each([
@@ -885,32 +914,6 @@ it.each([
   expect(output).toContain("repository invariants:");
 });
 
-it("the CLI and immutable gate graph select identical obligations for a real source edit", () => {
-  const path = "apps/web/src/components/chat/RunChat.tsx";
-  const result = chatEditCli();
-  expect(result.status, result.stderr).toBe(0);
-  const selection = selectGateSteps(repositoryGraph, {
-    comparison: fixtureGit("rev-parse", "HEAD"),
-    existing: [path],
-    paths: [path],
-    inventory: [],
-    smokeFiles: Object.keys(stateOnlySmoke),
-    slots: gateSlotCount(),
-  });
-  expect(
-    result.stdout
-      .split("\n")
-      .filter(
-        (line) =>
-          line &&
-          !/^(?:Scenario files:|Scenario |Related scenario cap:|Deferred scenario |Diff from |\d+ affected witnesses omitted$)/u.test(
-            line,
-          ),
-      ),
-    "ASSERTION: the real CLI uses the same owning selection as the immutable graph",
-  ).toEqual(selection.steps.map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`));
-});
-
 // Decision: no test deleted or weakened; only lane selection changes; main CI runs everything.
 it("a comments-only chat edit schedules no browser scenarios or chat stages", () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-comments-"));
@@ -1045,10 +1048,9 @@ it.each([
     consumer: "apps/server/src/spi/replay/goldens.test.ts",
   },
 ])("execution dependency $path retains its real consumer $consumer", ({ path, consumer }) => {
-  const root = NodePath.resolve(import.meta.dirname, "..");
   const candidates = [consumer, "apps/web/test/scenarios/fakes/c-mate/chat.test.ts"];
   if (path.startsWith("apps/web/test/") || path.startsWith("apps/server/")) {
-    const selected = relatedFiles(root, [path], candidates);
+    const selected = realConsumerSelection(path, candidates);
     expect(selected).toContain(consumer);
     expect(selected).not.toContain("apps/web/test/scenarios/fakes/c-mate/chat.test.ts");
   } else {
@@ -1058,7 +1060,7 @@ it.each([
     expect(result.stdout).toContain(`Scenario ${consumer}; reason: explicit --scenarios`);
     expect(result.stdout).toContain("Scenario files: 1;");
     expect(result.stdout).not.toContain("apps/web/test/scenarios/fakes/c-mate/chat.test.ts");
-    expect(relatedFiles(root, [path], candidates)).toEqual([]);
+    expect(realConsumerSelection(path, candidates)).toEqual([]);
   }
 });
 
@@ -1243,27 +1245,6 @@ it('Decision: no "run everything" fallback; selection stays graph-based.', () =>
   ).toEqual([]);
 });
 
-it("lane scenarios follow their own imports without the bundled app entry", () => {
-  const result = chatEditCli();
-  expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toContain("Scenario files: 0;");
-  expect(result.stdout).not.toContain("edited scenario files:");
-  expect(
-    relatedFiles(
-      repositoryFixture,
-      ["apps/web/test/scenarios/areas/c-mate/dsl.ts"],
-      ["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"],
-    ),
-  ).toEqual(["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"]);
-  expect(
-    relatedFiles(
-      repositoryFixture,
-      ["apps/web/src/main.tsx"],
-      ["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"],
-    ),
-  ).toEqual([]);
-});
-
 it("builders name rendering scenarios without expanding their siblings", () => {
   const named = "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts";
   const result = NodeChildProcess.spawnSync(
@@ -1321,8 +1302,34 @@ it("named rendering scenarios join changed scenarios once and keep their owning 
   }
 });
 
+it.concurrent("the CLI and immutable gate graph select identical obligations for a real source edit", async () => {
+  const path = "apps/web/src/components/chat/RunChat.tsx";
+  const result = await chatEditCli();
+  expect(result.status, result.stderr).toBe(0);
+  const selection = selectGateSteps(repositoryGraph, {
+    comparison: fixtureGit("rev-parse", "HEAD"),
+    existing: [path],
+    paths: [path],
+    inventory: [],
+    smokeFiles: Object.keys(stateOnlySmoke),
+    slots: gateSlotCount(),
+  });
+  expect(
+    result.stdout
+      .split("\n")
+      .filter(
+        (line) =>
+          line &&
+          !/^(?:Scenario files:|Scenario |Related scenario cap:|Deferred scenario |Diff from |\d+ affected witnesses omitted$)/u.test(
+            line,
+          ),
+      ),
+    "ASSERTION: the real CLI uses the same owning selection as the immutable graph",
+  ).toEqual(selection.steps.map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`));
+});
+
 // Exercise the gate CLI with observable check commands, rather than testing its cache helpers.
-it("Decision: no check is skipped for changed code; a passing receipt is reused only for an identical diff hash.", async () => {
+it.concurrent("Decision: no check is skipped for changed code; a passing receipt is reused only for an identical diff hash.", async () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-receipt-"));
   // Git's exec path holds the git binary itself; a launcher such as macOS's /usr/bin/git shim
   // costs more per call than the receipt logic.
@@ -1661,6 +1668,27 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     vi.unstubAllEnvs();
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
+});
+
+it("lane scenarios follow their own imports without the bundled app entry", async () => {
+  const result = await chatEditCli();
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toContain("Scenario files: 0;");
+  expect(result.stdout).not.toContain("edited scenario files:");
+  expect(
+    relatedFiles(
+      repositoryFixture,
+      ["apps/web/test/scenarios/areas/c-mate/dsl.ts"],
+      ["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"],
+    ),
+  ).toEqual(["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"]);
+  expect(
+    relatedFiles(
+      repositoryFixture,
+      ["apps/web/src/main.tsx"],
+      ["apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"],
+    ),
+  ).toEqual([]);
 });
 
 it("BigInt source edits select checks while comments alone select none", () => {
