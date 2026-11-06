@@ -690,14 +690,15 @@ const rows: ReadonlyArray<Row> = [
         const running = yield* value("crew.app.run", {
           handle: "backend",
           host: TEST_HOST,
-          command: 'echo "$CREW_PORT" > ../backend.port; exec sleep 30',
+          command:
+            'mkfifo ../backend.hold; echo "$CREW_PORT" > ../backend.port; read -r _ < ../backend.hold',
           crewPort: 3001,
           env: {},
         });
         yield* waitUntil(() => exists(root, ".crew/backend.port"));
         const stopped = yield* value("crew.app.stop", { handle: "backend", host: TEST_HOST });
         return { running, port: read(root, ".crew/backend.port").trim(), stopped };
-      }),
+      }).pipe(Effect.ensuring(Effect.sync(() => stopSupervised(root)))),
     ),
     expected: () => ({
       running: { state: "running" },
