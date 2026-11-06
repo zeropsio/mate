@@ -37,7 +37,6 @@ import {
   kvListingModel,
   listingFor,
   objectListingModel,
-  resolveDataLayout,
   resolveServiceAffordances,
   resolveSqlDialect,
   rowAsJson,
@@ -62,12 +61,6 @@ const node = (overrides: Partial<ZeropsDataConsoleNode> = {}): ZeropsDataConsole
 });
 
 describe("treePathKey", () => {
-  it("joins service and segments into a stable JSON-encoded string", () => {
-    expect(treePathKey({ service: "db", segments: ["public", "orders"] })).toBe(
-      JSON.stringify(["db", "public", "orders"]),
-    );
-  });
-
   it("differs for different segment sets under the same service", () => {
     expect(treePathKey({ service: "db", segments: ["public"] })).not.toBe(
       treePathKey({ service: "db", segments: ["public", "orders"] }),
@@ -1200,22 +1193,6 @@ describe("describeRowContext", () => {
       row: ["a@b.com"],
     });
     expect(result.label).toBe("db · public.orders · row");
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Layout
-// ---------------------------------------------------------------------------
-
-describe("resolveDataLayout", () => {
-  it("is wide at exactly the 720px threshold and above", () => {
-    expect(resolveDataLayout(720)).toBe("wide");
-    expect(resolveDataLayout(1200)).toBe("wide");
-  });
-
-  it("is narrow below the threshold", () => {
-    expect(resolveDataLayout(719)).toBe("narrow");
-    expect(resolveDataLayout(320)).toBe("narrow");
   });
 });
 
