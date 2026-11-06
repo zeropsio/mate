@@ -150,12 +150,6 @@ describe("changeAskPrompt", () => {
       `A comment on your change #4 "Cache the link previews" on appdev:\n\n${said}`,
     );
   });
-
-  it("names the change the way the forge addresses it, so the Mate's tools find it", () => {
-    const prompt = changeAskPrompt({ ...change, said: "rebase it" });
-    expect(prompt).toContain("#4");
-    expect(prompt).toContain("appdev");
-  });
 });
 
 describe("changeAskLabel", () => {
