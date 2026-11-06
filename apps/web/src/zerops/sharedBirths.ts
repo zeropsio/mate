@@ -95,17 +95,23 @@ export function sharedBirthPresentation(birth: SharedBirth): {
           : next.kind === "import" && birth.projectId !== null
             ? birth.placement === "unplaced"
               ? "Continue will attach the Mate and submit the import."
-              : birth.placement === "attached"
-                ? "Continue will submit the import."
-                : null
+              : birth.placement === "plain"
+                ? "Continue will register the Mate and submit the import."
+                : birth.placement === "attached"
+                  ? "Continue will submit the import."
+                  : null
             : next.kind === "record-import"
               ? birth.placement === "unplaced"
                 ? "Continue will attach the Mate and record the accepted import."
-                : birth.placement === "attached"
-                  ? "Continue will record the accepted import."
-                  : null
+                : birth.placement === "plain"
+                  ? "Continue will register the Mate and record the accepted import."
+                  : birth.placement === "attached"
+                    ? "Continue will record the accepted import."
+                    : null
               : next.kind === "wait" && next.attach
-                ? "Continue will attach the Mate."
+                ? birth.placement === "plain"
+                  ? "Continue will register the Mate."
+                  : "Continue will attach the Mate."
                 : null;
   return {
     line: [
@@ -117,9 +123,11 @@ export function sharedBirthPresentation(birth: SharedBirth): {
         ? "The person who started this setup can continue if they can add Mates and attach the project."
         : birth.continuePermission === "attach"
           ? "Someone who can add Mates and attach this project can continue."
-          : birth.continuePermission === "add-mate"
-            ? "Someone who can add Mates to this application can continue."
-            : null,
+          : birth.continuePermission === "record"
+            ? "Someone who can add Mates and administer this project can continue."
+            : birth.continuePermission === "add-mate"
+              ? "Someone who can add Mates to this application can continue."
+              : null,
     ]
       .filter((part) => part !== null)
       .join(" · "),

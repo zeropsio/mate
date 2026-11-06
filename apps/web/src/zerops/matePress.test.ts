@@ -1767,6 +1767,32 @@ describe("pressesInFlight", () => {
 // Mate's conversation once it connected, as an Add's press does — pressed anywhere else it did not.
 
 describe("pressRegistration — an automated Mate's attach", () => {
+  it("registers an adopted Chief after its Mate record and before the import can start", async () => {
+    const sent: string[] = [];
+    const run = vi.fn(async (intent: { kind: string }) => {
+      sent.push(intent.kind);
+      if (intent.kind === "register-birth-chief") throw new Error("Chief refused");
+      return {} as never;
+    });
+    const registration = {
+      hq: { projectId: "hq", address: "https://hq.example" },
+      kind: "mate-record" as const,
+      record: { face: "rose:seal" },
+      standUp: true,
+      chiefBirthId: "birth",
+    };
+    const register = pressRegistration(
+      {
+        client: {} as never,
+        operations: { run: run as never, untilEnvironment: vi.fn() as never },
+        organizationId: "org",
+      },
+      registration,
+    );
+    await expect(register("nova")).rejects.toThrow("Chief refused");
+    expect(sent).toEqual(["create-mate-record", "register-birth-chief"]);
+  });
+
   it("registers a Chief after its attach and before the import can start", async () => {
     const sent: string[] = [];
     const run = vi.fn(async (intent: { kind: string }) => {
