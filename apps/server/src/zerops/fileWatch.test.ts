@@ -1,12 +1,15 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeEvents from "node:events";
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
+import { afterAll, beforeAll } from "vite-plus/test";
 
 import { type FileWatch, type WatchDirectory, watchFiles } from "./fileWatch.ts";
 
@@ -38,11 +41,17 @@ const wakes = (watch: FileWatch) =>
   });
 
 it.layer(NodeServices.layer)("fileWatch", (it) => {
+  let dir: string;
+  beforeAll(() => {
+    dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-file-watch-"));
+  });
+  afterAll(() => {
+    NodeFS.rmSync(dir, { recursive: true, force: true });
+  });
+
   it.effect("a file's change wakes its watch, a change of another file beside it does not", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const dir = yield* fs.makeTempDirectoryScoped();
         const fired = firedWatch();
         const watch = yield* watchFiles([`${dir}/status.json`], fired.watch);
 
@@ -60,7 +69,6 @@ it.layer(NodeServices.layer)("fileWatch", (it) => {
     Effect.scoped(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const dir = yield* fs.makeTempDirectoryScoped();
         const fired = firedWatch();
         const watch = yield* watchFiles([`${dir}/.agent-browser/default.stream`], fired.watch);
         assert.deepStrictEqual([...fired.live.keys()], [dir]);
@@ -80,8 +88,6 @@ it.layer(NodeServices.layer)("fileWatch", (it) => {
   it.effect("a directory made while its parent's watch arms moves the watch into it", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const dir = yield* fs.makeTempDirectoryScoped();
         // `a` appears after the watch looked for it and before its parent's watch armed.
         const fired = firedWatch((armed) => {
           if (armed === dir) NodeFS.mkdirSync(`${dir}/a`, { recursive: true });
@@ -97,7 +103,6 @@ it.layer(NodeServices.layer)("fileWatch", (it) => {
     Effect.scoped(
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const dir = yield* fs.makeTempDirectoryScoped();
         yield* fs.makeDirectory(`${dir}/mac`);
         const fired = firedWatch();
         const watch = yield* watchFiles([`${dir}/mac/view.json`], fired.watch);
