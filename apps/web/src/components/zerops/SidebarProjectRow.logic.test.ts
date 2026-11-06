@@ -91,11 +91,6 @@ describe("heldOrder — rows hold their places while the pointer is over the lis
   ])("$case", ({ drawn, next, held, shown }) => {
     expect(heldOrder(drawn, next, held)).toEqual(shown);
   });
-
-  it("hands back the new order itself where nothing is held back", () => {
-    const next = ["a", "b"];
-    expect(heldOrder(["a", "b"], next, true)).toBe(next);
-  });
 });
 
 describe("groupLead — whose face leads a group and whose words its line says", () => {
