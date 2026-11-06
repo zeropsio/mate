@@ -95,9 +95,11 @@ describe("withStreamFrom", () => {
    * same (trlog.store.ts's `_openLogStream$`: `from: data.items.at(-1).id`).
    */
   it("sets from to the given line id, replacing any existing from", () => {
-    const { ws } = buildLogUrls(access, { ...query, fromIso: "2026-09-02T09:59:50.000Z" });
-    const updated = withStreamFrom(ws, "line-42");
-    expect(new URL(updated).searchParams.get("from")).toBe("line-42");
+    const { ws } = buildLogUrls(access, query);
+    const previous = new URL(ws);
+    previous.searchParams.set("from", "line-old");
+    const updated = withStreamFrom(previous.toString(), "line-42");
+    expect(new URL(updated).searchParams.getAll("from")).toEqual(["line-42"]);
   });
 
   it("adds from when the ws url did not carry one yet", () => {
