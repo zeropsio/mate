@@ -223,6 +223,59 @@ describe("shared birth progress", () => {
     registry.dispose();
   });
 
+  it("an adopted plain project can continue a refused import only where its Mate can be registered", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], projects: [{ id: "p1", name: "Existing" }], services: [] }).forEach(
+      store.dispatch,
+    );
+    creationFinished(store);
+    membershipInputs("OWNER").forEach(store.dispatch);
+    const adopted = {
+      ...initial.birth,
+      projectId: "p1",
+      adopted: true,
+      attempts: {
+        import: {
+          ...attempt,
+          refused: { at: "2026-11-05T10:00:01.000Z", reason: "Quota reached." },
+        },
+      },
+    };
+    const plain = { projectId: "p1", name: "Existing", kind: "plain", mate: null };
+    const publish = (own: boolean) =>
+      seedHqNavigation(store, ORG, {
+        structure: {
+          apps: [
+            { id: "app", name: "Existing", projects: own ? [plain] : [], births: [adopted] },
+            ...(!own ? [{ id: "other", name: "Other", projects: [plain], births: [] }] : []),
+          ],
+          ungrouped: [],
+        },
+      });
+    publish(true);
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read).open).toMatchObject([
+      {
+        placement: "plain",
+        progress: { next: { kind: "import" }, reason: "Quota reached." },
+        canContinue: true,
+        canDelete: true,
+      },
+    ]);
+    membershipInputs("READ_ONLY", true, 2).forEach(store.dispatch);
+    expect(registry.get(read).open).toMatchObject([
+      { placement: "plain", canContinue: false, continuePermission: "record" },
+    ]);
+    membershipInputs("OWNER", false, 3).forEach(store.dispatch);
+    publish(false);
+    expect(registry.get(read).open).toMatchObject([{ placement: "unknown", canContinue: false }]);
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
   it("a project owner can delete a bound birth without permission to create projects", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);

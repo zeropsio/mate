@@ -105,6 +105,21 @@ function clientMetadata() {
 /** The open account's HQ API per organisation, for Mate tickets; none while no account is open. */
 let mateTicketHq: (orgId: string) => Pick<HqApi, "mateTicket"> | null = () => null;
 
+/**
+ * The web's one Mate ticket issuer: every connection attempt's, and the account door's ticket
+ * asked for ahead (`primeMateTicket`).
+ */
+const mateTickets = mateTicketIssuer((orgId) => mateTicketHq(orgId));
+
+/**
+ * Asks HQ for the Mate's next connection ticket now, beside the descriptor read the door makes
+ * before that connection: the ticket and the descriptor take one round trip between them, not two
+ * in a row. A ticket no attempt presents ends unused (one use, 60 s).
+ */
+export function primeMateTicket(mate: { readonly orgId: string; readonly projectId: string }) {
+  mateTickets.prime(mate);
+}
+
 /** Names where Mate tickets are asked for (`zerops/mateTickets.ts`), until the returned reset. */
 export function setMateTicketHq(hqOf: typeof mateTicketHq): () => void {
   mateTicketHq = hqOf;
@@ -147,10 +162,7 @@ const capabilitiesLayer = Layer.effectContext(
       Context.add(RelayDeviceIdentity, identity),
       Context.add(ClientPresentation, presentation),
       Context.add(SshEnvironmentGateway, ssh),
-      Context.add(
-        MateTicketIssuer,
-        mateTicketIssuer((orgId) => mateTicketHq(orgId)),
-      ),
+      Context.add(MateTicketIssuer, mateTickets),
       Context.add(MatePresence, {
         // The Mate on screen is the one the address names.
         onScreen: (environmentId) =>

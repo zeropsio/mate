@@ -1130,8 +1130,22 @@ export function deriveConversationStructure(given: {
     const { limit, limitOnly, answerIsRefusal } = refusal;
 
     const firstRun = cardRuns[0];
+    // When an engine card's runs began, by their records: a stretch nobody wrote to start begins
+    // where its run did, never at its first held line — a closed card holds only the lines its
+    // result draws, often a later one first.
+    const runStarts = typed
+      ? cardRuns.flatMap((each) => (each.startedAt === null ? [] : [each.startedAt]))
+      : [];
+    /** The start of the latest of the card's runs to begin by `at`, else of its first. */
+    const runStartBy = (at: string | undefined): string | null => {
+      const by = at === undefined ? Number.POSITIVE_INFINITY : (parseMs(at) ?? Infinity);
+      const began = runStarts.filter((start) => start <= by);
+      const start = began.length > 0 ? Math.max(...began) : runStarts[0];
+      return start === undefined ? null : new Date(start).toISOString();
+    };
     const turnStart =
       span.opener?.createdAt ??
+      (runStarts.length > 0 ? new Date(Math.min(...runStarts)).toISOString() : null) ??
       turnEntries[0]?.createdAt ??
       (live ? input.activeTurnStartedAt : null) ??
       // A card the page holds nothing of yet began where its first run did.
@@ -1188,6 +1202,11 @@ export function deriveConversationStructure(given: {
           : null;
       const startedAt =
         draft.lead?.createdAt ??
+        (typed && draft.lead === null && (position === 0 || stretchEntries.length > 0)
+          ? position === 0
+            ? turnStart
+            : runStartBy(stretchEntries[0]?.createdAt)
+          : null) ??
         stretchEntries[0]?.createdAt ??
         wokenAt ??
         turnStart ??

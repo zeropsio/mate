@@ -261,8 +261,8 @@ export interface HqAttach {
 }
 
 /**
- * A Mate's birth intent at HQ: where it goes and with which face, recorded before its Zerops project
- * exists, then bound by project id, until its attach closes it.
+ * A Mate's birth intent at HQ: where it goes and with which face, bound to its Zerops project once
+ * created or adopted, until its Mate links.
  */
 export interface HqBirth {
   readonly projectId?: string | null;
@@ -413,7 +413,7 @@ export interface HqApi {
    * `withCode`: its code, changes and history too, refused while a Mate is on it (`app_has_mate`).
    */
   readonly deleteApp: (appId: string, options?: { readonly withCode: boolean }) => Promise<void>;
-  /** A Mate set up on a project of its own, in no application (`POST /api/mates`). */
+  /** Record a Mate on an unheld or plain project (`POST /api/mates`). */
   readonly createMate: (mate: { readonly projectId: string } & HqMateSetUp) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**

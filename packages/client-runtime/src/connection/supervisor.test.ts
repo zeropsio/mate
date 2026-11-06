@@ -769,6 +769,66 @@ describe("EnvironmentSupervisor", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect.each([
+    { name: "shown as it wakes", hiddenAtDrop: false, shown: "application-active" },
+    { name: "hidden as it wakes, then seen", hiddenAtDrop: true, shown: "application-visible" },
+  ] as const)(
+    "a Mate whose socket dropped while the tab slept reconnects as soon as the tab is seen: $name",
+    ({ hiddenAtDrop, shown }) =>
+      Effect.gen(function* () {
+        let hidden = hiddenAtDrop;
+        const harness = yield* makeHarness();
+        const supervisor = yield* EnvironmentSupervisor.make(MATE_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(
+          Effect.provide(harness.dependencies),
+          Effect.provideService(EnvironmentSupervisor.MatePresence, {
+            onScreen: () => true,
+            hidden: () => hidden,
+          }),
+        );
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        // The tab slept; its socket's close is the first thing it hears as it wakes.
+        yield* harness.closeLatestSession();
+        yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+        if (hiddenAtDrop) {
+          yield* TestClock.adjust(600_000);
+          expect(yield* Ref.get(harness.sessionCount)).toBe(1);
+        }
+        hidden = false;
+        yield* harness.wake(shown);
+        yield* awaitState(
+          supervisor.state,
+          (state) => state.phase === "connected" && state.generation === 2,
+        );
+        expect(yield* Ref.get(harness.sessionCount)).toBe(2);
+      }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a hidden tab's Mate names no next try while it waits to be seen", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ prepare: () => Effect.fail(transient()) });
+      const supervisor = yield* EnvironmentSupervisor.make(MATE_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(
+        Effect.provide(harness.dependencies),
+        Effect.provideService(EnvironmentSupervisor.MatePresence, {
+          onScreen: () => true,
+          hidden: () => true,
+        }),
+      );
+      yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+      expect((yield* SubscriptionRef.get(supervisor.state)).retryAt).toBe(2_000);
+      yield* TestClock.adjust(600_000);
+      // Its first rung has passed: no try is timed until the tab is seen again.
+      yield* eventuallyState(
+        supervisor.state,
+        (state) => state.phase === "backoff" && state.retryAt === null,
+      );
+      expect(yield* Ref.get(harness.prepareCount)).toBe(1);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("keeps the latest failure visible throughout the next connection attempt", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({

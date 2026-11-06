@@ -125,6 +125,8 @@ jobs:
   chat_scenarios:
     name: Test Web Scenarios (${{ matrix.name }})
     needs: chat_bundle
+    # The implicit success() also requires the skipped receipt of pull requests and diagnostics.
+    if: ${{ !cancelled() && needs.chat_bundle.result == 'success' }}
     runs-on: ubuntu-latest
     # Derived from the execution budget at the top of ci.yml.
     timeout-minutes: 14
