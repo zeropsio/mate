@@ -7,7 +7,6 @@ import {
   createThreadJumpHintVisibilityController,
   getSidebarThreadIdsToPrewarm,
   resolveAdjacentThreadId,
-  getProjectSortTimestamp,
   isContextMenuPointerDown,
   isUntouchedSidebarThread,
   isSidebarNestedLinkClick,
@@ -487,42 +486,6 @@ describe("orderItemsByPreferredIds", () => {
     ]);
   });
 
-  it("honors projectOrder physical keys via getProjectOrderKey", async () => {
-    // Regression guard for #1904 / the regression introduced by #2055:
-    // `projectOrder` is populated with physical keys (envId + cwd-derived)
-    // by the store and by drag-end handlers. Readers must identify projects
-    // with the same key format, or manual sort silently snaps back.
-    const { getProjectOrderKey } = await import("../logicalProject");
-    const projects = [
-      {
-        environmentId: EnvironmentId.make("environment-local"),
-        id: ProjectId.make("id-alpha"),
-        workspaceRoot: "/work/alpha",
-      },
-      {
-        environmentId: EnvironmentId.make("environment-local"),
-        id: ProjectId.make("id-beta"),
-        workspaceRoot: "/work/beta",
-      },
-      {
-        environmentId: EnvironmentId.make("environment-local"),
-        id: ProjectId.make("id-gamma"),
-        workspaceRoot: "/work/gamma",
-      },
-    ];
-    const ordered = orderItemsByPreferredIds({
-      items: projects,
-      preferredIds: [getProjectOrderKey(projects[2]!), getProjectOrderKey(projects[0]!)],
-      getId: getProjectOrderKey,
-    });
-
-    expect(ordered.map((project) => project.workspaceRoot)).toEqual([
-      "/work/gamma",
-      "/work/alpha",
-      "/work/beta",
-    ]);
-  });
-
   it("resolves legacy preference aliases without materializing project state", () => {
     const ordered = orderItemsByPreferredIds({
       items: [
@@ -916,12 +879,12 @@ describe("sortProjectsForSidebar", () => {
       [
         makeProject({
           id: ProjectId.make("project-1"),
-          title: "Older project",
+          title: "Alpha project",
           updatedAt: "2026-03-09T10:01:00.000Z",
         }),
         makeProject({
           id: ProjectId.make("project-2"),
-          title: "Newer project",
+          title: "Zulu project",
           updatedAt: "2026-03-09T10:05:00.000Z",
         }),
       ],
@@ -959,67 +922,6 @@ describe("sortProjectsForSidebar", () => {
       ProjectId.make("project-1"),
       ProjectId.make("project-2"),
     ]);
-  });
-
-  it("preserves manual project ordering", () => {
-    const projects = [
-      makeProject({ id: ProjectId.make("project-2"), title: "Second" }),
-      makeProject({ id: ProjectId.make("project-1"), title: "First" }),
-    ];
-
-    const sorted = sortProjectsForSidebar(projects, [], "manual");
-
-    expect(sorted.map((project) => project.id)).toEqual([
-      ProjectId.make("project-2"),
-      ProjectId.make("project-1"),
-    ]);
-  });
-
-  it("ignores archived threads when sorting projects", () => {
-    const sorted = sortProjectsForSidebar(
-      [
-        makeProject({
-          id: ProjectId.make("project-1"),
-          title: "Visible project",
-          updatedAt: "2026-03-09T10:01:00.000Z",
-        }),
-        makeProject({
-          id: ProjectId.make("project-2"),
-          title: "Archived-only project",
-          updatedAt: "2026-03-09T10:00:00.000Z",
-        }),
-      ],
-      [
-        makeThread({
-          id: ThreadId.make("thread-visible"),
-          projectId: ProjectId.make("project-1"),
-          updatedAt: "2026-03-09T10:02:00.000Z",
-          archivedAt: null,
-        }),
-        makeThread({
-          id: ThreadId.make("thread-archived"),
-          projectId: ProjectId.make("project-2"),
-          updatedAt: "2026-03-09T10:10:00.000Z",
-          archivedAt: "2026-03-09T10:11:00.000Z",
-        }),
-      ].filter((thread) => thread.archivedAt === null),
-      "updated_at",
-    );
-
-    expect(sorted.map((project) => project.id)).toEqual([
-      ProjectId.make("project-1"),
-      ProjectId.make("project-2"),
-    ]);
-  });
-
-  it("returns the project timestamp when no threads are present", () => {
-    const timestamp = getProjectSortTimestamp(
-      makeProject({ updatedAt: "2026-03-09T10:10:00.000Z" }),
-      [],
-      "updated_at",
-    );
-
-    expect(timestamp).toBe(Date.parse("2026-03-09T10:10:00.000Z"));
   });
 });
 

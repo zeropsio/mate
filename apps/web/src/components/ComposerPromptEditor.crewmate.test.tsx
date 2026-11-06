@@ -83,12 +83,6 @@ afterEach(async () => {
 });
 
 describe("a crewmate in the composer", () => {
-  it("is drawn as the crewmate the composer offers, its text still @handle", async () => {
-    await renderPrompt("Ask @backend first", [BACKEND]);
-    expect(nodeTypes()).toEqual(["text", "composer-crewmate", "text"]);
-    expect(editorRef.current?.readSnapshot().value).toBe("Ask @backend first");
-  });
-
   it("is a file's mention where the composer offers no crewmates", async () => {
     await renderPrompt("Ask @backend first");
     expect(nodeTypes()).toEqual(["text", "composer-mention", "text"]);
@@ -96,6 +90,8 @@ describe("a crewmate in the composer", () => {
 
   it("draws its chip with its face in its tint and its @handle", async () => {
     await renderPrompt("Ask @backend first", [BACKEND]);
+    expect(nodeTypes()).toEqual(["text", "composer-crewmate", "text"]);
+    expect(editorRef.current?.readSnapshot().value).toBe("Ask @backend first");
     const chip = lexicalEditor.getEditorState().read(() => {
       const paragraph = $getRoot().getFirstChildOrThrow();
       if (!$isElementNode(paragraph)) throw new Error("Expected a composer paragraph");

@@ -89,17 +89,6 @@ describe("ProjectCloneToastCoordinator", () => {
     expect([...new Set(reads.followed)]).toEqual(["open-mate"]);
   });
 
-  it("holds the Mate a clone runs on, so a park does not take its toast", () => {
-    const unbind = bindHolder();
-    reads.clones.set("open-mate", [clone("running")]);
-    act(() => {
-      mounted.push(create(<ProjectCloneToastCoordinator />));
-    });
-
-    expect(reads.log).toEqual(["hold open-mate"]);
-    unbind();
-  });
-
   it("keeps holding a running clone's Mate while its link comes back", () => {
     const unbind = bindHolder();
     reads.clones.set("open-mate", [clone("running")]);
@@ -108,6 +97,7 @@ describe("ProjectCloneToastCoordinator", () => {
       renderer = create(<ProjectCloneToastCoordinator />);
     });
     mounted.push(renderer);
+    expect(reads.log).toEqual(["hold open-mate"]);
     act(() => {
       reads.openPhase = "backoff";
       renderer.update(<ProjectCloneToastCoordinator />);

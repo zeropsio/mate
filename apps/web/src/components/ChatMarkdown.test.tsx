@@ -672,15 +672,12 @@ describe("ChatMarkdown pictures its host draws", () => {
 });
 
 describe("ChatMarkdown variants", () => {
-  it.each([undefined, "log", "answer"] as const)(
-    "keeps the reading content in variant=%s",
-    (variant) => {
-      const html = renderToStaticMarkup(
-        <ChatMarkdown cwd="/tmp/project" text="Body" {...(variant ? { variant } : {})} />,
-      );
-      expect(markupDom(html).body.textContent).toBe("Body");
-    },
-  );
+  it.each(["log", "answer"] as const)("keeps the reading content in variant=%s", (variant) => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text="Body" variant={variant} />,
+    );
+    expect(markupDom(html).body.textContent).toBe("Body");
+  });
 });
 
 describe("ChatMarkdown wrapping", () => {

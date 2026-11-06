@@ -78,9 +78,11 @@ describe("Mod+Shift+T", () => {
     const store = useRightPanelStore.getState();
     store.open(refA, "diff");
     store.open(refA, "git");
+    store.closeSurface(refA, "diff");
     store.closeSurface(refA, "git");
     expect((await pressReopen()).defaultPrevented).toBe(true);
     expect(panel(refA).activeSurfaceId).toBe("git");
+    expect(panel(refA).surfaces.map((surface) => surface.id)).not.toContain("diff");
     expect(navigate).not.toHaveBeenCalled();
   });
 
