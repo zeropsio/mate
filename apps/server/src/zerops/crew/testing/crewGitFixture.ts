@@ -67,16 +67,18 @@ export const read = (root: string, path: string): string =>
 export const exists = (root: string, path: string): boolean =>
   NodeFS.existsSync(NodePath.join(root, path));
 
-/**
- * A repository on `main` with one commit (`README.md`), as `/var/www` on a dev service; gone when
- * its test ends.
- */
-export const makeServiceRepository = (): string => {
-  const root = NodeFS.realpathSync(testTempDir("t3-crew-service-"));
+/** Seed an empty directory as the service's repository on `main`. */
+export const initServiceRepository = (root: string): void => {
   git(root, ["init", "-q", "-b", "main"]);
   write(root, "README.md", "service\n");
   git(root, ["add", "-A"]);
   git(root, ["commit", "-q", "-m", "initial"]);
+};
+
+/** A service repository, removed when its test ends. */
+export const makeServiceRepository = (): string => {
+  const root = NodeFS.realpathSync(testTempDir("t3-crew-service-"));
+  initServiceRepository(root);
   return root;
 };
 
