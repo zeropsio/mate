@@ -94,6 +94,7 @@ describe("buildZcpServiceImportYaml", () => {
   });
 
   it("emits an empty agent list as exactly the no-agent document", () => {
+    // An empty ZCP_AGENTS would fail the container closed to zero agents rather than offer all five.
     expect(
       buildZcpServiceImportYaml({
         serviceName: "zcp",
@@ -101,21 +102,6 @@ describe("buildZcpServiceImportYaml", () => {
         agents: [],
       }),
     ).toBe(GOLDEN);
-  });
-
-  it('never emits ZCP_AGENTS at all when the list is absent or empty, because an emitted empty string would fail the container closed to zero agents instead of the intended "offer all five"', () => {
-    const withoutAgentsField = buildZcpServiceImportYaml({
-      serviceName: "zcp",
-      vscodePassword: "PASSWORD0PASSWORD",
-    });
-    const withEmptyAgentsList = buildZcpServiceImportYaml({
-      serviceName: "zcp",
-      vscodePassword: "PASSWORD0PASSWORD",
-      agents: [],
-    });
-
-    expect(withoutAgentsField).not.toContain("ZCP_AGENTS");
-    expect(withEmptyAgentsList).not.toContain("ZCP_AGENTS");
   });
 
   it("emits ZCP_AGENTS as a comma-separated list in canonical order, the presentation order the container preserves", () => {
