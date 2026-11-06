@@ -12,6 +12,7 @@ import {
 } from "./signal.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
+const plainRunnerEnv = { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1", TERM: "dumb" };
 
 /** One throwaway Vitest project holding `source`, run with Signal's real reporters. */
 function withProject(
@@ -50,7 +51,8 @@ function withProject(
         {
           cwd: directory,
           encoding: "utf8",
-          env: { ...process.env, MATE_SIGNAL_REPORT: output },
+          env: { ...plainRunnerEnv, MATE_SIGNAL_REPORT: output },
+          stdio: "pipe",
           timeout: 30_000,
         },
       );
@@ -136,11 +138,12 @@ it("Decision: the shard emits each original named failure before later cases, wi
           cwd: directory,
           encoding: "utf8",
           env: {
-            ...process.env,
+            ...plainRunnerEnv,
             PATH: `${directory}${NodePath.delimiter}${process.env.PATH ?? ""}`,
             MATE_SIGNAL_DIRECTORY: directory,
             SIGNAL_TEST_TOKEN: "unlabelled-secret-789",
           },
+          stdio: "pipe",
         },
       );
       const output = result.stdout + result.stderr;
