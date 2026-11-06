@@ -1001,6 +1001,46 @@ function selectionHash(root: string): string {
   return hash.digest("hex");
 }
 
+/** A scenario receipt is reusable only when its HQ source revision is known and unchanged. */
+function scenarioHqReceiptInput(root: string, unknownRevision: string): unknown[] {
+  const command = process.env.MATE_HQ_TEST_COMMAND ?? null;
+  const pinPath = NodePath.join(root, ".mate-hq-ref");
+  const pin = NodeFS.existsSync(pinPath) ? NodeFS.readFileSync(pinPath, "utf8").trim() : null;
+  const input = [command, pin, process.env.HQ_BUILD_COMMIT ?? null];
+  if (command === null) return input;
+
+  // Only the standard launcher identifies a checkout without interpreting arbitrary shell code.
+  const launcher = /^node ([A-Za-z0-9_./-]+)$/u.exec(command)?.[1];
+  if (
+    !launcher ||
+    !NodePath.isAbsolute(launcher) ||
+    !launcher.endsWith("/conformance/scripts/test-hq.ts") ||
+    !NodeFS.existsSync(launcher)
+  )
+    return [...input, unknownRevision];
+  const hqRoot = NodePath.resolve(NodePath.dirname(launcher), "../..");
+  const git = (...args: string[]) => {
+    const result = NodeChildProcess.spawnSync("git", ["-C", hqRoot, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return result.status === 0 ? result.stdout.trim() : undefined;
+  };
+  const top = git("rev-parse", "--show-toplevel");
+  const revision = git("rev-parse", "--verify", "HEAD^{commit}");
+  const dirty = git("status", "--porcelain", "--untracked-files=normal");
+  if (
+    !top ||
+    NodeFS.realpathSync(top) !== NodeFS.realpathSync(hqRoot) ||
+    !revision ||
+    !/^[0-9a-f]{40}$/u.test(revision) ||
+    dirty !== "" ||
+    NodeFS.existsSync(NodePath.join(hqRoot, "COMMIT"))
+  )
+    return [...input, unknownRevision];
+  return [...input, revision];
+}
+
 /** Each stage proves its own inputs, rather than invalidating every success on a lane edit. */
 function stageHashes(
   root: string,
@@ -1010,8 +1050,10 @@ function stageHashes(
   stages: GateStage[],
   graph: ReturnType<typeof buildGateGraph>,
   selection: string,
+  unknownHqRevision: string,
 ): Record<string, string> {
   const inputs = graph.related ?? buildRelatedFileGraph(root, []);
+  let hqInput: unknown[] | undefined;
   // The scanners walk the filesystem, including ignored source files that Git's inventory omits.
   const scanned = (roots: ReadonlyArray<string>) => {
     const files: string[] = [];
@@ -1150,15 +1192,23 @@ function stageHashes(
           ...stage,
           args: stage.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
         };
-        // A receipt from the in-process Core cannot prove scenarios against an external HQ.
-        const hqCommand = stage.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts"))
-          ? (process.env.MATE_HQ_TEST_COMMAND ?? null)
+        // A launcher path alone cannot prove which revision its HQ binary was built from.
+        const scenarioHqInput = stage.args.some((arg) =>
+          arg.endsWith("/scenarios/vitest.config.ts"),
+        )
+          ? (hqInput ??= scenarioHqReceiptInput(root, unknownHqRevision))
           : null;
         return [
           stage.name,
           NodeCrypto.createHash("sha256")
             .update(
-              JSON.stringify([selection, command, digest(files, baseline), trailers, hqCommand]),
+              JSON.stringify([
+                selection,
+                command,
+                digest(files, baseline),
+                trailers,
+                scenarioHqInput,
+              ]),
             )
             .digest("hex"),
         ];
@@ -1830,6 +1880,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     }));
     const full = args.includes("--full") || args.includes("--force");
     const shared = await sharedStageCache(root, baseTree, lane.inventory, full);
+    const unknownHqRevision = NodeCrypto.randomUUID();
     const fingerprintsFor = (snapshot: typeof lane) => {
       const fingerprints = stageHashes(
         root,
@@ -1839,6 +1890,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         steps,
         graph,
         selection,
+        unknownHqRevision,
       );
       if (shared)
         for (const step of steps) {
