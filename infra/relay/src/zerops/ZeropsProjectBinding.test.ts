@@ -38,7 +38,7 @@ const boundRoute = (url: string): Response => {
         { name: "mate", subdomainAccess: true, ports: [{ port: 8080, scheme: "http" }] },
         { name: "web", subdomainAccess: true, ports: [{ port: 80, scheme: "http" }] },
         { name: "cache", subdomainAccess: true, ports: [{ port: 6379, scheme: "tcp" }] },
-        { name: "db", subdomainAccess: false, ports: [{ port: 5432, scheme: "postgresql" }] },
+        { name: "db", subdomainAccess: false, ports: [{ port: 80, scheme: "http" }] },
       ],
     });
   }
@@ -75,7 +75,7 @@ describe("ZeropsProjectBinding.verify", () => {
 
   it.effect("ignores services with subdomainAccess disabled", () =>
     Effect.gen(function* () {
-      const error = yield* Effect.flip(
+      const result = yield* Effect.result(
         ZeropsProjectBinding.verify({
           apiBaseUrl: "https://api.example.test",
           token: "user-token",
@@ -84,7 +84,10 @@ describe("ZeropsProjectBinding.verify", () => {
           endpointOrigin: "https://db-abcd.prg1.zerops.app",
         }),
       );
-      expect(error._tag).toBe("ZeropsEndpointNotBoundError");
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { _tag: "ZeropsEndpointNotBoundError" },
+      });
     }).pipe(Effect.provide(stub(boundRoute))),
   );
 
