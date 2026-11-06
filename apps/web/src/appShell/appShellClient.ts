@@ -97,7 +97,9 @@ export function reloadIntoFreshShell(): void {
  * Registers (or retires) the worker once the page has loaded, so it never competes with the boot.
  * Registering the same script again changes nothing; the browser itself checks `/sw.js` for a
  * newer worker on navigations, and `updateViaCache: "none"` keeps that check out of the HTTP
- * cache on top of the script's `no-cache` header.
+ * cache. That flag carries it: mate.zerops.io's Cloudflare hands browsers root `.js` and `.svg`
+ * files with `max-age=14400` whatever nginx's `no-cache` says, while its edge still revalidates
+ * them with the origin (`curl -sI https://mate.zerops.io/sw.js`, 2026-11-06).
  */
 export function startAppShellWorker(mode: AppShellWorkerMode): void {
   if (mode === "none") return;
