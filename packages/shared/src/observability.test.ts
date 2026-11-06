@@ -1,5 +1,9 @@
+// @effect-diagnostics nodeBuiltinImport:off -- suite-owned trace fixture.
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as Arr from "effect/Array";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -13,7 +17,7 @@ import * as References from "effect/References";
 import * as Schema from "effect/Schema";
 import * as Tracer from "effect/Tracer";
 import * as TestClock from "effect/testing/TestClock";
-import { vi } from "vite-plus/test";
+import { afterAll, beforeAll, vi } from "vite-plus/test";
 
 import { RotatingFileSink } from "./logging.ts";
 import {
@@ -228,13 +232,20 @@ describe("observability", () => {
   });
 
   nodeServicesIt("node services", (it) => {
+    let traceDirectory: string;
+    beforeAll(() => {
+      traceDirectory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-trace-sink-"));
+    });
+    afterAll(() => {
+      NodeFS.rmSync(traceDirectory, { recursive: true, force: true });
+    });
+
     it.effect("flushes buffered trace records on close", () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+          const tempDir = traceDirectory;
+          const tracePath = path.join(tempDir, "flush.trace.ndjson");
 
           const sink = yield* makeTraceSink({
             filePath: tracePath,
@@ -259,10 +270,9 @@ describe("observability", () => {
     it.effect("reports successful logical trace writes", () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+          const tempDir = traceDirectory;
+          const tracePath = path.join(tempDir, "stats.trace.ndjson");
           const reported = yield* Ref.make<ReadonlyArray<TraceSinkFlushStats>>([]);
 
           const sink = yield* makeTraceSink({
@@ -289,8 +299,8 @@ describe("observability", () => {
         Effect.gen(function* () {
           const fileSystem = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+          const tempDir = traceDirectory;
+          const tracePath = path.join(tempDir, "rotation.trace.ndjson");
 
           const sink = yield* makeTraceSink({
             filePath: tracePath,
@@ -308,17 +318,17 @@ describe("observability", () => {
           const matchingFiles = Arr.sort(
             (yield* fileSystem.readDirectory(tempDir)).filter(
               (entry) =>
-                entry === "shared.trace.ndjson" || entry.startsWith("shared.trace.ndjson."),
+                entry === "rotation.trace.ndjson" || entry.startsWith("rotation.trace.ndjson."),
             ),
             Order.String,
           );
 
           assert.equal(
-            matchingFiles.some((entry) => entry === "shared.trace.ndjson.1"),
+            matchingFiles.some((entry) => entry === "rotation.trace.ndjson.1"),
             true,
           );
           assert.equal(
-            matchingFiles.some((entry) => entry === "shared.trace.ndjson.3"),
+            matchingFiles.some((entry) => entry === "rotation.trace.ndjson.3"),
             false,
           );
         }),
@@ -330,8 +340,8 @@ describe("observability", () => {
         Effect.gen(function* () {
           const fileSystem = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+          const tempDir = traceDirectory;
+          const tracePath = path.join(tempDir, "threshold.trace.ndjson");
           const maxBytes = 1_024;
 
           const sink = yield* makeTraceSink({
@@ -347,9 +357,10 @@ describe("observability", () => {
           yield* sink.close();
 
           const matchingFiles = (yield* fileSystem.readDirectory(tempDir)).filter(
-            (entry) => entry === "shared.trace.ndjson" || entry.startsWith("shared.trace.ndjson."),
+            (entry) =>
+              entry === "threshold.trace.ndjson" || entry.startsWith("threshold.trace.ndjson."),
           );
-          assert.include(matchingFiles, "shared.trace.ndjson.1");
+          assert.include(matchingFiles, "threshold.trace.ndjson.1");
           for (const entry of matchingFiles) {
             const stat = yield* fileSystem.stat(path.join(tempDir, entry));
             assert.isAtMost(Number(stat.size), maxBytes, entry);
@@ -363,8 +374,8 @@ describe("observability", () => {
         Effect.gen(function* () {
           const fileSystem = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+          const tempDir = traceDirectory;
+          const tracePath = path.join(tempDir, "oversized.trace.ndjson");
           const maxBytes = 1_024;
 
           const sink = yield* makeTraceSink({
@@ -392,10 +403,9 @@ describe("observability", () => {
     it.effect("drops only the invalid trace record when serialization fails", () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+          const tempDir = traceDirectory;
+          const tracePath = path.join(tempDir, "invalid.trace.ndjson");
 
           const sink = yield* makeTraceSink({
             filePath: tracePath,
@@ -444,8 +454,8 @@ describe("observability", () => {
       return Effect.gen(function* () {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-trace-sink-" });
-        const tracePath = path.join(tempDir, "shared.trace.ndjson");
+        const tempDir = traceDirectory;
+        const tracePath = path.join(tempDir, "failure.trace.ndjson");
         // A directory at the trace path fails every append, like a full disk.
         yield* fileSystem.makeDirectory(tracePath);
         const write = vi.spyOn(RotatingFileSink.prototype, "write");
@@ -522,10 +532,9 @@ describe("observability", () => {
     it.effect("writes nested spans to disk and captures log messages as span events", () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-local-tracer-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+          const tempDir = traceDirectory;
+          const tracePath = path.join(tempDir, "nested.trace.ndjson");
 
           yield* Effect.scoped(
             Effect.gen(function* () {
@@ -580,10 +589,9 @@ describe("observability", () => {
     it.effect("serializes interrupted spans with an interrupted exit status", () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const fileSystem = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const tempDir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-local-tracer-" });
-          const tracePath = path.join(tempDir, "shared.trace.ndjson");
+          const tempDir = traceDirectory;
+          const tracePath = path.join(tempDir, "interrupted.trace.ndjson");
 
           yield* Effect.scoped(
             Effect.exit(

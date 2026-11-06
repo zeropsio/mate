@@ -828,56 +828,59 @@ describe("HQ evidence becomes current or last-known Mate words", () => {
     "keeps %s's limit and source time during an outage without a current marker",
     (provider) => {
       vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(new Date(ASKED));
-      const main = VERA.main!;
-      const overview = {
-        ...VERA,
-        main: {
-          ...main,
-          updatedAt: ASKED,
-          session: { status: "error" as const, lastError: `${provider} usage limit reached.` },
-          latestTurn: { ...main.latestTurn!, state: "error" as const },
-          usagePause: { resetsAt: DONE },
-        },
-      };
-      const held = read({
-        attention: attention(
-          said({
-            questions: [
-              { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
-            ],
-          }),
-          false,
-        ),
-        overviews: new Map([["p-vera", overview]]),
-      });
-      expect(held?.lastKnown?.at).toBe(ASKED);
-      expect(lastKnownMateWords(held, "Skákala")).toContain(`Skákala hit the ${provider} limit`);
-      expect(lastKnownMateWords(held, "Skákala")).toContain("Last known");
-      expect(lastKnownMateWords(held, "Skákala")).toContain("; reset ");
-      expect(mateStatus(held)).toBeNull();
-      expect(mateRowView(held, "sleep", "Skákala").reply).toMatchObject({
-        kind: "words",
-        text: expect.stringContaining("Last known"),
-      });
-      const live = read({
-        attention: attention(
-          said({
-            questions: [
-              { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
-            ],
-          }),
-        ),
-        overviews: new Map([["p-vera", overview]]),
-      });
-      expect(mateStatus(live)).toMatchObject({
-        kind: "limit",
-        severity: "attention",
-        provider,
-        until: DONE,
-      });
-      expect(lastKnownMateWords(live, "Skákala")).toBeUndefined();
-      vi.useRealTimers();
+      try {
+        vi.setSystemTime(new Date(ASKED));
+        const main = VERA.main!;
+        const overview = {
+          ...VERA,
+          main: {
+            ...main,
+            updatedAt: ASKED,
+            session: { status: "error" as const, lastError: `${provider} usage limit reached.` },
+            latestTurn: { ...main.latestTurn!, state: "error" as const },
+            usagePause: { resetsAt: DONE },
+          },
+        };
+        const held = read({
+          attention: attention(
+            said({
+              questions: [
+                { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
+              ],
+            }),
+            false,
+          ),
+          overviews: new Map([["p-vera", overview]]),
+        });
+        expect(held?.lastKnown?.at).toBe(ASKED);
+        expect(lastKnownMateWords(held, "Skákala")).toContain(`Skákala hit the ${provider} limit`);
+        expect(lastKnownMateWords(held, "Skákala")).toContain("Last known");
+        expect(lastKnownMateWords(held, "Skákala")).toContain("; reset ");
+        expect(mateStatus(held)).toBeNull();
+        expect(mateRowView(held, "sleep", "Skákala").reply).toMatchObject({
+          kind: "words",
+          text: expect.stringContaining("Last known"),
+        });
+        const live = read({
+          attention: attention(
+            said({
+              questions: [
+                { threadId: ThreadId.make("t1"), turnId: TurnId.make("turn-1"), kind: "failed" },
+              ],
+            }),
+          ),
+          overviews: new Map([["p-vera", overview]]),
+        });
+        expect(mateStatus(live)).toMatchObject({
+          kind: "limit",
+          severity: "attention",
+          provider,
+          until: DONE,
+        });
+        expect(lastKnownMateWords(live, "Skákala")).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
     },
   );
   it("keeps a reset-free streaming Claude refusal visible while the provider's turn stays active", () => {

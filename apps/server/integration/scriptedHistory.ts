@@ -3,14 +3,8 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
-import {
-  CommandId,
-  ConversationId,
-  MATE_ENGINE_PROTOCOLS,
-  type EngineConversationFrame,
-} from "@t3tools/contracts";
+import { CommandId, ConversationId, MATE_ENGINE_PROTOCOLS } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { makeScriptedProvider } from "./scriptedProviderDriver.ts";
 import { startScenarioMate, type ScenarioMateOptions } from "./scenarioMate.ts";
@@ -42,12 +36,11 @@ export async function scriptedHistoryTemplate(
           });
           const protocol = MATE_ENGINE_PROTOCOLS[0]!;
           const caller = { subject: "scenario-person", environmentId: "scenario", epoch: 1 };
-          const frames = yield* Queue.unbounded<EngineConversationFrame>();
-          yield* mate.engine.wire.subscribe({ protocol, conversationId }, caller).pipe(
-            Stream.runForEach((f) => Queue.offer(frames, f)),
-            Effect.forkScoped,
-          );
-          while ((yield* Queue.take(frames)).type !== "synchronized") {}
+          const drain = mate.engine.updateDrain;
+          if (drain === undefined) throw new Error("Real engine has no worker drain");
+          if (drain.subscribeChanges === undefined)
+            throw new Error("Real engine has no receipt subscription");
+          const receipts = yield* drain.subscribeChanges;
           for (let i = 1; i <= count; i++) {
             yield* provider.turn([{ kind: "say", text: `Historical reply ${i}` }]);
             const result = yield* mate.engine.wire.send(
@@ -61,20 +54,21 @@ export async function scriptedHistoryTemplate(
             );
             if (result._tag !== "Accepted")
               throw new Error(`Historical send ${i} refused: ${result._tag}`);
-            while (true) {
-              const frame = yield* Queue.take(frames);
-              if (
-                frame.type === "changes" &&
-                frame.runs.some((r) => r.ordinal === i && r.state === "ended")
-              )
-                break;
-            }
+            const runId = result.runId;
+            if (runId === undefined) throw new Error(`Historical send ${i} has no run`);
+            const ended = mate.engine
+              .eventsAfter(conversationId, result.seq)
+              .pipe(
+                Effect.map((events) =>
+                  events.some((event) => event._tag === "RunEnded" && event.runId === runId),
+                ),
+              );
+            // Subscribe before reading, so a commit between the read and wait cannot be missed.
+            yield* Stream.concat(
+              Stream.fromEffect(ended),
+              receipts.changes.pipe(Stream.mapEffect(() => ended)),
+            ).pipe(Stream.filter(Boolean), Stream.take(1), Stream.runDrain);
           }
-          const drain = mate.engine.updateDrain;
-          if (drain === undefined) throw new Error("Real engine has no worker drain");
-          if (drain.subscribeChanges === undefined)
-            throw new Error("Real engine has no receipt subscription");
-          const receipts = yield* drain.subscribeChanges;
           // Snapshot waits for workers, not updater admission/native-resume policy.
           const pending = Effect.sync(() => {
             const db = new NodeSqlite.DatabaseSync(mate.dbPath, { readOnly: true });

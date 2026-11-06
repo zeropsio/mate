@@ -1,7 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import * as NodeFSP from "node:fs/promises";
+import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeSqlite from "node:sqlite";
 
 import {
   ApprovalRequestId,
@@ -23,7 +24,7 @@ import * as Metric from "effect/Metric";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
-import { describe, expect, it } from "vite-plus/test";
+import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { PersistenceSqlError } from "../../persistence/Errors.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";
@@ -53,15 +54,36 @@ import { ServerConfig } from "../../config.ts";
 
 const asProjectId = (value: string): ProjectId => ProjectId.make(value);
 const asMessageId = (value: string): MessageId => MessageId.make(value);
-const asTurnId = (value: string): TurnId => TurnId.make(value);
+
+const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-orchestration-engine-"));
+const databasePath = NodePath.join(directory, "state.sqlite");
+afterAll(() => NodeFS.rmSync(directory, { recursive: true, force: true }));
+
+function resetDatabase() {
+  const database = new NodeSqlite.DatabaseSync(databasePath);
+  try {
+    const tables = database
+      .prepare(
+        "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != 'effect_sql_migrations'",
+      )
+      .all() as Array<{ name: string }>;
+    for (const { name } of tables) {
+      database.exec(`DELETE FROM "${name.replaceAll('"', '""')}"`);
+    }
+    const sequence = database
+      .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'sqlite_sequence'")
+      .get();
+    if (sequence) database.exec("DELETE FROM sqlite_sequence");
+  } finally {
+    database.close();
+  }
+}
 
 function makeOrchestrationLayer(databasePath?: string) {
   const persistence = databasePath
     ? makeSqlitePersistenceLive(databasePath)
     : SqlitePersistenceMemory;
-  const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
-    prefix: "t3-orchestration-engine-test-",
-  });
+  const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), directory);
   const orchestrationLayer = Layer.mergeAll(
     OrchestrationEngineLive.pipe(
       Layer.provide(OrchestrationProjectionSnapshotQueryLive),
@@ -83,7 +105,11 @@ function makeOrchestrationLayer(databasePath?: string) {
 }
 
 async function createOrchestrationSystem(databasePath?: string) {
-  const runtime = ManagedRuntime.make(makeOrchestrationLayer(databasePath));
+  const runtime = ManagedRuntime.make(
+    makeOrchestrationLayer(databasePath).pipe(
+      Layer.provideMerge(Layer.succeed(Metric.MetricRegistry, new Map())),
+    ),
+  );
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
   const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
   return {
@@ -100,18 +126,18 @@ function now() {
   return "2026-01-01T00:00:00.000Z";
 }
 
-const hasMetricSnapshot = (
+const findMetricSnapshot = (
   snapshots: ReadonlyArray<Metric.Metric.Snapshot>,
   id: string,
   attributes: Readonly<Record<string, string>>,
 ) =>
-  snapshots.some(
+  snapshots.find(
     (snapshot) =>
       snapshot.id === id &&
       Object.entries(attributes).every(([key, value]) => snapshot.attributes?.[key] === value),
   );
 
-describe("OrchestrationEngine", () => {
+describe("OrchestrationEngine", { concurrent: false }, () => {
   it("a refused update-time command accepts no work and succeeds once admission reopens", async () => {
     const system = await createOrchestrationSystem();
     try {
@@ -141,10 +167,7 @@ describe("OrchestrationEngine", () => {
   it.each(["running", "stopped"] as const)(
     "sends async answers with a %s session and rejects old duplicate replies",
     async (status) => {
-      const directory = await NodeFSP.mkdtemp(
-        NodePath.join(NodeOS.tmpdir(), "t3-async-questions-"),
-      );
-      const databasePath = NodePath.join(directory, "state.sqlite");
+      resetDatabase();
       let system = await createOrchestrationSystem(databasePath);
       const threadId = ThreadId.make("async-thread");
       const projectId = ProjectId.make("async-project");
@@ -335,7 +358,6 @@ describe("OrchestrationEngine", () => {
         ).rejects.toThrow("This question has already been answered.");
       } finally {
         await system.dispose();
-        await NodeFSP.rm(directory, { recursive: true, force: true });
       }
     },
   );
@@ -913,12 +935,12 @@ describe("OrchestrationEngine", () => {
 
     const snapshots = await system.run(Metric.snapshot);
     expect(
-      hasMetricSnapshot(snapshots, "t3_orchestration_command_ack_duration", {
+      findMetricSnapshot(snapshots, "t3_orchestration_command_ack_duration", {
         commandType: "thread.create",
         aggregateKind: "thread",
         ackEventType: "thread.created",
       }),
-    ).toBe(true);
+    ).toMatchObject({ type: "Histogram", state: { count: 1 } });
 
     await system.dispose();
   });
@@ -951,12 +973,12 @@ describe("OrchestrationEngine", () => {
 
     const snapshots = await system.run(Metric.snapshot);
     expect(
-      hasMetricSnapshot(snapshots, "t3_orchestration_commands_total", {
+      findMetricSnapshot(snapshots, "t3_orchestration_commands_total", {
         commandType: "thread.create",
         aggregateKind: "thread",
         outcome: "failure",
       }),
-    ).toBe(true);
+    ).toMatchObject({ type: "Counter", state: { count: 1 } });
 
     await system.dispose();
   });
@@ -1006,9 +1028,7 @@ describe("OrchestrationEngine", () => {
         getAggregateReplayStats: () => Effect.die("unused aggregate replay stats"),
       };
 
-      const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
-        prefix: "t3-orchestration-engine-test-",
-      });
+      const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), directory);
 
       const runtime = ManagedRuntime.make(
         OrchestrationEngineLive.pipe(
@@ -1345,8 +1365,7 @@ describe("OrchestrationEngine", () => {
   });
 
   it("does not republish another server's turn when a local dispatch fails", async () => {
-    const directory = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-shared-db-"));
-    const databasePath = NodePath.join(directory, "state.sqlite");
+    resetDatabase();
     const serverA = await createOrchestrationSystem(databasePath);
     const serverB = await createOrchestrationSystem(databasePath);
     const threadId = ThreadId.make("thread-shared");
@@ -1423,7 +1442,6 @@ describe("OrchestrationEngine", () => {
     } finally {
       await serverA.dispose();
       await serverB.dispose();
-      await NodeFSP.rm(directory, { recursive: true, force: true });
     }
   });
 

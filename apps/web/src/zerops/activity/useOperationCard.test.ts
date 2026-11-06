@@ -490,24 +490,10 @@ describe("deriveObservedStepsRegion — mapping ObservationState to the card's r
     expect(deriveObservedStepsRegion("import", "running", state, NOW)).toBeUndefined();
   });
 
-  it.each([
-    {
-      name: "catching up: what it holds, said once",
-      state: { kind: "stale", observation: observation({ pipeline: BUILDING }) } as const,
-      provenance: "Zerops isn't answering",
-    },
-    {
-      name: "observing: nothing said",
-      state: {
-        kind: "observing",
-        observation: observation({ pipeline: BUILDING }),
-        elapsedMs: 2_000,
-      } as const,
-      provenance: "",
-    },
-  ])("a running card's feed: $name", ({ state, provenance }) => {
+  it("a running card's feed: catching up: what it holds, said once", () => {
+    const state = { kind: "stale", observation: observation({ pipeline: BUILDING }) } as const;
     const region = deriveObservedStepsRegion("import", "running", state, NOW);
-    expect(region?.provenance).toBe(provenance);
+    expect(region?.provenance).toBe("Zerops isn't answering");
     expect(region?.steps.find((entry) => entry.state === "running")?.id).toBe("RUN_BUILD_COMMANDS");
   });
 

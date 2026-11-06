@@ -191,17 +191,6 @@ afterEach(async () => {
 });
 
 describe("thread notifications", () => {
-  // HQ's overview of a Mate is what rings: no socket to it, no shell of it.
-  it("rings for a thread of a Mate it holds no socket to", async () => {
-    await render();
-    state.approval = true;
-    await render();
-    expect(state.add).toHaveBeenCalledTimes(1);
-    expect(state.add).toHaveBeenLastCalledWith(
-      expect.objectContaining({ title: "Approval needed", description: "Fix the login form" }),
-    );
-  });
-
   it("takes a snapshot as the baseline", async () => {
     state.approval = true;
     await render();
@@ -315,6 +304,7 @@ describe("thread notifications", () => {
     expect(state.notification).not.toHaveBeenCalled();
   });
 
+  // HQ's overview of a Mate is what rings: no socket to it, no shell of it.
   it.each([
     ["input", "Input needed"],
     ["approval", "Approval needed"],
@@ -327,7 +317,9 @@ describe("thread notifications", () => {
     await render();
     await render();
     expect(state.add).toHaveBeenCalledTimes(1);
-    expect(state.add).toHaveBeenLastCalledWith(expect.objectContaining({ title }));
+    expect(state.add).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title, description: "Fix the login form" }),
+    );
     expect(state.sound).toHaveBeenCalledWith("input", expect.any(Function));
     expect(state.notification).not.toHaveBeenCalled();
 

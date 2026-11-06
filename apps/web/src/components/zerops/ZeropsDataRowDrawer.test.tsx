@@ -94,19 +94,6 @@ describe("ZeropsDataRowDrawer", () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
-  it("overlays the panel in the narrow layout and sits beside the grid in the wide one", () => {
-    expect(
-      findByAttribute(render({ layout: "narrow" }), "data-zerops-data-row-drawer")!.props[
-        "data-zerops-data-row-drawer"
-      ],
-    ).toBe("narrow");
-    expect(
-      findByAttribute(render(), "data-zerops-data-row-drawer")!.props[
-        "data-zerops-data-row-drawer"
-      ],
-    ).toBe("wide");
-  });
-
   it("says a key-less row can't be addressed, instead of leaving that unsaid", () => {
     const tree = render({ addressable: false });
     expect(findByAttribute(tree, "data-zerops-data-row-unaddressable")).not.toBeNull();

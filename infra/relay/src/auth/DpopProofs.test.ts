@@ -1,8 +1,11 @@
 import { describe, expect, it } from "@effect/vitest";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as RelayDb from "../db.ts";
 import { relayDpopProofs } from "../persistence/schema.ts";
@@ -74,13 +77,14 @@ describe("DpopProofReplay", () => {
 
   it.effect("prunes expired proof rows from the maintenance path", () => {
     const calls: Array<string> = [];
+    const conditions: Array<SQL> = [];
     const fakeDb = {
       delete: (table: unknown) => {
         expect(table).toBe(relayDpopProofs);
         calls.push("delete");
         return {
-          where: (condition: unknown) => {
-            expect(condition).toBeDefined();
+          where: (condition: SQL) => {
+            conditions.push(condition);
             calls.push("delete.where");
             return Effect.void;
           },
@@ -89,9 +93,14 @@ describe("DpopProofReplay", () => {
     } as unknown as RelayDb.RelayDb["Service"];
 
     return Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-05-25T12:00:00.000Z"));
       const replay = yield* DpopProofs.DpopProofReplay;
       yield* replay.pruneExpired;
       expect(calls).toEqual(["delete", "delete.where"]);
+      expect(new PgDialect().sqlToQuery(conditions[0]!)).toEqual({
+        sql: '"relay_dpop_proofs"."expires_at" < $1',
+        params: ["2026-05-25T12:00:00.000Z"],
+      });
     }).pipe(
       Effect.provide(DpopProofs.layer.pipe(Layer.provide(Layer.succeed(RelayDb.RelayDb, fakeDb)))),
     );

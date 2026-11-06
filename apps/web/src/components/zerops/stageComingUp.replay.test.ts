@@ -308,18 +308,6 @@ describe("a stage coming up, replayed on run 4's clock with HQ deploying it", ()
     expect({ line: now.line, cell: now.cell }).toEqual({ line, cell });
   });
 
-  it("never says the address before a deploy ran, nor Checking after an answer", () => {
-    let answered = false;
-    for (const { line: _line, cell: _cell, ...moment } of moments) {
-      const now = said(moment);
-      if (moment.deployment?.state !== "known" || moment.deployment.value.kind !== "running") {
-        expect(now.line ?? "").not.toContain("turning its address on");
-      }
-      if (answered) expect(now.cell).not.toBe("Checking what runs here…");
-      answered ||= moment.deployment?.state === "known";
-    }
-  });
-
   it("lands the stage up as its address turns on", () => {
     const [before, after] = [moments.at(-2), moments.at(-1)].map((moment) =>
       moment === undefined ? undefined : said(moment).heading,

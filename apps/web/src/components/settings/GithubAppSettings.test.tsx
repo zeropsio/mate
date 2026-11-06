@@ -399,6 +399,8 @@ describe("the GitHub app on many accounts", () => {
     expect(waiting.textContent).toContain("Waiting for your OK");
     expect(waiting.textContent).toContain("stranger");
     expect(waiting.textContent).toContain("stranger/notes");
+    // The waiting installation's GitHub page belongs to its own account.
+    expect([...waiting.querySelectorAll("a")].map((a) => a.textContent)).toEqual([]);
     await act(async () => button("Accept")!.click());
     expect(controls.accept).toHaveBeenCalledWith(9);
     await act(async () => button("Suspend")!.click());
@@ -433,13 +435,6 @@ describe("the GitHub app on many accounts", () => {
     expect(host.textContent).toContain("juno · suspended");
     expect(button("Resume")).toBeUndefined();
     expect(controls.install).not.toHaveBeenCalled();
-  });
-
-  it("a waiting installation offers no Manage on GitHub: that page is its own account's", async () => {
-    const { host, button } = await render({ controls: controlsOf(MANY) });
-    await act(async () => button("Manage")!.click());
-    const waiting = host.querySelector('[data-zerops-surface="settings-github-waiting"]')!;
-    expect([...waiting.querySelectorAll("a")].map((a) => a.textContent)).toEqual([]);
   });
 
   it("Resume on a suspended installation goes to HQ for the Owner and Admins, and GitHub's refusal shows in its words", async () => {

@@ -30,6 +30,18 @@ const PATCH = [
 ].join("\n");
 
 const reads = vi.hoisted(() => ({ previews: [] as Array<unknown> }));
+const chunks = vi.hoisted(() => ({ loaded: [] as Array<Promise<unknown>> }));
+
+vi.mock("~/lib/appChunks", async (actual) => ({
+  ...(await actual<typeof import("~/lib/appChunks")>()),
+  appChunk:
+    <T,>(load: () => Promise<T>) =>
+    () => {
+      const pending = load();
+      chunks.loaded.push(pending);
+      return pending;
+    },
+}));
 
 vi.mock("../../zerops/useProjectTopology", () => ({
   useProjectTopology: () => ({
@@ -178,7 +190,10 @@ const openCommit = async () => {
       ?.click(),
   );
   act(() => commitRow()?.click());
-  await vi.waitFor(() => expect(host.querySelector('[aria-label="Changed files"]')).not.toBeNull());
+  expect(chunks.loaded.length).toBeGreaterThan(0);
+  await act(async () => {
+    await Promise.all(chunks.loaded);
+  });
 };
 
 describe("a commit on the Git tab", () => {

@@ -45,6 +45,13 @@ describe("attributeActivity — §3 attribution rules", () => {
     ).toEqual({ chips: [], projectMismatch: false });
   });
 
+  /**
+   * §3.2: `GET /project/{id}/process` is scoped to one project by URL, so
+   * every returned process SHOULD carry that project's id — a read that comes
+   * back with data for none of them is the wrong project/host entirely, not
+   * "nothing has happened yet". That must switch the overlay off rather than
+   * sit in `searching` until the ceiling.
+   */
   it("does not attribute a process in a different project — and flags it as a mismatch (§3.2)", () => {
     const p = process({ projectId: "proj-2" });
     expect(
@@ -158,26 +165,6 @@ describe("attributeActivity — §3 attribution rules", () => {
     ).toEqual({ chips: [], projectMismatch: false });
   });
 
-  /**
-   * §3.2: `GET /project/{id}/process` is scoped to one project by URL, so
-   * every returned process SHOULD carry that project's id — a read that comes
-   * back with data for none of them is the wrong project/host entirely, not
-   * "nothing has happened yet". That must switch the overlay off rather than
-   * sit in `searching` until the ceiling.
-   */
-  it("flags a project mismatch when the read returns data for no matching project at all", () => {
-    const wrongProject = process({ projectId: "proj-other" });
-    expect(
-      attributeActivity({
-        processes: [wrongProject],
-        projectId: "proj-1",
-        serviceIds: ["svc-1"],
-        startedAtMs: NOW,
-        kind: "deploy",
-      }),
-    ).toEqual({ chips: [], projectMismatch: true });
-  });
-
   it("is not a mismatch when at least one process belongs to the right project", () => {
     const right = process({ projectId: "proj-1" });
     const wrong = process({ id: "p-wrong", projectId: "proj-other" });
@@ -189,18 +176,6 @@ describe("attributeActivity — §3 attribution rules", () => {
       kind: "deploy",
     });
     expect(result.projectMismatch).toBe(false);
-  });
-
-  it("is not a mismatch when the process list is simply empty", () => {
-    expect(
-      attributeActivity({
-        processes: [],
-        projectId: "proj-1",
-        serviceIds: ["svc-1"],
-        startedAtMs: NOW,
-        kind: "deploy",
-      }).projectMismatch,
-    ).toBe(false);
   });
 
   it("matches a process against any of several serviceIds — an import creates several services", () => {

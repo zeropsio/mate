@@ -12,6 +12,7 @@ import * as Hex from "effect/encoding/Hex";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
@@ -141,13 +142,38 @@ interface HarnessOptions {
   readonly useDefaultValidation?: boolean;
 }
 
+let fixtureRoot: string;
+const fixtureLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    fixtureRoot = yield* fs.makeTempDirectoryScoped({ prefix: "t3-agy-test-" });
+  }),
+).pipe(Layer.provideMerge(NodeServices.layer));
+
+const useFixtureRoot = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  return yield* Effect.acquireRelease(Effect.succeed(fixtureRoot), (root) =>
+    fs.readDirectory(root).pipe(
+      Effect.flatMap((entries) =>
+        Effect.forEach(
+          entries,
+          (entry) => fs.remove(path.join(root, entry), { recursive: true, force: true }),
+          { discard: true },
+        ),
+      ),
+      Effect.orDie,
+    ),
+  );
+});
+
 const makeHarness = Effect.fn("test.makeAntigravityInstallation")(function* (
   options: HarnessOptions = {},
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const baseDir =
-    options.baseDir ?? (yield* fs.makeTempDirectoryScoped({ prefix: "t3-agy-test-" }));
+  const root = yield* useFixtureRoot;
+  const baseDir = options.baseDir ?? root;
   const platform = options.platform ?? hostPlatform;
   const archive = options.archive ?? completeArchive;
   const asset =
@@ -247,7 +273,7 @@ const expectPreviousRelease = Effect.fn("test.expectPreviousAntigravityRelease")
   expect((yield* installation.state).installedVersion).toBe(previousVersion);
 });
 
-it.layer(NodeServices.layer)("Antigravity installation", (it) => {
+it.layer(fixtureLayer)("Antigravity installation", (it) => {
   it.effect("verifies both files before activating a streamed download", () =>
     Effect.gen(function* () {
       const enteredValidation = yield* Deferred.make<void>();
@@ -714,7 +740,7 @@ it.layer(NodeServices.layer)("Antigravity installation", (it) => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
-        const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-agy-path-test-" });
+        const baseDir = fixtureRoot;
         const externalDirectory = path.join(baseDir, "external");
         const externalExecutable = path.join(externalDirectory, executableName);
         const externalHarness = path.join(externalDirectory, harnessName);

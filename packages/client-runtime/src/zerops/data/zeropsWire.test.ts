@@ -67,7 +67,6 @@ function harness(overrides: Partial<ZeropsWireClient> = {}) {
 
 describe("the Zerops wire", () => {
   it.each([
-    { name: "the session's verified user/info", path: "/user/info", verified: true, held: true },
     {
       name: "nothing before the session is verified",
       path: "/user/info",

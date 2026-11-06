@@ -1849,7 +1849,7 @@ describe("useMateActions — Delete Mate takes its key with it", () => {
     await act(async () => {
       mock.deleteDialog.current!.onConfirm();
     });
-    await vi.waitFor(() => expect(mock.retirementCompleted).toHaveBeenCalledOnce());
+    expect(mock.retirementCompleted).toHaveBeenCalledOnce();
     expect(mock.deletedTokens).toEqual(retired);
   });
 });
@@ -1910,8 +1910,8 @@ describe("useMateActions — the last Mate's Delete", () => {
     await act(async () => {
       mock.deleteDialog.current!.onConfirm(also);
     });
-    await vi.waitFor(() => expect(mock.retirementCompleted).toHaveBeenCalledOnce());
-    await vi.waitFor(() => expect(useDeleteApplicationDialog.getState().request).toEqual(opened));
+    expect(mock.retirementCompleted).toHaveBeenCalledOnce();
+    expect(useDeleteApplicationDialog.getState().request).toEqual(opened);
   });
 });
 

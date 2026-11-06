@@ -355,21 +355,6 @@ describe("ZeropsSessionProvider sign-in guards", () => {
 });
 
 describe("ZeropsSessionProvider across two tabs", () => {
-  it("signs the other tab out when one tab signs out", async () => {
-    const harness = harnessWith({ signedIn: "user-1" });
-    const a = await mountTab(harness, harness.browser.openTab());
-    const b = await mountTab(harness, harness.browser.openTab());
-    expect([a.session().status, b.session().status]).toEqual(["signed-in", "signed-in"]);
-
-    await a.run(() => a.session().signOut());
-    await settle();
-
-    expect(b.session().status).toBe("signed-out");
-    expect(b.accountId()).toBeNull();
-    expect(a.session().status).toBe("signed-out");
-    expect(a.tab.reloads).toBe(0);
-  });
-
   it("signs both tabs in on one legacy session, with no reload and no refresh", async () => {
     const harness = harnessWith({ signedIn: "user-1" });
     const a = await mountTab(harness, harness.browser.openTab());
@@ -595,6 +580,7 @@ describe("ZeropsSessionProvider verified adoption across tabs", () => {
     const harness = harnessWith({ signedIn: "user-1" });
     const a = await recordingTab(harness);
     const b = await recordingTab(harness);
+    expect([a.session().status, b.session().status]).toEqual(["signed-in", "signed-in"]);
 
     await a.run(() => a.session().signOut());
     await settle();
@@ -602,6 +588,7 @@ describe("ZeropsSessionProvider verified adoption across tabs", () => {
     expect(b.session().status).toBe("signed-out");
     expect(b.accountId()).toBeNull();
     expect(b.session().client.session).toBeNull();
+    expect(a.session().status).toBe("signed-out");
     expect([a.tab.reloads, b.tab.reloads]).toEqual([0, 0]);
   });
 

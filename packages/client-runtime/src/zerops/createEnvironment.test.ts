@@ -83,6 +83,8 @@ describe("planEnvironmentCreation", () => {
     expect(stepKinds(plan.steps)).toEqual(["create-project", "register"]);
   });
 
+  // HQ must record the Mate before the container so another browser can finish an interrupted
+  // press; a refused registration stops it before importing the container (F6b, 2026-10-03).
   it("gives a dev environment its agent, its key with it, in one import before the press returns", () => {
     // The container comes with the key the person minted for it, isolated in its own import: no
     // browser is needed after it, and nothing is closed off after.
@@ -94,26 +96,6 @@ describe("planEnvironmentCreation", () => {
       "import-container",
       "await-ready",
     ]);
-  });
-
-  it.each([
-    {
-      case: "a Mate",
-      input: { role: "dev" as const, name: "dev" },
-      // Its record in its application before its container (F6b, 2026-10-03): a press that stops
-      // after leaves a Mate HQ holds there, which any browser finishes under its name. A refused
-      // registration stops the press before any container.
-      steps: ["create-project", "register", "import-container", "await-ready"],
-    },
-    {
-      case: "a production",
-      input: {},
-      steps: ["create-project", "register"],
-    },
-  ])("registers $case in the press, before anything is waited on", ({ input, steps }) => {
-    const plan = planEnvironmentCreation({ ...BASE, ...input });
-    if (!plan.ok) throw new Error("expected a plan");
-    expect(stepKinds(plan.steps)).toEqual(steps);
   });
 
   it("gives the new container the agents the group is signed in with", () => {

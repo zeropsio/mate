@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -28,6 +29,14 @@ import { githubRatchetRevision } from "./lib/github-ratchet.ts";
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 const RULE_NAME = "fixture-rule";
+
+let restyleRoot: string;
+const restyleLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    restyleRoot = yield* fs.makeTempDirectoryScoped({ prefix: "guard-restyle-cache-" });
+  }),
+).pipe(Layer.provideMerge(NodeServices.layer));
 
 const entry = (path: string): ExceptionEntry => ({
   path,
@@ -133,7 +142,7 @@ const cacheFixture = Effect.gen(function* () {
   return { fs, state, options, cacheDirectory, cached: { ...options, cacheDirectory } };
 });
 
-it.layer(NodeServices.layer)("guard exception driver", (it) => {
+it.layer(restyleLayer)("guard exception driver", (it) => {
   it.effect.each([
     {
       title: "reports restyling through the TypeScript wrapper when a JSX sibling is also present",
@@ -165,9 +174,12 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
           const path = yield* Path.Path;
-          const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "guard-restyle-cache-" });
+          const cwd = restyleRoot;
           const directory = path.join(cwd, "ledgers");
-          const cacheDirectory = path.join(cwd, "cache");
+          const cacheDirectory = path.join(
+            cwd,
+            `cache-${Buffer.from(scenario.specifier).toString("hex")}`,
+          );
           for (const root of [...GUARD_SCOPE_PATHS, "apps/web/src/components/ui", "ledgers"])
             yield* fs.makeDirectory(path.join(cwd, root), { recursive: true });
           yield* fs.writeFileString(path.join(cwd, "package.json"), '{"name":"fixture"}');
@@ -204,9 +216,18 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
             NodeModule.createRequire(import.meta.url).resolve("vite-plus/package.json"),
           ).resolve("oxlint/package.json");
           const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+          // This case changes wrapper contents only; oxlint's version, config and file list are fixed.
+          const metadata = new Map<string, GuardLintOutput>();
           const runLint = (request: GuardLintRequest) =>
             Effect.scoped(
               Effect.gen(function* () {
+                const key = request.args.some((arg) =>
+                  ["--version", "--print-config", "--debug=files"].includes(arg),
+                )
+                  ? JSON.stringify(request.args)
+                  : undefined;
+                const cached = key === undefined ? undefined : metadata.get(key);
+                if (cached) return cached;
                 const child = yield* spawner.spawn(
                   ChildProcess.make(
                     process.execPath,
@@ -237,7 +258,9 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
                   ],
                   { concurrency: "unbounded" },
                 );
-                return { stdout, stderr, exitCode };
+                const output = { stdout, stderr, exitCode };
+                if (key !== undefined) metadata.set(key, output);
+                return output;
               }),
             );
           const options = { cwd, directory, ruleNames: ["no-restyle"], runLint };

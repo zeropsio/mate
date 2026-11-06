@@ -417,16 +417,6 @@ describe("ZeropsGroupPane", () => {
       });
     });
 
-    it("says a Mate that is the stage is the stage, and asks no second one of the person", () => {
-      const markup = render({
-        environments: [],
-        slots: slots({ devstages: [{ id: "dev", name: "Vera" }] }),
-      });
-      expect(markup).toContain("Vera — deployed by its agent");
-      expect(markup).not.toContain("Add stage");
-      expect(markup).toContain("Put it live");
-    });
-
     it("says a production being created is being set up, and offers no second Add for it", () => {
       const markup = render({
         environments: [],

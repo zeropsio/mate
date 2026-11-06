@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import * as appearanceFonts from "../../appearanceFonts";
 import { GhosttyTerminalCore, type GhosttyCell, type GhosttyRow } from "./core";
 import {
   DEFAULT_TERMINAL_FONT_FAMILY,
@@ -298,8 +299,11 @@ describe("GhosttyTerminalSurface visibility", () => {
     expect(surface.getSelection()).toBe("hello");
 
     harness.onData.mockClear();
+    const pasted = new Promise<string>((resolve) => {
+      harness.onData.mockImplementationOnce(resolve);
+    });
     harness.pointer("pointerdown", 1, 4, false, 1);
-    await vi.waitFor(() => expect(harness.onData).toHaveBeenCalled());
+    expect(await pasted).toBe("hello");
     expect(harness.onData.mock.calls.at(-1)?.[0]).toBe("hello");
     expect(surface.getSelection()).toBe("hello");
 
@@ -913,11 +917,12 @@ describe("terminal font resolution", () => {
   });
 
   it("ignores proportional families the cell grid cannot lay out", () => {
-    // jsdom has no canvas metrics, so the probe answers "monospace" and the
-    // family is kept; the guard is exercised in the browser instead. Assert the
-    // shape stays intact so a rejected face still yields a usable stack.
-    const stack = terminalFontFamily("Helvetica Neue");
-    expect(stack.endsWith("monospace")).toBe(true);
+    const probe = vi.spyOn(appearanceFonts, "isMonospaceFamily").mockReturnValue(false);
+    try {
+      expect(terminalFontFamily("Helvetica Neue")).toBe(DEFAULT_TERMINAL_FONT_FAMILY);
+    } finally {
+      probe.mockRestore();
+    }
   });
 
   it("quotes families the canvas font shorthand would otherwise reject", () => {
@@ -1029,18 +1034,24 @@ describe("advanceTerminalSelectionClickSequence", () => {
       }).count,
     ).toBe(1);
     expect(
-      advanceTerminalSelectionClickSequence(previous, {
-        clientX: 30,
-        clientY: 30,
-        timeStamp: 1_100,
-      }).count,
+      advanceTerminalSelectionClickSequence(
+        { ...previous, count: 1 },
+        {
+          clientX: 30,
+          clientY: 30,
+          timeStamp: 1_100,
+        },
+      ).count,
     ).toBe(1);
     expect(
-      advanceTerminalSelectionClickSequence(previous, {
-        clientX: 20,
-        clientY: 30,
-        timeStamp: 1_501,
-      }).count,
+      advanceTerminalSelectionClickSequence(
+        { ...previous, count: 1 },
+        {
+          clientX: 20,
+          clientY: 30,
+          timeStamp: 1_501,
+        },
+      ).count,
     ).toBe(1);
   });
 });

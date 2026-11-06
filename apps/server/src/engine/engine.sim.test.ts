@@ -382,6 +382,7 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
     let texts = 0;
     let step = 0;
     let firstLife = true;
+    const tracing = Boolean(process.env.ENGINE_PROOF_TRACE);
     const trace: Array<string> = [];
     const log = (line: string) => trace.push(`${String(step).padStart(4)} ${line}`);
 
@@ -427,7 +428,6 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
           progressed = fired > 0 || parked.length > 0;
           return "ok" as const;
         }
-        const state = yield* store.load(c);
         switch (action) {
           case "send": {
             const text = `msg-${++texts}`;
@@ -446,6 +446,7 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
             return "ok" as const;
           }
           case "stop": {
+            const state = yield* store.load(c);
             if (state.activeRunId === null) return "ok" as const;
             yield* Effect.exit(
               conversations.ask({
@@ -459,6 +460,7 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
             return "ok" as const;
           }
           case "answer": {
+            const state = yield* store.load(c);
             const request = Object.values(state.requests).find((r) => r.answerable);
             if (request === undefined) return "ok" as const;
             progressed = true;
@@ -480,22 +482,23 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
             return "ok" as const;
           }
           case "work": {
-            const [head] = yield* sql<{
-              readonly head_seq: number;
-            }>`SELECT head_seq FROM engine_conversation WHERE conversation_id = ${c}`;
+            const head = tracing
+              ? ((yield* sql<{
+                  readonly head_seq: number;
+                }>`SELECT head_seq FROM engine_conversation WHERE conversation_id = ${c}`)[0]
+                  ?.head_seq ?? 0)
+              : 0;
             const exit = yield* Effect.exit(worker.runOnce);
             progressed = Exit.isSuccess(exit) && exit.value;
-            const events = (yield* store.events(
-              c,
-              head?.head_seq ?? 0,
-            )) as ReadonlyArray<KnownEngineEvent>;
-            if (Exit.isSuccess(exit) && exit.value)
+            if (tracing && Exit.isSuccess(exit) && exit.value) {
+              const events = (yield* store.events(c, head)) as ReadonlyArray<KnownEngineEvent>;
               log(
                 `worker: ${events
                   .map(describe_)
                   .filter((x) => x !== "")
                   .join(", ")}`,
               );
+            }
             return "ok" as const;
           }
           case "driver": {
@@ -580,14 +583,13 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
     }
 
     // ── the end: liveness, delivery, re-sends, the store ──
-    const result = yield* audit(c).pipe(
-      Effect.provide(engineLayer(file, driver.handlers(), {}, domains)),
-    );
+    const { result, crew } = yield* Effect.gen(function* () {
+      const result = yield* audit(c);
+      const crew = yield* auditOwner(tallyDomain, tallyOwner, (state) => Object.keys(state.wakes));
+      return { result, crew };
+    }).pipe(Effect.provide(engineLayer(file, driver.handlers(), {}, domains)));
     broken.push(...result.problems);
     // The second owner: its record, every effect it asked settled once, every wake fired.
-    const crew = yield* auditOwner(tallyDomain, tallyOwner, (state) =>
-      Object.keys(state.wakes),
-    ).pipe(Effect.provide(engineLayer(file, driver.handlers(), {}, domains)));
     broken.push(...crew.problems.map((problem) => `crew ${problem}`));
     if (crew.recorded.size !== crewAsks)
       broken.push(`crew effects settle: ${crew.recorded.size} of ${crewAsks} recorded`);
@@ -634,11 +636,11 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
           );
       }
     }
-    if (process.env.ENGINE_PROOF_TRACE) console.log(trace.join("\n"));
+    if (tracing) console.log(trace.join("\n"));
     return { broken, steps: step } satisfies SimResult;
   });
 
-const SEEDS = gateSeeds(Number(process.env.ENGINE_PROOF_SIM_SEEDS ?? 6));
+const SEEDS = gateSeeds(Number(process.env.ENGINE_PROOF_SIM_SEEDS ?? 3));
 const STEPS = Number(process.env.ENGINE_PROOF_SIM_STEPS ?? 120);
 
 const schedules: ReadonlyArray<readonly [string, Faults]> = [

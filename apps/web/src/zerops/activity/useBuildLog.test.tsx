@@ -405,6 +405,8 @@ describe("useBuildLog over the account's own log registry", () => {
     const { createRoot } = await import("react-dom/client");
     const { useBuildLog } = await import("./useBuildLog.ts");
     const pageReads: string[] = [];
+    const timers = new Map<number, () => void>();
+    let nextTimer = 0;
     const logs = makeAccountBuildLogs({
       store: makeAccountStore(AtomRegistry.make()),
       transport: makeBuildLogTransport({
@@ -419,8 +421,12 @@ describe("useBuildLog over the account's own log registry", () => {
         },
         WebSocketCtor: StreamSocket,
       }),
-      setTimer: (callback) => setTimeout(callback, 0),
-      clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      setTimer: (callback) => {
+        const handle = nextTimer++;
+        timers.set(handle, callback);
+        return handle;
+      },
+      clearTimer: (handle) => void timers.delete(handle as number),
     });
     mounted.logs = logs;
     const running: BuildLogQuery = { ...QUERY, fromIso: "2026-10-03T10:00:00.000Z" };
@@ -457,12 +463,12 @@ describe("useBuildLog over the account's own log registry", () => {
           { id: "b1", timestamp: "2026-10-03T10:00:14.000Z", message: "Installing dependencies" },
         ]);
         await logs.drain();
+        const scheduled = timers.entries().next().value;
+        expect(scheduled).toBeDefined();
+        timers.delete(scheduled![0]);
+        scheduled![1]();
       });
-      await vi.waitFor(async () => {
-        await act(async () => {});
-        expect(seen.slot).toEqual(["Installing dependencies"]);
-        expect(statuses.at(-1)).toBe("live");
-      });
+      expect(seen.slot).toEqual(["Installing dependencies"]);
       expect(statuses.at(-1)).toBe("live");
 
       // Its call settled: the line plops from the slot into the history.

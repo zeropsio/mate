@@ -418,6 +418,13 @@ it.effect("an engine conversation resolves the screenshot captured by its provid
       result._tag,
       "ASSERTION: the engine conversation can resolve its provider-session screenshot",
     ).toBe("Success");
+    if (occurrence.original.status !== "ready" || result._tag !== "Success") {
+      throw new Error("The screenshot was not retained and resolved");
+    }
+    expect(result.success?.occurrence?.id).toBe(occurrence.id);
+    expect(result.success?.relativeUrl).toBe(
+      `/api/assets/objects/${occurrence.original.digest}/original`,
+    );
     yield* w.shutdown;
   }).pipe(Effect.provide(layer)),
 );

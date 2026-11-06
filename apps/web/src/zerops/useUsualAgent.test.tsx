@@ -5,12 +5,12 @@ import { servicesAgents } from "@t3tools/client-runtime/data";
 import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { create } from "react-test-renderer";
+import { create, type ReactTestRenderer } from "react-test-renderer";
 import { expect, it, vi } from "vite-plus/test";
 
 import { makeSampledAccount } from "./__fixtures__/sampledAccount";
 import { useUsualAgent } from "./useUsualAgent";
-import { AccountDataContext } from "./ZeropsAccountData";
+import { AccountDataContext, type AccountData } from "./ZeropsAccountData";
 import { ZeropsAgentSignIn } from "../components/zerops/ZeropsAgentSignIn";
 
 vi.mock("./useZeropsFeeds", () => ({
@@ -85,22 +85,49 @@ async function usual(
       );
     },
   });
+  const reads = new Map<string, Promise<boolean>>();
+  const readDetail: AccountData["readDetail"] = (demand) => {
+    const receipt = account.readDetail(demand);
+    if (demand.family === "serviceAgents") reads.set(demand.ownerId, receipt);
+    return receipt;
+  };
+  const observedAccount = { ...account, readDetail };
   const seen: Array<ReturnType<typeof useUsualAgent>> = [];
   function Probe() {
     seen.push(useUsualAgent("own"));
     return null;
   }
+  let tree: ReactTestRenderer | undefined;
   await act(async () => {
-    create(
+    tree = create(
       createElement(
         RegistryContext.Provider,
         { value: registry },
-        createElement(AccountDataContext.Provider, { value: account }, createElement(Probe)),
+        createElement(
+          AccountDataContext.Provider,
+          { value: observedAccount },
+          createElement(Probe),
+        ),
       ),
     );
   });
   const first = seen.at(-1);
-  return { first, last: () => seen.at(-1) };
+  return {
+    first,
+    last: () => seen.at(-1),
+    finishReads: () => {
+      expect([...reads.keys()].sort()).toEqual(["s-ada", "s-bo", "s-cy"]);
+      return Promise.all(
+        ["ada", "bo", "cy"]
+          .filter((id) => envs[id] !== "pending")
+          .map((id) => reads.get(`s-${id}`)!),
+      );
+    },
+    unmount: () => {
+      tree?.unmount();
+      registry.dispose();
+    },
+  };
 }
 
 it.each([
@@ -120,11 +147,22 @@ it.each([
     expected: { usual: "codex", settled: false },
   },
 ] as const)("is $name", async ({ envs, expected }) => {
-  const { first, last } = await usual(envs);
-  expect(first?.settled).toBe(false);
-  await act(async () => {
-    await vi.waitFor(() => expect(last()).toEqual(expected));
-  });
+  const wait = vi.spyOn(window, "setTimeout");
+  const waitHandle = setTimeout(() => undefined, 0);
+  clearTimeout(waitHandle);
+  wait.mockReturnValue(waitHandle);
+  let mounted: Awaited<ReturnType<typeof usual>> | undefined;
+  try {
+    mounted = await usual(envs);
+    expect(mounted.first?.settled).toBe(false);
+    await act(async () => {
+      await mounted!.finishReads();
+    });
+    expect(mounted.last()).toEqual(expected);
+  } finally {
+    await act(async () => mounted?.unmount());
+    wait.mockRestore();
+  }
 });
 
 it("shows the retained usual agent's sign-in cards immediately on remount during delayed refresh", async () => {

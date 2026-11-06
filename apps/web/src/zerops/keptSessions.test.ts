@@ -10,8 +10,9 @@ import type * as AccountLifetimeModule from "./accountLifetime";
 import type * as KeptSessionsModule from "./keptSessions";
 
 const DAY_MS = 86_400_000;
+const NOW = Date.parse("2026-10-28T12:00:00.000Z");
 
-function session(name: string, expiresAtEpochMs = Date.now() + DAY_MS): KeptHqSession {
+function session(name: string, expiresAtEpochMs = NOW + DAY_MS): KeptHqSession {
   return {
     address: `https://${name}.example.test/hq/`,
     token: ["session", name].join("-"),
@@ -25,6 +26,7 @@ let lifetime: typeof AccountLifetimeModule;
 let kept: typeof KeptSessionsModule;
 
 beforeEach(async () => {
+  vi.spyOn(Date, "now").mockReturnValue(NOW);
   values = new Map();
   const storage = {
     get length() {
@@ -54,9 +56,12 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await lifetime.closeAccountLifetime();
-  vi.restoreAllMocks();
-  vi.unstubAllGlobals();
+  try {
+    await lifetime.closeAccountLifetime();
+  } finally {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  }
 });
 
 /**
@@ -264,7 +269,7 @@ describe("no kept session outlives the login it was opened under", () => {
     lifetime.openAccountLifetime("person-1");
     kept.keptHqSessions.keep("c1:hq1:https://shop", session("shop"));
     kept.keptHqSessions.keep("c2:hq1:https://blog", session("blog"));
-    kept.keptHqSessions.keep("c1:hq1:https://ended", session("ended", Date.now() - DAY_MS));
+    kept.keptHqSessions.keep("c1:hq1:https://ended", session("ended", NOW - DAY_MS));
     // The tab's own closer already ended one of them.
     kept.endHqSession(session("shop"));
 

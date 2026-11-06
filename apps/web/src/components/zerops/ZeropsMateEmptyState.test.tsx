@@ -3,7 +3,7 @@ import type { OtherAgentFields } from "@t3tools/client-runtime/zerops/agentLogin
 import { EnvironmentId, type ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 /** A provider instance as the server sends it: signed in, models listed, unless said otherwise. */
 const agentInstance = (driver: string, status = "ready"): OtherAgentFields =>
@@ -155,6 +155,8 @@ const stage = (html: string) => ({
 });
 
 const CURSOR_READY = [agentInstance("cursor")];
+
+afterEach(() => vi.useRealTimers());
 
 describe("ZeropsMateEmptyState", () => {
   beforeEach(() => {
@@ -391,9 +393,11 @@ describe("MateEmptyStateView — a Mate coming up", () => {
   });
 
   it("once up, hands its words over to the sign-in, the sign-in in the slot where the steps stood", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-30T12:00:00Z"));
     const html = view({
       // Just up: it arrives until its first sign-in.
-      mate: { ...ASKED, arrivingUntil: Date.now() + 600_000 },
+      mate: { ...ASKED, arrivingUntil: Date.parse("2026-09-30T12:10:00Z") },
       coming: { kind: "coming", over: true, below: progress },
       signIn: <div data-sign-in-module />,
       signInRequired: true,
@@ -420,9 +424,11 @@ describe("MateEmptyStateView — a Mate coming up", () => {
       .trim();
 
   it("names the runtimes still coming up under the sign-in", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-30T12:00:00Z"));
     const html = view({
       // Just up: it arrives until its first sign-in.
-      mate: { ...ASKED, arrivingUntil: Date.now() + 600_000 },
+      mate: { ...ASKED, arrivingUntil: Date.parse("2026-09-30T12:10:00Z") },
       coming: { kind: "coming", over: true, below: progress },
       signIn: <div data-sign-in-module />,
       signInRequired: true,

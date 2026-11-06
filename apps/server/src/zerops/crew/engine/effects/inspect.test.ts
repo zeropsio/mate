@@ -58,9 +58,11 @@ describe("crew.inspect", () => {
         const handler = yield* makeInspect;
         const head = yield* arrange(root);
         const before = repository(root);
-        const read = okValue(yield* attempt(handler, row()));
+        const read = okValue(yield* attempt(handler, row(1)));
+        const afterFirst = repository(root);
+        const again = okValue(yield* attempt(handler, row(2)));
         assert.deepStrictEqual(
-          { read, after: repository(root) },
+          { read, afterFirst, again, after: repository(root) },
           {
             read: {
               integration: { branch: "main", head },
@@ -83,22 +85,11 @@ describe("crew.inspect", () => {
                 { assignment: "a-2", commit: null },
               ],
             },
+            afterFirst: before,
+            again: read,
             after: before,
           },
         );
-      }),
-    ),
-  );
-
-  it.effect("an inspection the restart cut reads the same facts again and writes nothing", () =>
-    withCrewEffects((root) =>
-      Effect.gen(function* () {
-        const handler = yield* makeInspect;
-        yield* arrange(root);
-        const before = repository(root);
-        const first = okValue(yield* attempt(handler, row(1)));
-        const again = okValue(yield* attempt(handler, row(2)));
-        assert.deepStrictEqual({ again, after: repository(root) }, { again: first, after: before });
       }),
     ),
   );

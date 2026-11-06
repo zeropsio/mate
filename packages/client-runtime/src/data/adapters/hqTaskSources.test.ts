@@ -10,10 +10,11 @@ import type {
 } from "@t3tools/shared/hqIntake";
 import { HqError } from "../../zerops/hq/client.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
-import type { TaskSourceSetting } from "../families/hqTaskSources.ts";
+import { settingScope, type TaskSourceSetting } from "../families/hqTaskSources.ts";
 import { appTaskStops } from "../projections/hqTaskSources.ts";
 import { commitOwn } from "./hqSettingsReads.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
+import { streamOf } from "../reducer.ts";
 import { taskSourceSetting } from "../projections/hqTaskSources.ts";
 import type { HqGithubManifestView, HqGithubView } from "@t3tools/shared/hqGithub";
 import {
@@ -901,10 +902,12 @@ describe("a task's stop and the board's reads", () => {
     const release = r.host.demandApp("hqAppTasks", SHOP);
     await waitFor(r.store, () => r.read("hqAppTasks", "shop").setting.state === "known");
     expect(reads).toBe(1);
+    const stream = () => streamOf(r.store.state(), settingScope("hqAppTasks", SHOP));
+    const beforeCost = stream().generation;
     place(r, { id: "1", title: "Task 1", url: null, spentUsd: 0.4, workedMs: 90_000 });
-    await Promise.resolve();
+    expect(stream().generation).toBe(beforeCost);
     expect(reads).toBe(1);
-    const reread = waitFor(r.store, () => reads === 2);
+    const reread = waitFor(r.store, () => reads === 2 && stream().phase === "live");
     place(r, {
       id: "1",
       title: "Task 1",
@@ -914,12 +917,13 @@ describe("a task's stop and the board's reads", () => {
       workedMs: 90_000,
     });
     await reread;
-    const again = waitFor(r.store, () => reads === 3);
+    const again = waitFor(r.store, () => reads === 3 && stream().phase === "live");
     place(r, { id: "2", title: "Task 2", url: null });
     await again;
     release();
+    const afterRelease = stream().generation;
     place(r, { id: "2", title: "Task 2", url: null, ended: "done" });
-    await Promise.resolve();
+    expect(stream().generation).toBe(afterRelease);
     expect(reads).toBe(3);
     r.close();
   });
@@ -935,7 +939,12 @@ describe("a task's stop and the board's reads", () => {
     place(r, { id: "1", title: "Task 1", url: null });
     const release = r.host.demandOrg("hqTaskLimits", ORG);
     await waitFor(r.store, () => r.read("hqTaskLimits").setting.state === "known");
-    const reread = waitFor(r.store, () => reads === 2);
+    const reread = waitFor(r.store, () => {
+      const setting = r.read("hqTaskLimits").setting;
+      return (
+        setting.state === "known" && (setting.held as HqTaskLimitsView).spentThisMonthUsd === 2
+      );
+    });
     place(r, { id: "1", title: "Task 1", url: null, ended: "merged" });
     await reread;
     expect(r.read("hqTaskLimits").setting).toMatchObject({

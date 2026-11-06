@@ -43,7 +43,8 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
   describe("resolveCodexHomeLayout", () => {
     it.effect("uses direct CODEX_HOME when no shadow home is configured", () =>
       Effect.gen(function* () {
-        const homePath = yield* makeTempDir("t3code-codex-home-");
+        const path = yield* Path.Path;
+        const homePath = path.resolve("codex-home");
 
         const layout = yield* resolveCodexHomeLayout(
           decodeCodexSettings({
@@ -63,9 +64,8 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
     it.effect("uses the shared home for continuation and the shadow home for runtime", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
-        const sharedHome = yield* makeTempDir("t3code-codex-shared-");
-        const shadowRoot = yield* makeTempDir("t3code-codex-shadow-root-");
-        const shadowHome = path.join(shadowRoot, "shadow");
+        const sharedHome = path.resolve("codex-shared");
+        const shadowHome = path.resolve("codex-shadow-root", "shadow");
 
         const layout = yield* resolveCodexHomeLayout(
           decodeCodexSettings({

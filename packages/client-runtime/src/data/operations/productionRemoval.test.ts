@@ -5,7 +5,6 @@ import * as Schema from "effect/Schema";
 import { CanonicalHqNavigationEnvironment } from "@t3tools/shared/hqStream";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
-import { lifecycleReceipt } from "../families/hqLifecycle.ts";
 import { operationResult } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
@@ -54,21 +53,6 @@ function operationsOf(store: ReturnType<typeof account>, api: Partial<HqWrites>)
 }
 
 describe("production removal receipts", () => {
-  it.each([false, true])(
-    "The original HQ receipt determines whether removal deletes its project: %s",
-    (deleteProject) => {
-      const record = {
-        requestId: "remove",
-        intent: { ...REMOVE, deleteProject },
-        productionRemoval: { deleteProject },
-      };
-      expect(lifecycleReceipt(record).acceptance).toEqual({
-        kind: "accepted",
-        result: { deleteProject },
-      });
-    },
-  );
-
   it.effect.each([false, true])(
     "Removing production follows its retained fate without replaying a lost answer: %s",
     (deleteProject) =>

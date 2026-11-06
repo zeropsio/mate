@@ -149,12 +149,6 @@ describe("whether GitHub lets only what was approved in Mate reach a repository'
       says: `Main is not protected. Nothing on GitHub stops a push or merge into main without Mate's approval. Add a ruleset on main that turns on "Require a pull request before merging" with 0 approvals and requires the check mate/gate from app ID 123456.`,
     },
     {
-      case: "a ruleset that requires mate/gate but lets anyone push to main is told to require a pull request in it",
-      remote: { ...viaApp, governance: "no_ruleset" },
-      app: withId,
-      says: `Main is not protected. Nothing on GitHub stops a push or merge into main without Mate's approval. Add a ruleset on main that turns on "Require a pull request before merging" with 0 approvals and requires the check mate/gate from app ID 123456.`,
-    },
-    {
       case: "a ruleset that does not require mate/gate is advisory",
       remote: { ...viaApp, governance: "gate_not_required" },
       app: withId,

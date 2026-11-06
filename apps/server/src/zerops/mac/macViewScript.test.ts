@@ -23,10 +23,13 @@ interface ViewModule {
   readonly userWorking: (idle: number | undefined, now: number, lastDrive: number) => boolean;
 }
 
-const scratch: string[] = [];
+const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-view-"));
 const tempDir = (prefix: string) => {
-  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), prefix));
-  scratch.push(dir);
+  const dir = NodePath.join(scratch, prefix);
+  NodeFS.mkdirSync(dir, { recursive: true });
+  for (const entry of NodeFS.readdirSync(dir)) {
+    NodeFS.rmSync(NodePath.join(dir, entry), { recursive: true, force: true });
+  }
   return dir;
 };
 
@@ -43,9 +46,7 @@ let view: ViewModule;
 beforeAll(async () => {
   view = (await import(NodeURL.pathToFileURL(installed().file).href)) as ViewModule;
 });
-afterAll(() => {
-  for (const dir of scratch.splice(0)) NodeFS.rmSync(dir, { recursive: true, force: true });
-});
+afterAll(() => NodeFS.rmSync(scratch, { recursive: true, force: true }));
 
 const jpeg = (width: number, height: number) =>
   Buffer.from(
@@ -136,9 +137,24 @@ describe("the Mac's view helper", () => {
 describe("the view helper's stream", () => {
   const running: NodeChildProcess.ChildProcess[] = [];
   const watched: NodeFS.FSWatcher[] = [];
-  afterEach(() => {
+  afterEach(async () => {
     for (const watcher of watched.splice(0)) watcher.close();
-    for (const child of running.splice(0)) child.kill();
+    await Promise.all(
+      running.splice(0).map(async (child) => {
+        const exited =
+          child.exitCode !== null || child.signalCode !== null
+            ? Promise.resolve()
+            : new Promise<void>((resolve) => child.once("exit", () => resolve()));
+        if (child.pid !== undefined) {
+          try {
+            process.kill(-child.pid, "SIGKILL");
+          } catch {
+            // The helper and its process group have already exited.
+          }
+        }
+        await exited;
+      }),
+    );
   });
 
   /** Observe a filesystem receipt; subscribe before starting its writer. */
@@ -185,6 +201,7 @@ describe("the view helper's stream", () => {
       {
         env: { PATH: "/usr/bin:/bin", ZEROPS_MATE_VIEW_TOOLS: bin },
         stdio: "ignore",
+        detached: true,
       },
     );
     running.push(child);
@@ -256,6 +273,7 @@ describe("the view helper's stream", () => {
     ioreg: `echo '    |   "HIDIdleTime" = 3000000000'`,
     sips: "exit 0",
   };
+  const heldStreamer = `exec '${process.execPath}' -e 'const { MessageChannel } = require("node:worker_threads"); const { port1 } = new MessageChannel(); port1.on("message", () => {});'`;
 
   it("streams the app's window through the smooth streamer when the pairing built one", async () => {
     const image = tempDir("mac-view-image-");
@@ -276,7 +294,7 @@ describe("the view helper's stream", () => {
           },
           capture,
         ),
-        `while :; do ${streamerSays({ type: "tick" })}; sleep 1; done`,
+        heldStreamer,
       ].join("\n"),
     );
 
@@ -302,7 +320,7 @@ describe("the view helper's stream", () => {
 
   it.each([
     ["macOS refuses the smooth streamer the capture", "exit 77"],
-    ["the smooth streamer talks nonsense", "echo 'Segmentation fault'; sleep 5"],
+    ["the smooth streamer talks nonsense", `echo 'Segmentation fault'; ${heldStreamer}`],
   ])("falls back to its own capture when %s", async (_, streamer) => {
     const image = tempDir("mac-view-image-");
     const capture = NodePath.join(image, "window.jpg");

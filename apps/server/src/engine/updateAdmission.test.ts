@@ -64,11 +64,12 @@ describe("update admission", () => {
         .run("Send", accepted.open.pipe(Effect.andThen(finish.await), Effect.as("accepted")))
         .pipe(Effect.forkScoped);
       yield* accepted.await;
-      const drain = yield* admission.begin.pipe(Effect.forkScoped);
-      expect(yield* admission.closed).toBe(false);
+      const drain = yield* admission.begin.pipe(Effect.forkScoped({ startImmediately: true }));
+      const closedWhileHeld = yield* admission.closed;
       yield* finish.open;
       expect(yield* Fiber.join(send)).toBe("accepted");
       yield* Fiber.join(drain);
+      expect(closedWhileHeld).toBe(false);
       expect(yield* admission.run("Send", Effect.succeed("new"))).toBeUndefined();
     }),
   );

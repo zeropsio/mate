@@ -1,15 +1,15 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
-import * as Ref from "effect/Ref";
+import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import { AuthSessionId } from "@t3tools/contracts";
 
 import type { SessionCredentialChange } from "./SessionStore.ts";
-import { awaitSessionEnd, type SessionEndReason } from "./sessionLifetime.ts";
+import { awaitSessionEnd } from "./sessionLifetime.ts";
 
 const SESSION_ID = AuthSessionId.make("session-under-test");
 const OTHER_SESSION_ID = AuthSessionId.make("someone-elses-session");
@@ -18,16 +18,14 @@ const watch = Effect.fn("watchSessionEnd")(function* (input: {
   readonly expiresAt: DateTime.DateTime | undefined;
   readonly changes: Stream.Stream<SessionCredentialChange>;
 }) {
-  const outcome = yield* Ref.make(Option.none<SessionEndReason>());
-  yield* Effect.forkChild(
+  return yield* Effect.forkChild(
     awaitSessionEnd({
       sessionId: SESSION_ID,
       expiresAt: input.expiresAt,
       changes: input.changes,
-    }).pipe(Effect.flatMap((reason) => Ref.set(outcome, Option.some(reason)))),
+    }),
+    { startImmediately: true },
   );
-  yield* Effect.yieldNow;
-  return outcome;
 });
 
 describe("awaitSessionEnd", () => {
@@ -42,10 +40,10 @@ describe("awaitSessionEnd", () => {
       });
 
       yield* TestClock.adjust("14 minutes");
-      expect(Option.isNone(yield* Ref.get(outcome))).toBe(true);
+      expect(outcome.pollUnsafe()).toBeUndefined();
 
       yield* TestClock.adjust("2 minutes");
-      expect(yield* Ref.get(outcome)).toStrictEqual(Option.some("expired"));
+      expect(yield* Fiber.join(outcome)).toBe("expired");
     }),
   );
 
@@ -60,21 +58,28 @@ describe("awaitSessionEnd", () => {
           sessionId: SESSION_ID,
         }),
       });
-      expect(yield* Ref.get(outcome)).toStrictEqual(Option.some("revoked"));
+      expect(yield* Fiber.join(outcome)).toBe("revoked");
     }),
   );
 
   it.effect("ignores a revocation aimed at a different session", () =>
     Effect.gen(function* () {
+      const consumed = yield* Deferred.make<void>();
       const outcome = yield* watch({
         expiresAt: DateTime.makeUnsafe(900_000),
-        changes: Stream.succeed<SessionCredentialChange>({
-          type: "clientRemoved",
-          sessionId: OTHER_SESSION_ID,
-        }),
+        changes: Stream.concat(
+          Stream.succeed<SessionCredentialChange>({
+            type: "clientRemoved",
+            sessionId: OTHER_SESSION_ID,
+          }),
+          Stream.fromEffect(
+            Deferred.succeed(consumed, undefined).pipe(Effect.andThen(Effect.never)),
+          ),
+        ),
       });
+      yield* Effect.raceFirst(Deferred.await(consumed), Fiber.await(outcome));
       yield* TestClock.adjust("1 minute");
-      expect(Option.isNone(yield* Ref.get(outcome))).toBe(true);
+      expect(outcome.pollUnsafe()).toBeUndefined();
     }),
   );
 
@@ -83,7 +88,7 @@ describe("awaitSessionEnd", () => {
       // A pairing session with no stored expiry must not be closed on a guess.
       const outcome = yield* watch({ expiresAt: undefined, changes: Stream.never });
       yield* TestClock.adjust("30 days");
-      expect(Option.isNone(yield* Ref.get(outcome))).toBe(true);
+      expect(outcome.pollUnsafe()).toBeUndefined();
     }),
   );
 });

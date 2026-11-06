@@ -108,6 +108,8 @@ describe("Git browser archive", () => {
       view: { state: "failed", words: "HQ could not be reached." },
     },
   ])("$sentence", async ({ cut, view }) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(0);
     const { api, sent } = hqStreaming(10 * MiB, { after: cut });
     const read = await readArchive(api);
     expect(read.view).toMatchObject(view);

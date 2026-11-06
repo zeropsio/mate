@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off - the timeout fixture uses a named pipe.
+import * as NodeChildProcess from "node:child_process";
+import * as NodePath from "node:path";
+
 import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -37,7 +41,7 @@ const ROWS: ReadonlyArray<Row> = [
   },
   {
     name: "stops a command that outlives its timeout",
-    command: "sleep 5",
+    command: "read -r value < held-command",
     timeout: "1 second",
     expected: "timed-out",
   },
@@ -55,11 +59,13 @@ const ROWS: ReadonlyArray<Row> = [
   },
 ];
 
+const root = makeServiceRepository();
+write(root, ".crew/backend/lane.txt", "lane\n");
+NodeChildProcess.execFileSync("mkfifo", [NodePath.join(root, ".crew/backend/held-command")]);
+
 describe("CrewChecks", () => {
   it.effect.each(Array.from(ROWS, (row) => ({ title: row.name, row })))("$title", ({ row }) =>
     Effect.gen(function* () {
-      const root = makeServiceRepository();
-      write(root, ".crew/backend/lane.txt", "lane\n");
       const outcome = yield* Effect.gen(function* () {
         const checks = yield* CrewChecks.CrewChecks;
         return yield* checks.run({

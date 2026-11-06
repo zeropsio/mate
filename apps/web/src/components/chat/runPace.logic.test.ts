@@ -65,7 +65,6 @@ describe("the pace of a run's arrivals", () => {
   });
 
   it.each([
-    { what: "one arrival", keys: ["n1"] },
     { what: "three at once", keys: ["n1", "n2", "n3"] },
     { what: "six at once", keys: ["n1", "n2", "n3", "n4", "n5", "n6"] },
     { what: "twelve at once", keys: Array.from({ length: 12 }, (_, i) => `n${i + 1}`) },

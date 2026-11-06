@@ -1,6 +1,6 @@
 import { AtomRegistry } from "effect/reactivity";
 import { expect, it, vi } from "vite-plus/test";
-import { makeAccountStore, readsOfState } from "../store.ts";
+import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { regionRecommendation } from "../projections/regionRecommendation.ts";
 import { demandLocationLatency } from "./locationLatency.ts";
 
@@ -15,6 +15,18 @@ function rig() {
     regionRecommendation.derive(readsOfState(store.state()), { orgId: "org", locations });
   return { registry, store, read };
 }
+function received(store: AccountStore, ready: () => boolean) {
+  return new Promise<void>((resolve) => {
+    const stop = store.subscribe(() => check());
+    const check = () => {
+      if (ready()) {
+        stop();
+        resolve();
+      }
+    };
+    check();
+  });
+}
 
 it("no sample supplies no measured recommendation; only successful measured locations compete", async () => {
   const r = rig();
@@ -26,10 +38,12 @@ it("no sample supplies no measured recommendation; only successful measured loca
     .mockReturnValueOnce(5);
   const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(null));
   expect(r.read()).toBeNull();
+  const sampled = received(r.store, () => r.store.state().facts.size === locations.length);
   const release = locations.map((location) =>
     demandLocationLatency({ store: r.store, orgId: "org", location, fetch, now: clock }),
   );
-  await vi.waitFor(() => expect(r.read()).toBe("b"));
+  await sampled;
+  expect(r.read()).toBe("b");
   release.forEach((stop) => stop());
   const again = demandLocationLatency({
     store: r.store,
@@ -49,10 +63,12 @@ it("a failed sample is not guessed and remount does not repeat it", async () => 
   const r = rig();
   const fetch = vi.fn<typeof globalThis.fetch>().mockRejectedValue(new Error("offline"));
   const location = locations[0]!;
-  const release = demandLocationLatency({ store: r.store, orgId: "org", location, fetch });
-  await vi.waitFor(() =>
-    expect([...r.store.state().streams.values()].some((s) => s.fault !== null)).toBe(true),
+  const failed = received(r.store, () =>
+    [...r.store.state().streams.values()].some((stream) => stream.fault !== null),
   );
+  const release = demandLocationLatency({ store: r.store, orgId: "org", location, fetch });
+  await failed;
+  expect([...r.store.state().streams.values()].some((s) => s.fault !== null)).toBe(true);
   release();
   const again = demandLocationLatency({ store: r.store, orgId: "org", location, fetch });
   expect(fetch).toHaveBeenCalledOnce();
@@ -65,12 +81,10 @@ it("a failed sample is not guessed and remount does not repeat it", async () => 
 it("holders share one read and a late answer after the last release is fenced", async () => {
   const r = rig();
   let answer!: (response: Response) => void;
-  const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        answer = resolve;
-      }),
-  );
+  const pending = new Promise<Response>((resolve) => {
+    answer = resolve;
+  });
+  const fetch = vi.fn<typeof globalThis.fetch>().mockReturnValue(pending);
   const input = { store: r.store, orgId: "org", location: locations[0]!, fetch };
   const one = demandLocationLatency(input);
   const two = demandLocationLatency(input);
@@ -78,8 +92,7 @@ it("holders share one read and a late answer after the last release is fenced", 
   expect(fetch).toHaveBeenCalledOnce();
   two();
   answer(new Response(null));
-  await Promise.resolve();
-  await Promise.resolve();
+  await pending;
   expect(r.read()).toBeNull();
   r.store.close();
   r.registry.dispose();

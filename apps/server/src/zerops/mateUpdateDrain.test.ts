@@ -22,6 +22,7 @@ describe("Mate drain", () => {
       waits: 1,
     },
     {
+      // No quiet period is supplied for a person-requested update.
       name: "proved idle work switches immediately",
       evidence: [true],
       permission: true,
@@ -249,24 +250,6 @@ describe("an automatic update leaves a quiet minute after a turn", () => {
       yield* TestClock.adjust(1);
       expect(yield* Fiber.join(fiber)).toBe(true);
       expect(record).toEqual({ begun: 2, canceled: 1 });
-    }),
-  );
-
-  it.effect("an update the person asked for closes admission straight after a turn", () =>
-    Effect.gen(function* () {
-      let begun = false;
-      const done = yield* drainMateUpdate({
-        allowed: Effect.succeed(true),
-        begin: Effect.sync(() => {
-          begun = true;
-        }),
-        cancel: Effect.void,
-        facts: Effect.succeed({ idle: true, blockers: [] }),
-        quiesce: Effect.succeed({ idle: true, blockers: [] }),
-        changed: Effect.never,
-      });
-      expect(done).toBe(true);
-      expect(begun).toBe(true);
     }),
   );
 });

@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import {
@@ -56,43 +57,70 @@ const scene = (
     let failures = unrecorded;
     const changes = yield* PubSub.unbounded<ConversationId>();
     const pushes = yield* PubSub.unbounded<void>();
+    const changeSubscription = yield* PubSub.subscribe(changes);
+    const processSubscription = yield* PubSub.subscribe(pushes);
+    const reads = yield* Queue.unbounded<ConversationId>();
+    const processed = yield* Queue.unbounded<void>();
     const frozenHost = { appdev: { frozenSince: 1 } as HostRecord };
     let state: CrewState = { ...crewWith({}), ...(frozen ? { hosts: frozenHost } : {}) };
+    let processInProgress = false;
     const told: Array<{ readonly input: CrewInput; readonly commandId: string }> = [];
     yield* observeCrew({
-      changes: Stream.fromPubSub(changes),
+      changes: Stream.fromSubscription(changeSubscription),
       eventsAfter: (conversationId, afterSeq, limit = 200) =>
-        Effect.succeed(
-          (records[conversationId] ?? []).filter((event) => event.seq > afterSeq).slice(0, limit),
-        ),
-      crewState: Effect.sync(() => state),
+        Effect.gen(function* () {
+          const events = (records[conversationId] ?? [])
+            .filter((event) => event.seq > afterSeq)
+            .slice(0, limit);
+          if (events.length === 0) yield* Queue.offer(reads, conversationId);
+          return events;
+        }),
+      crewState: Effect.gen(function* () {
+        const current = state;
+        if (processInProgress && current.hosts.appdev?.frozenSince == null) {
+          processInProgress = false;
+          yield* Queue.offer(processed, undefined);
+        }
+        return current;
+      }),
       tell: (input, commandId) =>
-        input._tag === "Observed" && failures-- > 0
-          ? Effect.fail(new CrewInputUnrecorded({ detail: "the step did not commit" }))
-          : Effect.sync(() => {
-              told.push({ input, commandId });
-              if (input._tag === "Observed") {
-                state = crewWith({
-                  ...state.cursors,
-                  [input.conversationId]: input.events.at(-1)!.seq,
-                });
-              }
-            }),
+        Effect.gen(function* () {
+          if (input._tag === "Observed" && failures-- > 0) {
+            yield* Queue.offer(reads, input.conversationId);
+            return yield* Effect.fail(
+              new CrewInputUnrecorded({ detail: "the step did not commit" }),
+            );
+          }
+          told.push({ input, commandId });
+          if (input._tag === "Observed") {
+            state = crewWith({
+              ...state.cursors,
+              [input.conversationId]: input.events.at(-1)!.seq,
+            });
+            yield* Queue.offer(reads, input.conversationId);
+          } else if (input._tag === "ProcessesMoved" && processInProgress) {
+            processInProgress = false;
+            yield* Queue.offer(processed, undefined);
+          }
+        }),
       conversations: Effect.succeed([MATE]),
       gauges: Stream.empty,
       signIns: Stream.empty,
-      processes: Effect.map(PubSub.subscribe(pushes), Stream.fromSubscription),
+      processes: Effect.succeed(
+        Stream.fromSubscription(processSubscription).pipe(
+          Stream.tap(() => Effect.sync(() => (processInProgress = true))),
+        ),
+      ),
     });
-    const settle = Effect.forEach(Array.from({ length: 50 }), () => Effect.yieldNow, {
-      discard: true,
-    });
-    yield* settle;
+    // The initial backend and Mate catch-ups each report either their read or their tell.
+    yield* Queue.take(reads);
+    yield* Queue.take(reads);
     return {
       told,
-      settle,
+      read: Queue.take(reads),
       changed: (conversationId: ConversationId) =>
-        PubSub.publish(changes, conversationId).pipe(Effect.andThen(settle)),
-      pushed: PubSub.publish(pushes, undefined).pipe(Effect.andThen(settle)),
+        PubSub.publish(changes, conversationId).pipe(Effect.andThen(Queue.take(reads))),
+      pushed: PubSub.publish(pushes, undefined).pipe(Effect.andThen(Queue.take(processed))),
     };
   });
 
@@ -152,7 +180,7 @@ describe("the crew's observer", () => {
           const world = yield* scene({ [BACKEND]: backend }, 1);
           assert.deepStrictEqual(world.told, []);
           yield* TestClock.adjust("2 seconds");
-          yield* world.settle;
+          yield* world.read;
           assert.deepStrictEqual(
             world.told.flatMap(({ input }) =>
               input._tag === "Observed" ? [input.events.map((event) => event.seq)] : [],

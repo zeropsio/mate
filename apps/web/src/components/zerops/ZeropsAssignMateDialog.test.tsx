@@ -39,6 +39,9 @@ describe("ZeropsAssignMateForm", () => {
     expect(html).toContain("Ada Lovelace");
     expect(html).toContain('value="u-eva"');
     expect(html).toContain("Eva Dvořák");
+    expect(html).toMatch(/<option(?=[^>]*selected="")[^>]*>Pick a person<\/option>/u);
+    expect(html).not.toMatch(/<option(?=[^>]*selected="")[^>]*value="u-/u);
+    expect(html).toMatch(/<button type="submit"[^>]*disabled=""[^>]*>Hand it over/u);
   });
 
   // E2E F7: a refused hand-over closed its dialog and said nothing.
@@ -68,13 +71,6 @@ describe("ZeropsAssignMateForm", () => {
       /role="alert"[^>]*>Couldn(&#x27;|')t read Acme(&#x27;|')s members from Zerops\.</u,
     );
     expect(html).toMatch(/<button[^>]*>Try again<\/button>/u);
-  });
-
-  it("picks nobody: the hand-over waits on the person's own pick", () => {
-    const html = renderToStaticMarkup(form());
-    expect(html).toMatch(/<option(?=[^>]*selected="")[^>]*>Pick a person<\/option>/u);
-    expect(html).not.toMatch(/<option(?=[^>]*selected="")[^>]*value="u-/u);
-    expect(html).toMatch(/<button type="submit"[^>]*disabled=""[^>]*>Hand it over/u);
   });
 
   it("withholds a selected person no longer listed", () => {

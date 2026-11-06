@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 import * as NodeCrypto from "node:crypto";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -19,19 +20,29 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as JpegJs from "jpeg-js";
 import { PNG } from "pngjs";
-import { vi } from "vite-plus/test";
+import { afterAll, beforeEach, vi } from "vite-plus/test";
 
 import * as ServerConfig from "../config.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import { ContentAssetError, contentAssetsAt } from "../assets/ContentAssets.ts";
 import { cleanupFailedUploadedAttachments, normalizeDispatchCommand } from "./Normalizer.ts";
 
+const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-normalizer-attachments-"));
 const testLayer = WorkspacePaths.layer.pipe(
-  Layer.provideMerge(
-    ServerConfig.layerTest(process.cwd(), { prefix: "t3-normalizer-attachments-" }),
-  ),
+  Layer.provideMerge(ServerConfig.layerTest(process.cwd(), baseDir)),
   Layer.provideMerge(NodeServices.layer),
 );
+
+function clearFixtureFiles(directory: string): void {
+  for (const entry of NodeFS.readdirSync(directory, { withFileTypes: true })) {
+    const path = NodePath.join(directory, entry.name);
+    if (entry.isDirectory()) clearFixtureFiles(path);
+    else NodeFS.unlinkSync(path);
+  }
+}
+
+beforeEach(() => clearFixtureFiles(baseDir));
+afterAll(() => NodeFS.rmSync(baseDir, { recursive: true, force: true }));
 
 const attachmentUuid = "00000000-0000-4000-8000-0000000000aa";
 const isClientCommand = Schema.is(ClientOrchestrationCommand);

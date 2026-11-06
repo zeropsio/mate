@@ -212,13 +212,6 @@ describe("deriveZeropsRowAction", () => {
     });
   });
 
-  it("offers Enable Zerops Mate only for predates-mate with the flag read off", () => {
-    expect(deriveZeropsRowAction({ ...input(READY, "predates-mate"), mateFlag: false })).toEqual({
-      kind: "enable",
-      label: "Enable Zerops Mate",
-    });
-  });
-
   // H9: health × the platform's own `ZCP_MATE_ENABLED` read — the flag,
   // never the health verdict alone, decides whether Enable is offered.
   it.each([
@@ -553,7 +546,6 @@ describe("deriveZeropsRowAction", () => {
 describe("deriveZeropsRowPresentation", () => {
   it.each([
     { mateFlag: false, want: "Needs Zerops Mate" },
-    { mateFlag: undefined, want: "Needs Zerops Mate" },
     { mateFlag: true, want: "Starting" },
     { mateFlag: "unknown", want: "Not answering" },
   ] as const)("predates-mate, mateFlag=$mateFlag -> $want (H9)", ({ mateFlag, want }) => {

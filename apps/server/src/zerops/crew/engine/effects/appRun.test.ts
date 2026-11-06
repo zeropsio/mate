@@ -26,7 +26,7 @@ import { CREW_EFFECT_KINDS } from "./shared.ts";
 
 /** Writes the port it was given and counts its starts, then waits - like a dev server. */
 const DEV_SERVER =
-  'printf "%s" "$CREW_PORT" > ../backend.port; echo start >> ../backend.starts; echo listening; sleep 30';
+  'mkfifo ../backend.hold; printf "%s" "$CREW_PORT" > ../backend.port; echo start >> ../backend.starts; echo listening; read -r _ < ../backend.hold';
 
 const PAYLOAD: AppRunPayload = {
   host: TEST_HOST,

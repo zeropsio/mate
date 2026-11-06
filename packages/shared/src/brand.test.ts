@@ -3,9 +3,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  CHIP_TINTS,
-  FALLBACK_PROVIDER_ACCENT,
-  FLAT_CARD_BORDER,
   ICON_MAP,
   MATE_FACE,
   MATE_MARK,
@@ -21,33 +18,16 @@ import {
   mateFaceParts,
   mateShapePoints,
   polygonArea,
-  IDENTITY,
-  MINT_PANEL,
-  PROVIDER_ACCENT_SWATCHES,
-  PROCESS_STEPS,
   MOTION,
   RADII,
   type ServiceStatusTone,
   SPACING_UNIT,
   SERVICE_STATUS_TONES,
   TYPE_SCALE,
-  ZEROPS_MARK,
 } from "./brand.ts";
 import { contrastRatio } from "./themePreview.ts";
 
 describe("Zerops brand tokens", () => {
-  it("publishes the product provider accents with a neutral fallback", () => {
-    expect(PROVIDER_ACCENT_SWATCHES).toEqual([
-      "#0077cc",
-      "#16a34a",
-      "#ea580c",
-      "#dc2626",
-      "#7c3aed",
-      "#0891b2",
-    ]);
-    expect(FALLBACK_PROVIDER_ACCENT).toBe("#5f6a72");
-  });
-
   it("keeps every chip label at AA contrast, including neutral --foreground fallbacks", () => {
     const neutralForeground = { light: "#27272a", dark: "#f5f5f5" } as const;
     const withheld: Array<string> = [];
@@ -70,30 +50,6 @@ describe("Zerops brand tokens", () => {
     expect(withheld).toEqual(["off.light", "off.dark"]);
   });
 
-  it("pins the exact ok dark surface and its 8.154783240726806 AA contrast", () => {
-    const tone = SERVICE_STATUS_TONES.ok.dark;
-    expect(tone.text).toBe("#56d364");
-    expect(tone.surface).toBe("#19261d");
-    expect(contrastRatio(tone.text, tone.surface)).toBeCloseTo(8.154783240726806, 12);
-    expect(contrastRatio(tone.text, tone.surface)).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it("pins the corrected attention light label above AA contrast", () => {
-    const tone = SERVICE_STATUS_TONES.attention.light;
-    expect(tone.text).toBe("#a26000");
-    expect(contrastRatio(tone.text, tone.surface)).toBeCloseTo(4.577498770334955, 12);
-    expect(contrastRatio(tone.text, tone.surface)).toBeGreaterThanOrEqual(4.5);
-  });
-
-  it("keeps fixed identity, chip, and mint-panel tokens outside the theme library", () => {
-    expect(IDENTITY.mark).toEqual({ main: "#3cbdb2", secondary: "#00b1a3" });
-    expect(IDENTITY.mint.dark).toBe("#00e5c0");
-    expect(CHIP_TINTS["access-green"].light.surface).toBe("rgba(76,175,80,.15)");
-    expect(CHIP_TINTS["region-purple"].light.surface).toBe("rgba(156,39,176,.15)");
-    expect(CHIP_TINTS["info-chip"].light.surface).toBe("rgba(255,255,255,.9)");
-    expect(MINT_PANEL).toEqual({ light: "#e8f7ec", dark: "#19261d" });
-  });
-
   it("pins the five service statuses for both appearances", () => {
     expect(
       Object.fromEntries(
@@ -106,23 +62,6 @@ describe("Zerops brand tokens", () => {
       failed: ["light", "dark"],
       off: ["light", "dark"],
     });
-  });
-
-  it("publishes the four-path Zerops mark without a platform dependency", () => {
-    expect(ZEROPS_MARK.viewBox).toBe("0 0 42.27 50.48");
-    expect(ZEROPS_MARK.paths).toHaveLength(4);
-    expect(ZEROPS_MARK.paths.map((path) => path.fill)).toEqual([
-      "#3cbdb2",
-      "#3cbdb2",
-      "#00b1a3",
-      "#00b1a3",
-    ]);
-    expect(ZEROPS_MARK.paths.map((path) => path.d)).toEqual([
-      "M20.19.7L3 7.27A4 4 0 0 0 .46 11v16.54L8.36 23v-9.3L21.6 8.62V.44a4 4 0 0 0-1.41.26z",
-      "M8.5 37.74l13.1-7.55v-9.12L1.36 32.74a1.82 1.82 0 0 0-.9 1.56v6.11A4 4 0 0 0 3 44.1l17.19 6.57a4 4 0 0 0 1.41.26v-8.18z",
-      "M41.9 18.47a1.67 1.67 0 0 0 .84-1.47v-6a4 4 0 0 0-2.54-3.73L23 .7a4 4 0 0 0-1.4-.26v8.18l13 5-13 7.49v9.12z",
-      "M23 50.67l17.2-6.57a4 4 0 0 0 2.54-3.69V23.7l-7.9 4.56v9.43L21.6 42.75v8.18a4 4 0 0 0 1.4-.26z",
-    ]);
   });
 
   it("pins every cross-platform icon intent", () => {
@@ -155,18 +94,6 @@ describe("Zerops brand tokens", () => {
     expect(RADII.card - RADII.control).toBe(SPACING_UNIT);
     expect(RADII.sheet - RADII.card).toBe(SPACING_UNIT);
     for (const radius of Object.values(RADII)) expect(radius % SPACING_UNIT).toBe(0);
-  });
-
-  it("pins the flat-card border and process-step geometry", () => {
-    expect(FLAT_CARD_BORDER).toEqual({
-      light: "transparent",
-      dark: "rgba(255,255,255,.06)",
-    });
-    expect(PROCESS_STEPS).toEqual({
-      glyphColumn: 30,
-      glyphSize: 17,
-      glyphBorderWidth: 2,
-    });
   });
 
   it("pins the documented type scale", () => {

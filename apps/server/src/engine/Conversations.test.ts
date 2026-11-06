@@ -154,10 +154,12 @@ describe("Conversations", () => {
     it.effect("holds at most its capacity; a producer past it waits and nothing is dropped", () =>
       Effect.gen(function* () {
         const gate = yield* Latch.make(false);
+        const entered = yield* Latch.make(false);
         const store = yield* makeEngineStore();
         const gated = EngineStore.of({
           ...store,
-          commit: (input) => Effect.andThen(gate.await, store.commit(input)),
+          commit: (input) =>
+            entered.open.pipe(Effect.andThen(gate.await), Effect.andThen(store.commit(input))),
         });
         const signals = {
           effects: yield* EngineSignals.makeDoorbells,
@@ -166,11 +168,17 @@ describe("Conversations", () => {
         };
         const c = ConversationId.make("narrow");
         const actor = yield* makeConversationActor(c, gated, signals, { mailboxCapacity: 2 });
-        const producers = yield* Effect.forEach([1, 2, 3, 4, 5], (n) =>
-          Effect.forkScoped(actor.ask(envelope(send(`m${n}`), { conversation: c }))),
-        );
         yield* Effect.addFinalizer(() => gate.open);
-        for (let i = 0; i < 20; i++) yield* Effect.yieldNow;
+        const first = yield* actor
+          .ask(envelope(send("m1"), { conversation: c }))
+          .pipe(Effect.forkScoped({ startImmediately: true }));
+        yield* entered.await;
+        const rest = yield* Effect.forEach([2, 3, 4, 5], (n) =>
+          actor
+            .ask(envelope(send(`m${n}`), { conversation: c }))
+            .pipe(Effect.forkScoped({ startImmediately: true })),
+        );
+        const producers = [first, ...rest];
         const held = yield* actor.mailboxSize;
         const doneWhileBlocked = producers.filter((fiber) => fiber.pollUnsafe() !== undefined);
         yield* gate.open;

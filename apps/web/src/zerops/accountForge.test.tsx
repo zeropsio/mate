@@ -32,6 +32,7 @@ const known = <T,>(value: T): Known<T> => ({
 function installTestDom(): TestNode {
   const document = new TestNode("#document", null, 9);
   vi.stubGlobal("document", document);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("window", {
     document,
     HTMLIFrameElement: TestNode,
@@ -126,14 +127,16 @@ describe("the account's project flow in the web", () => {
     }
     const root = createRoot(document.createElement("div") as unknown as HTMLElement);
     try {
-      root.render(rig.wrap(<ReadStop />));
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual([PROJECT.projectId]));
+      await act(async () => root.render(rig.wrap(<ReadStop />)));
+      expect(rig.stopDemands).toEqual([PROJECT.projectId]);
 
-      closeAccountLifetime();
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual([]));
+      await act(async () => {
+        closeAccountLifetime();
+      });
+      expect(rig.stopDemands).toEqual([]);
       expect(rig.stopDemandCalls()).toBe(1);
     } finally {
-      root.unmount();
+      await act(async () => root.unmount());
     }
   });
 
@@ -165,22 +168,22 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(rig.wrap(<Rows stops={[PROJECT]} />));
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
+      await act(async () => root.render(rig.wrap(<Rows stops={[PROJECT]} />)));
+      expect(rig.stopDemands).toEqual(["p-stage"]);
       expect(latest()?.state).toBe("unread");
       // A surface that draws the same stops again in a new array keeps what it demanded.
       const rendered = answers.length;
-      root.render(rig.wrap(<Rows stops={[PROJECT]} />));
-      await vi.waitFor(() => expect(answers.length).toBeGreaterThan(rendered));
+      await act(async () => root.render(rig.wrap(<Rows stops={[PROJECT]} />)));
+      expect(answers.length).toBeGreaterThan(rendered);
       expect(rig.stopDemandCalls()).toBe(1);
 
-      rig.holdStop(
-        "p-stage",
-        known([{ service: APPSTAGE, hostname: "appstage", deployment: known(deploying) }]),
-      );
-      await vi.waitFor(() =>
-        expect(latest()).toMatchObject({ state: "known", value: { kind: "deploying" } }),
-      );
+      await act(async () => {
+        rig.holdStop(
+          "p-stage",
+          known([{ service: APPSTAGE, hostname: "appstage", deployment: known(deploying) }]),
+        );
+      });
+      expect(latest()).toMatchObject({ state: "known", value: { kind: "deploying" } });
     } finally {
       await act(async () => root.unmount());
       unbind();
@@ -203,18 +206,18 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(rig.wrap(<Rows stops={[PROJECT]} />));
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
+      await act(async () => root.render(rig.wrap(<Rows stops={[PROJECT]} />)));
+      expect(rig.stopDemands).toEqual(["p-stage"]);
       const before = answers.at(-1);
       const rendered = answers.length;
       // The same stops in a new array, with the store unmoved, are the same snapshot.
-      root.render(rig.wrap(<Rows stops={[PROJECT]} />));
-      await vi.waitFor(() => expect(answers.length).toBeGreaterThan(rendered));
+      await act(async () => root.render(rig.wrap(<Rows stops={[PROJECT]} />)));
+      expect(answers.length).toBeGreaterThan(rendered);
       expect(answers.at(-1)).toBe(before);
 
       // The store moving re-renders the rows with what it answers now, the stops unchanged.
-      rig.holdStop("p-stage", known([]));
-      await vi.waitFor(() => expect(answers.at(-1)).not.toBe(before));
+      await act(async () => rig.holdStop("p-stage", known([])));
+      expect(answers.at(-1)).not.toBe(before);
       expect(answers.at(-1)?.get("p-stage")?.state).not.toBe("unread");
     } finally {
       await act(async () => root.unmount());
@@ -237,13 +240,13 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(rig.wrap(<Rows stops={[PROJECT]} />));
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
-      root.render(rig.wrap(<Rows stops={[PROJECT, production]} />));
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage", "p-prod"]));
+      await act(async () => root.render(rig.wrap(<Rows stops={[PROJECT]} />)));
+      expect(rig.stopDemands).toEqual(["p-stage"]);
+      await act(async () => root.render(rig.wrap(<Rows stops={[PROJECT, production]} />)));
+      expect(rig.stopDemands).toEqual(["p-stage", "p-prod"]);
       expect(rig.stopDemandCalls()).toBe(2);
-      root.render(rig.wrap(<Rows stops={[production]} />));
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-prod"]));
+      await act(async () => root.render(rig.wrap(<Rows stops={[production]} />)));
+      expect(rig.stopDemands).toEqual(["p-prod"]);
       expect(rig.stopDemandCalls()).toBe(2);
     } finally {
       await act(async () => root.unmount());
@@ -274,12 +277,10 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(rig.wrap(<Page project={PROJECT} />));
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
-      rig.holdStop("p-stage", known(services));
-      await vi.waitFor(() =>
-        expect(answers.at(-1)).toMatchObject({ state: "known", value: services }),
-      );
+      await act(async () => root.render(rig.wrap(<Page project={PROJECT} />)));
+      expect(rig.stopDemands).toEqual(["p-stage"]);
+      await act(async () => rig.holdStop("p-stage", known(services)));
+      expect(answers.at(-1)).toMatchObject({ state: "known", value: services });
     } finally {
       await act(async () => root.unmount());
       unbind();
@@ -301,18 +302,18 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(rig.wrap(<Page project={PROJECT} />));
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
+      await act(async () => root.render(rig.wrap(<Page project={PROJECT} />)));
+      expect(rig.stopDemands).toEqual(["p-stage"]);
       const before = answers.at(-1);
       const rendered = answers.length;
       // The same stop as a new object, with the store unmoved, is the same snapshot.
-      root.render(rig.wrap(<Page project={{ ...PROJECT }} />));
-      await vi.waitFor(() => expect(answers.length).toBeGreaterThan(rendered));
+      await act(async () => root.render(rig.wrap(<Page project={{ ...PROJECT }} />)));
+      expect(answers.length).toBeGreaterThan(rendered);
       expect(answers.at(-1)).toBe(before);
       expect(rig.stopDemandCalls()).toBe(1);
 
-      rig.holdStop("p-stage", known([]));
-      await vi.waitFor(() => expect(answers.at(-1)).not.toBe(before));
+      await act(async () => rig.holdStop("p-stage", known([])));
+      expect(answers.at(-1)).not.toBe(before);
       expect(answers.at(-1)?.state).toBe("known");
     } finally {
       await act(async () => root.unmount());
@@ -335,10 +336,10 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(rig.wrap(<Page project={PROJECT} />));
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-stage"]));
-      root.render(rig.wrap(<Page project={production} />));
-      await vi.waitFor(() => expect(rig.stopDemands).toEqual(["p-prod"]));
+      await act(async () => root.render(rig.wrap(<Page project={PROJECT} />)));
+      expect(rig.stopDemands).toEqual(["p-stage"]);
+      await act(async () => root.render(rig.wrap(<Page project={production} />)));
+      expect(rig.stopDemands).toEqual(["p-prod"]);
     } finally {
       await act(async () => root.unmount());
       unbind();
@@ -364,8 +365,8 @@ describe("the account's project flow in the web", () => {
 
     const root = createRoot(document.createElement("div") as unknown as Element);
     try {
-      root.render(rig.wrap(<Page />));
-      await vi.waitFor(() => expect(answers.length).toBeGreaterThan(0));
+      await act(async () => root.render(rig.wrap(<Page />)));
+      expect(answers.length).toBeGreaterThan(0);
       expect(answers.at(-1)).toEqual({ state: "unread", waitingFor: "access-grant" });
       expect(rig.stopDemandCalls()).toBe(0);
     } finally {
@@ -388,22 +389,20 @@ describe("the account's project flow in the web", () => {
     const root = createRoot(document.createElement("div") as unknown as Element);
     let unbind = () => undefined as void;
     try {
-      root.render(rig.wrap(<Services services={[APPSTAGE]} />));
-      await vi.waitFor(() =>
-        expect(answers.at(-1)?.get("s-app")).toEqual({
-          state: "unread",
-          waitingFor: "access-grant",
-        }),
-      );
-      unbind = bindAccountFlow(rig.stage);
-      await vi.waitFor(() =>
-        expect(answers.at(-1)?.get("s-app")).toEqual({ state: "unread", waitingFor: null }),
-      );
+      await act(async () => root.render(rig.wrap(<Services services={[APPSTAGE]} />)));
+      expect(answers.at(-1)?.get("s-app")).toEqual({
+        state: "unread",
+        waitingFor: "access-grant",
+      });
+      await act(async () => {
+        unbind = bindAccountFlow(rig.stage);
+      });
+      expect(answers.at(-1)?.get("s-app")).toEqual({ state: "unread", waitingFor: null });
       expect(rig.versionHolds).toEqual(["s-app"]);
-      rig.holdVersion("s-app", known({ activeId: "v1", source: "GIT", name: "v1.0.0" }));
-      await vi.waitFor(() =>
-        expect(answers.at(-1)?.get("s-app")).toMatchObject({ value: { name: "v1.0.0" } }),
+      await act(async () =>
+        rig.holdVersion("s-app", known({ activeId: "v1", source: "GIT", name: "v1.0.0" })),
       );
+      expect(answers.at(-1)?.get("s-app")).toMatchObject({ value: { name: "v1.0.0" } });
     } finally {
       await act(async () => root.unmount());
       unbind();

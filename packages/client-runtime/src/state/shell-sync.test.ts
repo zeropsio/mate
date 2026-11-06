@@ -149,6 +149,11 @@ describe("environment shell synchronization", () => {
         Stream.runHead,
       );
 
+      const afterReady = yield* SubscriptionRef.changes(shellState).pipe(
+        Stream.drop(1),
+        Stream.runHead,
+        Effect.forkChild({ startImmediately: true }),
+      );
       yield* SubscriptionRef.set(supervisorState, {
         desired: true,
         network: "online",
@@ -159,11 +164,7 @@ describe("environment shell synchronization", () => {
         lastFailure: null,
         retryAt: null,
       });
-      for (let index = 0; index < 10; index += 1) {
-        yield* Effect.yieldNow;
-      }
-
-      const state = yield* SubscriptionRef.get(shellState);
+      const state = Option.getOrThrow(yield* Fiber.join(afterReady));
       expect(state.status).toBe("live");
       expect(Option.getOrThrow(state.snapshot)).toEqual(LIVE_SHELL_SNAPSHOT);
     }),
@@ -181,6 +182,7 @@ describe("environment shell synchronization", () => {
       } as unknown as WsRpcProtocolClient;
       const live = session(client);
       const defective: Array<RpcSession.RpcSession> = [];
+      const defectReported = yield* Queue.unbounded<void>();
       const supervisorState = yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE);
       const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
         target: TARGET,
@@ -191,7 +193,11 @@ describe("environment shell synchronization", () => {
         disconnect: Effect.void,
         retryNow: Effect.void,
         credentialRotated: Effect.void,
-        reportStreamDefect: (dropped) => Effect.sync(() => defective.push(dropped)),
+        reportStreamDefect: (dropped) =>
+          Effect.sync(() => defective.push(dropped)).pipe(
+            Effect.andThen(Queue.offer(defectReported, undefined)),
+            Effect.asVoid,
+          ),
       } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
       const shellState = yield* makeEnvironmentShellState().pipe(
         Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
@@ -205,10 +211,15 @@ describe("environment shell synchronization", () => {
         Stream.filter((state) => state.status === "live"),
         Stream.runHead,
       );
-      for (let turn = 0; turn < 20 && defective.length === 0; turn += 1) yield* Effect.yieldNow;
+      yield* Queue.take(defectReported);
       expect(defective).toEqual([live]);
 
       // The supervisor answers the defect by reconnecting on its backoff ladder.
+      const afterDisconnect = yield* SubscriptionRef.changes(shellState).pipe(
+        Stream.drop(1),
+        Stream.runHead,
+        Effect.forkChild({ startImmediately: true }),
+      );
       yield* SubscriptionRef.set(supervisorState, {
         desired: true,
         network: "online",
@@ -219,8 +230,8 @@ describe("environment shell synchronization", () => {
         lastFailure: null,
         retryAt: 3_000,
       });
-      for (let turn = 0; turn < 10; turn += 1) yield* Effect.yieldNow;
-      expect((yield* SubscriptionRef.get(shellState)).status).toBe("cached");
+      const disconnected = Option.getOrThrow(yield* Fiber.join(afterDisconnect));
+      expect(disconnected.status).toBe("cached");
     }),
   );
 
@@ -493,6 +504,8 @@ describe("environment shell synchronization", () => {
     Effect.gen(function* () {
       const events = yield* Queue.unbounded<OrchestrationShellStreamItem>();
       const wakeups = yield* Queue.unbounded<ConnectionWakeups.ConnectionWakeup>();
+      const consumedWakeups = yield* Queue.unbounded<ConnectionWakeups.ConnectionWakeup>();
+      const subscribed = yield* Queue.unbounded<void>();
       const loaderCalls = yield* Ref.make(0);
       const capturedAfterSequences = yield* Ref.make<ReadonlyArray<number | undefined>>([]);
       const client = {
@@ -501,7 +514,10 @@ describe("environment shell synchronization", () => {
             Ref.update(capturedAfterSequences, (captured) => [
               ...captured,
               input.afterSequence,
-            ]).pipe(Effect.as(Stream.fromQueue(events))),
+            ]).pipe(
+              Effect.andThen(Queue.offer(subscribed, undefined)),
+              Effect.as(Stream.fromQueue(events)),
+            ),
           ),
       } as unknown as WsRpcProtocolClient;
       const supervisorState = yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE);
@@ -545,15 +561,22 @@ describe("environment shell synchronization", () => {
         Effect.provideService(ShellSnapshotLoader, snapshotLoader),
         Effect.provideService(
           ConnectionWakeups.ConnectionWakeups,
-          ConnectionWakeups.ConnectionWakeups.of({ changes: Stream.fromQueue(wakeups) }),
+          ConnectionWakeups.ConnectionWakeups.of({
+            changes: Stream.fromQueue(wakeups).pipe(
+              Stream.flatMap((reason) =>
+                Stream.make(reason).pipe(
+                  Stream.concat(
+                    Stream.fromEffect(Queue.offer(consumedWakeups, reason)).pipe(Stream.drain),
+                  ),
+                ),
+              ),
+            ),
+          }),
         ),
       );
 
       // A new session starts from an authoritative HTTP snapshot.
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(capturedAfterSequences)).length >= 1) break;
-        yield* Effect.yieldNow;
-      }
+      yield* Queue.take(subscribed);
       expect(yield* Ref.get(capturedAfterSequences)).toEqual([10]);
       yield* Queue.offer(events, { kind: "synchronized" });
       yield* SubscriptionRef.changes(shellState).pipe(
@@ -574,33 +597,25 @@ describe("environment shell synchronization", () => {
       );
 
       yield* Queue.offer(wakeups, "application-active");
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(capturedAfterSequences)).length >= 2) break;
-        yield* Effect.yieldNow;
-      }
+      yield* Queue.take(subscribed);
       expect(yield* Ref.get(capturedAfterSequences)).toEqual([10, 40]);
       yield* Queue.offer(events, { kind: "synchronized" });
 
       yield* Queue.offer(wakeups, "application-active-probe");
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(capturedAfterSequences)).length >= 3) break;
-        yield* Effect.yieldNow;
-      }
+      yield* Queue.take(subscribed);
       expect(yield* Ref.get(capturedAfterSequences)).toEqual([10, 40, 40]);
 
       yield* Queue.offer(wakeups, "application-active-reconnect");
-      for (let attempt = 0; attempt < 10; attempt += 1) {
-        yield* Effect.yieldNow;
-      }
+      yield* Queue.take(consumedWakeups).pipe(
+        Effect.andThen(Queue.take(consumedWakeups)),
+        Effect.andThen(Queue.take(consumedWakeups)),
+      );
       expect((yield* Ref.get(capturedAfterSequences)).length).toBe(3);
       expect(yield* Ref.get(loaderCalls)).toBe(1);
 
       // Replacing the session performs another authoritative refresh.
       yield* SubscriptionRef.set(activeSession, Option.some(session(client)));
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(capturedAfterSequences)).length >= 4) break;
-        yield* Effect.yieldNow;
-      }
+      yield* Queue.take(subscribed);
       expect(yield* Ref.get(capturedAfterSequences)).toEqual([10, 40, 40, 20]);
       expect(yield* Ref.get(loaderCalls)).toBe(2);
     }),

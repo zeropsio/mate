@@ -505,72 +505,6 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
   );
 });
 
-it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-base-")))(
-  "OrchestrationProjectionPipeline",
-  (it) => {
-    it.effect("stores message attachment references without mutating payloads", () =>
-      Effect.gen(function* () {
-        const projectionPipeline = yield* OrchestrationProjectionPipeline;
-        const eventStore = yield* OrchestrationEventStore;
-        const sql = yield* SqlClient.SqlClient;
-        const now = "2026-01-01T00:00:00.000Z";
-
-        yield* eventStore.append({
-          type: "thread.message-sent",
-          eventId: EventId.make("evt-attachments"),
-          aggregateKind: "thread",
-          aggregateId: ThreadId.make("thread-attachments"),
-          occurredAt: now,
-          commandId: CommandId.make("cmd-attachments"),
-          causationEventId: null,
-          correlationId: CommandId.make("cmd-attachments"),
-          metadata: {},
-          payload: {
-            threadId: ThreadId.make("thread-attachments"),
-            messageId: MessageId.make("message-attachments"),
-            role: "user",
-            text: "Inspect this",
-            attachments: [
-              {
-                type: "image",
-                id: "thread-attachments-att-1",
-                name: "example.png",
-                mimeType: "image/png",
-                sizeBytes: 5,
-              },
-            ],
-            turnId: null,
-            streaming: false,
-            createdAt: now,
-            updatedAt: now,
-          },
-        });
-
-        yield* projectionPipeline.bootstrap;
-
-        const rows = yield* sql<{
-          readonly attachmentsJson: string | null;
-        }>`
-            SELECT
-              attachments_json AS "attachmentsJson"
-            FROM projection_thread_messages
-            WHERE message_id = 'message-attachments'
-          `;
-        assert.equal(rows.length, 1);
-        assert.deepEqual(JSON.parse(rows[0]?.attachmentsJson ?? "null"), [
-          {
-            type: "image",
-            id: "thread-attachments-att-1",
-            name: "example.png",
-            mimeType: "image/png",
-            sizeBytes: 5,
-          },
-        ]);
-      }),
-    );
-  },
-);
-
 it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-attachments-safe-")))(
   "OrchestrationProjectionPipeline",
   (it) => {
@@ -597,6 +531,13 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
             role: "user",
             text: "Inspect this",
             attachments: [
+              {
+                type: "image",
+                id: "thread-attachments-att-1",
+                name: "example.png",
+                mimeType: "image/png",
+                sizeBytes: 5,
+              },
               {
                 type: "image",
                 id: "thread-attachments-safe-att-1",
@@ -631,6 +572,13 @@ it.layer(Layer.fresh(makeProjectionPipelinePrefixedTestLayer("t3-projection-atta
           `;
         assert.equal(rows.length, 1);
         assert.deepEqual(JSON.parse(rows[0]?.attachmentsJson ?? "null"), [
+          {
+            type: "image",
+            id: "thread-attachments-att-1",
+            name: "example.png",
+            mimeType: "image/png",
+            sizeBytes: 5,
+          },
           {
             type: "image",
             id: "thread-attachments-safe-att-1",

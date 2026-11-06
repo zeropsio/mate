@@ -42,15 +42,7 @@ describe("ZeropsBirthLine", () => {
     expect(detail).toBeGreaterThan(-1);
     expect(detail).toBeLessThan(html.indexOf("1:05"));
     expect(html.indexOf("1:05")).toBeLessThan(html.indexOf('role="progressbar"'));
-  });
-
-  it("draws one segment per step, five for the five-step birth", () => {
-    const html = renderToStaticMarkup(<ZeropsBirthLine nowMs={NOW} progress={progress()} />);
     expect(html.match(/data-zerops-birth-step-state=/g)?.length).toBe(5);
-  });
-
-  it("the meter is an accessible progressbar naming the active step's detail", () => {
-    const html = renderToStaticMarkup(<ZeropsBirthLine nowMs={NOW} progress={progress()} />);
     expect(html).toContain('role="progressbar"');
     expect(html).toContain('aria-valuenow="1"');
     expect(html).toContain('aria-valuemax="5"');

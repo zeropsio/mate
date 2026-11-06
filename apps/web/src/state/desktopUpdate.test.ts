@@ -27,6 +27,29 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function stateReceived(
+  registry: AtomRegistry.AtomRegistry,
+  atom: ReturnType<typeof createDesktopUpdateStateAtom>,
+  status: DesktopUpdateState["status"],
+): Promise<void> {
+  return new Promise((resolve) => {
+    let unsubscribe = () => {};
+    let matched = false;
+    unsubscribe = registry.subscribe(
+      atom,
+      (result) => {
+        if (AsyncResult.getOrElse(result, () => null)?.status === status) {
+          matched = true;
+          unsubscribe();
+          resolve();
+        }
+      },
+      { immediate: true },
+    );
+    if (matched) unsubscribe();
+  });
+}
+
 describe("desktopUpdateStateAtom", () => {
   it("loads once, retains state, and follows desktop update events", async () => {
     let listener: ((state: DesktopUpdateState) => void) | undefined;
@@ -39,10 +62,10 @@ describe("desktopUpdateStateAtom", () => {
     const atom = createDesktopUpdateStateAtom(() => ({ getUpdateState, onUpdateState }));
     const registry = AtomRegistry.make();
 
+    const receivedInitial = stateReceived(registry, atom, "idle");
     const unmount = registry.mount(atom);
-    await vi.waitFor(() => {
-      expect(AsyncResult.getOrElse(registry.get(atom), () => null)).toEqual(baseState);
-    });
+    await receivedInitial;
+    expect(AsyncResult.getOrElse(registry.get(atom), () => null)).toEqual(baseState);
 
     const downloadedState: DesktopUpdateState = {
       ...baseState,
@@ -50,11 +73,11 @@ describe("desktopUpdateStateAtom", () => {
       availableVersion: "1.1.0",
       downloadedVersion: "1.1.0",
     };
+    const receivedUpdate = stateReceived(registry, atom, "downloaded");
     listener?.(downloadedState);
 
-    await vi.waitFor(() => {
-      expect(AsyncResult.getOrElse(registry.get(atom), () => null)).toEqual(downloadedState);
-    });
+    await receivedUpdate;
+    expect(AsyncResult.getOrElse(registry.get(atom), () => null)).toEqual(downloadedState);
     unmount();
 
     const remount = registry.mount(atom);
@@ -68,13 +91,20 @@ describe("desktopUpdateStateAtom", () => {
   });
 
   it("does not let a slower initial read overwrite a newer update event", async () => {
-    let resolveInitial: ((state: DesktopUpdateState) => void) | undefined;
+    let resolveInitial!: (state: DesktopUpdateState) => void;
+    const initial = new Promise<DesktopUpdateState>((resolve) => {
+      resolveInitial = resolve;
+    });
+    let markStarted!: () => void;
+    const readStarted = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
     let listener: ((state: DesktopUpdateState) => void) | undefined;
     const atom = createDesktopUpdateStateAtom(() => ({
-      getUpdateState: () =>
-        new Promise<DesktopUpdateState>((resolve) => {
-          resolveInitial = resolve;
-        }),
+      getUpdateState: () => {
+        markStarted();
+        return initial;
+      },
       onUpdateState: (nextListener) => {
         listener = nextListener;
         return () => undefined;
@@ -83,21 +113,29 @@ describe("desktopUpdateStateAtom", () => {
     const registry = AtomRegistry.make();
     registry.mount(atom);
 
-    await vi.waitFor(() => expect(listener).toBeDefined());
+    await readStarted;
+    // Effect registered its Promise handler when it requested this read.
+    const initialHandled = initial.then(() => undefined);
+    expect(listener).toBeDefined();
     const newerState: DesktopUpdateState = { ...baseState, status: "checking" };
+    const receivedUpdate = stateReceived(registry, atom, "checking");
     listener?.(newerState);
-    resolveInitial?.(baseState);
+    await receivedUpdate;
+    resolveInitial(baseState);
+    await initialHandled;
 
-    await vi.waitFor(() => {
-      expect(AsyncResult.getOrElse(registry.get(atom), () => null)).toEqual(newerState);
-    });
+    expect(AsyncResult.getOrElse(registry.get(atom), () => null)).toEqual(newerState);
     registry.dispose();
   });
 
   it("keeps listening when the initial desktop state read fails", async () => {
     let listener: ((state: DesktopUpdateState) => void) | undefined;
     const cause = new Error("IPC unavailable");
-    const reportError = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    let markReported!: () => void;
+    const reported = new Promise<void>((resolve) => {
+      markReported = resolve;
+    });
+    const reportError = vi.spyOn(console, "log").mockImplementation(markReported);
     const getUpdateState = vi.fn(async () => Promise.reject(cause));
     const atom = createDesktopUpdateStateAtom(() => ({
       getUpdateState,
@@ -109,8 +147,9 @@ describe("desktopUpdateStateAtom", () => {
     const registry = AtomRegistry.make();
     registry.mount(atom);
 
-    await vi.waitFor(() => expect(listener).toBeDefined());
-    await vi.waitFor(() => expect(reportError).toHaveBeenCalledOnce());
+    await reported;
+    expect(listener).toBeDefined();
+    expect(reportError).toHaveBeenCalledOnce();
     expect(getUpdateState).toHaveBeenCalledTimes(3);
     const [, errorMessage, errorContext] = reportError.mock.calls[0] ?? [];
     expect(errorMessage).toBe("Failed to read the initial desktop update state after 3 attempts.");
@@ -126,10 +165,10 @@ describe("desktopUpdateStateAtom", () => {
     });
     expect((loggedError as DesktopUpdateStateReadError).cause).toBe(cause);
 
+    const receivedUpdate = stateReceived(registry, atom, "idle");
     listener?.(baseState);
-    await vi.waitFor(() => {
-      expect(AsyncResult.getOrElse(registry.get(atom), () => null)).toEqual(baseState);
-    });
+    await receivedUpdate;
+    expect(AsyncResult.getOrElse(registry.get(atom), () => null)).toEqual(baseState);
     registry.dispose();
   });
 });

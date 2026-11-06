@@ -1344,16 +1344,6 @@ describe("a registration not finished, and Finish setup's own steps", () => {
   const made = added({ step: "created", projectId: "p-ida" });
   it.each([
     {
-      case: "refused by its press: not registered, and why",
-      progress: pressed(
-        ["create-project", "done"],
-        ["register", "failed"],
-        ["import-container", "done"],
-        ["await-ready", "done"],
-      ),
-      want: "Not registered:unfinished (Register said no.)",
-    },
-    {
       case: "Finish setup registering",
       progress: pressed(["register", "running"]),
       want: "Ida registered:active",

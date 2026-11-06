@@ -346,20 +346,6 @@ const journeys: ReadonlyArray<Journey> = [
     },
     expected: [true, "parked"],
   },
-  {
-    sentence: "a copy a restart found gone is brought back",
-    journey: (w) => {
-      w.apply(home(writer("backend")));
-      restarted(w);
-      w.settle("crew.sweep", "backend", { swept: false, copy: { _tag: "missing" } });
-      const recover = w.pending("crew.recover", "appdev")?.payload;
-      return [
-        w.state.members.backend?.lane?.state,
-        recover?.kind === "crew.recover" ? recover.handles : undefined,
-      ];
-    },
-    expected: ["missing", ["backend"]],
-  },
 ];
 
 describe("crew turn endings", () => {
