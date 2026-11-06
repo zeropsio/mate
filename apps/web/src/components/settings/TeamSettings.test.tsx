@@ -240,36 +240,44 @@ describe("the organization's team", () => {
   });
 
   it("Back from inviting, the team says the invitation went out, marks the new row and puts focus on Invite", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
     const host = document.createElement("div");
     document.body.append(host);
     const root = createRoot(host);
-    await act(async () => {
-      root.render(
-        <TeamList
-          sent={["iva@example.com"]}
-          view={teamPeople(input({ roleCode: "OWNER", membershipId: "cu-ada" }))}
-        />,
+    try {
+      await act(async () => {
+        root.render(
+          <TeamList
+            sent={["iva@example.com"]}
+            view={teamPeople(input({ roleCode: "OWNER", membershipId: "cu-ada" }))}
+          />,
+        );
+      });
+      // Said to a screen reader only: the invite page said it where it was sent.
+      expect(host.querySelector('[data-part="sent"]')).toBeNull();
+      // The live region stands empty on the first paint, and is filled once focus has moved.
+      expect(host.querySelector('[role="status"]')?.textContent).toBe("");
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(host.querySelector('[role="status"]')?.textContent).toBe(
+        "Invitation sent to iva@example.com",
       );
-    });
-    // Said to a screen reader only: the invite page said it where it was sent.
-    expect(host.querySelector('[data-part="sent"]')).toBeNull();
-    // The live region stands empty on the first paint, and is filled once focus has moved.
-    expect(host.querySelector('[role="status"]')?.textContent).toBe("");
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(host.querySelector('[role="status"]')?.textContent).toBe(
-      "Invitation sent to iva@example.com",
-    );
-    expect(
-      [...host.querySelectorAll("ul[aria-label=People] > li")].map((row) =>
-        row.hasAttribute("data-arrived"),
-      ),
-    ).toEqual([false, false, false, true]);
-    expect(document.activeElement?.getAttribute("data-zerops-surface")).toBe("invite-team");
-    await act(async () => root.unmount());
-    host.remove();
+      expect(
+        [...host.querySelectorAll("ul[aria-label=People] > li")].map((row) =>
+          row.hasAttribute("data-arrived"),
+        ),
+      ).toEqual([false, false, false, true]);
+      expect(document.activeElement?.getAttribute("data-zerops-surface")).toBe("invite-team");
+    } finally {
+      try {
+        await act(async () => root.unmount());
+      } finally {
+        host.remove();
+        vi.useRealTimers();
+      }
+    }
   });
 
   it("A visit with no invitation just sent says nothing of one and marks no row", () => {
