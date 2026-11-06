@@ -83,7 +83,11 @@ function makeOrchestrationLayer(databasePath?: string) {
 }
 
 async function createOrchestrationSystem(databasePath?: string) {
-  const runtime = ManagedRuntime.make(makeOrchestrationLayer(databasePath));
+  const runtime = ManagedRuntime.make(
+    makeOrchestrationLayer(databasePath).pipe(
+      Layer.provideMerge(Layer.succeed(Metric.MetricRegistry, new Map())),
+    ),
+  );
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
   const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
   return {
@@ -100,12 +104,12 @@ function now() {
   return "2026-01-01T00:00:00.000Z";
 }
 
-const hasMetricSnapshot = (
+const findMetricSnapshot = (
   snapshots: ReadonlyArray<Metric.Metric.Snapshot>,
   id: string,
   attributes: Readonly<Record<string, string>>,
 ) =>
-  snapshots.some(
+  snapshots.find(
     (snapshot) =>
       snapshot.id === id &&
       Object.entries(attributes).every(([key, value]) => snapshot.attributes?.[key] === value),
@@ -913,12 +917,12 @@ describe("OrchestrationEngine", () => {
 
     const snapshots = await system.run(Metric.snapshot);
     expect(
-      hasMetricSnapshot(snapshots, "t3_orchestration_command_ack_duration", {
+      findMetricSnapshot(snapshots, "t3_orchestration_command_ack_duration", {
         commandType: "thread.create",
         aggregateKind: "thread",
         ackEventType: "thread.created",
       }),
-    ).toBe(true);
+    ).toMatchObject({ type: "Histogram", state: { count: 1 } });
 
     await system.dispose();
   });
@@ -951,12 +955,12 @@ describe("OrchestrationEngine", () => {
 
     const snapshots = await system.run(Metric.snapshot);
     expect(
-      hasMetricSnapshot(snapshots, "t3_orchestration_commands_total", {
+      findMetricSnapshot(snapshots, "t3_orchestration_commands_total", {
         commandType: "thread.create",
         aggregateKind: "thread",
         outcome: "failure",
       }),
-    ).toBe(true);
+    ).toMatchObject({ type: "Counter", state: { count: 1 } });
 
     await system.dispose();
   });
