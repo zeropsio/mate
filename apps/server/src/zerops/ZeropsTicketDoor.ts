@@ -20,6 +20,7 @@ export class ZeropsTicketDoor extends Context.Service<
     readonly heard: (frame: TicketFrame) => Effect.Effect<void>;
     readonly consume: (firstFrame: unknown) => Effect.Effect<Option.Option<TicketIdentity>>;
     readonly closeSession: (sessionId: string) => Effect.Effect<void>;
+    readonly restrictTo: (userId: string | null) => Effect.Effect<void>;
   }
 >()("t3/zerops/ZeropsTicketDoor") {}
 
@@ -64,6 +65,10 @@ export const make = Effect.sync(() => {
       Effect.sync(() => {
         for (const held of tickets.values())
           if (held.identity.sessionId === sessionId) held.used = true;
+      }),
+    restrictTo: (userId) =>
+      Effect.sync(() => {
+        for (const held of tickets.values()) if (held.identity.userId !== userId) held.used = true;
       }),
   });
 });

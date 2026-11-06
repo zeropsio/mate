@@ -488,6 +488,7 @@ export type MateSelf = typeof MateSelf.Type;
 export const LinkedMate = Schema.Struct({
   ...MateSelf.fields,
   ownerUserId: Schema.optionalKey(Schema.String),
+  chiefOpenerUserId: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type LinkedMate = typeof LinkedMate.Type;
 
