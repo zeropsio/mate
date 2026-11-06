@@ -92,38 +92,15 @@ describe("H: hosted client budgets", () => {
                   expect(after).not.toContain(order[0]);
                   expect(after).toContain(order.at(-1));
                 }
+                if (count === 1) {
+                  yield* b.when.appDetailsAre(["Shop"]);
+                  yield* b.when.opensUsage;
+                  yield* b.when.appDetailsAre([]);
+                }
                 yield* s.then.noExternalNetwork;
               }),
             );
         }),
-    );
-
-    // Leaving Projects releases the cards' detail; Usage's source migration owns its RPC budget.
-    it.effect("opening Usage releases Projects detail demand", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installBudget]);
-        const b = budgets(s);
-        yield* b.given.mates(["Ada"]);
-        yield* s.given.signedIn;
-        yield* b.when.projectsReady;
-        yield* b.when.appDetailsAre(["Shop"]);
-        yield* b.when.opensUsage;
-        yield* b.when.appDetailsAre([]);
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches menu discovery connecting every Mate and spending container resources before a click.
-    it.effect("showing four Mates in the menu opens no Mate RPC connection", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installBudget]);
-        const b = budgets(s);
-        yield* b.given.mates(names);
-        yield* s.given.signedIn;
-        yield* b.when.menuReady(names);
-        yield* b.then.unopenedMates(names);
-        yield* s.then.noExternalNetwork;
-      }),
     );
 
     // Catches opening one Mate fanning out to other containers or never enabling its composer.
@@ -134,6 +111,7 @@ describe("H: hosted client budgets", () => {
         yield* b.given.mates(names);
         yield* s.given.signedIn;
         yield* b.when.menuReady(names);
+        yield* b.then.unopenedMates(names);
         yield* b.when.opensMate("Ada");
         yield* s.then.conversation.appears;
         yield* b.then.composerEnabled;

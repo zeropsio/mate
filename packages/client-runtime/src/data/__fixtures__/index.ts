@@ -39,3 +39,4 @@ export {
   pastGrace,
 } from "./account.ts";
 export { membershipInputs } from "./membership.ts";
+export { hqFixtureWire } from "./hqWire.ts";

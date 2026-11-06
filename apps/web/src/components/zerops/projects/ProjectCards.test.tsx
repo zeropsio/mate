@@ -1,4 +1,21 @@
 // @vitest-environment happy-dom
+import {
+  makeAccountStore,
+  observeAccount,
+  streamOf,
+  type DetailDemand,
+} from "@t3tools/client-runtime/data";
+import * as Effect from "effect/Effect";
+import { hqFixtureWire } from "@t3tools/client-runtime/data/fixtures";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from "@tanstack/react-router";
+import { AtomRegistry } from "effect/reactivity";
 import type * as React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -10,9 +27,11 @@ const detail = vi.hoisted(() => ({
   /** What HQ said of each application's detail, by its id. */
   reads: {} as Record<string, { read: "unread" | "reading" | "read"; failure: null }>,
   held: new Set<string>(),
-  demand: vi.fn(({ ownerId }: { ownerId: string }) => {
+  demand: vi.fn(({ ownerId }: DetailDemand) => {
     detail.held.add(ownerId);
-    return () => detail.held.delete(ownerId);
+    return () => {
+      detail.held.delete(ownerId);
+    };
   }),
 }));
 vi.mock("~/zerops/ZeropsAccountData", () => ({
@@ -22,9 +41,10 @@ vi.mock("~/zerops/ZeropsAccountData", () => ({
   useDetailDemand: () => {},
 }));
 vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0 }));
-vi.mock("@tanstack/react-router", async () => {
+vi.mock("@tanstack/react-router", async (original) => {
   const { createElement } = await import("react");
   return {
+    ...(await original<typeof import("@tanstack/react-router")>()),
     Link: ({
       to,
       params = {},
@@ -39,12 +59,32 @@ vi.mock("@tanstack/react-router", async () => {
       }),
   };
 });
+vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
+  ...(await original<typeof import("~/zerops/ZeropsSessionProvider")>()),
+  useZeropsSessionOptional: () => ({
+    status: "signed-in",
+    user: { id: "ada", email: "ada@example.test", firstName: "Ada" },
+    organizations: [{ id: "org", name: "Org", membershipId: "member" }],
+    activeOrganization: { id: "org", name: "Org", membershipId: "member" },
+    selectOrganization: async () => {},
+    signOut: async () => {},
+  }),
+}));
+vi.mock("~/zerops/chiefSetup", async (original) => ({
+  ...(await original<typeof import("~/zerops/chiefSetup")>()),
+  useChiefOffer: () => undefined,
+}));
+vi.mock("~/components/ui/sidebar", async (original) => ({
+  ...(await original<typeof import("~/components/ui/sidebar")>()),
+  useSidebar: () => ({ isMobile: false, setOpenMobile: () => {} }),
+}));
 
 import { PlacePanel } from "./PlacePanel";
 import { CardMate, ProjectCards } from "./ProjectCards";
 import { overviewKeeps } from "./projectsView.logic";
 import { cardMateReading } from "./projectCard.logic";
 import { born, entry, FLOW_PROPS, item, placed, STAGE_STOP, WREN } from "./flowTestFixtures";
+import { SidebarZeropsAccountRow } from "../SidebarZeropsAccount";
 
 // The browser owns viewport intersection; this render case holds both already-visible cards.
 class VisibleCard {
@@ -176,6 +216,120 @@ it("a card that comes into sight holds its detail, even when the browser tells i
     expect([...detail.held]).toEqual(["shop"]);
   } finally {
     await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
+it("opening Usage releases Projects detail demand", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("IntersectionObserver", VisibleCard);
+  detail.org = "org";
+  detail.reads = { shop: { read: "read", failure: null } };
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const account = observeAccount({
+    store,
+    wire: { open: Effect.never },
+    repairSession: Effect.void,
+  });
+  const hq = hqFixtureWire();
+  const subscribed = Promise.withResolvers<void>();
+  const unsubscribed = Promise.withResolvers<void>();
+  const appDetails = new Set<string>();
+  account.show("org");
+  account.showHq({
+    orgId: "org",
+    wire: {
+      ...hq.wire,
+      open: (created) =>
+        hq.wire.open(created).pipe(
+          Effect.map((segment) => ({
+            ...segment,
+            send: (request) =>
+              segment.send(request).pipe(
+                Effect.tap(() =>
+                  Effect.sync(() => {
+                    if (request.type === "subscribe")
+                      for (const { scope } of request.scopes)
+                        if (scope.kind === "app-detail") appDetails.add(scope.appId);
+                    if (request.type === "unsubscribe")
+                      for (const scope of request.scopes)
+                        if (scope.kind === "app-detail") appDetails.delete(scope.appId);
+                    if (
+                      request.type === "subscribe" &&
+                      request.scopes.some(
+                        ({ scope }) => scope.kind === "app-detail" && scope.appId === "shop",
+                      )
+                    )
+                      subscribed.resolve();
+                    if (
+                      request.type === "unsubscribe" &&
+                      request.scopes.some(
+                        (scope) => scope.kind === "app-detail" && scope.appId === "shop",
+                      )
+                    )
+                      unsubscribed.resolve();
+                  }),
+                ),
+              ),
+          })),
+        ),
+    },
+  });
+  detail.demand.mockImplementationOnce(account.demandDetail);
+  const groups = [entry([item("Ada", placed("shop", "Shop"))])];
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const demanded = () => streamOf(store.state(), "hq:org:hq-app-detail:shop").demanded;
+  const routes = createRootRoute({
+    component: () => (
+      <>
+        <SidebarZeropsAccountRow destinationIcon={() => null} chiefIcon={null} />
+        <Outlet />
+      </>
+    ),
+  });
+  const projects = createRoute({
+    getParentRoute: () => routes,
+    path: "/zerops",
+    component: () => (
+      <ProjectCards focusGroup={undefined} groups={groups} props={{ ...FLOW_PROPS, groups }} />
+    ),
+  });
+  const usage = createRoute({
+    getParentRoute: () => routes,
+    path: "/usage",
+    component: () => <p data-testid="usage-page">Usage</p>,
+  });
+  const router = createRouter({
+    routeTree: routes.addChildren([projects, usage]),
+    history: createMemoryHistory({ initialEntries: ["/zerops"] }),
+  });
+  try {
+    await router.load();
+    await act(async () => root.render(<RouterProvider router={router} />));
+    expect(container.querySelector('[data-zerops-group="shop"]')).not.toBeNull();
+    expect(demanded()).toBe(true);
+    await act(async () => await subscribed.promise);
+    expect([...appDetails]).toEqual(["shop"]);
+    await act(async () => {
+      container
+        .querySelector<HTMLButtonElement>('[data-zerops-surface="sidebar-account"]')!
+        .click();
+    });
+    await act(async () => {
+      document.querySelector<HTMLElement>('[data-zerops-account-destination="usage"]')!.click();
+    });
+    expect(router.state.location.pathname).toBe("/usage");
+    expect(container.querySelector('[data-testid="usage-page"]')?.textContent).toBe("Usage");
+    expect(demanded()).toBe(false);
+    await act(async () => await unsubscribed.promise);
+    expect([...appDetails]).toEqual([]);
+  } finally {
+    await act(async () => root.unmount());
+    account.close();
+    registry.dispose();
     container.remove();
   }
 });
