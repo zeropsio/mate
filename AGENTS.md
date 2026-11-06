@@ -1,8 +1,8 @@
 # mate — Zerops Mate
 
 Zerops Mate is a hard fork of T3 Code: a control surface for coding agents in Zerops project
-containers. A Node WebSocket server in each container drives provider CLIs and serves the web client
-at `/mate/`; zcp installs it from this repo's GitHub release.
+containers. A Node WebSocket server in each container drives provider CLIs; zcp installs it from
+this repo's stable GitHub release. The web client is hosted separately.
 
 **Upstream.** Never `git merge` or rebase onto `upstream/main`. Before importing, porting or editing
 imported/ported zones, read and follow [`docs/internals/zerops/fork.md`](docs/internals/zerops/fork.md).
@@ -104,6 +104,8 @@ Before calling frontend work done, decide which apply:
 This file is a map, never a cache of facts from code, tests or other documents.
 To answer a question, go to the home:
 
+- Conceptual architecture → private `zeropsio/mate-hq`, `docs/architecture/README.md`; public
+  product contracts here and in the zcp spec remain self-contained.
 - The zcp↔mate seam → `../zcp/docs/spec-mate.md` §2.8 (sibling repo zeropsio/zcp).
 - Domain terms (Mate, HQ, application, environments, release, crew) → `docs/internals/zerops/primer.md`.
 - Runtime terms (thread, turn, decider, projector, reactor) → `docs/internals/glossary.md`.

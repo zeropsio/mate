@@ -7,8 +7,7 @@
 zerops:
   # The mate web client, served at an origin root by its own nginx: the
   # delivery shape the hosted client needs (spec-mate §4 — "hosted separately,
-  # not built into the container"). Same bundle the container serves under
-  # /mate/, built without the prefix.
+  # not built into the container").
   - setup: prod
     build:
       base: ubuntu/nodejs@24
@@ -21,8 +20,7 @@ zerops:
         - npm install -g --prefix "$HOME/.local" pnpm@11.10.0
         # `--filter @t3tools/web...` takes the web app and its workspace
         # dependencies only, leaving the desktop (Electron) and mobile (Expo)
-        # halves of the monorepo uninstalled. The shared production HQ deploys
-        # from mate-hq through its scripts/deploy-hq.ts.
+        # halves of the monorepo uninstalled.
         - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..."
         - $HOME/.local/bin/pnpm --filter @t3tools/web build
       # `~` shortens the deployed path: apps/web/dist lands at /var/www/dist,
