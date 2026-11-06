@@ -171,6 +171,8 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
           HOME: cacheHome ?? root,
           // The repository vp wrapper sets NODE_PATH; these fake installs have their own modules.
           NODE_PATH: cacheHome ? "" : process.env.NODE_PATH,
+          // Shared receipts require an uninstrumented Node, regardless of the test runner's preload.
+          NODE_OPTIONS: cacheHome ? "" : process.env.NODE_OPTIONS,
           XDG_CACHE_HOME: cacheHome
             ? NodePath.join(cacheHome, ".cache")
             : process.env.XDG_CACHE_HOME,
