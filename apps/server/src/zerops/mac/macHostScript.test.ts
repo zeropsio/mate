@@ -4,7 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { afterEach, describe, expect, it } from "vite-plus/test";
+import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import { MAC_VIEW_SCRIPT } from "./macViewScript.ts";
 import { MAC_VIEW_STREAM_SOURCE } from "./macViewStreamScript.ts";
@@ -26,10 +26,18 @@ const input: MacHostScriptInput = {
   agentDeviceVersion: "0.21.24",
 };
 
-const scratch: string[] = [];
-afterEach(() => {
-  for (const dir of scratch.splice(0)) NodeFS.rmSync(dir, { recursive: true, force: true });
-});
+const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-script-"));
+const home = NodePath.join(scratch, "home");
+const bin = NodePath.join(scratch, "bin");
+NodeFS.mkdirSync(home);
+NodeFS.mkdirSync(bin);
+afterAll(() => NodeFS.rmSync(scratch, { recursive: true, force: true }));
+
+const reset = (directory: string) => {
+  for (const entry of NodeFS.readdirSync(directory)) {
+    NodeFS.rmSync(NodePath.join(directory, entry), { recursive: true, force: true });
+  }
+};
 
 const BASE_TOOLS = ["awk", "rm", "sed", "cat", "id"];
 /** A whole pairing also needs the tools it files and keys with. */
@@ -39,9 +47,8 @@ const extraTools = (stubs: Record<string, string>) =>
 
 /** Runs a script under sh as a Mac would, with some commands replaced by stubs. */
 const runOnFakeMac = (script: string, stubs: Record<string, string>) => {
-  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-home-"));
-  const bin = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-bin-"));
-  scratch.push(home, bin);
+  reset(home);
+  reset(bin);
   // Only the stubs and the few real tools the scripts lean on: nothing else, node included.
   for (const tool of extraTools(stubs)) {
     // A stub replaces the tool; never link one, or writing the stub would write through the link.
@@ -126,7 +133,7 @@ describe("the scripts the Mate hands a Mac", () => {
     const agents = NodePath.join(mac.home, "Library", "LaunchAgents");
     NodeFS.mkdirSync(NodePath.join(root, "sshd"), { recursive: true });
     NodeFS.mkdirSync(agents, { recursive: true });
-    for (const name of ["sshd", "agent-device"]) {
+    for (const name of ["sshd", "agent-device", "view"]) {
       NodeFS.writeFileSync(NodePath.join(agents, `io.zerops.mate.${PROJECT}.${name}.plist`), "");
     }
 
@@ -138,6 +145,7 @@ describe("the scripts the Mate hands a Mac", () => {
     const log = NodeFS.readFileSync(NodePath.join(mac.home, "launchctl.log"), "utf8");
     expect(log).toContain(`bootout gui/501/io.zerops.mate.${PROJECT}.sshd\n`);
     expect(log).toContain(`bootout gui/501/io.zerops.mate.${PROJECT}.agent-device\n`);
+    expect(log).toContain(`bootout gui/501/io.zerops.mate.${PROJECT}.view\n`);
   });
 
   it.each([
@@ -159,23 +167,6 @@ describe("the scripts the Mate hands a Mac", () => {
       );
     },
   );
-
-  it("removing the pairing stops the live view too", () => {
-    const mac = runOnFakeMac(renderMacRemoveScript(PROJECT, "zcp"), {
-      uname: "echo Darwin",
-      launchctl: `echo "$@" >> "$HOME/launchctl.log"`,
-      id: "echo 501",
-    });
-    const agents = NodePath.join(mac.home, "Library", "LaunchAgents");
-    NodeFS.mkdirSync(agents, { recursive: true });
-    NodeFS.writeFileSync(NodePath.join(agents, `io.zerops.mate.${PROJECT}.view.plist`), "");
-
-    expect(mac.run().status).toBe(0);
-    expect(NodeFS.readdirSync(agents)).toEqual([]);
-    expect(NodeFS.readFileSync(NodePath.join(mac.home, "launchctl.log"), "utf8")).toContain(
-      `bootout gui/501/io.zerops.mate.${PROJECT}.view\n`,
-    );
-  });
 
   it("pairing leaves the live view running as the user's node, with its helper written intact", () => {
     // A Mac on the VPN with node and npm; launchd starts what it is given at once.
