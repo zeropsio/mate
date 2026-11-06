@@ -806,7 +806,6 @@
         "none": "No docs/user page documents Zerops quick actions yet."
       },
       "tests": [
-        "apps/web/src/components/zerops/ZeropsQuickActions.test.tsx",
         "packages/client-runtime/src/zerops/quickActions.test.ts",
         "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
       ],

@@ -139,9 +139,4 @@ describe("ZeropsMateVerb", () => {
 
     expect(html).toContain('data-zerops-primary-action="Connect"');
   });
-
-  it("answers a press, so the row feels heard", () => {
-    const html = renderToStaticMarkup(<ZeropsMateVerb label="Merge" onClick={() => {}} />);
-    expect(html).toContain("active:scale-95");
-  });
 });

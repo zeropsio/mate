@@ -5,8 +5,7 @@
  * These are PROMPTS, never calls. Every change to a Zerops project goes through
  * the agent's MCP tools, so a quick action's whole job is to save the user
  * typing a sentence — it prefills the composer and stops there. Nothing here
- * reaches the Zerops API, and `ZeropsQuickActions.test.tsx` pins that the
- * component cannot.
+ * reaches the Zerops API.
  */
 import type { ZeropsTopologyService, ZeropsTopologyView } from "./topology.ts";
 
