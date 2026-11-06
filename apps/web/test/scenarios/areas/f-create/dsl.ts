@@ -17,14 +17,17 @@ export async function receipt<A>(
   pending: Promise<A>,
   name: string,
   signal = TestRunner.getCurrentTest()?.context.signal,
+  evidence?: () => string,
 ): Promise<A> {
+  const details = () =>
+    `Pending receipt: ${name}${evidence === undefined ? "" : `\nLast evidence: ${evidence()}`}`;
   const stopped = () => {
     const reason: unknown = signal?.reason;
     // Vitest aborts with the same timeout error it reports as the test failure.
     if (reason instanceof Error && /^Test timed out in \d+ms/u.test(reason.message)) {
       const previous = reason.message;
       const stack = reason.stack;
-      reason.message = `${previous}\nPending receipt: ${name}`;
+      reason.message = `${previous}\n${details()}`;
       if (stack) reason.stack = stack.replace(previous, reason.message);
     }
   };
@@ -32,6 +35,9 @@ export async function receipt<A>(
   else signal?.addEventListener("abort", stopped, { once: true });
   try {
     return await deadline(pending, name, signal);
+  } catch (cause) {
+    if (signal?.aborted && evidence !== undefined) throw new Error(details(), { cause });
+    throw cause;
   } finally {
     signal?.removeEventListener("abort", stopped);
   }
