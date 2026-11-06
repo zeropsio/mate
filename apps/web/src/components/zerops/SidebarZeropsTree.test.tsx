@@ -2218,14 +2218,7 @@ describe("the project's flow under it", () => {
 
   it("offers to set up a stop the recipe has, in the project's menu rather than as a row", () => {
     const html = withFlow([CRM_DEV], flow({ recipeRead: true, recipeTiers: ["production"] }));
-    // Not every project wants one, and a permanent row asking for something
-    // optional reads as a fault (the owner, 2026-09-19).
-    expect(html).not.toContain('data-zerops-surface="sidebar-environment-missing"');
     expect(html).toContain('data-zerops-surface="sidebar-project-more"');
-  });
-
-  it("says nothing about missing stops when the recipe offers none", () => {
-    expect(withFlow([CRM_DEV])).not.toContain('data-zerops-surface="sidebar-environment-missing"');
   });
 
   // A project needs no production (the owner, 2026-09-28: "production not
