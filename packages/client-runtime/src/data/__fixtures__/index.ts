@@ -1,4 +1,5 @@
 /** Test fixtures over the account's data layer, for the apps' own tests. */
+export { engineHeldTurns } from "../projections/mateEngine.ts";
 export {
   hqConfirms,
   hqDrops,

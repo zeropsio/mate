@@ -948,6 +948,12 @@ jobs:
           ../scripts/ci-install-object-store.sh
           ../scripts/ci-install-postgres.sh
 
+      - name: Test environment source consumers
+        if: matrix.shard == 1
+        run: |
+          vp exec tsc -p apps/web/test/e-env/tsconfig.json
+          vp -C apps/web test run --config test/e-env/vitest.config.ts
+
       - name: Cache the scenarios' Chrome for Testing
         uses: actions/cache/restore@v4
         with:
