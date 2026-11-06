@@ -698,7 +698,7 @@ it("the CLI and immutable gate graph select identical obligations for a real sou
         .filter(
           (line) =>
             line &&
-            !/^(?:Scenario files:|Scenario |Related scenario cap:|Deferred scenario |Diff from )/u.test(
+            !/^(?:Scenario files:|Scenario |Related scenario cap:|Deferred scenario |Diff from |\d+ affected witnesses omitted$)/u.test(
               line,
             ),
         ),
@@ -1261,7 +1261,9 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     expect(changedPaths(root, "base")).toEqual(["README.md"]);
     git("add", "README.md");
     git("commit", "-qm", "lane");
-    expect((await run()).stdout).toContain("reused receipt");
+    const committed = await run();
+    expect(committed.stdout).not.toContain("reused receipt");
+    expect(committed.stdout).toContain("reused stage:");
     expect(checks()).toBe(checked);
     // --list is a preview; --force must execute and replace an old passing receipt even on failure.
     expect((await run(["--list"])).stdout).toContain("guard ledgers:");
@@ -1329,13 +1331,15 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       expect(checks()).not.toBe(before);
       expect((await run()).stdout).toContain("reused receipt");
     }
-    // Staging and committing additions must preserve the same diff identity as untracked bytes.
+    // Committing identical bytes creates a fresh verdict while preserving stage results.
     const beforeCommit = checks();
     git("add", "--all", "--", "README.md", "renamed.md", "binary.md", "link.md");
     git("commit", "-qm", "lane additions");
-    expect((await run()).stdout).toContain("reused receipt");
+    const committedAdditions = await run();
+    expect(committedAdditions.stdout).not.toContain("reused receipt");
+    expect(committedAdditions.stdout).toContain("reused stage:");
     expect(checks()).toBe(beforeCommit);
-    // An unrelated main change and a clean rebase leave the lane diff and checks identical.
+    // An unrelated main change and a clean rebase preserve checks, not the old verdict.
     git("checkout", "-qb", "lane");
     git("checkout", "-q", "base");
     NodeFS.writeFileSync(NodePath.join(root, "main.md"), "unrelated");
@@ -1343,7 +1347,9 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     git("commit", "-qm", "main moved");
     git("checkout", "-q", "lane");
     git("rebase", "base");
-    expect((await run()).stdout).toContain("reused receipt");
+    const rebased = await run();
+    expect(rebased.stdout).not.toContain("reused receipt");
+    expect(rebased.stdout).toContain("reused stage:");
     expect(checks()).toBe(beforeCommit);
     // Decision: no test deleted or weakened; the receipt never masks a failure.
     // Selection inputs can change on main without changing the lane patch or command list.
@@ -1506,10 +1512,11 @@ it("BigInt source edits select checks while comments alone select none", () => {
 
 it("the default laptop gate omits selected browser scenarios and fixed smoke", () => {
   const scenario = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
+  const dependency = "apps/web/test/scenarios/areas/d-change/dsl.ts";
   const { steps } = selectGateSteps(repositoryGraph, {
     comparison: "HEAD",
-    existing: [scenario],
-    paths: [scenario],
+    existing: [dependency],
+    paths: [dependency],
     inventory: [scenario],
     smokeFiles: Object.keys(stateOnlySmoke),
     slots: 3,
@@ -1518,7 +1525,7 @@ it("the default laptop gate omits selected browser scenarios and fixed smoke", (
     steps.filter((step) =>
       ["edited scenario files", "state-only smoke", "state-only oracle smoke"].includes(step.name),
     ),
-    "ASSERTION: default laptop completion never executes browser scenarios or fixed smoke",
+    "ASSERTION: default laptop completion omits unchanged related scenarios and fixed smoke",
   ).toEqual([]);
 });
 
