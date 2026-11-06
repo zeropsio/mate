@@ -40,10 +40,15 @@ const journeys: ReadonlyArray<Journey> = [
       w.tell({ _tag: "Recovered", bootId: "boot-2" as never }, { kind: "engine" });
       w.settle("crew.sweep", "backend", { swept: false, copy: { _tag: "missing" } });
       const missing = w.state.members.backend!.lane?.state;
+      const recover = w.pending("crew.recover", "appdev")?.payload;
       w.settle("crew.recover", "appdev", { lost: [], losses: [] });
-      return [missing, w.state.members.backend!.lane?.state];
+      return [
+        missing,
+        recover?.kind === "crew.recover" ? recover.handles : undefined,
+        w.state.members.backend!.lane?.state,
+      ];
     },
-    expected: ["missing", "ready"],
+    expected: ["missing", ["backend"], "ready"],
   },
   {
     sentence: "a crew app a redeploy stopped runs again once its copy is back, a lost copy's not",

@@ -51,7 +51,7 @@ const journeys: ReadonlyArray<Journey> = [
       return [before, w.turns("lead")];
     },
     expected: [
-      [["review"], [LEAD_WAKE_SPACING_MS]],
+      [["review"], [120_000]],
       ["review", "review"],
     ],
   },
@@ -204,7 +204,7 @@ const journeys: ReadonlyArray<Journey> = [
       return [right, w.turns("lead")];
     },
     expected: [
-      [1, [LEAD_WAKE_SPACING_MS]],
+      [1, [120_000]],
       ["review", "review"],
     ],
   },

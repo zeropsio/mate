@@ -15,6 +15,7 @@ import * as Option from "effect/Option";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
 import { MateEngine } from "../../engine/MateEngine.ts";
+import { testTempDir } from "../../testing/testTempDir.ts";
 import {
   ProviderMcpError,
   type McpConfigChange,
@@ -658,11 +659,20 @@ describe("McpServers.reconnect", () => {
   );
 });
 
+const fileStoreDir = testTempDir("mcp-file-store-");
+const resetFileStore = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  for (const entry of yield* fs.readDirectory(fileStoreDir)) {
+    yield* fs.remove(`${fileStoreDir}/${entry}`, { recursive: true, force: true });
+  }
+  return fileStoreDir;
+});
+
 it.layer(NodeServices.layer, { excludeTestServices: true })("nodeFileStore", (it) => {
   it.effect("writes a config whole, through a link, keeping its permissions", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const dir = yield* fs.makeTempDirectoryScoped();
+      const dir = yield* resetFileStore;
       const store = yield* nodeFileStore;
 
       // A new file is private to its owner: it can hold keys.
@@ -691,7 +701,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("nodeFileStore", (it
   it.effect("refuses to write over a file that changed since it was read", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const dir = yield* fs.makeTempDirectoryScoped();
+      const dir = yield* resetFileStore;
       const store = yield* nodeFileStore;
       yield* fs.writeFileString(`${dir}/config.toml`, "a = 2\n");
       const refused = yield* Effect.flip(store.write(`${dir}/config.toml`, "a = 3\n", "a = 1\n"));
@@ -703,7 +713,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("nodeFileStore", (it
   it.effect("holds Claude Code's lock on .claude.json while it writes, past a stale one", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const dir = yield* fs.makeTempDirectoryScoped();
+      const dir = yield* resetFileStore;
       const store = yield* nodeFileStore;
       const lock = `${dir}/.claude.json.lock`;
       // A lock left by a Claude that died: untouched for a minute.
@@ -722,7 +732,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("nodeFileStore", (it
   it.effect("resolves each home the way its driver does", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const dir = yield* fs.makeTempDirectoryScoped();
+      const dir = yield* resetFileStore;
       const stateDir = `${dir}/state`;
       // One Antigravity profile keeps a file of its own; the default's links to ~/.gemini.
       const own = `${antigravityProfileDirectory(stateDir, "antigravity-2" as never)}/config`;
