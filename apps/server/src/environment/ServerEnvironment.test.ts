@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off - reset the suite-owned filesystem fixture synchronously.
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
 import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
 import packageJson from "../../package.json" with { type: "json" };
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -8,6 +12,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 import * as Schema from "effect/Schema";
+import { beforeEach } from "vite-plus/test";
 
 import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
 import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
@@ -20,6 +25,7 @@ import {
 } from "../cloud/config.ts";
 import * as ServerConfig from "../config.ts";
 import * as ZeropsMateUpdate from "../zerops/ZeropsMateUpdate.ts";
+import { testTempDir } from "../testing/testTempDir.ts";
 import * as ServerEnvironment from "./ServerEnvironment.ts";
 
 const isServerEnvironmentIdPersistenceError = Schema.is(
@@ -84,17 +90,26 @@ const makeServerConfig = Effect.fn(function* (baseDir: string) {
 });
 
 it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
+  const baseDir = testTempDir("server-environment-");
+  const stateDir = NodePath.join(baseDir, "userdata");
+  beforeEach(() => {
+    const id = NodePath.join(stateDir, "environment-id");
+    if (NodeFS.existsSync(id)) NodeFS.unlinkSync(id);
+    const secrets = NodePath.join(stateDir, "secrets");
+    if (NodeFS.existsSync(secrets)) {
+      for (const name of NodeFS.readdirSync(secrets))
+        NodeFS.unlinkSync(NodePath.join(secrets, name));
+    }
+  });
   it.effect(
     "the advertised Mate version reads its launch environment and otherwise the package",
     () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
         for (const [environment, expected] of [
           [{}, packageJson.version],
           [{ T3CODE_SERVER_VERSION: "0.14.11" }, "0.14.11"],
           [{ T3CODE_SERVER_VERSION: "999.0.0" }, "999.0.0"],
         ] as const) {
-          const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "version-source-" });
           const descriptor = yield* Effect.gen(function* () {
             const environment = yield* ServerEnvironment.ServerEnvironment;
             return yield* environment.getDescriptor;
@@ -112,11 +127,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
 
   it.effect("persists the environment id across service restarts", () =>
     Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-server-environment-test-",
-      });
-
       const first = yield* Effect.gen(function* () {
         const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
         return yield* serverEnvironment.getDescriptor;
@@ -145,11 +155,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
     "names its boot: the same for every descriptor of one process, another after a restart",
     () =>
       Effect.gen(function* () {
-        const fileSystem = yield* FileSystem.FileSystem;
-        const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-          prefix: "t3-server-environment-test-",
-        });
-
         const { first, again } = yield* Effect.gen(function* () {
           const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
           const first = yield* serverEnvironment.getDescriptor;
@@ -171,10 +176,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
   // under; the SPA catch-all makes the failure silent otherwise.
   it.effect("advertises the base path the server is published under", () =>
     Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-server-environment-base-path-test-",
-      });
       const config = yield* makeServerConfig(baseDir);
 
       const rooted = yield* Effect.gen(function* () {
@@ -205,10 +206,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
 
   it.effect("advertises the Mate engine's protocol on every server", () =>
     Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-server-environment-engine-test-",
-      });
       const config = yield* makeServerConfig(baseDir);
       const descriptor = yield* Effect.gen(function* () {
         return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
@@ -230,10 +227,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
   // — absent everywhere else, including a plain `t3 serve`.
   it.effect("carries the Zerops project id only inside a Zerops container", () =>
     Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-server-environment-zerops-test-",
-      });
       const config = yield* makeServerConfig(baseDir);
 
       const outsideZerops = yield* Effect.gen(function* () {
@@ -283,11 +276,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
   // or a layer that has not run a successful check yet (zcp not on PATH).
   it.effect("update is absent when ZeropsMateUpdate has nothing to report", () =>
     Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-server-environment-mate-update-absent-test-",
-      });
-
       const descriptor = yield* Effect.gen(function* () {
         return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
       }).pipe(Effect.provide(makeServerEnvironmentLayer(baseDir)));
@@ -303,10 +291,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
 
   it.effect("update carries the last good ZeropsMateUpdate answer when one is held", () =>
     Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-server-environment-mate-update-present-test-",
-      });
       const config = yield* makeServerConfig(baseDir);
       const zeropsConfig = {
         ...config,
@@ -366,10 +350,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
 
   it.effect("reports agent activity publishing from the current secret state", () =>
     Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-server-environment-publish-test-",
-      });
       const testLayer = Layer.mergeAll(
         ServerEnvironment.layer.pipe(Layer.provide(ServerSecretStore.layer)),
         ServerSecretStore.layer,
@@ -412,10 +392,6 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
 
   it.effect("structures persisted environment id filesystem failures", () =>
     Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
-        prefix: "t3-server-environment-error-test-",
-      });
       const serverConfig = yield* makeServerConfig(baseDir);
       const environmentIdPath = serverConfig.environmentIdPath;
       const methodByOperation = {
