@@ -464,9 +464,9 @@ export type MateLinkDown = typeof MateLinkDown.Type;
 /*
  * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"): the Mate dials
  * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
- * its state. The Mate admits by its own read of Zerops alone and reports it up (`access_report`),
- * refusing a ticket its own list does not admit (`ticket_refused`); HQ sends it no access list,
- * and an older HQ's `access` frame is no frame of this union. Today's frames of tasks, usage and
+ * its state. The Mate reports its own Zerops access list up (`access_report`) and admits tickets
+ * through that list, further restricted by HQ's known Chief opener (`ticket_refused` otherwise).
+ * HQ sends no access list, and an older HQ's `access` frame is no frame of this union. Today's frames of tasks, usage and
  * the update policy ride on it unchanged.
  * Today's `MateLinkUp`, `MateLinkDown` and `MateState` above stay for the HQ and clients that
  * still read them.
@@ -484,7 +484,7 @@ export const MateSelf = Schema.Struct({
 });
 export type MateSelf = typeof MateSelf.Type;
 
-/** The Mate as a `state` frame brings it: its self read, with its owner where HQ knows one. */
+/** The Mate as a `state` frame brings it: its self read, known owner and Chief opener verdict. */
 export const LinkedMate = Schema.Struct({
   ...MateSelf.fields,
   ownerUserId: Schema.optionalKey(Schema.String),

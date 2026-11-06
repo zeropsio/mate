@@ -37,8 +37,8 @@ export class ZeropsConnections extends Context.Service<
   {
     /**
      * Takes HQ's ticket in the order the link heard it, and gives what answers it: kept for its
-     * socket when the list opens for its person, else refused. The answer may wait on a recompute,
-     * so the link runs it aside; a ticket whose session closed meanwhile is never kept.
+     * socket when the list and known Chief opener permit its person, else refused. The answer may
+     * wait on a recompute, so the link runs it aside; a ticket whose session closed meanwhile is never kept.
      */
     readonly ticket: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
     readonly admit: (

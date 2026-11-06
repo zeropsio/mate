@@ -21,8 +21,9 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
  *   every session on a moved Chief mark (`chief`), and to `ZeropsChangesFile`, which keeps the
- *   Mate's changes from every state where zcp reads them; tickets (`ticket`), each answered
- *   `ticket-ack`, or `ticket_refused` when the Mate's own list does not open for its person; the
+ *   Mate's changes from every state where zcp reads them, and to `ZeropsConnections` for the known
+ *   Chief opener restriction; tickets (`ticket`), each answered `ticket-ack`, or `ticket_refused`
+ *   when the native list or known Chief opener does not admit its person; the
  *   Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
  *   to `ZeropsAutomation`, never logged; and the tasks HQ hands an automated Mate (`task`), the
