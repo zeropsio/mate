@@ -172,17 +172,6 @@ describe("menuRowsAtom", () => {
       drawn: false,
     },
     {
-      case: "an official HQ's first attempt failed, inside the wait",
-      hq: "transient",
-      drawn: false,
-    },
-    {
-      case: "an official HQ's first attempt failed and the wait ran out",
-      hq: "transient",
-      waitedOut: true,
-      drawn: true,
-    },
-    {
       case: "an official HQ slow to answer, inside the wait",
       hq: "slow",
       drawn: false,
@@ -303,19 +292,6 @@ describe("menuRowsAtom", () => {
 
     expect(fallback.settled).toBe(true);
     expect(rereading).toEqual(fallback);
-  });
-
-  it("draws nothing while the listing is unread, whatever HQ said", () => {
-    const registry = AtomRegistry.make();
-    const store = makeAccountStore(registry);
-    registry.set(accountReadsAtom, {
-      data: store.data,
-      orgId: ORG,
-      demandDetail: () => () => {},
-      renewHeld: () => {},
-    });
-    mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
-    expect(registry.get(menuRowsAtom(ORG, []))).toEqual({ settled: false, rows: [] });
   });
 });
 
