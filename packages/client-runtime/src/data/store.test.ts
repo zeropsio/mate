@@ -269,8 +269,19 @@ describe("a reconnect's grace", () => {
 });
 
 describe("derived reader lifetime", () => {
-  it("shares holders, releases the last mount, and remounts with current facts", async () => {
-    const registry = AtomRegistry.make();
+  it("shares holders, releases the last mount, and remounts with current facts", () => {
+    const tasks: Array<() => void> = [];
+    const registry = AtomRegistry.make({
+      scheduleTask: (task) => {
+        let cancelled = false;
+        tasks.push(() => {
+          if (!cancelled) task();
+        });
+        return () => {
+          cancelled = true;
+        };
+      },
+    });
     const store = makeAccountStore(registry);
     liveZerops({ running: [] }).forEach(store.dispatch);
     const key = { orgId: ORG, projectId: "p" };
@@ -280,7 +291,7 @@ describe("derived reader lifetime", () => {
     first();
     expect(registry.getNodes().has(atom)).toBe(true);
     second();
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    while (tasks.length) tasks.shift()!();
     expect(registry.getNodes().has(atom)).toBe(false);
     store.dispatch(processRows(["work", 1]));
     store.dispatch({
