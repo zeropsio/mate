@@ -792,7 +792,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     );
     entry.container = next.state;
     for (const effect of next.effects) runContainer(entry, effect);
-    if (!entry.socket) requestFor(entry, { fresh: true });
+    if (!entry.socket) requestFor(entry, { fresh: true }, { overHq: true });
   };
 
   /**
@@ -1404,9 +1404,9 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         if (entry === undefined) return;
         const ended = entry.container.processRunning && !running;
         transition(entry, { type: "PROCESS", running });
-        // A process that ended says the container is on its way back: read it now, not at the
-        // poll's next rung.
-        if (ended) requestFor(entry, { fresh: true });
+        // A process that ended says the container is on its way back: read it even before HQ
+        // reports it online, not at the poll's next rung.
+        if (ended) requestFor(entry, { fresh: true }, { overHq: true });
       }),
     presence: (key, online) =>
       enqueue(() => {

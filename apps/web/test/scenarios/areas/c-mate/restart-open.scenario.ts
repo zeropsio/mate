@@ -51,10 +51,14 @@ const restartedFromItsMenu = Effect.gen(function* () {
     await s.page.locator('[role="dialog"] ::-p-aria(Restart[role="button"])').click();
   });
   const processId = yield* Effect.promise(() => restart.promise);
-  yield* Effect.promise(() => ada.server.stop());
-  yield* until(s.page, "Ada says it is restarting", (_reply, restarting) =>
-    document.body.innerText.includes(restarting),
+  // Wait for the accepted operation receipt before completing its platform process.
+  yield* Effect.promise(() =>
+    s.page.waitForFunction(() => document.body.innerText.includes("Zerops accepted the restart."), {
+      timeout: WITHIN_MS,
+      polling: "mutation",
+    }),
   );
+  yield* Effect.promise(() => ada.server.stop());
   return { s, ada, processId };
 });
 
@@ -65,7 +69,12 @@ describe("C: a Mate restarted under its open conversation", () => {
       () =>
         Effect.gen(function* () {
           const { s, ada, processId } = yield* restartedFromItsMenu;
+          const finished = s.page.waitForFunction(
+            () => document.body.innerText.includes("Restart completed."),
+            { timeout: WITHIN_MS, polling: "mutation" },
+          );
           s.drivers.zerops.writes.transition(processId, "FINISHED");
+          yield* Effect.promise(() => finished);
           yield* until(
             s.page,
             "Ada no longer says it is restarting",

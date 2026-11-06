@@ -271,6 +271,52 @@ describe("makeMateAdapter", () => {
     expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("ready");
   });
 
+  it("reads a finished restart even while HQ says the Mate is offline", async () => {
+    const { adapter, store, probes } = rig({ reading: () => ({ kind: "unreachable" }) });
+    adapter.setTargets([target("p1")]);
+    adapter.presence("p1:zcp", true);
+    await flush();
+    expect(adapter.intend("p1:zcp", { kind: "restart", initAt: "init-1" })).toBe(true);
+    adapter.presence("p1:zcp", false);
+    adapter.process("p1:zcp", true);
+    await flush();
+    const before = probes.length;
+    adapter.process("p1:zcp", false);
+    await flush();
+    expect(probes.length).toBe(before + 1);
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("booting");
+    adapter.dispose();
+  });
+
+  it("reads a finished restart when its old socket closes after the process ends", async () => {
+    let answering = true;
+    const { adapter, store, probes, clock } = rig({
+      reading: () => (answering ? ready("p1") : { kind: "unreachable" }),
+    });
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("route", ["p1:zcp"]);
+    adapter.presence("p1:zcp", true);
+    await flush();
+    const environmentId = EnvironmentId.make("env-p1");
+    adapter.link(environmentId, { phase: "connected" });
+    await flush();
+    await clock.advance(1);
+    expect(adapter.intend("p1:zcp", { kind: "restart", initAt: "init-1" })).toBe(true);
+    adapter.presence("p1:zcp", false);
+    adapter.process("p1:zcp", true);
+    await flush();
+    answering = false;
+    adapter.process("p1:zcp", false);
+    await flush();
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("restarting");
+    const before = probes.length;
+    adapter.link(environmentId, { phase: "backoff", retryAtMs: null });
+    await flush();
+    expect(probes.length).toBe(before + 1);
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("booting");
+    adapter.dispose();
+  });
+
   it("a Mate restarted before a reload opens once it answers, though nothing proves its container re-initialized", async () => {
     const restarted = JSON.stringify([
       { target: "p1:zcp", kind: "restart", since: 1_800_000_000_000 - 60_000 },
