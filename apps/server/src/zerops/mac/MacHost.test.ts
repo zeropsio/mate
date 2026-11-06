@@ -482,7 +482,7 @@ describe("opening an app for the person to watch", () => {
     const executable = NodePath.join(macos, name);
     NodeFS.writeFileSync(
       executable,
-      '#!/bin/sh\n[ -z "${MATE_TEST_READY:-}" ] || printf "ready\\n" > "$MATE_TEST_READY"\n[ -z "${MATE_TEST_HOLD:-}" ] || read -r _ < "$MATE_TEST_HOLD"\n',
+      '#!/bin/sh\ntrap \'printf "stopped\\n"; exit 0\' TERM\n[ -z "${MATE_TEST_READY:-}" ] || printf "ready\\n" > "$MATE_TEST_READY"\nwhile IFS= read -r _; do printf "running\\n"; done\n',
       { mode: 0o755 },
     );
     return { app: NodeFS.realpathSync(NodePath.join(copy, "build", `${name}.app`)), executable };
@@ -498,29 +498,38 @@ describe("opening an app for the person to watch", () => {
     expect(stdout.trim().split("\n").at(-1)).toBe(built);
   });
 
-  // Whether a process still runs an app's executable; one that quit is gone or a zombie.
-  const runsApp = (pid: number | undefined) =>
-    pid !== undefined &&
-    NodeChildProcess.spawnSync("ps", ["-p", String(pid), "-o", "command="], {
-      encoding: "utf8",
-    }).stdout.includes(".app/Contents/MacOS/");
+  // Ask the app after the command: it reports a delivered stop or answers that it is running.
+  const appStatus = (app: NodeChildProcess.ChildProcessWithoutNullStreams) => {
+    const reply = new Promise<string>((resolve, reject) => {
+      app.stdout.once("data", (chunk: Buffer) => resolve(chunk.toString().trim()));
+      app.stdout.once("end", () => reject(new Error("App exited without a status receipt")));
+      app.stdin.on("error", (error: NodeJS.ErrnoException) => {
+        if (error.code !== "EPIPE") reject(error);
+      });
+    });
+    app.stdin.write("status\n");
+    return reply;
+  };
 
-  it("quits the copy of that build still running, so a rebuild is what opens", () => {
-    let running: NodeChildProcess.ChildProcess | undefined;
-    let other: NodeChildProcess.ChildProcess | undefined;
+  it("quits the copy of that build still running, so a rebuild is what opens", async () => {
+    let running: NodeChildProcess.ChildProcessWithoutNullStreams | undefined;
+    let other: NodeChildProcess.ChildProcessWithoutNullStreams | undefined;
+    const closed: Promise<void>[] = [];
     try {
-      const { code } = onMac("build/Counter+ Pro.app", (copy) => {
+      const { code, stderr } = onMac("build/Counter+ Pro.app", (copy) => {
         const ready = [NodePath.join(copy, "counter-ready"), NodePath.join(copy, "notes-ready")];
-        const hold = [NodePath.join(copy, "counter-hold"), NodePath.join(copy, "notes-hold")];
-        NodeChildProcess.execFileSync("mkfifo", [...ready, ...hold]);
+        NodeChildProcess.execFileSync("mkfifo", ready);
         running = NodeChildProcess.spawn(buildApp(copy, "Counter+ Pro").executable, [], {
-          stdio: "ignore",
-          env: { ...process.env, MATE_TEST_READY: ready[0], MATE_TEST_HOLD: hold[0] },
+          stdio: "pipe",
+          env: { ...process.env, MATE_TEST_READY: ready[0] },
         });
         other = NodeChildProcess.spawn(buildApp(copy, "Notes").executable, [], {
-          stdio: "ignore",
-          env: { ...process.env, MATE_TEST_READY: ready[1], MATE_TEST_HOLD: hold[1] },
+          stdio: "pipe",
+          env: { ...process.env, MATE_TEST_READY: ready[1] },
         });
+        for (const app of [running, other]) {
+          closed.push(new Promise<void>((resolve) => app.once("close", () => resolve())));
+        }
         for (const receipt of ready) {
           const received = NodeChildProcess.spawnSync(
             "/bin/sh",
@@ -532,12 +541,16 @@ describe("opening an app for the person to watch", () => {
           expect(received.status).toBe(0);
         }
       });
-      expect(code).toBe(0);
-      expect(runsApp(running?.pid)).toBe(false);
-      expect(runsApp(other?.pid)).toBe(true);
+      expect(code, stderr).toBe(0);
+      expect(await Promise.all([appStatus(running!), appStatus(other!)])).toEqual([
+        "stopped",
+        "running",
+      ]);
+      await closed[0];
     } finally {
       running?.kill("SIGKILL");
       other?.kill("SIGKILL");
+      await Promise.all(closed);
     }
   });
 
