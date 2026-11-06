@@ -122,7 +122,7 @@ To answer a question, go to the home:
   platform fact. One surface/flow/component belongs in tests (title is the product sentence; one-line
   why when the owner decided against the obvious) or code. Reasons/reversals belong in the commit message.
 - Test admission and removal: OWNER.md Testing. `scripts/check-test-sentences.ts` enforces
-  `Drops-test` trailers.
+  witness lines and `Drops-test`/`Drops-test-file` trailers.
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.
 - Paragraph-sized doc entries are list items, never table rows.
