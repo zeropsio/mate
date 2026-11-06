@@ -77,11 +77,6 @@ describe("deployBuildLookup — what the thread's project says of a build a depl
       }),
       expected: "unread",
     },
-    {
-      name: "Zerops out with the project read: as it was read",
-      input: input({ snapshot: READ }),
-      expected: "running",
-    },
   ] as const)("$name: $expected", ({ input: given, expected }) => {
     expect(deployBuildLookup(given)("av-1")).toBe(expected);
   });

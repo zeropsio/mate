@@ -6,7 +6,6 @@ import {
   crewFailureAt,
   crewFailureCauseOf,
   crewFailureSentence,
-  crewRefusalOf,
 } from "./useCrewCommand";
 
 describe("crewFailureSentence", () => {
@@ -42,17 +41,13 @@ describe("crewFailureSentence", () => {
   });
 });
 
-describe("crewRefusalOf", () => {
-  it("names the engine's reason, and nothing for any other failure", () => {
-    expect(crewRefusalOf(new CrewCommandError({ reason: "unlanded-commits", detail: null }))).toBe(
-      "unlanded-commits",
-    );
-    expect(crewRefusalOf(new Error("socket closed"))).toBeNull();
-  });
-});
-
 describe("crewFailureCauseOf", () => {
   it.each<{ readonly name: string; readonly cause: unknown; readonly expected: unknown }>([
+    {
+      name: "a refusal without detail keeps the engine's reason",
+      cause: new CrewCommandError({ reason: "unlanded-commits", detail: null }),
+      expected: { reason: "unlanded-commits", detail: null },
+    },
     {
       name: "a refusal keeps the engine's reason and its own words",
       cause: new CrewCommandError({
