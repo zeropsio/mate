@@ -1,4 +1,5 @@
 import { scenarioSuite } from "../../harness/suite.ts";
+import { recordStep } from "../../harness/lastStep.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import {
@@ -119,18 +120,10 @@ describe("G: outages, sleep and several tabs", () => {
         yield* caughtUp(tab, "Shop in both tabs");
         yield* tab.then.noReload;
         yield* checkpoint(s);
-      }),
-    );
-
-    // Catches closing one tab tearing down the remaining tab's account or live subscriptions.
-    it.effect("closing the second tab leaves the first receiving changes", () =>
-      Effect.gen(function* () {
-        const s = yield* givenOutage();
-        yield* s.given.signedIn;
-        const tab = yield* s.given.browserActor({ context: s.page.browserContext() });
-        yield* tab.given.signedIn;
-        yield* caughtUp(s, "Shop");
-        yield* caughtUp(tab, "Shop");
+        // Catches closing one tab tearing down the remaining tab's account or live subscriptions.
+        yield* Effect.sync(() =>
+          recordStep("closing the second tab leaves the first receiving changes"),
+        );
         yield* Effect.promise(() => tab.page.close());
         yield* s.when.hq.colleague.renamesProject("Shop", "Shop surviving tab");
         yield* caughtUp(s, "Shop surviving tab");
