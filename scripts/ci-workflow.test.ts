@@ -2515,7 +2515,25 @@ it("Decision: A kh-next push whose tree already has a successful kh-next Signal 
     signal.jobs.chat_scenarios,
     "ASSERTION: shards are skipped with the bundle they need",
   ).toMatchObject({ needs: "chat_bundle" });
-  expect(signal.jobs.chat_scenarios.if).toBeUndefined();
+  // An implicit success() also requires every skipped ancestor, the receipt of a pull request too.
+  const shardsRun = (bundle: string) =>
+    signal.jobs.chat_scenarios.if !== undefined &&
+    NodeChildProcess.spawnSync(
+      "bash",
+      [
+        "-c",
+        `[[ ${signal.jobs.chat_scenarios.if
+          .replace(/^\$\{\{\s*|\s*\}\}$/gu, "")
+          .replaceAll("!cancelled()", "true == true")
+          .replaceAll("needs.chat_bundle.result", `'${bundle}'`)} ]]`,
+      ],
+      { encoding: "utf8" },
+    ).status === 0;
+  expect(shardsRun("skipped"), "ASSERTION: a verified tree runs no shard").toBe(false);
+  expect(
+    shardsRun("success"),
+    "ASSERTION: pull requests and diagnostics, which skip the receipt, run every shard",
+  ).toBe(true);
   expect(signal.jobs.classify.if).toContain("needs.chat_bundle.result == 'success'");
 });
 
