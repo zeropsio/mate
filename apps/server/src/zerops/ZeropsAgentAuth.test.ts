@@ -4,7 +4,9 @@ import type { ZeropsAgentAuthSnapshot, ZeropsAgentId } from "@t3tools/contracts"
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
@@ -14,9 +16,13 @@ import * as TestClock from "effect/testing/TestClock";
 import { describe, expect, it } from "vite-plus/test";
 import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 
+import * as ServerConfig from "../config.ts";
 import { buildSnapshot, computeAgentAuthState, make, toZembedEnv } from "./ZeropsAgentAuth.ts";
 import type { WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { ZeropsAgentFlagError } from "./ZeropsAgentFlag.ts";
+import * as ZeropsMateAccessList from "./ZeropsMateAccessList.ts";
+import * as ZeropsProjectSigners from "./ZeropsProjectSigners.ts";
+import { memorySignInStore, ZeropsSignIns } from "./zeropsSignIns.ts";
 
 // The §3 W-STATE matrix (docs/spec-welcome-mode.md), pinned verbatim against
 // `vscode-bootstrap-welcome.js`'s `computeAgentState`. `credVerifiable` is
@@ -183,11 +189,14 @@ describe("the signer", () => {
   });
 
   /**
-   * A feed over a home directory whose Claude credential already exists, with a `readSigners`
-   * fake over `signers`. The initial provider check the present credential requests is drained
-   * first.
+   * A feed over a home directory whose Claude credential already exists, reading the same
+   * sign-in store through the project signer service as the turn gate. Its initial check drains
+   * before the test changes that store.
    */
-  const makeFeed = (initial: Readonly<Partial<Record<ZeropsAgentId, string>>>) =>
+  const makeFeed = (
+    initial: Readonly<Partial<Record<ZeropsAgentId, string>>>,
+    duringFirstSignerRead?: string,
+  ) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -196,7 +205,29 @@ describe("the signer", () => {
       yield* fs.makeDirectory(path.dirname(credential), { recursive: true });
       yield* fs.writeFileString(credential, "{}");
 
-      const signers = yield* Ref.make(initial);
+      const signIns = yield* memorySignInStore(
+        Object.fromEntries(Object.entries(initial).map(([key, by]) => [key, { by }])),
+      );
+      const projectSigners = yield* ZeropsProjectSigners.make.pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ZeropsMateAccessList.emptyLayer,
+            ServerConfig.layer({} as ServerConfig.ServerConfig["Service"]),
+            Layer.succeed(ZeropsSignIns, signIns),
+          ),
+        ),
+      );
+      const injected = yield* Ref.make(false);
+      const signerSource = {
+        changes: projectSigners.changes,
+        signers: Effect.gen(function* () {
+          const current = yield* projectSigners.signers;
+          if (duringFirstSignerRead !== undefined && !(yield* Ref.getAndSet(injected, true))) {
+            yield* signIns.heard({ "claude-code": duringFirstSignerRead });
+          }
+          return current;
+        }),
+      };
       const feed = yield* make({
         agentFlag: {
           markSignedIn: () => Effect.fail(new ZeropsAgentFlagError({ reason: "not used" })),
@@ -205,17 +236,19 @@ describe("the signer", () => {
           Effect.succeed({ status: "unauthenticated" as const, checkedAt: 0 }),
         homeDir,
         envStorePath: path.join(homeDir, "zembed-env.json"),
-        readSigners: Ref.get(signers),
+        projectSigners: signerSource,
         isZeropsEnvironment: true,
         watch: noWatch,
       });
       const subscription = yield* feed.subscribe;
-      yield* TestClock.adjust(Duration.seconds(2));
-      yield* changeWhere(
-        subscription,
-        (snapshot) => agentState(snapshot, "claude-code")?.providerAuth === "unauthenticated",
-      );
-      return { feed, subscription, signers };
+      if (duringFirstSignerRead === undefined) {
+        yield* TestClock.adjust(Duration.seconds(2));
+        yield* changeWhere(
+          subscription,
+          (snapshot) => agentState(snapshot, "claude-code")?.providerAuth === "unauthenticated",
+        );
+      }
+      return { feed, subscription, signIns, projectSigners };
     });
 
   itEffect.layer(NodeServices.layer)("ended attempts stay ended", (it) => {
@@ -281,16 +314,29 @@ describe("the signer", () => {
   });
 
   itEffect.layer(NodeServices.layer)("ZeropsAgentAuth signer", (it) => {
+    it.effect("a signer map arriving during the first snapshot is not lost", () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { subscription, projectSigners } = yield* makeFeed({}, "user-b");
+          assert.equal((yield* projectSigners.signers)["claude-code"], "user-b");
+          assert.equal(
+            agentState(subscription.latest, "claude-code")?.authorizedBy?.subject,
+            "user-b",
+          );
+        }),
+      ),
+    );
+
     it.effect("is published with the re-check that follows a sign-in made here", () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { feed, subscription, signers } = yield* makeFeed({ "claude-code": "user-b" });
+          const { feed, subscription, signIns } = yield* makeFeed({ "claude-code": "user-b" });
           assert.equal(
             agentState(subscription.latest, "claude-code")?.authorizedBy?.subject,
             "user-b",
           );
 
-          yield* Ref.set(signers, { "claude-code": "user-a" });
+          yield* signIns.save("claude-code", { by: "user-a" });
           yield* feed.recheckNow("claude-code");
           const published = yield* changeWhere(
             subscription,
@@ -305,6 +351,54 @@ describe("the signer", () => {
           );
         }),
       ),
+    );
+
+    it.effect(
+      "Decision: HQ's late signer map republishes agent auth, and later signer changes reach subscribers",
+      () =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const { feed, subscription, signIns, projectSigners } = yield* makeFeed({});
+            assert.isUndefined(agentState(subscription.latest, "claude-code")?.authorizedBy);
+
+            const next = (subject: string | undefined) =>
+              changeWhere(
+                subscription,
+                (snapshot) =>
+                  agentState(snapshot, "claude-code")?.authorizedBy?.subject === subject,
+              ).pipe(
+                Effect.timeoutOption("1 second"),
+                Effect.forkScoped({ startImmediately: true }),
+              );
+            const heard = yield* next("user-b");
+            yield* signIns.heard({ "claude-code": "user-b" });
+            yield* TestClock.adjust("1 second");
+            const published = yield* Fiber.join(heard);
+            assert.isTrue(Option.isSome(published));
+            assert.equal(
+              agentState(Option.getOrThrow(published), "claude-code")?.authorizedBy?.subject,
+              "user-b",
+            );
+            assert.equal((yield* projectSigners.signers)["claude-code"], "user-b");
+            assert.equal(
+              agentState(yield* feed.latest, "claude-code")?.authorizedBy?.subject,
+              "user-b",
+            );
+
+            const changed = yield* next("user-a");
+            yield* signIns.save("claude-code", { by: "user-a" });
+            yield* TestClock.adjust("1 second");
+            assert.isTrue(Option.isSome(yield* Fiber.join(changed)));
+            assert.equal((yield* projectSigners.signers)["claude-code"], "user-a");
+
+            const cleared = yield* next(undefined);
+            yield* signIns.clear("claude-code");
+            yield* TestClock.adjust("1 second");
+            assert.isTrue(Option.isSome(yield* Fiber.join(cleared)));
+            assert.isUndefined((yield* projectSigners.signers)["claude-code"]);
+            assert.isUndefined(agentState(yield* feed.latest, "claude-code")?.authorizedBy);
+          }),
+        ),
     );
   });
 });
