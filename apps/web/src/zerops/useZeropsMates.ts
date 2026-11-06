@@ -63,21 +63,19 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   const mates = new Map<EnvironmentId, ZeropsMateIdentity>();
   const named = Object.values(get(shownHqMateIdentitiesAtom));
   const listRead = get(shownHqMenuNavigationAtom).read === "read";
-  const unnamed = new Set(
+  // The Mates HQ still lists, whether or not it can name them yet: a placement without a name,
+  // or in an application whose row is still on its way, keeps what the last visit knew.
+  const listed = new Set(
     Object.entries(directory.mates)
-      .filter(
-        ([, placement]) =>
-          (placement.kind === "mate" || placement.kind === "devstage") && !placement.name?.trim(),
-      )
+      .filter(([, placement]) => placement.kind === "mate" || placement.kind === "devstage")
       .map(([projectId]) => projectId),
   );
-  if (directory.myChief.kind === "present" && !directory.myChief.placement.name?.trim())
-    unnamed.add(directory.myChief.projectId);
+  if (directory.myChief.kind === "present") listed.add(directory.myChief.projectId);
   // What the account's last visit had HQ name: the first frame paints it, HQ's answer replaces it.
   const memory = readMateMemory();
-  const remembered = rememberMates(memory, named, listRead, unnamed);
+  const remembered = rememberMates(memory, named, listRead, listed);
   if (remembered !== memory) writeMateMemory(remembered);
-  for (const seeded of seededIdentities(named, remembered, listRead, unnamed)) {
+  for (const seeded of seededIdentities(named, remembered, listRead, listed)) {
     // HQ names the Mate; its environment is the one its overview relays. Until that reaches HQ —
     // a Mate just up, its sign-in waiting — it is the one whose own server says it lives in the
     // Mate's project (run 2, 2026-10-16: an added Mate landed on a bare conversation meanwhile).

@@ -65,16 +65,17 @@ export function writeMateMemory(
 
 /**
  * The memory once HQ named `identities`: each named Mate as HQ names it now; once HQ's list is
- * read, a project it no longer lists is forgotten. The same memory when nothing changed.
+ * read, a project it no longer lists (`listedProjectIds`) is forgotten. The same memory when
+ * nothing changed.
  */
 export function rememberMates(
   memory: MateMemory,
   identities: ReadonlyArray<HqMateIdentity>,
   listRead: boolean,
-  unnamedProjectIds: ReadonlySet<string>,
+  listedProjectIds: ReadonlySet<string>,
 ): MateMemory {
   const next: Record<string, HqMateIdentity> = {};
-  for (const identity of seededIdentities(identities, memory, listRead, unnamedProjectIds)) {
+  for (const identity of seededIdentities(identities, memory, listRead, listedProjectIds)) {
     if (identity.environmentId !== undefined) next[identity.environmentId] = identity;
   }
   return sameValue(next, memory) ? memory : next;
@@ -83,14 +84,15 @@ export function rememberMates(
 /**
  * Navigation owns names, faces and project membership; the separately observed overview owns
  * the environment. A still-listed project keeps its remembered environment until that join
- * arrives, and its remembered identity while HQ cannot name it. Before navigation is complete,
- * retain projects it has not named yet as well.
+ * arrives, and its remembered identity while HQ cannot name it (`listedProjectIds`: the Mates HQ
+ * lists, named or not). Before navigation is complete, retain projects it has not named yet as
+ * well.
  */
 export function seededIdentities(
   identities: ReadonlyArray<HqMateIdentity>,
   memory: MateMemory,
   listRead: boolean,
-  unnamedProjectIds: ReadonlySet<string>,
+  listedProjectIds: ReadonlySet<string>,
 ): ReadonlyArray<HqMateIdentity> {
   const remembered = new Map(
     Object.entries(memory).map(([environmentId, identity]) => [
@@ -107,7 +109,7 @@ export function seededIdentities(
     ),
     ...[...remembered.values()].filter(
       (identity) =>
-        !named.has(identity.projectId) && (!listRead || unnamedProjectIds.has(identity.projectId)),
+        !named.has(identity.projectId) && (!listRead || listedProjectIds.has(identity.projectId)),
     ),
   ];
 }
