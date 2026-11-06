@@ -47,8 +47,8 @@ The loop:
   files, and the gate once more; it reuses passed stages.
 - CI runs blocking verification on `main`, `kh-next`, `kh-bisect/**` and pull requests (a newer push
   cancels older runs except on `main`; `kh-next` is the integration branch that fast-forwards `main`);
-  browser scenario shards run in the non-blocking `Signal` workflow, where a failure gets one
-  same-commit rerun to tell a flake from a regression.
+  browser scenario shards run nightly on `main` and on demand in the non-blocking `Signal`
+  workflow, where a failure gets one same-commit rerun to tell a flake from a regression.
 - Markdown tables: `vp fmt` the file before committing; unaligned rows fail CI's Check job.
 - The server is event-sourced; async flows emit typed receipts. Wait on receipts and worker drains,
   never sleeps or polling.

@@ -1,8 +1,8 @@
-# kh-next execution budgets (minutes; queue/runner allocation is additional, not execution):
+# Execution budgets (minutes; queue/runner allocation is additional, not execution):
 # Blocking CI <= 33 min = verification 3 + selection 9 + bundle 6 + State Smoke 14 + summary 1.
 # Suite allocation: state_smoke 14; test_packages 12; other suites/cache 10;
 # changes/Test/Release Smoke 1. Independent shards run concurrently; their bounds do not add.
-# Signal <= 41 min = verification 3 + bundle 10 + shards 14 + classify 14 (signal.yml).
+# Signal <= 38 min = bundle 10 + shards 14 + classify 14 (signal.yml).
 # Every browser shard and the entire classify rerun: 10 min process group + 10 sec KILL grace,
 # inside an 11 min step and 14 min job (3 min setup/artifacts). Cases retain the 3 min ceiling;
 # three consecutive time-bound failures stop admission, naming them, within 9 min + cleanup.

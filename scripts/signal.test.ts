@@ -283,7 +283,7 @@ it.each([
     standing: [],
   },
 ])(
-  "Signal fails when the same test fails twice on two consecutive kh-next runs: $case",
+  "Signal fails when the same test fails twice on two consecutive nightly runs: $case",
   ({ previous, current, standing }) => {
     expect(standingReds(previous, current).map((red) => red.title)).toEqual(standing);
   },
