@@ -4,6 +4,7 @@ import {
   shownHqMateIdentitiesAtom,
   shownHqMenuNavigationAtom,
   shownHqMateDirectoryAtom,
+  shownHqMatesAtom,
   isListedMateProject,
 } from "@t3tools/client-runtime/data";
 import { mateArrivingUntil } from "@t3tools/client-runtime/zerops";
@@ -48,6 +49,20 @@ export function environmentServing(
   return connected.length === 1 ? connected[0]!.environmentId : undefined;
 }
 
+/**
+ * The environment each Mate's overview names, by project: all the directory reads of HQ's live
+ * view, so a Mate's threads, crew or main changing republishes nothing here.
+ */
+const relayedEnvironmentsAtom = Atom.make(
+  (get): Readonly<Record<string, EnvironmentId | undefined>> =>
+    Object.fromEntries(
+      Object.entries(get(shownHqMatesAtom).mates).map(([projectId, mate]) => [
+        projectId,
+        mate.identity?.environmentId,
+      ]),
+    ),
+).pipe(Atom.withEquality(sameValue), Atom.withLabel("zerops:relayed-environments"));
+
 export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   const environments = get(zeropsEnvironmentsAtom);
   // Platform rows supply only the body, never the name, face, project or environment identity.
@@ -63,21 +78,20 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   const mates = new Map<EnvironmentId, ZeropsMateIdentity>();
   const named = Object.values(get(shownHqMateIdentitiesAtom));
   const listRead = get(shownHqMenuNavigationAtom).read === "read";
-  const unnamed = new Set(
-    Object.entries(directory.mates)
-      .filter(
-        ([, placement]) =>
-          (placement.kind === "mate" || placement.kind === "devstage") && !placement.name?.trim(),
-      )
-      .map(([projectId]) => projectId),
-  );
-  if (directory.myChief.kind === "present" && !directory.myChief.placement.name?.trim())
-    unnamed.add(directory.myChief.projectId);
+  // The Mates HQ still lists, whether or not it can name them yet: a placement without a name,
+  // or in an application whose row is still on its way, keeps what the last visit knew — but for
+  // the environment its overview names, if HQ relayed one.
+  const relayed = get(relayedEnvironmentsAtom);
+  const listed = new Map<string, EnvironmentId | undefined>();
+  const list = (projectId: string) => listed.set(projectId, relayed[projectId]);
+  for (const [projectId, placement] of Object.entries(directory.mates))
+    if (placement.kind === "mate" || placement.kind === "devstage") list(projectId);
+  if (directory.myChief.kind === "present") list(directory.myChief.projectId);
   // What the account's last visit had HQ name: the first frame paints it, HQ's answer replaces it.
   const memory = readMateMemory();
-  const remembered = rememberMates(memory, named, listRead, unnamed);
+  const remembered = rememberMates(memory, named, listRead, listed);
   if (remembered !== memory) writeMateMemory(remembered);
-  for (const seeded of seededIdentities(named, remembered, listRead, unnamed)) {
+  for (const seeded of seededIdentities(named, remembered, listRead, listed)) {
     // HQ names the Mate; its environment is the one its overview relays. Until that reaches HQ —
     // a Mate just up, its sign-in waiting — it is the one whose own server says it lives in the
     // Mate's project (run 2, 2026-10-16: an added Mate landed on a bare conversation meanwhile).

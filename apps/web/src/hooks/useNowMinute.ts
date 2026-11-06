@@ -62,6 +62,9 @@ function getSnapshot(): string {
   return nowMinute;
 }
 
-export function useNowMinute(): string {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+const still = () => () => {};
+
+/** The shared minute; `active: false` reads it without subscribing, so no tick re-renders. */
+export function useNowMinute(active = true): string {
+  return useSyncExternalStore(active ? subscribe : still, getSnapshot, getSnapshot);
 }

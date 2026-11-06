@@ -6,6 +6,9 @@ import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { installArea } from "./fake.ts";
 import { ownerViewport } from "./ownerViewport.ts";
 import { mateChat } from "./dsl.ts";
+import * as Schema from "effect/Schema";
+import { HqStreamMessage } from "@t3tools/shared/hqStream";
+import { transportGate } from "../../harness/transportGate.ts";
 
 describe("C: the conversation opening follows readiness", () => {
   scenarioSuite((it) => {
@@ -197,6 +200,171 @@ describe("C: the conversation opening follows readiness", () => {
             ),
             "ASSERTION: one opening stage, and no absence said, from the reload to the conversation",
           ).toEqual({ absent: false, stages: 1 });
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
+    it.effect(
+      "a reload of a remembered Mate's conversation opens it before HQ names its environment, and never says it isn't in your projects",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* s.given.project("Sage", { mate: true });
+          const chat = mateChat(s);
+          chat.fixture("Sage").exchange("Earlier question", "Sage's conversation is ready");
+          yield* s.given.signedIn;
+          yield* chat.when.openReadOnly("Sage");
+          yield* chat.then.text("Sage's conversation is ready");
+          // This device remembers where Sage lives; HQ is slow to say it again: each Mate's
+          // attention — the overview naming its environment — waits until the case lets it go.
+          const hq = yield* Effect.promise(() => transportGate(() => s.drivers.hq.origin, ""));
+          s.drivers.cleanup.push(hq.close);
+          s.drivers.routes["https://hqzone.prg1-zerops.zone"] = hq.origin;
+          yield* Effect.promise(() => s.web.setRoutes());
+          yield* Effect.promise(() =>
+            s.page.evaluateOnNewDocument(() => {
+              const seen = { absent: false };
+              (window as unknown as { __opening: typeof seen }).__opening = seen;
+              const sample = () => {
+                if (document.body?.innerText.includes("isn't in your Zerops projects"))
+                  seen.absent = true;
+                requestAnimationFrame(sample);
+              };
+              requestAnimationFrame(sample);
+            }),
+          );
+          const attention = hq.holdFrames((frame) => {
+            if (frame.isBinary) return false;
+            const message = Schema.decodeUnknownSync(HqStreamMessage)(
+              JSON.parse(Buffer.from(frame.bytes).toString()),
+            );
+            return "scope" in message && message.scope.kind === "attention";
+          });
+          yield* Effect.addFinalizer(() => Effect.sync(attention.release));
+
+          yield* Effect.promise(() => s.page.reload());
+          yield* Effect.promise(() => attention.held);
+          // What this device remembers opens the conversation while HQ still says nothing of it.
+          yield* chat.then.text("Sage's conversation is ready");
+          const absentWhileHeld = yield* Effect.promise(() =>
+            s.page.evaluate(
+              () => (window as unknown as { __opening: { absent: boolean } }).__opening.absent,
+            ),
+          );
+          attention.release();
+
+          expect(
+            absentWhileHeld,
+            "ASSERTION: a remembered Mate's conversation is never said absent while HQ is slow",
+          ).toBe(false);
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
+    it.effect(
+      "a reload on a device that remembers no Mate, HQ naming its environment late, never says the conversation isn't in your projects and opens it once HQ does",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* s.given.project("Sage", { mate: true });
+          const chat = mateChat(s);
+          chat.fixture("Sage").exchange("Earlier question", "Sage's conversation is ready");
+          yield* s.given.signedIn;
+          yield* chat.when.openReadOnly("Sage");
+          yield* chat.then.text("Sage's conversation is ready");
+          // HQ's navigation answers at once; Sage's attention — the overview naming its
+          // environment — waits until the case lets it go.
+          const hq = yield* Effect.promise(() => transportGate(() => s.drivers.hq.origin, ""));
+          s.drivers.cleanup.push(hq.close);
+          s.drivers.routes["https://hqzone.prg1-zerops.zone"] = hq.origin;
+          yield* Effect.promise(() => s.web.setRoutes());
+          // The device forgets which Mate lives where (`mate:identities`); its sign-in stays.
+          yield* Effect.promise(() =>
+            s.page.evaluateOnNewDocument(() => {
+              for (const key of Object.keys(localStorage))
+                if (key.includes("mate:identities")) localStorage.removeItem(key);
+              const seen = { absent: false };
+              (window as unknown as { __opening: typeof seen }).__opening = seen;
+              const sample = () => {
+                if (document.body?.innerText.includes("isn't in your Zerops projects"))
+                  seen.absent = true;
+                requestAnimationFrame(sample);
+              };
+              requestAnimationFrame(sample);
+            }),
+          );
+          const attention = hq.holdFrames((frame) => {
+            if (frame.isBinary) return false;
+            const message = Schema.decodeUnknownSync(HqStreamMessage)(
+              JSON.parse(Buffer.from(frame.bytes).toString()),
+            );
+            return "scope" in message && message.scope.kind === "attention";
+          });
+          yield* Effect.addFinalizer(() => Effect.sync(attention.release));
+
+          const zerops = s.drivers.zerops;
+          const searches = () => zerops.requests.get("POST /project/search") ?? 0;
+          const before = searches();
+          // The projects are asked for again on the reload, and answer while attention is held.
+          const rosterAsked = new Promise<void>((resolve) => {
+            const heard = () => {
+              if (searches() <= before) return;
+              zerops.events.off("request", heard);
+              resolve();
+            };
+            zerops.events.on("request", heard);
+          });
+          yield* Effect.promise(() => s.page.reload());
+          yield* Effect.promise(() => attention.held);
+          yield* Effect.promise(() => rosterAsked);
+          // HQ's navigation lists Sage while its attention is still on its way.
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(() => document.body?.innerText.includes("Sage")),
+          );
+          yield* Effect.promise(() =>
+            s.page.evaluate(
+              () =>
+                new Promise<void>((resolve) => {
+                  let frames = 0;
+                  const step = () => (++frames >= 60 ? resolve() : requestAnimationFrame(step));
+                  requestAnimationFrame(step);
+                }),
+            ),
+          );
+          attention.release();
+          yield* chat.then.text("Sage's conversation is ready");
+
+          expect(
+            yield* Effect.promise(() =>
+              s.page.evaluate(
+                () => (window as unknown as { __opening: { absent: boolean } }).__opening.absent,
+              ),
+            ),
+            "ASSERTION: no absence said while HQ's attention for the route's Mate was on its way",
+          ).toBe(false);
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
+    it.effect(
+      "a conversation whose environment none of the Mates HQ places names says it isn't in your Zerops projects",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* s.given.project("Sage", { mate: true });
+          const chat = mateChat(s);
+          chat.fixture("Sage").exchange("Earlier question", "Sage's conversation is ready");
+          yield* s.given.signedIn;
+          yield* chat.when.openReadOnly("Sage");
+          yield* chat.then.text("Sage's conversation is ready");
+          // The same conversation's address under an environment no Mate of the account serves.
+          const url = new URL(s.page.url());
+          const segments = url.pathname.split("/");
+          segments[segments.length - 2] = "environment-served-by-no-mate";
+          url.pathname = segments.join("/");
+
+          yield* Effect.promise(() => s.page.goto(url.href));
+          yield* chat.then.text("This conversation isn't in your Zerops projects.");
           yield* s.then.noExternalNetwork;
         }),
     );
