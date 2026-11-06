@@ -4,9 +4,11 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
+import { scenarioDurations } from "./lib/scenario-durations.ts";
 import {
   classifyFailures,
   failedSelection,
+  signalShardFiles,
   standingReds,
   validateReport,
   type SignalFailure,
@@ -265,3 +267,17 @@ it.each([
     }
   },
 );
+
+it("Signal's non-C shards each run their share of every non-C scenario file by measured time, never a C file", () => {
+  const shards = [1, 2, 3].map((index) => signalShardFiles("non-c", index, 3));
+  const files = shards.flat();
+  expect(files.length).toBeGreaterThan(0);
+  expect(new Set(files).size).toBe(files.length);
+  expect(files.filter((file) => file.includes("/c-mate/"))).toEqual([]);
+  expect(files.every((file) => file.endsWith(".scenario.ts"))).toBe(true);
+  const totals = shards.map((shard) =>
+    shard.reduce((sum, file) => sum + (scenarioDurations[file] ?? 1_000), 0),
+  );
+  const mean = totals.reduce((sum, total) => sum + total, 0) / totals.length;
+  expect(Math.max(...totals) / mean).toBeLessThan(1.1);
+});
