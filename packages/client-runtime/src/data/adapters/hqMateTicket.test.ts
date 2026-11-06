@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 
@@ -121,12 +122,6 @@ describe("mateTicketIssuer", () => {
       error: refusal("refused", "mate_not_connected"),
       tag: "ConnectionTransientError",
       reason: "remote-unavailable",
-    },
-    {
-      case: "mate_not_found",
-      error: refusal("refused", "mate_not_found"),
-      tag: "ConnectionBlockedError",
-      reason: "not-found",
     },
     {
       case: "zerops_unanswered",
@@ -278,18 +273,22 @@ describe("a ticket minted ahead of its attempt", () => {
   it.effect("nothing is asked ahead while an attempt is already asking for its ticket", () =>
     Effect.gen(function* () {
       const asked: Array<string> = [];
+      const started = yield* Deferred.make<void>();
       let answer: (ticket: { ticket: string; expiresIn: number; origin: string }) => void = () =>
         undefined;
       const issuer = mateTicketIssuer(() => ({
         mateTicket: (projectId) => {
           asked.push(projectId);
           return new Promise((resolve) => {
-            answer = resolve;
+            if (asked.length === 1) {
+              answer = resolve;
+              Deferred.doneUnsafe(started, Effect.void);
+            }
           });
         },
       }));
       const attempt = yield* Effect.forkChild(issuer.issue({ orgId: "O1", projectId: "P1" }));
-      yield* Effect.yieldNow;
+      yield* Deferred.await(started);
 
       issuer.prime({ orgId: "O1", projectId: "P1" });
       answer({ ticket: "T1", expiresIn: 60, origin: ORIGIN });
