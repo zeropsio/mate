@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
@@ -120,12 +121,14 @@ describe("an HQ socket opening", () => {
 
   it.effect("a socket closed before it opened fails its segment as its close classifies", () =>
     Effect.gen(function* () {
+      const created = yield* Deferred.make<void>();
       const socket = socketHeld();
       const opening = yield* Effect.forkChild(
-        Effect.scoped(makeHqWire(socket.api).open(Effect.void)),
+        Effect.scoped(
+          makeHqWire(socket.api).open(Deferred.succeed(created, undefined).pipe(Effect.asVoid)),
+        ),
       );
-      yield* Effect.yieldNow;
-      yield* Effect.promise(() => Promise.resolve());
+      yield* Deferred.await(created);
       socket.on().close(4403);
       const fault = yield* Effect.flip(Fiber.join(opening));
       expect(fault.outcome).toBe("definitive-refusal");
