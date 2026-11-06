@@ -102,6 +102,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/provider/acp/AcpJsonRpcConnection.test.ts": [],
   "apps/server/src/provider/acp/AntigravityAcpSupport.test.ts": [],
   "apps/server/src/provider/antigravityAuthSupport.test.ts": [],
+  "apps/server/src/provider/providerMaintenance.test.ts": [],
   "apps/server/src/provider/userInputAttachments.test.ts": [],
   "apps/server/src/resourceTelemetry/DesktopTelemetryReceiver.test.ts": [],
   "apps/server/src/server.test.ts": [],

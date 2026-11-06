@@ -6,12 +6,14 @@ import {
   HostProcessExecutablePath,
   HostProcessPlatform,
 } from "@t3tools/shared/hostProcess";
+import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import * as TestClock from "effect/testing/TestClock";
 import { FetchHttpClient, HttpClient } from "effect/http";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -145,21 +147,37 @@ describe("verifyOpenCodeServerVersion", () => {
   effectIt.effect("aborts a health request when the version check times out", () =>
     Effect.gen(function* () {
       let requestSignal: AbortSignal | undefined;
+      const requestStarted = yield* Deferred.make<void>();
+      const timeoutArmed = yield* Deferred.make<Duration.Duration>();
+      const releaseTimeout = yield* Deferred.make<void>();
+      const clock = yield* Clock.Clock;
       const checkFiber = yield* verifyOpenCodeServerVersion(
         makeHealthClient((options) => {
           requestSignal = options?.signal;
+          Deferred.doneUnsafe(requestStarted, Effect.void);
           return new Promise(() => undefined);
         }),
-      ).pipe(Effect.flip, Effect.forkChild);
+      ).pipe(
+        Effect.provideService(Clock.Clock, {
+          ...clock,
+          sleep: (duration) =>
+            Deferred.succeed(timeoutArmed, duration).pipe(
+              Effect.andThen(Deferred.await(releaseTimeout)),
+            ),
+        }),
+        Effect.flip,
+        Effect.forkChild,
+      );
 
-      yield* Effect.yieldNow;
+      yield* Deferred.await(requestStarted);
       expect(requestSignal).toBeDefined();
-      yield* TestClock.adjust("6 seconds");
+      expect(Duration.toMillis(yield* Deferred.await(timeoutArmed))).toBeLessThanOrEqual(6_000);
+      yield* Deferred.succeed(releaseTimeout, undefined);
 
       const error = yield* Fiber.join(checkFiber);
       expect(error.detail).toBe("Timed out while checking the OpenCode server version.");
       expect(requestSignal?.aborted).toBe(true);
-    }).pipe(Effect.provide(TestClock.layer())),
+    }),
   );
 });
 

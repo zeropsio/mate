@@ -304,12 +304,15 @@ it.layer(NodeServices.layer)("discoverAntigravitySkills", (it) => {
 
   it.effect("rejects an oversized skill instead of returning an incomplete catalog", () =>
     Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const input = yield* makeWorkspace();
+      const frontmatter = "---\nname: oversized\ndescription: Read a large skill.\n---\n";
       const skillPath = yield* writeSkill(
         path.join(input.cwd, ".agents", "skills", "oversized"),
-        `---\nname: oversized\ndescription: Read a large skill.\n---\n${"x".repeat(1_000_000)}`,
+        frontmatter,
       );
+      yield* fileSystem.truncate(skillPath, Buffer.byteLength(frontmatter) + 1_000_000);
 
       const result = yield* discoverAntigravitySkills(input).pipe(Effect.result);
       assert.equal(result._tag, "Failure");
@@ -322,14 +325,14 @@ it.layer(NodeServices.layer)("discoverAntigravitySkills", (it) => {
 
   it.effect("bounds the total read size across skills", () =>
     Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const input = yield* makeWorkspace();
       const root = path.join(input.cwd, ".agents", "skills");
       for (let index = 0; index < 9; index += 1) {
-        yield* writeSkill(
-          path.join(root, `large-${index}`),
-          `---\nname: large-${index}\n---\n${"x".repeat(900_000)}`,
-        );
+        const frontmatter = `---\nname: large-${index}\n---\n`;
+        const skillPath = yield* writeSkill(path.join(root, `large-${index}`), frontmatter);
+        yield* fileSystem.truncate(skillPath, Buffer.byteLength(frontmatter) + 900_000);
       }
 
       const result = yield* discoverAntigravitySkills(input).pipe(Effect.result);
