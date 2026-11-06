@@ -89,7 +89,7 @@ const unitTestProject = {
     // time under contention is not an assertion; CI's 10-minute job guard owns hangs.
     hookTimeout: 660_000,
     testTimeout: 660_000,
-    setupFiles: ["../../packages/shared/src/testing/longTempDir.ts"],
+    globalSetup: ["../../packages/shared/src/testing/longTempDir.ts"],
   },
 } satisfies TestProjectInlineConfiguration;
 
@@ -106,7 +106,7 @@ const engineOracleProject = {
     include: ["test/engine-oracle/**/*.test.ts"],
     testTimeout: 600_000,
     hookTimeout: 60_000,
-    setupFiles: ["../../packages/shared/src/testing/longTempDir.ts"],
+    globalSetup: ["../../packages/shared/src/testing/longTempDir.ts"],
   },
 } satisfies TestProjectInlineConfiguration;
 

@@ -66,7 +66,7 @@ export default defineConfig({
     testTimeout: 60_000,
     // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
     taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
-    setupFiles: [
+    globalSetup: [
       NodeURL.fileURLToPath(
         new URL("./packages/shared/src/testing/longTempDir.ts", import.meta.url),
       ),
