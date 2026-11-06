@@ -153,6 +153,7 @@ describe("the admission explanation's auth input", () => {
         credPresent: true,
         flagOAuth: true,
         providerAuth: "authenticated",
+        authorizedBy: { subject: "viewer" },
       })),
     });
     await act(close);

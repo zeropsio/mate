@@ -85,6 +85,7 @@ import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import { ZeropsAgentFlag } from "./ZeropsAgentFlag.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
+import { subscribeChanges } from "./zeropsChanges.ts";
 import { turnAuthFailureAgent } from "./zeropsTurnAuthFailure.ts";
 import {
   spawnAgentAuthProbe,
@@ -277,11 +278,13 @@ export interface ZeropsAgentAuthOptions {
   readonly homeDir: string;
   readonly envStorePath: string;
   /**
-   * Who this server saw sign each agent in (`ZeropsProjectSigners.signers`), read per publish:
-   * the walker keeps a sign-in before it asks for the re-check whose publish names its person.
-   * Absent disables provenance entirely — every snapshot then omits `authorizedBy`.
+   * The turn gate's signer map and its changes. Absent disables provenance entirely — every
+   * snapshot then omits `authorizedBy`.
    */
-  readonly readSigners?: Effect.Effect<ZeropsProjectSignersModule.ProjectSigners>;
+  readonly projectSigners?: Pick<
+    ZeropsProjectSignersModule.ZeropsProjectSigners["Service"],
+    "signers" | "changes"
+  >;
   /**
    * The agents whose turn just failed because they are not signed in
    * (`zeropsTurnAuthFailure.ts` over the provider runtime event bus at
@@ -396,7 +399,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       refreshProviderSnapshot,
       homeDir,
       envStorePath,
-      readSigners,
+      projectSigners,
       turnAuthFailures,
       watch,
       isZeropsEnvironment: enabled,
@@ -445,7 +448,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     // One publish at a time: a read and its publish are never overtaken by a newer read's.
     const publishMutex = yield* Semaphore.make(1);
     const publish = Effect.gen(function* () {
-      const signers = readSigners === undefined ? {} : yield* readSigners;
+      const signers = projectSigners === undefined ? {} : yield* projectSigners.signers;
       const current = yield* Ref.get(state);
       const authorizers: Partial<Record<ZeropsAgentId, ZeropsAgentAuthorizer>> = {};
       for (const agentId of KNOWN_AGENT_IDS) {
@@ -715,6 +718,10 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       yield* publish;
     });
 
+    // Subscribe before the first signer read: a map arriving during startup must not go unheard.
+    const signerMoved =
+      projectSigners === undefined ? undefined : yield* subscribeChanges([projectSigners.changes]);
+
     // Initial reads, before any watcher starts, so a client that connects
     // immediately gets real state rather than an empty placeholder. An
     // agent whose credential already exists at startup (e.g. a restored
@@ -739,6 +746,11 @@ export const make = (options: ZeropsAgentAuthOptions) =>
       }
     }
     yield* publish;
+    if (signerMoved !== undefined) {
+      yield* Effect.forever(signerMoved.pipe(Effect.andThen(publish))).pipe(
+        Effect.forkScoped({ startImmediately: true }),
+      );
+    }
 
     /**
      * Bridges the injected callback-style {@link watch} into Effect: every
@@ -868,7 +880,7 @@ export const layer = Layer.effect(
       homeDir: config.homeDir,
       // Outside a Zerops container the feed is off and reads no store.
       envStorePath: config.zerops?.envStorePath ?? "",
-      readSigners: projectSigners.signers,
+      projectSigners,
       turnAuthFailures: bus.events.pipe(
         Stream.map(turnAuthFailureAgent),
         Stream.filter((agentId) => agentId !== undefined),
