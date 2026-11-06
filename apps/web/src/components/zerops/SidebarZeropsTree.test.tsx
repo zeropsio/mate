@@ -1,4 +1,4 @@
-import { HQ_SLOW } from "@t3tools/client-runtime/data";
+import { HQ_SLOW, mateLinks, readsOfState, streamOf } from "@t3tools/client-runtime/data";
 import {
   hqDrops,
   graceOver,
@@ -28,9 +28,21 @@ import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projection
 import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { RegistryContext } from "@effect/atom-react";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { AtomRegistry } from "effect/reactivity";
+import * as Effect from "effect/Effect";
+import {
+  makeAccountRuntime,
+  type AccountEnvironmentPorts,
+} from "@t3tools/client-runtime/zerops/account/runtime";
+import {
+  AccountEpoch,
+  makeZeropsApiOrigin,
+  ZeropsAccountId,
+} from "@t3tools/client-runtime/zerops/data";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { it } from "@effect/vitest";
+import { afterEach, beforeEach, describe, expect, vi } from "vite-plus/test";
 
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
@@ -215,6 +227,9 @@ import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
 import { useProjectFlows } from "~/zerops/projectFlows";
 import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
+import { useHeldZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useMenuRows } from "~/zerops/useMenuRows";
+import { bindAccountEnvironments } from "~/zerops/accountEnvironments";
 
 /** One comparison HQ answered for `appdev`: what a release would put live. */
 const compared = (commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>) => ({
@@ -398,6 +413,171 @@ function press(tree: ReactTestRenderer, name: string): void {
 function text(node: ReactTestInstance): string {
   return node.children.map((child) => (typeof child === "string" ? child : text(child))).join("");
 }
+
+it.effect("showing four Mates in the menu opens no Mate RPC connection", () =>
+  Effect.gen(function* () {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    stored.opened = new Set(["shop"]);
+    const registry = AtomRegistry.make();
+    const orgId = organization.organizationId;
+    const names = ["Ada", "Bea", "Cara", "Dora"];
+    const projects = names.map((name) => ({
+      id: name,
+      name,
+      status: "ACTIVE",
+      clientId: orgId,
+      publicZone: "example.zerops.zone",
+      zeropsSubdomainHost: name.toLowerCase(),
+    }));
+    const services = names.map((name) => ({
+      id: `zcp-${name}`,
+      projectId: name,
+      name: "zcp",
+      status: "ACTIVE",
+      subdomainAccess: true,
+      ports: [{ port: 8080, httpSupport: true }],
+      serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+    }));
+    const store = mountRoster(registry, orgId, projects, { services });
+    mountHqNavigation(
+      registry,
+      orgId,
+      {
+        structure: {
+          apps: [
+            {
+              id: "shop",
+              name: "Shop",
+              projects: names.map((name) => ({
+                projectId: name,
+                name,
+                kind: "mate",
+                mate: { face: "" },
+              })),
+            },
+          ],
+          ungrouped: [],
+        },
+      },
+      store,
+    );
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: organization,
+    });
+    const opened: string[] = [];
+    const ports: AccountEnvironmentPorts = {
+      clock: { now: () => ({ wall: 0, mono: 0 }), random: () => 0.5, setTimer: () => () => {} },
+      door: {
+        exchange: () => {
+          opened.push("exchange");
+          return new Promise(() => {});
+        },
+        readDescriptor: () => new Promise(() => {}),
+        retryLink: () => {
+          opened.push("retry");
+        },
+        remove: () => {},
+        park: () => {},
+        unpark: () => {
+          opened.push("unpark");
+        },
+      },
+      probe: () => new Promise(() => {}),
+      readInitAt: async () => null,
+      intents: { read: () => null, write: () => {} },
+      catalog: {
+        listen: (listener) => {
+          listener.environments([]);
+          return () => {};
+        },
+      },
+      route: () => null,
+      hqIndex: { projectOf: () => null, subscribe: () => () => {} },
+    };
+    const runtime = yield* makeAccountRuntime({
+      account: {
+        account: {
+          apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
+          accountId: ZeropsAccountId.make("person"),
+        },
+        epoch: AccountEpoch.make(1),
+      },
+      atomRegistry: registry,
+      store,
+      environments: ports,
+      signals: { hidden: () => false, online: () => true, listen: () => () => {} },
+    });
+    const unbind = bindAccountEnvironments(runtime.environments);
+    const arrived = Promise.withResolvers<void>();
+    const links = () => mateLinks.derive(readsOfState(store.state()), null);
+    const stop = store.subscribe(() => {
+      if (links().targets.size === names.length) arrived.resolve();
+    });
+    let tree: ReactTestRenderer | undefined;
+    try {
+      runtime.environments.setActiveOrganization(orgId);
+      function Menu() {
+        const candidates = useHeldZeropsCandidates();
+        const { rows, settled } = useMenuRows(candidates);
+        return (
+          <SidebarZeropsTree
+            candidates={rows}
+            complete={settled}
+            onSelect={(row) => {
+              void runtime.environments.connect(row.key, "user");
+            }}
+            onBrowseProjects={() => {}}
+          />
+        );
+      }
+      tree = mount(
+        <RegistryContext.Provider value={registry}>
+          <Menu />
+        </RegistryContext.Provider>,
+      );
+      if (links().targets.size === names.length) arrived.resolve();
+      yield* Effect.promise(() =>
+        act(async () => {
+          await arrived.promise;
+        }),
+      );
+      expect(text(surface(tree, "sidebar-project-name"))).toBe("Shop, 4 Mates");
+      expect(
+        tree.root
+          .findAll((node) => node.props["data-zerops-surface"] === "sidebar-mate-name")
+          .map(text)
+          .sort(),
+      ).toEqual(names);
+      expect(
+        [...links().targets.values()]
+          .map((link) => ({
+            projectId: link.projectId,
+            watched: link.watched,
+            want: link.environment.guards.want,
+          }))
+          .sort((a, b) => a.projectId.localeCompare(b.projectId)),
+      ).toEqual(names.map((projectId) => ({ projectId, watched: false, want: false })));
+      expect(names.map((name) => streamOf(store.state(), `mate:${name}`).demanded)).toEqual([
+        false,
+        false,
+        false,
+        false,
+      ]);
+      expect(opened).toEqual([]);
+    } finally {
+      stop();
+      if (tree !== undefined) {
+        act(() => tree!.unmount());
+        mountedTrees.splice(mountedTrees.indexOf(tree), 1);
+      }
+      unbind();
+      yield* runtime.close("application-close");
+      registry.dispose();
+    }
+  }),
+);
 
 /** The project's review mark as drawn, where one stands: its opening tag. */
 const reviewTagOf = (html: string) =>
