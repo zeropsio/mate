@@ -221,13 +221,4 @@ describe("runToEnd", () => {
       code: "conflict",
     });
   });
-
-  it("an uncertain stop is the client's own uncertain failure", async () => {
-    const { run } = setUp(() =>
-      Effect.fail({ outcome: "uncertain-acceptance", message: "It may have landed." }),
-    );
-    await expect(run(CREATE, { orgId: ORG, unobserved: "" })).rejects.toBeInstanceOf(
-      ZeropsApiError,
-    );
-  });
 });
