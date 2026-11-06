@@ -15,7 +15,7 @@ import type { Known } from "../../zerops/knowledge/index.ts";
 import { resolveSpentLogin } from "../../zerops/logins.ts";
 import { signedOutAgent } from "../../zerops/agentSignIn.ts";
 import { MATE_READ_ACCESS_LINE } from "../../zerops/mateAccess.ts";
-import { agentOwnershipComposerNotice } from "../../zerops/agentOwnership.ts";
+import { agentOwnershipComposerNotice, resolveAgentOwnership } from "../../zerops/agentOwnership.ts";
 import {
   classifyZeropsAgentAuth,
   zeropsAgentUnavailableReason,
@@ -106,6 +106,8 @@ export function agentAdmission(input: {
    * says it waits for the organization's API key (`automatedAgentUsable`).
    */
   readonly automated?: boolean | undefined;
+  /** Who HQ records signed each login in (its project's `everSignedIn`), by login key. */
+  readonly hqSigners?: Readonly<Record<string, string>> | undefined;
 }) {
   if (input.automated === true) return automatedAdmission(input);
   const snapshot = input.read?.state === "known" ? input.read.value : null;
@@ -115,17 +117,25 @@ export function agentAdmission(input: {
   const cold =
     input.owner === undefined || input.read?.state === "unread" || input.read?.state === "reading";
   const auth = spent === undefined ? null : classifyZeropsAgentAuth(spent.agent).kind;
-  const signer = spent?.agent.authorizedBy?.subject;
-  const signedInByAnother =
-    !cold &&
-    (auth === "authorized" || auth === "registering") &&
-    spent?.agent.flagToken !== true &&
-    signer !== undefined &&
-    signer.length > 0 &&
-    input.viewerSubject !== undefined &&
-    input.viewerSubject.length > 0 &&
-    signer !== input.viewerSubject;
-  const readOnly = readsAlong(input) || signedInByAnother;
+  // Whose sign-in it spends (D6), as before the admission refactor: the Mate's recorded signer,
+  // or HQ's record of it while the Mate's snapshot names none. A credential nobody is recorded for
+  // and one another member signed in are both read along; a project token is the project's.
+  const signer =
+    spent?.agent.authorizedBy?.subject || (spent ? input.hqSigners?.[spent.key] : undefined);
+  const ownership =
+    spent === undefined ||
+    cold ||
+    spent.agent.flagToken ||
+    input.viewerSubject === undefined ||
+    (auth !== "authorized" && auth !== "registering")
+      ? "none"
+      : resolveAgentOwnership({
+          credPresent: spent.agent.credPresent,
+          authorizedBy: signer ? { subject: signer } : undefined,
+          viewerSubject: input.viewerSubject,
+        });
+  const signerRefuses = ownership === "someone-else" || ownership === "unrecorded";
+  const readOnly = readsAlong(input) || signerRefuses;
   const pending = spent?.agent.login;
   const inProgress =
     pending !== undefined &&
@@ -181,8 +191,8 @@ export function agentAdmission(input: {
   const refusal =
     input.operate === false
       ? MATE_READ_ACCESS_LINE
-      : signedInByAnother
-        ? (agentOwnershipComposerNotice("someone-else") ?? null)
+      : signerRefuses
+        ? (agentOwnershipComposerNotice(ownership) ?? null)
         : (attention?.text ?? null);
   const held =
     readOnly || cold

@@ -3441,6 +3441,7 @@ function ConversationView(props: ChatViewProps) {
     mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
     // It runs on the organization's key: no sign-in, and with no agent to run, it says so.
     automated: automatedHere,
+    hqSigners: admissionPeople?.everSignedIn,
     owner:
       admissionMate.kind === "nobody" || admissionPeople?.owned === false
         ? null
