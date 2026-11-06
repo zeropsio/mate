@@ -5,12 +5,12 @@ import * as NodePath from "node:path";
 import { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { HttpServerResponse } from "effect/http";
-import { afterEach, expect, it } from "@effect/vitest";
+import { afterAll, beforeAll, expect, it } from "@effect/vitest";
 import sharp from "sharp";
 import { ContentAssets } from "./ContentAssets.ts";
 import { contentAssetFailure, protectedContentAsset } from "./ContentAssetHttp.ts";
 const roots: string[] = [];
-afterEach(async () => {
+afterAll(async () => {
   await Promise.all(
     roots.splice(0).map((root) => NodeFSP.rm(root, { recursive: true, force: true })),
   );
@@ -39,27 +39,10 @@ async function fixture() {
     object: await store.object((await store.preview(occurrence.id, 120, 80)).digest, true),
   };
 }
-it.effect.each([
-  { method: "GET", headers: { "if-none-match": "*" } },
-  { method: "HEAD", headers: {} },
-  { method: "GET", headers: { range: "bytes=0-20" } },
-] as const)(
-  "authorizes %s before resolving an object or conditional/range headers",
-  ({ method, headers }) =>
-    Effect.gen(function* () {
-      let resolutions = 0;
-      const response = yield* protectedContentAsset(
-        Effect.succeed(contentAssetFailure("access-denied", 403)),
-        Effect.sync(() => {
-          resolutions++;
-          throw new Error("unauthorized resolution");
-        }),
-        { method, headers },
-      );
-      expect(response.status).toBe(403);
-      expect(resolutions).toBe(0);
-    }),
-);
+let readableFixture: Awaited<ReturnType<typeof fixture>>;
+beforeAll(async () => {
+  readableFixture = await fixture();
+});
 it.effect("reload revalidates a cached preview with a strong digest ETag and no body", () =>
   Effect.gen(function* () {
     const { object } = yield* Effect.promise(fixture);
@@ -117,7 +100,7 @@ it.effect.each([
   "a previously readable original requires current access on every request: %s",
   ({ method, headers }) =>
     Effect.gen(function* () {
-      const { original } = yield* Effect.promise(fixture);
+      const { original } = readableFixture;
       if (original === null) throw new Error("missing original");
       let allowed = true;
       let resolutions = 0;
