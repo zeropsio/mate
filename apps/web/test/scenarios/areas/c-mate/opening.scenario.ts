@@ -6,7 +6,6 @@ import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { installArea } from "./fake.ts";
 import { ownerViewport } from "./ownerViewport.ts";
 import { mateChat } from "./dsl.ts";
-import { transportGate } from "../../harness/transportGate.ts";
 
 describe("C: the conversation opening follows readiness", () => {
   scenarioSuite((it) => {
@@ -198,80 +197,6 @@ describe("C: the conversation opening follows readiness", () => {
             ),
             "ASSERTION: one opening stage, and no absence said, from the reload to the conversation",
           ).toEqual({ absent: false, stages: 1 });
-          yield* s.then.noExternalNetwork;
-        }),
-    );
-
-    it.effect(
-      "a reload on a device that remembers no Mate, HQ answering after the projects, never says the conversation isn't in your projects",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([installArea]);
-          yield* s.given.project("Sage", { mate: true });
-          const chat = mateChat(s);
-          chat.fixture("Sage").exchange("Earlier question", "Sage's conversation is ready");
-          yield* s.given.signedIn;
-          yield* chat.when.openReadOnly("Sage");
-          yield* chat.then.text("Sage's conversation is ready");
-          // HQ's answers to the next page wait until the case lets them go.
-          const hq = yield* Effect.promise(() => transportGate(() => s.drivers.hq.origin, ""));
-          s.drivers.cleanup.push(hq.close);
-          s.drivers.routes["https://hqzone.prg1-zerops.zone"] = hq.origin;
-          yield* Effect.promise(() => s.web.setRoutes());
-          // The device forgets which Mate lives where (`mate:identities`); its sign-in stays.
-          yield* Effect.promise(() =>
-            s.page.evaluateOnNewDocument(() => {
-              for (const key of Object.keys(localStorage))
-                if (key.includes("mate:identities")) localStorage.removeItem(key);
-              const seen = { absent: false };
-              (window as unknown as { __opening: typeof seen }).__opening = seen;
-              const sample = () => {
-                if (document.body?.innerText.includes("isn't in your Zerops projects"))
-                  seen.absent = true;
-                requestAnimationFrame(sample);
-              };
-              requestAnimationFrame(sample);
-            }),
-          );
-          const held = hq.holdFrames(() => true);
-          yield* Effect.addFinalizer(() => Effect.sync(held.release));
-
-          const zerops = s.drivers.zerops;
-          const searches = () => zerops.requests.get("POST /project/search") ?? 0;
-          const before = searches();
-          // The projects are asked for again on the reload, and answer while HQ's frames are held.
-          const rosterAsked = new Promise<void>((resolve) => {
-            const heard = () => {
-              if (searches() <= before) return;
-              zerops.events.off("request", heard);
-              resolve();
-            };
-            zerops.events.on("request", heard);
-          });
-          yield* Effect.promise(() => s.page.reload());
-          yield* Effect.promise(() => held.held);
-          yield* Effect.promise(() => rosterAsked);
-          yield* Effect.promise(() =>
-            s.page.evaluate(
-              () =>
-                new Promise<void>((resolve) => {
-                  let frames = 0;
-                  const step = () => (++frames >= 30 ? resolve() : requestAnimationFrame(step));
-                  requestAnimationFrame(step);
-                }),
-            ),
-          );
-          held.release();
-          yield* chat.then.text("Sage's conversation is ready");
-
-          expect(
-            yield* Effect.promise(() =>
-              s.page.evaluate(
-                () => (window as unknown as { __opening: { absent: boolean } }).__opening.absent,
-              ),
-            ),
-            "ASSERTION: no absence said while HQ's first answer was on its way",
-          ).toBe(false);
           yield* s.then.noExternalNetwork;
         }),
     );

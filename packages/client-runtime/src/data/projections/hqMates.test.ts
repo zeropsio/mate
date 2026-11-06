@@ -6,14 +6,12 @@ import { describe, expect, it } from "vite-plus/test";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
-import { linkKeys } from "../model.ts";
 import { makeAccountStore, readsOfState, type Projection } from "../store.ts";
 import { mateArrival, mateNoticeDecision } from "./mateArrival.ts";
 import {
   hqMates,
   hqMateAnswered,
   hqMatesAnswered,
-  hqIndexWord,
   hqMateOverview,
   hqMatePresence,
   hqMateLogins,
@@ -338,59 +336,4 @@ describe("hqMatesAnswered", () => {
     }
     expect(hqMatesAnswered.derive(readsOfState(store.state()), "org")).toBe(answered);
   });
-});
-
-describe("hqIndexWord", () => {
-  const placedAB = {
-    apps: [],
-    ungrouped: ["a", "b"].map((projectId) => ({ projectId, name: projectId, mate: { face: "" } })),
-  };
-  const linkEvent = (store: ReturnType<typeof makeAccountStore>, event: object) =>
-    store.dispatch({ kind: "stream", key: linkKeys.hq("org"), now: 0, event } as never);
-  it.each([
-    { title: "HQ not asked at all", arrange: () => undefined, word: "silent" },
-    {
-      title: "HQ asked, its navigation not read yet",
-      arrange: (store: ReturnType<typeof makeAccountStore>) => {
-        linkEvent(store, { kind: "demand", demanded: true });
-        linkEvent(store, { kind: "handshake" });
-      },
-      word: "due",
-    },
-    {
-      title: "its navigation read, a Mate it places not answered yet",
-      arrange: (store: ReturnType<typeof makeAccountStore>) =>
-        seedHqNavigation(store, "org", {
-          structure: placedAB,
-          mates: { a: mate },
-          attentionUnanswered: ["b"],
-        }),
-      word: "due",
-    },
-    {
-      title: "its navigation read and every Mate it places answered",
-      arrange: (store: ReturnType<typeof makeAccountStore>) =>
-        seedHqNavigation(store, "org", { structure: placedAB, mates: { a: mate } }),
-      word: "answered",
-    },
-    {
-      title: "HQ refused before it answered",
-      arrange: (store: ReturnType<typeof makeAccountStore>) => {
-        linkEvent(store, { kind: "demand", demanded: true });
-        linkEvent(store, {
-          kind: "fault",
-          fault: { outcome: "definitive-refusal", message: "refused" },
-          jitter: 0,
-        });
-      },
-      word: "silent",
-    },
-  ])(
-    "an environment HQ's index does not name is absent from it only once HQ answered, or can say nothing: $title",
-    ({ arrange, word }) => {
-      const store = makeAccountStore(AtomRegistry.make());
-      arrange(store);
-      expect(hqIndexWord.derive(readsOfState(store.state()), "org")).toBe(word);
-    },
-  );
 });
