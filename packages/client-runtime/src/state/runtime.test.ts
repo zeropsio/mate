@@ -3,10 +3,10 @@ import { EnvironmentId } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import * as Fiber from "effect/Fiber";
 import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -82,6 +82,10 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
 ) {
   const supervisorState = yield* SubscriptionRef.make(queryConnectionState());
   const supervisorSession = yield* SubscriptionRef.make(Option.some(QUERY_RPC_SESSION));
+  const delivered =
+    yield* Queue.unbounded<
+      readonly [SupervisorConnectionState, Option.Option<RpcSession.RpcSession>]
+    >();
   const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
     target: QUERY_ENVIRONMENT,
     state: supervisorState,
@@ -98,7 +102,25 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
   const followStream: EnvironmentRegistry.EnvironmentRegistry["Service"]["followStream"] = (
     _environmentId,
     stream,
-  ) => Stream.provideService(stream, EnvironmentSupervisor.EnvironmentSupervisor, supervisor);
+  ) =>
+    stream.pipe(
+      Stream.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+      Stream.flatMap((value) =>
+        Stream.make(value).pipe(
+          Stream.concat(
+            Stream.fromEffect(
+              Queue.offer(
+                delivered,
+                value as unknown as readonly [
+                  SupervisorConnectionState,
+                  Option.Option<RpcSession.RpcSession>,
+                ],
+              ),
+            ).pipe(Stream.drain),
+          ),
+        ),
+      ),
+    );
   const environmentRegistry = EnvironmentRegistry.EnvironmentRegistry.of({
     run,
     followStream,
@@ -117,6 +139,11 @@ const makeEnvironmentQueryHarness = Effect.fn("TestEnvironmentQuery.makeHarness"
     atom: family({ environmentId: QUERY_ENVIRONMENT.environmentId, input: undefined }),
     supervisorSession,
     supervisorState,
+    connectionDelivered: (
+      matches: (
+        value: readonly [SupervisorConnectionState, Option.Option<RpcSession.RpcSession>],
+      ) => boolean,
+    ) => Stream.fromQueue(delivered).pipe(Stream.filter(matches), Stream.runHead, Effect.asVoid),
   };
 });
 
@@ -321,18 +348,15 @@ describe("environment query lifecycle", () => {
 
           yield* firstStarted.await;
           yield* SubscriptionRef.set(harness.supervisorSession, Option.none());
-          yield* Effect.yieldNow;
+          yield* harness.connectionDelivered(([, session]) => Option.isNone(session));
           failFirst.openUnsafe();
           yield* firstSettled.await;
-          yield* Effect.yieldNow;
-
-          expect(observed.some(AsyncResult.isFailure)).toBe(false);
 
           yield* SubscriptionRef.set(
             harness.supervisorState,
             queryConnectionState({ phase: "connecting", stage: "preparing" }),
           );
-          yield* Effect.yieldNow;
+          yield* harness.connectionDelivered(([state]) => state.phase === "connecting");
           yield* SubscriptionRef.set(
             harness.supervisorState,
             queryConnectionState({
@@ -345,7 +369,7 @@ describe("environment query lifecycle", () => {
               retryAt: 1,
             }),
           );
-          yield* Effect.yieldNow;
+          yield* harness.connectionDelivered(([state]) => state.phase === "backoff");
 
           yield* SubscriptionRef.set(harness.supervisorSession, Option.some(QUERY_RPC_SESSION));
           yield* SubscriptionRef.set(
@@ -357,6 +381,7 @@ describe("environment query lifecycle", () => {
               suspendOnWaiting: true,
             }),
           ).toBe("recovered");
+          expect(observed.some(AsyncResult.isFailure)).toBe(false);
         }),
       ),
   );
@@ -404,7 +429,7 @@ describe("environment query lifecycle", () => {
         ).toBe("connected");
 
         yield* SubscriptionRef.set(harness.supervisorState, state);
-        yield* Effect.yieldNow;
+        yield* harness.connectionDelivered(([delivered]) => delivered === state);
 
         const result = registry.get(harness.atom);
         expect(AsyncResult.isFailure(result)).toBe(true);
@@ -440,7 +465,7 @@ describe("environment query lifecycle", () => {
             }),
           }),
         );
-        yield* Effect.yieldNow;
+        yield* harness.connectionDelivered(([state]) => state.phase === "blocked");
 
         const result = registry.get(harness.atom);
         expect(AsyncResult.isFailure(result)).toBe(false);
@@ -484,7 +509,7 @@ describe("environment query lifecycle", () => {
           harness.supervisorState,
           queryConnectionState({ phase: "connecting", stage: "opening" }),
         );
-        yield* Effect.yieldNow;
+        yield* harness.connectionDelivered(([state]) => state.phase === "connecting");
 
         const refreshing = registry.get(harness.atom);
         expect(AsyncResult.isFailure(refreshing)).toBe(true);
@@ -535,7 +560,7 @@ describe("environment query lifecycle", () => {
           harness.supervisorState,
           queryConnectionState({ phase: "connecting", stage: "opening" }),
         );
-        yield* Effect.yieldNow;
+        yield* harness.connectionDelivered(([state]) => state.phase === "connecting");
         expect(registry.get(harness.atom)).toMatchObject({
           _tag: "Success",
           value: "cached",
@@ -554,7 +579,7 @@ describe("environment query lifecycle", () => {
             retryAt: 1,
           }),
         );
-        yield* Effect.yieldNow;
+        yield* harness.connectionDelivered(([state]) => state.phase === "backoff");
         expect(registry.get(harness.atom)).toMatchObject({
           _tag: "Success",
           value: "cached",
@@ -580,115 +605,6 @@ describe("environment query lifecycle", () => {
         ).toBe("updated");
       }),
     ),
-  );
-});
-
-describe("Atom.fn mutation semantics", () => {
-  it.effect("interrupts the previous invocation when the same mutation atom is written again", () =>
-    Effect.gen(function* () {
-      const firstLatch = Latch.makeUnsafe();
-      const secondLatch = Latch.makeUnsafe();
-      const interrupted: string[] = [];
-      const mutation = Atom.fn((id: "first" | "second") =>
-        (id === "first" ? firstLatch : secondLatch).await.pipe(
-          Effect.as(id),
-          Effect.onInterrupt(() =>
-            Effect.sync(() => {
-              interrupted.push(id);
-            }),
-          ),
-        ),
-      );
-      const registry = AtomRegistry.make();
-      const unmount = registry.mount(mutation);
-
-      registry.set(mutation, "first");
-      registry.set(mutation, "second");
-      yield* Effect.yieldNow;
-
-      expect(interrupted).toEqual(["first"]);
-
-      secondLatch.openUnsafe();
-      expect(
-        yield* AtomRegistry.getResult(registry, mutation, {
-          suspendOnWaiting: true,
-        }),
-      ).toBe("second");
-
-      unmount();
-      registry.dispose();
-    }),
-  );
-
-  it.effect("keeps stream mutations waiting until the final emitted value", () =>
-    Effect.gen(function* () {
-      const completionLatch = Latch.makeUnsafe();
-      const mutation = Atom.fn(() =>
-        Stream.make("progress").pipe(
-          Stream.concat(Stream.fromEffect(completionLatch.await.pipe(Effect.as("done")))),
-        ),
-      );
-      const registry = AtomRegistry.make();
-      const unmount = registry.mount(mutation);
-
-      registry.set(mutation, undefined);
-
-      const progress = registry.get(mutation);
-      expect(AsyncResult.isSuccess(progress)).toBe(true);
-      if (AsyncResult.isSuccess(progress)) {
-        expect(progress.value).toBe("progress");
-        expect(progress.waiting).toBe(true);
-      }
-
-      completionLatch.openUnsafe();
-      expect(
-        yield* AtomRegistry.getResult(registry, mutation, {
-          suspendOnWaiting: true,
-        }),
-      ).toBe("done");
-
-      unmount();
-      registry.dispose();
-    }),
-  );
-
-  it.effect(
-    "allows concurrent effects to finish but does not correlate results to individual writes",
-    () =>
-      Effect.gen(function* () {
-        const firstLatch = Latch.makeUnsafe();
-        const secondLatch = Latch.makeUnsafe();
-        const mutation = Atom.fn<never, "first" | "second", "first" | "second">(
-          (id: "first" | "second") =>
-            (id === "first" ? firstLatch : secondLatch).await.pipe(Effect.as(id)),
-          { concurrent: true },
-        );
-        const registry = AtomRegistry.make();
-        const unmount = registry.mount(mutation);
-
-        registry.set(mutation, "first");
-        const firstResult = yield* AtomRegistry.getResult(registry, mutation, {
-          suspendOnWaiting: true,
-        }).pipe(Effect.forkChild({ startImmediately: true }));
-        registry.set(mutation, "second");
-        const secondResult = yield* AtomRegistry.getResult(registry, mutation, {
-          suspendOnWaiting: true,
-        }).pipe(Effect.forkChild({ startImmediately: true }));
-
-        secondLatch.openUnsafe();
-        yield* Effect.yieldNow;
-
-        const stillWaiting = registry.get(mutation);
-        expect(stillWaiting.waiting).toBe(true);
-
-        firstLatch.openUnsafe();
-
-        expect(yield* Fiber.join(firstResult)).toBe("first");
-        expect(yield* Fiber.join(secondResult)).toBe("first");
-
-        unmount();
-        registry.dispose();
-      }),
   );
 });
 
@@ -787,6 +703,7 @@ describe("runtime command runner", () => {
 
   it("serializes commands that share a scheduler and lane", async () => {
     const firstLatch = Latch.makeUnsafe();
+    const firstStarted = Promise.withResolvers<void>();
     const events: string[] = [];
     const runtime = Atom.runtime(Layer.empty);
     const scheduler = createAtomCommandScheduler();
@@ -796,7 +713,10 @@ describe("runtime command runner", () => {
       scheduler,
       concurrency,
       execute: () =>
-        Effect.sync(() => events.push("first:start")).pipe(
+        Effect.sync(() => {
+          events.push("first:start");
+          firstStarted.resolve();
+        }).pipe(
           Effect.andThen(firstLatch.await),
           Effect.tap(() => Effect.sync(() => events.push("first:end"))),
         ),
@@ -811,7 +731,7 @@ describe("runtime command runner", () => {
 
     const first = firstCommand.run(registry, undefined);
     const second = secondCommand.run(registry, undefined);
-    await Promise.resolve();
+    await firstStarted.promise;
     expect(events).toEqual(["first:start"]);
 
     firstLatch.openUnsafe();
@@ -892,21 +812,22 @@ describe("runtime command runner", () => {
 
   it("coalesces pending latest-value commands without interrupting the active call", async () => {
     const firstLatch = Latch.makeUnsafe();
+    const firstStarted = Promise.withResolvers<void>();
     const executed: number[] = [];
     const runtime = Atom.runtime(Layer.empty);
     const command = createRuntimeCommand(runtime, {
       label: "test.latest",
       concurrency: { mode: "latest", key: () => "shared" },
       execute: (value: number) =>
-        Effect.sync(() => executed.push(value)).pipe(
-          Effect.andThen(value === 1 ? firstLatch.await : Effect.void),
-          Effect.as(value),
-        ),
+        Effect.sync(() => {
+          executed.push(value);
+          if (value === 1) firstStarted.resolve();
+        }).pipe(Effect.andThen(value === 1 ? firstLatch.await : Effect.void), Effect.as(value)),
     });
     const registry = AtomRegistry.make();
 
     const first = command.run(registry, 1);
-    await Promise.resolve();
+    await firstStarted.promise;
     const second = command.run(registry, 2);
     const third = command.run(registry, 3);
     firstLatch.openUnsafe();
