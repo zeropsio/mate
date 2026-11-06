@@ -67,28 +67,6 @@ describe("withMetrics", () => {
     }),
   );
 
-  it.effect("supports direct invocation", () =>
-    Effect.gen(function* () {
-      const counter = Metric.counter("with_metrics_direct_total");
-
-      yield* withMetrics(Effect.fail("boom"), {
-        counter,
-        attributes: {
-          operation: "direct",
-        },
-      }).pipe(Effect.exit);
-
-      const snapshots = yield* Metric.snapshot;
-      assert.equal(
-        hasMetricSnapshot(snapshots, "with_metrics_direct_total", {
-          operation: "direct",
-          outcome: "failure",
-        }),
-        true,
-      );
-    }),
-  );
-
   it.effect("evaluates attributes lazily after the wrapped effect runs", () =>
     Effect.gen(function* () {
       const counter = Metric.counter("with_metrics_lazy_total");

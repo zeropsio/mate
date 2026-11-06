@@ -2,10 +2,12 @@ import { describe, expect, it } from "@effect/vitest";
 import {
   CommandId,
   ConversationId,
-  type CrewCard,
+  CrewCard,
+  RecordedCrewSeam,
   type KnownEngineEvent,
-  type Principal,
+  Principal,
 } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 
 import type { Command, Decision, EffectDraft } from "./command.ts";
 import { decide } from "./decide.ts";
@@ -13,10 +15,10 @@ import { fold, stampEvents } from "./evolve.ts";
 import { initialState, type ConversationState } from "./state.ts";
 
 const conversation = ConversationId.make("crew-main-backend-1");
-const crew: Principal = { kind: "crew", startedBy: "karel" };
+const crew = Schema.decodeUnknownSync(Principal)({ kind: "crew", startedBy: "karel" });
 const T0 = 1_000_000_000;
 
-const CARD: CrewCard = {
+const CARD = Schema.decodeUnknownSync(CrewCard)({
   kind: "task",
   taskId: "t1",
   number: 1,
@@ -24,7 +26,13 @@ const CARD: CrewCard = {
   why: "Cursor based.",
   doneWhen: null,
   links: [],
-};
+});
+const LANDED = Schema.decodeUnknownSync(RecordedCrewSeam)({
+  seam: "landed",
+  taskId: "t1",
+  number: 1,
+  commit: "abc1234",
+});
 
 interface Scene {
   readonly state: ConversationState;
@@ -88,7 +96,7 @@ describe("decide: the crew's words in a crewmate's conversation", () => {
     const scene = play([
       {
         _tag: "MarkSeam",
-        seam: { seam: "landed", taskId: "t1", number: 1, commit: "abc1234" } as never,
+        seam: LANDED,
         words: "#1 landed on your tree.",
       },
     ]);
