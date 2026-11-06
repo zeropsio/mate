@@ -167,15 +167,18 @@ function runGitSync(cwd: string, args: readonly string[]): void {
 
 const fixtureDir = testFixturePool("t3-git-manager-fixtures-");
 const repoTemplate = testTempDir("t3-git-manager-template-");
+const unbornTemplate = testTempDir("t3-git-unborn-template-");
 const bareTemplate = testTempDir("t3-git-remote-template-");
 const emptyTemplate = testTempDir("t3-git-empty-template-");
 
 beforeAll(() => {
-  runGitSync(repoTemplate, ["init", "--initial-branch=main"]);
-  NodeFS.appendFileSync(
-    NodePath.join(repoTemplate, ".git", "config"),
-    "\n[maintenance]\n\tautoDetach = false\n[gc]\n\tautoDetach = false\n[user]\n\temail = test@example.com\n\tname = Test User\n",
-  );
+  for (const template of [repoTemplate, unbornTemplate]) {
+    runGitSync(template, ["init", "--initial-branch=main"]);
+    NodeFS.appendFileSync(
+      NodePath.join(template, ".git", "config"),
+      "\n[maintenance]\n\tautoDetach = false\n[gc]\n\tautoDetach = false\n[user]\n\temail = test@example.com\n\tname = Test User\n",
+    );
+  }
   NodeFS.writeFileSync(NodePath.join(repoTemplate, "README.md"), "hello\n");
   runGitSync(repoTemplate, ["add", "README.md"]);
   runGitSync(repoTemplate, ["commit", "-m", "Initial commit"]);
@@ -648,9 +651,13 @@ function makeManager(input?: {
 }) {
   const { service: gitHubCli, ghCalls } = createGitHubCliWithFakeGh(input?.ghScenario);
   const textGeneration = createTextGeneration(input?.textGeneration);
-  const serverConfigLayer = ServerConfig.layerTest(process.cwd(), {
-    prefix: "t3-git-manager-test-",
-  });
+  const configDir = fixtureDir("t3-git-manager-config-");
+  const worktreesDir = NodePath.join(configDir, "worktrees");
+  if (NodeFS.existsSync(worktreesDir)) {
+    for (const name of NodeFS.readdirSync(worktreesDir))
+      NodeFS.rmSync(NodePath.join(worktreesDir, name), { recursive: true, force: true });
+  }
+  const serverConfigLayer = ServerConfig.layerTest(process.cwd(), configDir);
 
   const serverSettingsLayer = ServerSettings.ServerSettingsService.layerTest(input?.serverSettings);
 
@@ -2110,12 +2117,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("includes local agent instructions when recent history is empty", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
-      yield* runGit(repoDir, ["init", "--initial-branch=main"]);
-      yield* runGit(repoDir, ["config", "maintenance.autoDetach", "false"]);
-      yield* runGit(repoDir, ["config", "gc.autoDetach", "false"]);
-      yield* runGit(repoDir, ["config", "user.email", "test@example.com"]);
-      yield* runGit(repoDir, ["config", "user.name", "Test User"]);
+      const repoDir = yield* fixtureFrom(unbornTemplate, "t3code-git-manager-unborn-");
       const agentInstructions = "Use lowercase source control text.";
       const claudeInstructions = "Keep pull request bodies brief.";
       NodeFS.writeFileSync(NodePath.join(repoDir, "AGENTS.md"), agentInstructions);
@@ -3294,10 +3296,10 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
       yield* runGit(remoteDir, ["symbolic-ref", "HEAD", "refs/heads/main"]);
 
-      const peerDir = yield* makeTempDir("t3code-git-peer-");
-      yield* runGit(peerDir, ["clone", remoteDir, "."]);
-      yield* runGit(peerDir, ["config", "maintenance.autoDetach", "false"]);
-      yield* runGit(peerDir, ["config", "gc.autoDetach", "false"]);
+      const peerDir = yield* makeRepo("t3code-git-peer-");
+      yield* runGit(peerDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(peerDir, ["fetch", "origin"]);
+      yield* runGit(peerDir, ["checkout", "-B", "main", "origin/main"]);
       yield* runGit(peerDir, ["config", "user.email", "peer@example.com"]);
       yield* runGit(peerDir, ["config", "user.name", "Peer User"]);
       NodeFS.writeFileSync(NodePath.join(peerDir, "remote.txt"), "remote\n");
@@ -4914,7 +4916,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       NodeFS.writeFileSync(NodePath.join(repoDir, "hooked.txt"), "hooked\n");
       NodeFS.writeFileSync(
         NodePath.join(repoDir, ".git", "hooks", "pre-commit"),
-        '#!/bin/sh\necho "hook: start" >&2\nsleep 0.05\necho "hook: end" >&2\n',
+        '#!/bin/sh\necho "hook: start" >&2\necho "hook: end" >&2\n',
         { mode: 0o755 },
       );
 
