@@ -28,7 +28,8 @@ import {
   type RouteGate,
   type RouteTarget,
 } from "@t3tools/client-runtime/zerops/environments";
-import { AtomRegistry } from "effect/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
+import * as Option from "effect/Option";
 import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -72,34 +73,6 @@ const shell = vi.hoisted(() => ({
   /** When the account runtime's sweep asked for each target it reads again. */
 }));
 
-// This fixture proves route lifetime; the shared stage's rendering is covered by its own tests.
-vi.mock("../components/zerops/ZeropsMateEmptyState", () => ({
-  MateConnectionState: ({
-    headline,
-    secondary,
-    actions,
-  }: {
-    readonly headline: string;
-    readonly secondary: string;
-    readonly actions: ReactNode;
-  }) => (
-    <section>
-      {headline} {secondary}
-      {actions}
-    </section>
-  ),
-}));
-
-vi.mock("../state/environments", () => ({
-  useEnvironments: () => ({ environments: shell.environments }),
-  useEnvironmentConnectionState: () => ({ data: null }),
-}));
-vi.mock("../state/shell", async () => {
-  const { Atom } = await import("effect/reactivity");
-  const Option = await import("effect/Option");
-  const cached = Atom.make({ snapshot: Option.none(), status: "cached", error: Option.none() });
-  return { environmentShell: { stateValueAtom: () => cached } };
-});
 /**
  * The account runtime's Mate environments as the hooks ask them: every Mate itself is read from
  * the account's store (`showMates`, or a real Mate adapter writing there).
@@ -212,7 +185,25 @@ function showMates(
   shown = keys;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  const environments = await import("../state/environments");
+  const { environmentShell } = await import("../state/shell");
+  const stage = await import("../components/zerops/ZeropsMateEmptyState");
+  const cached = Atom.make({
+    snapshot: Option.none(),
+    status: "cached" as const,
+    error: Option.none(),
+  });
+  vi.spyOn(environments, "useEnvironments").mockImplementation((() => ({
+    environments: shell.environments,
+  })) as typeof environments.useEnvironments);
+  vi.spyOn(environmentShell, "stateValueAtom").mockReturnValue(cached);
+  // This fixture proves route lifetime; the shared stage's rendering has its own tests.
+  vi.spyOn(stage, "MateConnectionState").mockImplementation(({ headline, secondary, actions }) => (
+    <section>
+      {headline} {secondary} {actions}
+    </section>
+  ));
   const document = new TestNode("#document", null, 9);
   vi.stubGlobal("document", document);
   vi.stubGlobal("window", {
@@ -258,6 +249,7 @@ const renderIn = (node: ReactNode) =>
 afterEach(() => {
   act(() => root.unmount());
   unbindStage();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 

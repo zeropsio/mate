@@ -11,18 +11,18 @@ import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { elementsOf, press, readableText, TestNode } from "~/zerops/__fixtures__/testDom";
 
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 
 /** The rows' one clock, fixed: an age is the producer's to test, not the minute this ran in. */
-const NOW = vi.hoisted(() => Date.parse("2026-09-19T12:00:00Z"));
-vi.mock("~/zerops/useNowMs", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useNowMs: () => NOW,
-}));
+const NOW = Date.parse("2026-09-19T12:00:00Z");
+beforeEach(async () => {
+  vi.spyOn(await import("~/zerops/useNowMs"), "useNowMs").mockReturnValue(NOW);
+});
+afterEach(() => vi.restoreAllMocks());
 
 /** The test DOM, able to hold a chevron's SVG. */
 class SvgDocument extends TestNode {
@@ -305,27 +305,30 @@ describe("ZeropsReleaseRows saying what a release carried", () => {
       vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
       const container = document.createElement("div");
       const root = createRoot(container as unknown as Element);
-      await act(async () => {
-        root.render(carriedRows([shown], carried));
-      });
-      const chevron = elementsOf(container, "button").find(
-        (button) => button.getAttribute("aria-label") === `Show what ${shown.tag} carried`,
-      );
-      expect(chevron).toBeDefined();
-      await act(async () => {
-        press(chevron!);
-      });
-      // What the row opened onto, apart from the row's own lines that already name the head.
-      const expansion = elementsOf(container, "div").find(
-        (node) => node.getAttribute("data-zerops-surface") === "release-carried",
-      );
-      const text = expansion === undefined ? "" : readableText(expansion);
-      const expanded = chevron!.getAttribute("aria-expanded");
-      const label = chevron!.getAttribute("aria-label");
-      await act(async () => {
-        root.unmount();
-      });
-      return { text, expanded, label };
+      try {
+        await act(async () => {
+          root.render(carriedRows([shown], carried));
+        });
+        const chevron = elementsOf(container, "button").find(
+          (button) => button.getAttribute("aria-label") === `Show what ${shown.tag} carried`,
+        );
+        expect(chevron).toBeDefined();
+        await act(async () => {
+          press(chevron!);
+        });
+        // What the row opened onto, apart from the row's own lines that already name the head.
+        const expansion = elementsOf(container, "div").find(
+          (node) => node.getAttribute("data-zerops-surface") === "release-carried",
+        );
+        const text = expansion === undefined ? "" : readableText(expansion);
+        const expanded = chevron!.getAttribute("aria-expanded");
+        const label = chevron!.getAttribute("aria-label");
+        return { text, expanded, label };
+      } finally {
+        await act(async () => {
+          root.unmount();
+        });
+      }
     };
 
     it.each([

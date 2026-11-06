@@ -2,15 +2,17 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { mateImageSource } from "@t3tools/client-runtime/data";
 import { act, useRef } from "react";
 import { create } from "react-test-renderer";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
-const image = vi.hoisted(() => ({
+const image = {
   keys: [] as unknown[],
   near: true,
   failure: null as null | { reason: string; retryable: boolean },
-}));
-vi.mock("./MateImages", () => ({
-  useMateImage: (key: unknown) => {
+};
+beforeEach(async () => {
+  const images = await import("./MateImages");
+  const viewport = await import("../hooks/useNearViewport");
+  vi.spyOn(images, "useMateImage").mockImplementation(((key: unknown) => {
     image.keys.push(key);
     if (key && typeof key === "object" && "rendition" in key && key.rendition === "original")
       return {
@@ -29,14 +31,16 @@ vi.mock("./MateImages", () => ({
           originalUrl: "blob:preview",
           retry: () => {},
         };
-  },
-}));
-vi.mock("../hooks/useNearViewport", () => ({
-  useNearViewport: () => ({ ref: useRef(null), near: image.near }),
-}));
+  }) as typeof images.useMateImage);
+  vi.spyOn(viewport, "useNearViewport").mockImplementation((() => ({
+    ref: useRef(null),
+    near: image.near,
+  })) as typeof viewport.useNearViewport);
+});
 import { AssetImage } from "./AssetImage";
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   image.failure = null;
   image.near = true;

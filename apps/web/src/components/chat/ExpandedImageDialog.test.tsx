@@ -1,44 +1,58 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { mateImageSource } from "@t3tools/client-runtime/data";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import { act, type ImgHTMLAttributes, type ReactNode } from "react";
+import { act, type ReactNode } from "react";
 import { create } from "react-test-renderer";
-import { afterEach, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
-const reads = vi.hoisted(() => ({ keys: [] as unknown[] }));
-vi.mock("~/assets/MateImages", () => ({
-  useImageIntent: () => ({}),
-  useMateImage: (key: unknown) => {
+const reads = { keys: [] as unknown[] };
+import { ExpandedImageDialog } from "./ExpandedImageDialog";
+import { useEditPictureInExpress } from "../express/useOpenExpressDesign";
+
+const drawn: Array<ReturnType<typeof create>> = [];
+beforeEach(async () => {
+  reads.keys = [];
+  const images = await import("~/assets/MateImages");
+  const asset = await import("~/assets/AssetImage");
+  const buttons = await import("../ui/button");
+  const dialog = await import("../ui/dialog");
+  vi.spyOn(images, "useImageIntent").mockReturnValue(
+    {} as ReturnType<typeof images.useImageIntent>,
+  );
+  vi.spyOn(images, "useMateImage").mockImplementation((key) => {
     reads.keys.push(key);
     return {
       read: { kind: "ready", occurrence: { name: "retained-original.png" } },
       url: "blob:original",
-    };
-  },
-}));
-vi.mock("~/assets/AssetImage", () => ({
-  AssetImage: ({
-    original,
-    ...props
-  }: ImgHTMLAttributes<HTMLImageElement> & { original?: boolean }) => (
+    } as unknown as ReturnType<typeof images.useMateImage>;
+  });
+  vi.spyOn(asset, "AssetImage").mockImplementation((({ original, ...props }) => (
     <img {...props} data-original={original} />
-  ),
-}));
-vi.mock("../ui/button", () => ({
-  Button: ({ children, ...props }: { children: ReactNode }) => (
-    <button {...props}>{children}</button>
-  ),
-}));
-import { ExpandedImageDialog } from "./ExpandedImageDialog";
-import { useEditPictureInExpress } from "../express/useOpenExpressDesign";
+  )) as typeof asset.AssetImage);
+  vi.spyOn(buttons, "Button").mockImplementation((({
+    children,
+    ...props
+  }: {
+    children: ReactNode;
+  }) => <button {...props}>{children}</button>) as typeof buttons.Button);
+  // The kit's dialog portals out of the tree this renderer draws: here it is its children.
+  vi.spyOn(dialog, "Dialog").mockImplementation(
+    (({ children }: { children: ReactNode }) => children) as typeof dialog.Dialog,
+  );
+  vi.spyOn(dialog, "DialogMediaPopup").mockImplementation((({
+    children,
+  }: {
+    children: ReactNode;
+  }) => <div>{children}</div>) as typeof dialog.DialogMediaPopup);
+});
 
-// The kit's dialog portals out of the tree this renderer draws: here it is its children.
-vi.mock("../ui/dialog", () => ({
-  Dialog: ({ children }: { children: ReactNode }) => children,
-  DialogMediaPopup: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-}));
-
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  act(() => {
+    for (const renderer of drawn.splice(0)) renderer.unmount();
+  });
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 it("a gallery reference zooms the original and downloads its authorized bytes with its retained name", () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   vi.stubGlobal("window", {
@@ -76,6 +90,7 @@ it("a gallery reference zooms the original and downloads its authorized bytes wi
       },
     );
   });
+  drawn.push(renderer);
   expect(reads.keys.at(-1)).toMatchObject({
     rendition: "original",
     resource: { path: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" },
@@ -98,7 +113,6 @@ it("a gallery reference zooms the original and downloads its authorized bytes wi
     href: "blob:original",
     download: "retained-original.png",
   });
-  act(() => renderer.unmount());
 });
 
 function PictureWithExpress({ enabled, src }: { readonly enabled: boolean; readonly src: string }) {
@@ -145,6 +159,6 @@ it.each([
       }),
     });
   });
+  drawn.push(renderer);
   expect(JSON.stringify(renderer.toJSON()).includes("Edit in Adobe Express")).toBe(enabled);
-  act(() => renderer.unmount());
 });
