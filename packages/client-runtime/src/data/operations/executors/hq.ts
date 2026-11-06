@@ -593,6 +593,7 @@ export function makeHqExecutor(ports: {
               appId: intent.appId,
               id: intent.id,
               face: intent.face,
+              ...(intent.createdApp === true ? { createdApp: true as const } : {}),
               ...(intent.intent === undefined ? {} : { intent: intent.intent }),
               ...(intent.chief === true ? { chief: true as const } : {}),
               ...(intent.standUp === undefined ? {} : { standUp: intent.standUp }),

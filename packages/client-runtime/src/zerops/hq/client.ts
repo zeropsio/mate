@@ -424,6 +424,7 @@ export interface HqApi {
     birth: {
       readonly appId: string;
       readonly id?: string;
+      readonly createdApp?: true;
       readonly intent?: Readonly<Record<string, unknown>>;
       readonly chief?: true;
     } & HqNewMate,

@@ -34,7 +34,7 @@ export function useRunNewProject(): (held: CreationAsk) => void {
               { kind: "create-app", orgId: organizationId, name: groupName },
               { ...hqStep, requestId },
             ),
-          recordBirth: (requestId, { appId, id, face: birthFace, intent, chief }) =>
+          recordBirth: (requestId, { appId, id, face: birthFace, createdApp, intent, chief }) =>
             operations.run(
               {
                 kind: "record-birth",
@@ -42,6 +42,7 @@ export function useRunNewProject(): (held: CreationAsk) => void {
                 appId,
                 id,
                 face: birthFace,
+                createdApp,
                 intent,
                 ...(chief === true ? { chief } : {}),
               },

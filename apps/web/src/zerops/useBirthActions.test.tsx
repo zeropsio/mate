@@ -10,12 +10,13 @@ import { useBirthActions } from "./useBirthActions";
 const fixture = vi.hoisted(() => ({
   holdPress: vi.fn(),
   endPress: vi.fn(),
+  run: vi.fn(),
   birth: {
     id: "birth-1",
     appId: "app-1",
     appName: "Shop",
     face: "rose:seal",
-    projectId: "project-1",
+    projectId: "project-1" as string | null,
     importProcessId: null,
     placement: "attached" as const,
     intent: undefined,
@@ -48,7 +49,7 @@ vi.mock("./ZeropsSessionProvider", () => ({
 }));
 vi.mock("./accountOperations", () => ({
   HQ_UNFOLLOWED: "unfollowed",
-  useAccountOperationsOptional: () => ({ run: vi.fn() }),
+  useAccountOperationsOptional: () => ({ run: fixture.run }),
 }));
 vi.mock("./accountHq", () => ({
   configuredHq: () => ({}),
@@ -71,8 +72,9 @@ vi.mock("./matePress", () => ({
 
 let tree: ReactTestRenderer | undefined;
 let proceed: ReturnType<typeof useBirthActions>["proceed"];
+let deleteBirthOnly: ReturnType<typeof useBirthActions>["deleteBirthOnly"];
 function Probe() {
-  proceed = useBirthActions([fixture.birth]).proceed;
+  ({ proceed, deleteBirthOnly } = useBirthActions([fixture.birth]));
   return null;
 }
 
@@ -80,12 +82,33 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   fixture.holdPress.mockReset();
   fixture.endPress.mockReset().mockResolvedValue(undefined);
+  fixture.run.mockReset().mockResolvedValue(undefined);
+  fixture.birth.projectId = "project-1";
+  Reflect.deleteProperty(fixture.birth, "adopted");
   act(() => {
     tree = create(
       createElement(RegistryContext.Provider, { value: AtomRegistry.make() }, createElement(Probe)),
     );
   });
 });
+
+it.each([
+  { case: "an unbound birth", projectId: null, adopted: false },
+  { case: "an adopted birth", projectId: "project-1", adopted: true },
+])(
+  "deletes $case without asking the client to delete its application",
+  async ({ projectId, adopted }) => {
+    fixture.birth.projectId = projectId;
+    if (adopted) Object.assign(fixture.birth, { adopted: true });
+    await deleteBirthOnly("birth-1", projectId);
+    expect(fixture.run.mock.calls).toEqual([
+      [
+        { kind: "delete-birth", orgId: "org-1", appId: "app-1", birthId: "birth-1" },
+        { orgId: "org-1", unobserved: "unfollowed" },
+      ],
+    ]);
+  },
+);
 afterEach(() => {
   act(() => tree?.unmount());
   tree = undefined;

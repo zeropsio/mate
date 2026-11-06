@@ -591,6 +591,21 @@ function ports(start: CreationRead = read(), over: Partial<NewProjectPorts> = {}
 const CREATOR_OWNS = { clientUserId: "cu-me", roleCode: "OWNER" } as const;
 
 describe("runNewProjectBirth — the project, then its first Mate", () => {
+  it.each([
+    { case: "when it registers the application", start: read() },
+    {
+      case: "when it resumes after registering the application",
+      start: read({ appId: "app-acme", steps: { app: DONE } }),
+    },
+  ])("records that its birth created the application $case", async ({ start }) => {
+    const { ports: made, read: now } = ports(start);
+    await runNewProjectBirth(held(), now, made);
+    expect(made.recordBirth).toHaveBeenCalledWith(
+      "b-acme:birth",
+      expect.objectContaining({ appId: "app-acme", createdApp: true }),
+    );
+  });
+
   it("records a Chief as a top-level birth field before creating its project", async () => {
     const { ports: made, read: now } = ports();
     await runNewProjectBirth(held({ chief: true }), now, made);
@@ -607,6 +622,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       appId: "app-acme",
       id: "b-acme",
       face: "rose:seal",
+      createdApp: true,
       intent: {
         projectName: "Acme CRM - Vera",
         recipe: { kind: "none" },

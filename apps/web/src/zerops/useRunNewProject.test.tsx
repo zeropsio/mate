@@ -140,6 +140,7 @@ describe("New project setup after platform creation", () => {
           appId: "app-garden",
           id: "creation-1",
           face: "rose:seal",
+          createdApp: true,
           intent: {
             projectName: "Garden - Nova",
             recipe: { kind: "none" },
