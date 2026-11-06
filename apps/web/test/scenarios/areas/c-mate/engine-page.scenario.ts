@@ -253,59 +253,105 @@ describe("C: a page the Mate publishes", () => {
   describe("Decision: a page that navigates its own frame is not the page the Mate published.", () => {
     scenarioSuite((it) => {
       const LOGIN = "https://example.com/login";
-      for (const trick of [
-        { how: "by script", script: `location.href=${JSON.stringify(LOGIN)};` },
+      const tricks = [
         {
+          title:
+            "a published page that navigates itself by script sends nothing and is never shown",
+          how: "by script",
+          script: `location.href=${JSON.stringify(LOGIN)};`,
+        },
+        {
+          title:
+            "a published page that navigates itself to a data: document sends nothing and is never shown",
           how: "to a data: document",
           script: 'location.href="data:text/html,<h1>Sign in to Zerops</h1>";',
         },
         {
+          title:
+            "a published page that navigates itself by a refresh sends nothing and is never shown",
           how: "by a refresh",
           script: `document.head.insertAdjacentHTML("beforeend",'<meta http-equiv="refresh" content="0;url=${LOGIN}">');`,
         },
         {
+          title:
+            "a published page that navigates itself by a link it clicks itself sends nothing and is never shown",
           how: "by a link it clicks itself",
           script: `var a=document.createElement("a");a.href=${JSON.stringify(LOGIN)};document.body.append(a);a.click();`,
         },
         {
+          title:
+            "a published page that navigates itself by a named target sends nothing and is never shown",
           how: "by a named target",
           script: `window.name="self";window.open(${JSON.stringify(LOGIN)},"self");`,
         },
-      ])
-        it.effect(
-          `a published page that navigates itself ${trick.how} sends nothing and is never shown`,
-          () =>
-            Effect.gen(function* () {
-              const { s, publish } = yield* journey(180, {
-                script: `setTimeout(function(){${trick.script}},400);`,
+      ] as const;
+
+      it.effect(
+        "a published page that navigates itself by script sends nothing and is never shown",
+        ({ annotate }) =>
+          Effect.gen(function* () {
+            const { s, publish } = yield* journey(180, {
+              script: `window.addEventListener("message",function(event){${tricks
+                .map((trick) => `if(event.data===${JSON.stringify(trick.how)}){${trick.script}}`)
+                .join("")}});`,
+            });
+            // Observe each document while it exists, before removal can hide a transient spoof.
+            let shown = false;
+            yield* Effect.promise(async () => {
+              await s.page.exposeFunction("recordSpoof", () => {
+                shown = true;
               });
-              // Observe each document while it exists, before removal can hide a transient spoof.
-              let shown = false;
-              yield* Effect.promise(async () => {
-                await s.page.exposeFunction("recordSpoof", () => {
-                  shown = true;
+              await s.page.evaluateOnNewDocument(() => {
+                let reported = false;
+                const sample = () => {
+                  if (
+                    !reported &&
+                    /Sign in to Zerops|Example Domain/.test(document.body?.innerText ?? "")
+                  ) {
+                    reported = true;
+                    void (window as unknown as { recordSpoof(): Promise<void> }).recordSpoof();
+                  }
+                };
+                new MutationObserver(sample).observe(document, {
+                  childList: true,
+                  subtree: true,
+                  characterData: true,
                 });
-                await s.page.evaluateOnNewDocument(() => {
-                  let reported = false;
-                  const sample = () => {
-                    if (
-                      !reported &&
-                      /Sign in to Zerops|Example Domain/.test(document.body?.innerText ?? "")
-                    ) {
-                      reported = true;
-                      void (window as unknown as { recordSpoof(): Promise<void> }).recordSpoof();
-                    }
-                  };
-                  new MutationObserver(sample).observe(document, {
-                    childList: true,
-                    subtree: true,
-                    characterData: true,
-                  });
-                  document.addEventListener("DOMContentLoaded", sample, { once: true });
-                });
+                document.addEventListener("DOMContentLoaded", sample, { once: true });
+                document.addEventListener(
+                  "load",
+                  (event) => {
+                    if (event.target instanceof HTMLIFrameElement && event.target.id === "page")
+                      Reflect.set(window, "scenarioPageLoaded", true);
+                  },
+                  true,
+                );
               });
-              publish();
-              yield* Effect.promise(() => s.page.waitForSelector(`iframe[title="${TITLE}"]`));
+            });
+            publish();
+            for (const [index, trick] of tricks.entries()) {
+              yield* Effect.promise(() => annotate(trick.title, "step"));
+              shown = false;
+              if (index > 0)
+                yield* Effect.promise(() =>
+                  s.page.locator("::-p-aria(Show the page again)").click(),
+                );
+              // Reopening makes a fresh pair of frames; wait for the inner one's initial load.
+              const page = yield* Effect.promise(async () => {
+                const outer = await s.page.waitForSelector(`iframe[title="${TITLE}"]`);
+                const wrapper = await outer!.contentFrame();
+                if (wrapper === null) throw new Error("Published page wrapper did not load");
+                await wrapper.waitForFunction(
+                  () => Reflect.get(window, "scenarioPageLoaded") === true,
+                );
+                const inner = await wrapper.$("#page");
+                const page = await inner?.contentFrame();
+                if (!page) throw new Error("Published page did not load");
+                return page;
+              });
+              yield* Effect.promise(() =>
+                page.evaluate((how) => window.postMessage(how, "*"), trick.how),
+              );
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
                   (title) =>
@@ -350,8 +396,9 @@ describe("C: a page the Mate publishes", () => {
               ).toBe(false);
               // Nothing left: the harness records any request it would have made.
               yield* s.then.noExternalNetwork;
-            }),
-        );
+            }
+          }),
+      );
     });
   });
 
