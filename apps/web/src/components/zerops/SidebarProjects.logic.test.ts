@@ -218,47 +218,49 @@ describe("opensOpenProject — the open conversation's project opens around it",
 describe("openMateReveal", () => {
   const MILO = "env-milo";
   const FEN = "env-fen";
-  const seen = (conversation: string | null, shown: string | null, owed = false): MateReveal => ({
-    conversation,
-    shown,
-    owed,
-  });
-  // Stress run 3 (+17:00): the open Mate was found after the menu drew, the menu then slid to it.
+  const seen = (
+    conversation: string | null,
+    shown: string | null,
+    owed = false,
+    reload = false,
+  ): MateReveal => ({ conversation, shown, owed, reload });
+  // The owner, 2026-11-06: a reload left the menu at its top, the open Mate scrolled out of view.
   it.each([
     [
       "a reload on an open Mate",
-      { seen: seen(MILO, "milo"), conversation: MILO, open: "milo", resolving: false },
-      undefined,
+      { seen: undefined, conversation: MILO, open: "milo", resolving: false },
+      { reveal: "milo", instant: true },
     ],
     [
       "a reload while the open Mate is still being found",
       { seen: undefined, conversation: MILO, open: null, resolving: true },
-      undefined,
+      { reveal: undefined, instant: true },
     ],
     [
       "a reload's open Mate found after the menu drew",
-      { seen: seen(MILO, null), conversation: MILO, open: "milo", resolving: false },
-      undefined,
+      { seen: seen(MILO, null, true, true), conversation: MILO, open: "milo", resolving: false },
+      { reveal: "milo", instant: true },
     ],
     [
       "a Mate opened from elsewhere",
       { seen: seen(MILO, "milo"), conversation: FEN, open: "fen", resolving: false },
-      "fen",
+      { reveal: "fen", instant: false },
     ],
     [
       "a Mate opened where none was",
       { seen: seen(null, null), conversation: FEN, open: "fen", resolving: false },
-      "fen",
+      { reveal: "fen", instant: false },
     ],
     [
       "no Mate open",
       { seen: seen(MILO, "milo"), conversation: null, open: null, resolving: false },
-      undefined,
+      { reveal: undefined, instant: false },
     ],
   ] as const)(
-    "A reload leaves the menu where it was; only a Mate opened afterwards scrolls into view: %s",
-    (_case, input, reveal) => {
-      expect(openMateReveal(input).reveal).toBe(reveal);
+    "A reload brings its open Mate into view at once; a Mate opened afterwards slides there: %s",
+    (_case, input, expected) => {
+      const { reveal, instant } = openMateReveal(input);
+      expect({ reveal, instant }).toEqual(expected);
     },
   );
 
@@ -274,31 +276,23 @@ describe("openMateReveal", () => {
     return draws.map(({ conversation, open, resolving = false }) => {
       const next = openMateReveal({ seen: state, conversation, open, resolving });
       state =
-        next.reveal === undefined ? next.seen : { conversation, shown: next.reveal, owed: false };
+        next.reveal === undefined
+          ? next.seen
+          : { conversation, shown: next.reveal, owed: false, reload: false };
       return next.reveal;
     });
   };
 
-  it("The open Mate a reload finds late is the one it opened on, not one opened afterwards", () => {
-    expect(
-      walk([
-        { conversation: MILO, open: null, resolving: true },
-        { conversation: MILO, open: "milo" },
-        { conversation: MILO, open: "milo" },
-        { conversation: FEN, open: "fen" },
-      ]),
-    ).toEqual([undefined, undefined, undefined, "fen"]);
-  });
-
-  it("A reload's open Mate the listing first misses and finds later is not scrolled to", () => {
+  it("A reload's open Mate the listing first misses and finds later is brought into view once found", () => {
     expect(
       walk([
         { conversation: MILO, open: null, resolving: true },
         { conversation: MILO, open: null },
         { conversation: MILO, open: null, resolving: true },
         { conversation: MILO, open: "milo" },
+        { conversation: MILO, open: "milo" },
       ]),
-    ).toEqual([undefined, undefined, undefined, undefined]);
+    ).toEqual([undefined, undefined, undefined, "milo", undefined]);
   });
 
   it("A Mate opened afterwards is scrolled to once, however often its rows are drawn again", () => {
@@ -311,7 +305,7 @@ describe("openMateReveal", () => {
         { conversation: FEN, open: null, resolving: true },
         { conversation: FEN, open: "fen" },
       ]),
-    ).toEqual([undefined, undefined, undefined, "fen", undefined, undefined]);
+    ).toEqual(["milo", undefined, undefined, "fen", undefined, undefined]);
   });
 
   it("A Mate lit by a press is brought into view, and not again when its conversation opens", () => {
@@ -321,7 +315,7 @@ describe("openMateReveal", () => {
         { conversation: MILO, open: "fen" },
         { conversation: FEN, open: "fen" },
       ]),
-    ).toEqual([undefined, "fen", undefined]);
+    ).toEqual(["milo", "fen", undefined]);
   });
 });
 
