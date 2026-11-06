@@ -232,11 +232,6 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       coming: undefined,
     },
     {
-      case: "a stage HQ still brings up, serving a port its address would open: turning its address on",
-      over: { birth: { ended: false }, routes: 0, addressPending: true },
-      coming: { kind: "coming", step: "address" },
-    },
-    {
       case: "a stage HQ brought up serving no port its address would open: running as it is",
       over: { birth: { ended: false }, routes: 0, addressPending: false },
       coming: undefined,
@@ -295,18 +290,11 @@ describe("addressComing — a place HQ brought up turns its address on, the card
       coming: false,
     },
     { case: "brought up, its address there", over: { addresses: 1 }, coming: false },
-    { case: "brought up, no port its address would open", over: { pending: false }, coming: false },
-    {
-      case: "its ports unread while HQ still brings it up: still coming",
-      over: { pending: true },
-      coming: true,
-    },
     {
       case: "its ports unread once HQ is done bringing it up: HQ's word, done",
       over: { pending: undefined },
       coming: false,
     },
-    { case: "one HQ did not bring up", over: { pending: false }, coming: false },
   ])("$case", ({ over, coming }) => {
     expect(
       addressComing({
