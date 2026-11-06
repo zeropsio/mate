@@ -1,7 +1,6 @@
 import { HqStreamMessage } from "@t3tools/shared/hqStream";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import type { ScenarioExtension } from "../../harness/scenario.ts";
 
 const readMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 const readRecord = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Unknown));
@@ -34,7 +33,3 @@ export function olderNavigation(encoded: string): string {
     }),
   });
 }
-
-export const installOlderNavigation: ScenarioExtension = (drivers) => {
-  drivers.hq.mapFrames(olderNavigation);
-};

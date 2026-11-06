@@ -58,9 +58,5 @@ export function sessionDatabase(databaseUrl: string, fixtureSession: string) {
         DROP FUNCTION public.scenario_session_unavailable();
         DROP SEQUENCE public.scenario_session_reads;
         ALTER TABLE public.scenario_unavailable_session RENAME TO hq_session`),
-    expires: () =>
-      query(
-        `UPDATE public.hq_session SET expires_at = now() - interval '1 second' WHERE token_hash <> '${fixtureHash}'`,
-      ),
   };
 }
