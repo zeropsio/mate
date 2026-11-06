@@ -4,17 +4,16 @@ import * as NodeHttpPlatform from "@effect/platform-node/NodeHttpPlatform";
 import * as NodeFSP from "node:fs/promises";
 import { AssetPreviewTypeValidationError, ThreadId } from "@t3tools/contracts";
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@t3tools/shared/projectFavicon";
-import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest";
+import { describe, expect, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as TestClock from "effect/testing/TestClock";
 import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
 import { HttpServerResponse } from "effect/http";
 import { vi } from "vite-plus/test";
 
@@ -1138,18 +1137,12 @@ describe("AssetAccess — an image outside the workspace", () => {
     return fixture;
   });
 
-  let fixture: Fixture;
-  let closeFixture: (() => Promise<void>) | undefined;
-  beforeAll(async () => {
-    const scope = await Effect.runPromise(Scope.make());
-    closeFixture = () => Effect.runPromise(Scope.close(scope, Exit.void));
-    fixture = await Effect.runPromise(
-      makeFixture.pipe(Scope.provide(scope), Effect.provide(NodeServices.layer)),
-    );
-  });
-  afterAll(async () => {
-    await closeFixture?.();
-  });
+  class OutsideImageFixture extends Context.Service<OutsideImageFixture, Fixture>()(
+    "t3/assets/AssetAccess.test/OutsideImageFixture",
+  ) {}
+  const fixtureLayer = Layer.effect(OutsideImageFixture, makeFixture).pipe(
+    Layer.provide(NodeServices.layer),
+  );
 
   const tokenAndName = (relativeUrl: string) => {
     const suffix = relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
@@ -1157,93 +1150,96 @@ describe("AssetAccess — an image outside the workspace", () => {
     return { token: suffix.slice(0, separator), name: suffix.slice(separator + 1) };
   };
 
-  it.effect.each<{
-    readonly name: string;
-    readonly at: (fixture: Fixture, path: Path.Path) => string;
-    readonly expected:
-      | { readonly outcome: "served"; readonly body: string }
-      | { readonly outcome: "workspace" }
-      | { readonly outcome: "refused"; readonly error: string };
-  }>([
-    {
-      name: "an image in the home directory is served",
-      at: (fixture, path) => path.join(fixture.home, "shots", "home.png"),
-      expected: { outcome: "served", body: "home image" },
-    },
-    {
-      name: "an image in the temp directory is served",
-      at: (fixture, path) => path.join(fixture.tmp, "v1.png"),
-      expected: { outcome: "served", body: "temp image" },
-    },
-    {
-      name: "an image inside the workspace resolves as it did",
-      at: (fixture, path) => path.join(fixture.workspace, "assets", "icon.png"),
-      expected: { outcome: "workspace" },
-    },
-    {
-      name: "a non-image in the home directory is refused",
-      at: (fixture, path) => path.join(fixture.home, "notes.txt"),
-      expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
-    },
-    {
-      name: "a system file is refused",
-      at: () => "/etc/passwd",
-      expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
-    },
-    {
-      name: "an image outside the home and temp directories is refused",
-      at: (fixture, path) => path.join(fixture.elsewhere, "leak.png"),
-      expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
-    },
-    {
-      name: "a symlink in home that points out of it is refused",
-      at: (fixture, path) => path.join(fixture.home, "shots", "escape.png"),
-      expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
-    },
-    {
-      name: "a symlink in home that dresses a key as an image is refused",
-      at: (fixture, path) => path.join(fixture.home, "shots", "key.png"),
-      expected: { outcome: "refused", error: "AssetPreviewTypeValidationError" },
-    },
-    {
-      name: "a name that only ends like an image is refused",
-      at: (fixture, path) => path.join(fixture.home, "shots", "shot.png#x.txt"),
-      // A literal `#` no longer hides the real extension, so this is a text file outside the workspace.
-      expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
-    },
-    {
-      name: "a missing image in the home directory is not found",
-      at: (fixture, path) => path.join(fixture.home, "shots", "gone.png"),
-      expected: { outcome: "refused", error: "AssetWorkspaceAssetNotFoundError" },
-    },
-  ])("$name", ({ at, expected }) =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const filePath = at(fixture, path);
-      const issue = issueAssetUrl({
-        resource: { _tag: "workspace-file", threadId: ThreadId.make("thread-1"), path: filePath },
-        workspaceRoot: fixture.workspace,
-      }).pipe(Effect.provideService(OutsideWorkspaceImageRoots, [fixture.home, fixture.tmp]));
+  it.layer(fixtureLayer)((it) => {
+    it.effect.each<{
+      readonly name: string;
+      readonly at: (fixture: Fixture, path: Path.Path) => string;
+      readonly expected:
+        | { readonly outcome: "served"; readonly body: string }
+        | { readonly outcome: "workspace" }
+        | { readonly outcome: "refused"; readonly error: string };
+    }>([
+      {
+        name: "an image in the home directory is served",
+        at: (fixture, path) => path.join(fixture.home, "shots", "home.png"),
+        expected: { outcome: "served", body: "home image" },
+      },
+      {
+        name: "an image in the temp directory is served",
+        at: (fixture, path) => path.join(fixture.tmp, "v1.png"),
+        expected: { outcome: "served", body: "temp image" },
+      },
+      {
+        name: "an image inside the workspace resolves as it did",
+        at: (fixture, path) => path.join(fixture.workspace, "assets", "icon.png"),
+        expected: { outcome: "workspace" },
+      },
+      {
+        name: "a non-image in the home directory is refused",
+        at: (fixture, path) => path.join(fixture.home, "notes.txt"),
+        expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
+      },
+      {
+        name: "a system file is refused",
+        at: () => "/etc/passwd",
+        expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
+      },
+      {
+        name: "an image outside the home and temp directories is refused",
+        at: (fixture, path) => path.join(fixture.elsewhere, "leak.png"),
+        expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
+      },
+      {
+        name: "a symlink in home that points out of it is refused",
+        at: (fixture, path) => path.join(fixture.home, "shots", "escape.png"),
+        expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
+      },
+      {
+        name: "a symlink in home that dresses a key as an image is refused",
+        at: (fixture, path) => path.join(fixture.home, "shots", "key.png"),
+        expected: { outcome: "refused", error: "AssetPreviewTypeValidationError" },
+      },
+      {
+        name: "a name that only ends like an image is refused",
+        at: (fixture, path) => path.join(fixture.home, "shots", "shot.png#x.txt"),
+        // A literal `#` no longer hides the real extension, so this is a text file outside the workspace.
+        expected: { outcome: "refused", error: "AssetWorkspacePathValidationError" },
+      },
+      {
+        name: "a missing image in the home directory is not found",
+        at: (fixture, path) => path.join(fixture.home, "shots", "gone.png"),
+        expected: { outcome: "refused", error: "AssetWorkspaceAssetNotFoundError" },
+      },
+    ])("$name", ({ at, expected }) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const fixture = yield* OutsideImageFixture;
+        const filePath = at(fixture, path);
+        const issue = issueAssetUrl({
+          resource: { _tag: "workspace-file", threadId: ThreadId.make("thread-1"), path: filePath },
+          workspaceRoot: fixture.workspace,
+        }).pipe(Effect.provideService(OutsideWorkspaceImageRoots, [fixture.home, fixture.tmp]));
 
-      if (expected.outcome === "refused") {
-        expect((yield* Effect.flip(issue))._tag).toBe(expected.error);
-        return;
-      }
-      const { token, name } = tokenAndName((yield* issue).relativeUrl);
-      const asset = yield* resolveAsset(token, name);
-      const canonicalFile = yield* fs.realPath(filePath);
-      if (expected.outcome === "workspace") {
-        expect(asset).toEqual({ kind: "file", path: canonicalFile });
-        return;
-      }
-      expect(asset).toMatchObject({ kind: "file", path: canonicalFile, mimeType: "image/png" });
-      if (!asset) throw new Error("Expected the image to resolve");
-      const response = HttpServerResponse.toWeb(yield* assetFileResponse(asset));
-      expect(yield* Effect.promise(() => response.text())).toBe(expected.body);
-      expect(yield* resolveAsset(token, "sibling.png")).toBeNull();
-    }).pipe(Effect.provide(testLayer)),
-  );
+        if (expected.outcome === "refused") {
+          expect((yield* Effect.flip(issue))._tag).toBe(expected.error);
+          return;
+        }
+        const { token, name } = tokenAndName((yield* issue).relativeUrl);
+        const asset = yield* resolveAsset(token, name);
+        const canonicalFile = yield* fs.realPath(filePath);
+        if (expected.outcome === "workspace") {
+          expect(asset).toEqual({ kind: "file", path: canonicalFile });
+          return;
+        }
+        expect(asset).toMatchObject({ kind: "file", path: canonicalFile, mimeType: "image/png" });
+        if (!asset) throw new Error("Expected the image to resolve");
+        const response = HttpServerResponse.toWeb(yield* assetFileResponse(asset));
+        expect(yield* Effect.promise(() => response.text())).toBe(expected.body);
+        expect(yield* resolveAsset(token, "sibling.png")).toBeNull();
+      }).pipe(Effect.provide(testLayer)),
+    );
+  });
 
   it.effect("serves an image from the real temp directory by default", () =>
     Effect.gen(function* () {
