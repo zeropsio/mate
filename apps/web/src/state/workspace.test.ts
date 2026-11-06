@@ -211,9 +211,17 @@ it("the MCP tab keeps showing its last list while it reads the servers again", a
     agents: [ProviderDriverKind.make("codex")],
   };
   let reads = 0;
+  let askedAgain!: () => void;
+  const rereadStarted = new Promise<void>((resolve) => {
+    askedAgain = resolve;
+  });
   const workspaceReads = makeWorkspaceReads(store, {
     // The first read answers; the one a refresh sends never does (a slow Mate).
-    read: () => (++reads === 1 ? Effect.succeed(answered) : Effect.never),
+    read: () => {
+      if (++reads === 1) return Effect.succeed(answered);
+      askedAgain();
+      return Effect.never;
+    },
   } as Parameters<typeof makeWorkspaceReads>[1]);
   const vcs = makeVcsReads(store, () => Stream.never);
   registry.set(workspaceHostAtom, {
@@ -236,11 +244,18 @@ it("the MCP tab keeps showing its last list while it reads the servers again", a
     }),
   });
   const atom = workspaceQuery("mcp")({ environmentId: EnvironmentId.make("mate"), input: {} });
+  const received = new Promise<void>((resolve) => {
+    const check = () => {
+      if (AsyncResult.value(registry.get(atom))._tag === "Some") resolve();
+    };
+    registry.subscribe(atom, check);
+    check();
+  });
   const unmount = registry.mount(atom);
   try {
-    await expect.poll(() => AsyncResult.value(registry.get(atom))._tag).toBe("Some");
+    await received;
     registry.refresh(atom);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await rereadStarted;
     expect(AsyncResult.value(registry.get(atom))).toMatchObject({ _tag: "Some", value: answered });
   } finally {
     unmount();
@@ -258,7 +273,10 @@ it("a window focus that several views of the tools list answer reads it once", a
     read: () =>
       Effect.sync(() => {
         reads += 1;
-        return { servers: [], agents: [] } as never;
+        return {
+          servers: [],
+          agents: reads === 1 ? [] : [ProviderDriverKind.make("codex")],
+        } as never;
       }),
   });
   const vcs = makeVcsReads(store, () => Stream.never);
@@ -282,14 +300,22 @@ it("a window focus that several views of the tools list answer reads it once", a
     }),
   });
   const list = workspaceQuery("mcp")({ environmentId: EnvironmentId.make("mate"), input: {} });
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  const received = (agent: string | undefined) =>
+    new Promise<void>((resolve) => {
+      const check = () => {
+        const value = AsyncResult.value(registry.get(list));
+        if (value._tag === "Some" && value.value.agents[0] === agent) resolve();
+      };
+      registry.subscribe(list, check);
+      check();
+    });
   const unmount = registry.mount(list);
   try {
-    await settle();
+    await received(undefined);
     expect(reads).toBe(1);
     // The Tools tab, a proposal card and its docked copy each read again on focus.
     for (let view = 0; view < 3; view++) registry.refresh(list);
-    await settle();
+    await received("codex");
     expect(reads).toBe(2);
     expect(registry.get(list)).toMatchObject({ _tag: "Success" });
   } finally {
