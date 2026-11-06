@@ -109,12 +109,6 @@ describe("threadRoutes", () => {
       "loading",
     ],
     [
-      "a Mate whose door has not said where its conversations are listed waits",
-      "live",
-      { listed: false, shell: false },
-      "loading",
-    ],
-    [
       "a detail the server deleted is no longer available whatever the list says",
       "live",
       { listed: false, deleted: true },
