@@ -679,9 +679,15 @@
         const maximum = Math.max(minimum, Math.floor(window.innerWidth) - 40 * 16);
         const preferred = stored === null ? 23 * 16 : Math.max(minimum, stored);
         root.style.setProperty("--boot-menu-width", `${Math.min(preferred, maximum)}px`);
-        // A menu its person left closed is the rail (`sidebar_state`, the cookie its toggle
-        // writes), as the app opens it: its 88 px column and its mark, nothing else.
-        if (/(?:^|;\s*)sidebar_state=false(?:;|$)/.test(document.cookie ?? "")) {
+        // A menu its person left closed is the rail (`SIDEBAR_STATE_STORAGE_KEY`, which its
+        // toggle writes), as the app opens it: its 88 px column and its mark, nothing else.
+        let closed = false;
+        try {
+          closed = window.localStorage.getItem("mate:sidebar-state") === "false";
+        } catch {
+          // Storage refused: the menu opens, as the app opens it.
+        }
+        if (closed) {
           root.dataset.bootMenu = "rail";
           root.style.setProperty("--boot-menu-width", "88px");
         }

@@ -7,6 +7,7 @@ import {
   resolveInitialThreadSidebarWidth,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "../components/threadSidebarWidth";
+import { SIDEBAR_STATE_STORAGE_KEY } from "../components/ui/sidebarState";
 import {
   BOOT_FRAME_STORAGE_KEY,
   bootFrameMemory,
@@ -29,8 +30,6 @@ function bootFrameOf(input: {
   readonly innerWidth: number;
   readonly storageThrows?: boolean;
   readonly desktop?: boolean;
-  /** `document.cookie`. */
-  readonly cookie?: string;
 }): {
   readonly mode: string | undefined;
   readonly menuWidth: string | undefined;
@@ -52,10 +51,7 @@ function bootFrameOf(input: {
       },
     },
   };
-  new Function("window", "document", frameScript)(fakeWindow, {
-    documentElement,
-    cookie: input.cookie ?? "",
-  });
+  new Function("window", "document", frameScript)(fakeWindow, { documentElement });
   return {
     mode: documentElement.dataset.bootFrame,
     menuWidth: variables["--boot-menu-width"],
@@ -175,19 +171,21 @@ describe("the boot frame", () => {
   });
 
   // A menu closed to the rail opened again on every reload: its toggle's cookie was written, never
-  // read. The app opens it as it was left, and the first frame draws the rail it will draw.
+  // read; then, inside a cross-site frame, where cookies never stick, never kept. The app opens it
+  // as it was left, and the first frame draws the rail it will draw.
   it.each([
-    { left: "closed", cookie: "theme=dark; sidebar_state=false", width: "88px", menu: "rail" },
-    { left: "open", cookie: "sidebar_state=true", width: "437px", menu: undefined },
-    { left: "never touched", cookie: "", width: "437px", menu: undefined },
-  ])("draws the menu its person left $left", ({ cookie, width, menu }) => {
+    { left: "closed", stored: "false", width: "88px", menu: "rail" },
+    { left: "open", stored: "true", width: "437px", menu: undefined },
+    { left: "never touched", stored: undefined, width: "437px", menu: undefined },
+  ])("draws the menu its person left $left", ({ stored, width, menu }) => {
     const storage: Record<string, string> = {
       [BOOT_FRAME_STORAGE_KEY]: "app",
       [ZEROPS_SESSION_STORAGE_KEY]: SESSION,
       "zerops-mate.zerops-session-owner.v1": JSON.stringify({ userId: "user/1" }),
       [accountStorageKeyOf("user/1", THREAD_SIDEBAR_WIDTH_STORAGE_KEY)]: "437",
+      ...(stored === undefined ? {} : { [SIDEBAR_STATE_STORAGE_KEY]: stored }),
     };
-    const frame = bootFrameOf({ storage, pathname: "/", innerWidth: 1786, cookie });
+    const frame = bootFrameOf({ storage, pathname: "/", innerWidth: 1786 });
     expect([frame.menuWidth, frame.menu]).toEqual([width, menu]);
   });
 
