@@ -3,7 +3,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import { stateSmokeMatrix } from "./ci-blame.ts";
+import { parseCiSelectionManifest, stateSmokeMatrix } from "./ci-blame.ts";
 import { affectedScenarioFiles } from "./gate-changed.ts";
 import { scenarioDurations } from "./lib/scenario-durations.ts";
 import { spreadShard } from "./lib/spread-shard.ts";
@@ -85,6 +85,74 @@ export function stateSmokePlan(
   return { smoke, shards: split(total) };
 }
 
+function publishedSmokePlan(value: string, affected: string[], index: number, count: number) {
+  const manifest = parseCiSelectionManifest(value, process.env.GITHUB_SHA);
+  const state = (manifest as typeof manifest & { stateSmoke?: unknown }).stateSmoke;
+  if (!state || typeof state !== "object")
+    throw new Error("Missing State Smoke in CI selection manifest");
+  const section = state as {
+    base?: unknown;
+    affected?: unknown;
+    matrix?: { include?: unknown };
+    smoke?: unknown;
+    shards?: unknown;
+  };
+  if (
+    typeof section.base !== "string" ||
+    !section.base ||
+    JSON.stringify(section.affected) !== JSON.stringify(affected) ||
+    !Array.isArray(section.shards) ||
+    section.shards.length !== count ||
+    !section.smoke ||
+    typeof section.smoke !== "object" ||
+    !Array.isArray(section.matrix?.include) ||
+    !section.matrix.include.some(
+      (row: unknown) =>
+        typeof row === "object" &&
+        row !== null &&
+        "shard" in row &&
+        "total" in row &&
+        row.shard === index &&
+        row.total === count,
+    )
+  )
+    throw new Error("Invalid State Smoke in CI selection manifest");
+  const shards = section.shards as unknown[];
+  if (
+    !shards.every(
+      (shard) =>
+        typeof shard === "object" &&
+        shard !== null &&
+        "signIn" in shard &&
+        typeof shard.signIn === "boolean" &&
+        "smoke" in shard &&
+        typeof shard.smoke === "boolean" &&
+        "files" in shard &&
+        Array.isArray(shard.files) &&
+        shard.files.every((file: unknown) => typeof file === "string") &&
+        "estimateMs" in shard &&
+        typeof shard.estimateMs === "number" &&
+        Number.isFinite(shard.estimateMs),
+    )
+  )
+    throw new Error("Invalid State Smoke shards in CI selection manifest");
+  const plan = { smoke: section.smoke, shards } as ReturnType<typeof stateSmokePlan>;
+  const expectedSmoke = Object.fromEntries(
+    Object.entries(stateOnlySmoke).filter(([file]) => !affected.includes(file)),
+  );
+  const expectedFiles = affected.filter((file) => !file.startsWith(signIn)).sort();
+  if (
+    JSON.stringify(plan.smoke) !== JSON.stringify(expectedSmoke) ||
+    JSON.stringify(plan.shards.flatMap((part) => part.files).sort()) !==
+      JSON.stringify(expectedFiles) ||
+    plan.shards.filter((part) => part.signIn).length !== 1 ||
+    plan.shards.filter((part) => part.smoke).length !==
+      Number(Object.keys(expectedSmoke).length > 0)
+  )
+    throw new Error("Incomplete State Smoke in CI selection manifest");
+  return plan;
+}
+
 export function runStateSmoke(root: string, args: ReadonlyArray<string>): number {
   let base: string | undefined;
   let planned: string[] | undefined;
@@ -124,6 +192,8 @@ export function runStateSmoke(root: string, args: ReadonlyArray<string>): number
 
   if (planned && (base || plan || namedScenarios.length))
     throw new Error("--selection is the plan's result; it takes no --base, --plan or --scenarios");
+  if ((plan || planned) && process.env.GITHUB_ACTIONS === "true" && !process.env.MATE_CI_SELECTION)
+    throw new Error("Missing CI selection manifest");
 
   // A new branch has no previous commit. Compare its entire tree instead of silently dropping changes.
   if (!planned && (!base || /^0+$/u.test(base))) {
@@ -140,7 +210,19 @@ export function runStateSmoke(root: string, args: ReadonlyArray<string>): number
   const started = Date.now();
   const affected = planned ?? affectedScenarioFiles(root, base!, namedScenarios);
   if (plan) {
-    const { shards } = stateSmokePlan(affected);
+    const smokePlan = stateSmokePlan(affected);
+    const { shards } = smokePlan;
+    const matrix = stateSmokeMatrix(shards.length, requested);
+    const inputManifest = process.env.MATE_CI_SELECTION;
+    const manifest = inputManifest
+      ? parseCiSelectionManifest(inputManifest, process.env.GITHUB_SHA)
+      : undefined;
+    if (manifest && JSON.stringify(manifest.stateSmokeShards) !== JSON.stringify(requested))
+      throw new Error("State Smoke shard request differs from the CI selection manifest");
+    const selectionManifest = manifest && {
+      ...manifest,
+      stateSmoke: { base: base!, affected, matrix, ...smokePlan },
+    };
     console.log(
       `State Smoke plan: ${shards.length} shards for ${affected.length} affected scenario files ` +
         `(selected in ${((Date.now() - started) / 1000).toFixed(1)} s)`,
@@ -158,12 +240,16 @@ export function runStateSmoke(root: string, args: ReadonlyArray<string>): number
     if (process.env.GITHUB_OUTPUT)
       NodeFS.appendFileSync(
         process.env.GITHUB_OUTPUT,
-        `state_smoke=${JSON.stringify(stateSmokeMatrix(shards.length, requested))}\n` +
-          `state_smoke_selection=${JSON.stringify(affected)}\n`,
+        `state_smoke=${JSON.stringify(matrix)}\n` +
+          `state_smoke_selection=${JSON.stringify(affected)}\n` +
+          (selectionManifest ? `selection_manifest=${JSON.stringify(selectionManifest)}\n` : ""),
       );
     return 0;
   }
-  const { smoke, shards } = stateSmokePlan(affected, count);
+  const { smoke, shards } =
+    planned && process.env.MATE_CI_SELECTION
+      ? publishedSmokePlan(process.env.MATE_CI_SELECTION, affected, index, count)
+      : stateSmokePlan(affected, count);
   const part = shards[index - 1]!;
   const pattern = Object.values(smoke)
     .flat()
