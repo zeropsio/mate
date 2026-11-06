@@ -23,6 +23,7 @@ import { followStreamInEnvironment } from "../../state/runtime.ts";
 import type { ShellSnapshotLoader } from "../../state/shellSnapshotHttp.ts";
 import { openShellReplay } from "./mateShellReplay.ts";
 import { registerOlderThreadTurns } from "../olderTurns.ts";
+import { engineRowsScope } from "../families/mateEngine.ts";
 import type { AccountStore } from "../store.ts";
 import type { MateShellValue } from "../families/mateConversation.ts";
 import {
@@ -32,6 +33,22 @@ import {
   type ConversationKey,
 } from "../projections/mateConversation.ts";
 import { streamOf, type Row } from "../reducer.ts";
+import type { StreamState } from "../streamMachine.ts";
+/**
+ * Whether the list naming a Mate's conversations has answered whole, by where its door says they
+ * are read: before it says, no list has; a Mate serving no engine lists them in its shell; an
+ * engine Mate in its conversation rows, once their first baseline answered (and through a later
+ * outage of them, holding what they said).
+ */
+export function conversationsListed(
+  route: EngineRoute,
+  rows: Pick<StreamState, "phase" | "lostAt"> | null,
+): boolean {
+  if (route.kind === "unknown") return false;
+  if (route.kind !== "engine") return true;
+  return rows !== null && (rows.phase === "live" || rows.lostAt !== undefined);
+}
+
 export const mateConversationStoreAtom = Atom.make<AccountStore | null>(null).pipe(Atom.keepAlive);
 export const publishConversation = (
   store: AccountStore,
@@ -328,7 +345,25 @@ export function createAccountConversationAtoms<R, E>(
       }
     }),
   );
+  /**
+   * Whether the list naming an environment's conversations has answered whole — what lets a route
+   * read a conversation's absence off it: the shell, for a Mate serving no engine; its engine
+   * conversation rows' first baseline, for one that does (the shell lacks its conversations until
+   * they are laid over it); neither before its door has said which.
+   */
+  const threadsListed = Atom.family((environmentId: EnvironmentId) =>
+    Atom.make((get): boolean => {
+      const route = routeOf(get, environmentId);
+      if (route.kind !== "engine") return conversationsListed(route, null);
+      const host = get(engineRowHolds(environmentId));
+      return conversationsListed(
+        route,
+        host === null ? null : get(host.store.data.stream(engineRowsScope(environmentId))),
+      );
+    }).pipe(Atom.withLabel(`mate-conversation-listed:${environmentId}`)),
+  );
   return {
+    threadsListedAtom: threadsListed,
     shellStateAtom: shell,
     threadStateAtom: (environmentId: EnvironmentId, threadId: ThreadId) =>
       thread(JSON.stringify({ environmentId, threadId })),

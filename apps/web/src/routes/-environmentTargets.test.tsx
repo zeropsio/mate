@@ -38,6 +38,7 @@ import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { organization } from "../zerops/__fixtures__/platformData";
 import { TestNode } from "../zerops/__fixtures__/testDom";
 import {
+  namedProject,
   routeTarget,
   useEnvironmentLinks,
   useRouteConversation,
@@ -1017,24 +1018,38 @@ function routeTo(environmentId: EnvironmentId, value: Inventory = inventory("ACT
   return { read: () => JSON.parse(container.textContent) as Routed };
 }
 
+const ORG_1 = "org-1";
+const OWN_ROW = { clientId: ORG_1 };
+
 describe("routeTarget", () => {
   const NONE_INDEXED = { serving: new Map(), reported: new Map() };
-  const target = (listingAnswered: boolean) =>
+  const target = (named: Parameters<typeof namedProject>[0]) =>
     routeTarget({
       machines: new Map(),
       index: NONE_INDEXED,
       environmentId: ENV_A,
-      hqNames: true,
-      listingAnswered,
+      named: namedProject(named),
       inventoryKnown: true,
       organization: "chosen",
       content: "empty",
     });
+  const MATE_ROW = { service: { id: "service-1" } } as Pick<ZeropsCandidate, "service">;
 
-  it.each([{ name: "its read under way", listingAnswered: false }])(
+  it.each([
+    {
+      name: "its read under way",
+      named: {
+        hqProject: "project-1",
+        listingAnswered: false,
+        orgId: ORG_1,
+        row: null,
+        rows: null,
+      },
+    },
+  ])(
     "a conversation HQ names before the Zerops listing does waits for the listing instead of saying it isn't in your projects: $name",
-    ({ listingAnswered }) => {
-      const gate = selectRouteGate(target(listingAnswered));
+    ({ named }) => {
+      const gate = selectRouteGate(target(named));
       expect(gate).toEqual({ kind: "wait", reachability: null });
       expect(routeGatePhrase(gate, { nowMs: 0, mateName: "Ada" }).text).toBe(
         "Opening this conversation…",
@@ -1042,23 +1057,65 @@ describe("routeTarget", () => {
     },
   );
   it.each([
-    { name: "HQ naming it", hqNames: true },
-    { name: "HQ naming nothing", hqNames: false },
+    {
+      name: "the listing holds the project, its services not read yet",
+      named: {
+        hqProject: "project-1",
+        listingAnswered: true,
+        orgId: ORG_1,
+        row: OWN_ROW,
+        rows: null,
+      },
+    },
+    {
+      name: "its services read with a Mate the account has not taken in yet",
+      named: {
+        hqProject: "project-1",
+        listingAnswered: true,
+        orgId: ORG_1,
+        row: OWN_ROW,
+        rows: [MATE_ROW],
+      },
+    },
+    {
+      name: "its services read ahead of the listing, with a Mate",
+      named: {
+        hqProject: "project-1",
+        listingAnswered: false,
+        orgId: ORG_1,
+        row: OWN_ROW,
+        rows: [MATE_ROW],
+      },
+    },
+  ])(
+    "a conversation whose project HQ names never says it isn't in your projects before that project's Mate is read: $name",
+    ({ named }) => {
+      expect(selectRouteGate(target(named))).toEqual({ kind: "wait", reachability: null });
+    },
+  );
+  it.each([
+    {
+      name: "HQ naming it",
+      named: { hqProject: "project-1", listingAnswered: true, orgId: ORG_1, row: null, rows: null },
+    },
+    {
+      name: "the project HQ names another organization's",
+      named: {
+        hqProject: "project-1",
+        orgId: ORG_1,
+        listingAnswered: true,
+        row: { clientId: "org-2" },
+        rows: null,
+      },
+    },
+    {
+      name: "HQ naming nothing",
+      named: { hqProject: null, listingAnswered: true, orgId: ORG_1, row: null, rows: null },
+    },
   ])(
     "once the listing read after HQ named it still lacks the project, the conversation says it isn't in your Zerops projects: $name",
-    ({ hqNames }) => {
-      const gate = selectRouteGate(
-        routeTarget({
-          machines: new Map(),
-          index: NONE_INDEXED,
-          environmentId: ENV_A,
-          hqNames,
-          listingAnswered: true,
-          inventoryKnown: true,
-          organization: "chosen",
-          content: "empty",
-        }),
-      );
+    ({ named }) => {
+      const gate = selectRouteGate(target(named));
       expect(gate).toEqual({ kind: "unavailable", reachability: null });
       expect(routeGatePhrase(gate, { nowMs: 0, mateName: "Ada" }).text).toBe(
         "This conversation isn't in your Zerops projects.",
@@ -1066,6 +1123,33 @@ describe("routeTarget", () => {
     },
   );
 });
+
+it.each([
+  { name: "read with the listing", listingAnswered: true },
+  { name: "read ahead of the listing", listingAnswered: false },
+])(
+  "a conversation whose project HQ names says it isn't in your Zerops projects once that project's services are read without a Mate: $name",
+  ({ listingAnswered }) => {
+    const gate = selectRouteGate(
+      routeTarget({
+        machines: new Map(),
+        index: { serving: new Map(), reported: new Map() },
+        environmentId: ENV_A,
+        named: namedProject({
+          hqProject: "project-1",
+          listingAnswered,
+          orgId: ORG_1,
+          row: OWN_ROW,
+          rows: [{}],
+        }),
+        inventoryKnown: true,
+        organization: "chosen",
+        content: "empty",
+      }),
+    );
+    expect(gate).toEqual({ kind: "unavailable", reachability: null });
+  },
+);
 
 describe("the descriptor index", () => {
   it("resolves a route's environment through HQ's index without a descriptor sweep", async () => {

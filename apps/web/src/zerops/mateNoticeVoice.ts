@@ -167,6 +167,8 @@ export function mateNoticeVoice(
     readonly lastKnown?: string | undefined;
     readonly offlineSince?: string | undefined;
     readonly timestampFormat?: TimestampFormat;
+    /** A lost link over a shown conversation has lasted past `MATE_VOICE_SLOW_MS`. */
+    readonly linkSlow?: boolean;
   },
 ): WebMateVoice {
   const { reachability } = input;
@@ -329,6 +331,20 @@ export function mateNoticeVoice(
       );
     case "reconnecting":
     case "retrying": {
+      // Over a shown conversation a lost link is a blip until it is slow: the conversation stays
+      // where it was and the header's sync spinner says it catches up. Slow, one line in the
+      // Mate's name and Try now — the conversation already shows what the Mate last said, and a
+      // raw cause waits under Details.
+      if (surface === "banner") {
+        if (input.linkSlow !== true) return { surface: "none" };
+        const cause =
+          reachability.kind === "reconnecting" ? reachability.unavailableReason : undefined;
+        return {
+          ...say(`Reconnecting to ${name}…`, "", "sleep", ["try-now"]),
+          severity: "info",
+          ...(cause === undefined ? {} : { details: cause }),
+        };
+      }
       if (reachability.kind === "reconnecting" && reachability.retryAtMs === undefined) {
         return say(
           mateUnreachableWords(name, input.offlineSince, input.timestampFormat, true),
