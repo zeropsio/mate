@@ -864,7 +864,16 @@ export const makeScriptedProvider = (options: ScriptedProviderOptions) =>
         }),
     };
 
-    return { service, agent, calls, starts, sends, sessions, options };
+    return {
+      service,
+      agent,
+      calls,
+      starts,
+      sends,
+      sessions,
+      options,
+      subscribeEvents: PubSub.subscribe(pubsub),
+    };
   });
 
 export type ScriptedProvider = Effect.Success<ReturnType<typeof makeScriptedProvider>>;
