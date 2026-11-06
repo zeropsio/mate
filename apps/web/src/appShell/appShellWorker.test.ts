@@ -103,8 +103,9 @@ function browser(options: { readonly assetCapacity?: number } = {}) {
     state: "up" as "up" | "offline" | "stalled",
     /** Every bundle file the origin was asked for, in order. */
     fetched: [] as string[],
-    /** Bundle files the origin answers only once their promise settles. */
-    held: new Map<string, Promise<void>>(),
+    /** Requests the origin holds after reporting their arrival. */
+    held: new Map<string, { readonly entered: () => void; readonly until: Promise<void> }>(),
+    pageRead: undefined as (() => void) | undefined,
   };
   /**
    * A deploy replaces the whole bundle (`also` keeps the files of earlier builds the host still
@@ -138,11 +139,22 @@ function browser(options: { readonly assetCapacity?: number } = {}) {
     if (origin.state === "stalled") return new Promise<Response>(() => {});
     if (url.origin !== ORIGIN) return served("elsewhere", url.href, "text/plain");
     if (url.pathname.startsWith("/assets/")) origin.fetched.push(url.pathname);
-    await origin.held.get(url.pathname);
+    const held = origin.held.get(url.pathname);
+    held?.entered();
+    await held?.until;
     const asset = origin.assets.get(url.pathname);
     if (asset !== undefined) return served(asset, url.href, "text/javascript");
     // The host's SPA fallback: any other path is the page.
-    return served(origin.page, url.href, "text/html");
+    const page = served(origin.page, url.href, "text/html");
+    const pageRead = origin.pageRead;
+    if (pageRead === undefined) return page;
+    const read = page.text.bind(page);
+    page.text = () => {
+      const result = read();
+      void result.then(pageRead);
+      return result;
+    };
+    return page;
   };
   const pending: Promise<unknown>[] = [];
   const worker = makeAppShellWorker({
@@ -214,10 +226,7 @@ describe("a reload of the hosted client", () => {
     await tab.load("/");
     await tab.settle();
     tab.origin.state = "stalled";
-    const waited = new Promise((resolve) => setTimeout(() => resolve("still waiting"), 1000));
-    expect(await Promise.race([tab.answer("/", "navigation").then(buildOf), waited])).toBe(
-      "build 1",
-    );
+    expect(buildOf(await tab.answer("/", "navigation"))).toBe("build 1");
   });
 
   it("runs a deploy's page on the load after the one that found it", async () => {
@@ -283,14 +292,22 @@ describe("a reload of the hosted client", () => {
     const tab = browser();
     await tab.load("/");
     await tab.settle();
-    let release = () => {};
-    tab.origin.held.set("/assets/route-2.js", new Promise<void>((resolve) => (release = resolve)));
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    tab.origin.held.set("/assets/route-2.js", {
+      entered: entered.resolve,
+      until: release.promise,
+    });
     tab.deploy(2);
     await tab.answer("/", "navigation");
+    await entered.promise;
     // Build 3 lands while page 2's files are still arriving; the host still serves build 2's.
     tab.deploy(3, [], new Map(tab.origin.assets));
+    const pageRead = Promise.withResolvers<void>();
+    tab.origin.pageRead = pageRead.resolve;
     await tab.answer("/", "navigation");
-    release();
+    await pageRead.promise;
+    release.resolve();
     await tab.settle();
     tab.origin.state = "offline";
     expect(await tab.load("/")).toEqual(boots(3));
