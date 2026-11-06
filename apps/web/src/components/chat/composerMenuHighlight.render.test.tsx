@@ -1,4 +1,4 @@
-import { act, useSyncExternalStore } from "react";
+import { act, useLayoutEffect, useSyncExternalStore } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { TestNode } from "../../zerops/__fixtures__/testDom";
@@ -55,29 +55,41 @@ describe("useComposerMenuHighlight", () => {
       const { createRoot } = await import("react-dom/client");
       const store = makeStore();
       const uncaught: unknown[] = [];
+      const commits: number[] = [];
+      let finish = () => {};
+      const finished = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
       let rendered = { written: -1, highlighted: undefined as string | null | undefined };
 
       function Composer() {
         const written = useSyncExternalStore(store.subscribe, store.read);
         const items = menuOpen ? [{ id: "slash:model" }, { id: "slash:plan" }] : [];
         const { highlightedItemId } = useComposerMenuHighlight({ menuOpen, items, searchKey });
+        useLayoutEffect(() => {
+          if (written > 0) commits.push(written);
+          if (written === 80) finish();
+        }, [written]);
         rendered = { written, highlighted: highlightedItemId };
         return <span>{written}</span>;
       }
 
       const root = createRoot(document.createElement("div") as unknown as Element, {
-        onUncaughtError: (error) => uncaught.push(error),
+        onUncaughtError: (error) => {
+          uncaught.push(error);
+          finish();
+        },
       });
       try {
-        root.render(<Composer />);
-        // The store is subscribed once the mount's passive effects ran.
-        await vi.waitFor(() => expect(store.subscribed()).toBe(true));
+        await act(async () => root.render(<Composer />));
+        expect(store.subscribed()).toBe(true);
         for (let write = 1; write <= 80; write += 1) {
           store.write(write);
           await Promise.resolve();
         }
-        await vi.waitFor(() => expect(rendered).toEqual({ written: 80, highlighted }));
+        await finished;
         expect(uncaught).toEqual([]);
+        expect(commits).toEqual(Array.from({ length: 80 }, (_, index) => index + 1));
         expect(rendered).toEqual({ written: 80, highlighted });
       } finally {
         await act(async () => root.unmount());
