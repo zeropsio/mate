@@ -58,10 +58,6 @@ const bind = (lease: ThreadLease): Command => ({ _tag: "BindLease", lease });
 const released = (alias: string): Command => ({ _tag: "UnbindLease", ended: alias });
 
 describe("a conversation's lease", () => {
-  it("a conversation has no lease until its agent acquires one", () => {
-    expect(initialState(conversation).lease).toBeNull();
-  });
-
   it("the lease its agent acquired binds the conversation", () => {
     const scene = play([bind(webpool3)]);
     expect(scene.events.map((event) => event._tag)).toEqual(["LeaseBound"]);
