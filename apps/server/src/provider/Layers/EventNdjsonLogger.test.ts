@@ -7,6 +7,7 @@ import { ThreadId } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Logger from "effect/Logger";
 import * as Schema from "effect/Schema";
@@ -273,11 +274,24 @@ describe("EventNdjsonLogger", () => {
       try {
         const store = yield* makeEventNdjsonLogStore(basePath, { batchWindowMs: 1_000 });
         const logger = store.logger("native");
+        const baseClock = yield* Clock.clockWith(Effect.succeed);
+        let interruptWriter = () => {};
+        let schedulingReached = false;
+        const interruptingClock: Clock.Clock = {
+          ...baseClock,
+          sleep: (duration) =>
+            Effect.suspend(() => {
+              schedulingReached = true;
+              interruptWriter();
+              return baseClock.sleep(duration);
+            }),
+        };
         const interruptedWrite = yield* logger
           .write({ id: "possibly-interrupted" }, ThreadId.make("thread-interrupted"))
-          .pipe(Effect.forkChild);
-        yield* Effect.yieldNow;
-        yield* Fiber.interrupt(interruptedWrite);
+          .pipe(Effect.provideService(Clock.Clock, interruptingClock), Effect.forkChild);
+        interruptWriter = () => interruptedWrite.interruptUnsafe();
+        assert.isTrue(Exit.isFailure(yield* Fiber.await(interruptedWrite)));
+        assert.isTrue(schedulingReached);
         yield* logger.write({ id: "accepted" }, ThreadId.make("thread-interrupted"));
 
         yield* TestClock.adjust(1_000);
