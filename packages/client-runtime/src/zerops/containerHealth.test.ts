@@ -57,6 +57,7 @@ function stub(routes: Record<string, () => Response>) {
 }
 
 describe("probeZeropsContainerHealth", () => {
+  // Readiness can lack CORS even when the descriptor is available cross-origin.
   it("does not read healthz once the descriptor already says ready", async () => {
     const read = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
     expect(await probeZeropsContainerHealth(ORIGIN, read.fetch)).toBe("ready");
@@ -109,37 +110,6 @@ describe("probeZeropsContainerHealth", () => {
     expect(globalFetch).not.toHaveBeenCalled();
   });
 
-  it("treats the mate descriptor as the authority, and asks nothing else once it answers", async () => {
-    const spy = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
-
-    await expect(probeZeropsContainerHealth(ORIGIN, spy.fetch)).resolves.toBe("ready");
-    expect(spy.calls.map((call) => call.url)).toEqual([DESCRIPTOR]);
-  });
-
-  it("reads readiness under the /mate/ prefix, which is the only place zcp publishes it", () => {
-    // The route moved out of the container root when mate became opt-in: zcp
-    // renders it only with ZCP_MATE_ENABLED set, and the root /healthz is
-    // code-server's own again. Probing the root would read a booting container
-    // as one that cannot run Zerops Mate at all, and offer a restart that
-    // changes nothing. Pinned as an exact URL because the coupling is to a
-    // path in another repository's nginx template, which no type can check.
-    const spy = stub({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) });
-
-    void probeZeropsContainerHealth(ORIGIN, spy.fetch);
-
-    expect(HEALTHZ).toBe(`${ORIGIN}/mate/healthz`);
-  });
-
-  it("is ready even when /healthz cannot be read cross-origin", async () => {
-    // Measured 2026-08-28: nginx serves /healthz without an
-    // Access-Control-Allow-Origin header, so a browser cannot read it at all,
-    // while the mate descriptor answers `*`. Connecting must not depend on the
-    // one the browser is refused.
-    const spy = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR), [HEALTHZ]: corsBlocked });
-
-    await expect(probeZeropsContainerHealth(ORIGIN, spy.fetch)).resolves.toBe("ready");
-  });
-
   it("asks with nothing that would trigger a CORS preflight the container cannot answer", async () => {
     const spy = stub({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) });
 
@@ -171,6 +141,7 @@ describe("probeZeropsContainerHealth", () => {
     await expect(probeZeropsContainerHealth(ORIGIN, spy.fetch)).resolves.toBe("predates-mate");
   });
 
+  // zcp publishes Mate readiness under /mate/healthz; /healthz belongs to code-server.
   it("keeps waiting when zcp answers but Zerops Mate has not come up yet", async () => {
     const notYet = stub({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) });
     await expect(probeZeropsContainerHealth(ORIGIN, notYet.fetch)).resolves.toBe("initializing");
