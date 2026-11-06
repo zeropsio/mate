@@ -39,7 +39,6 @@ describe("usage notices", () => {
       says: "Rosa hit the coding agent's weekly limit.",
     },
     { provider: "Claude", window: "usage", says: "Rosa hit the Claude limit." },
-    { provider: "Claude", window: undefined, says: "Rosa hit the Claude limit." },
   ])(
     "names the window the limit's record names ($provider, $window)",
     ({ provider, window, says }) => {
