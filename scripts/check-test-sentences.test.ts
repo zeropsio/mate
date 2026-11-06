@@ -85,7 +85,7 @@ it.each([
       git("branch", "-f", "origin/main");
     }
     NodeFS.unlinkSync(NodePath.join(root, "old.test.ts"));
-    expect(checkTestSentences(root, "origin/main")).toEqual([
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([
       "routine memory reclaim shows no notice",
     ]);
     if (change === "renamed") write("old.test.ts", 'it("reclaim is quiet", () => {});');
@@ -96,10 +96,10 @@ it.each([
       );
     commit(
       change === "approved"
-        ? "remove approved behaviour\n\nDrops-test: routine memory reclaim shows no notice"
+        ? "remove approved behaviour\n\nDrops-test: routine memory reclaim shows no notice — dead"
         : change,
     );
-    expect(checkTestSentences(root, "origin/main")).toEqual(expected);
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual(expected);
   });
 });
 
@@ -118,7 +118,7 @@ it("conditional test sentences cannot disappear without approval", () => {
     commit("conditional baseline");
     git("branch", "-f", "origin/main");
     write("old.test.ts", "export {};");
-    expect(checkTestSentences(root, "origin/main")).toEqual([
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([
       "conditional case %s stays protected",
       "enabled features retain their behaviour",
       "enabled suites retain their contract",
@@ -153,7 +153,7 @@ it("parameterized and computed test sentences cannot disappear without approval"
     commit("parameterized and computed baseline");
     git("branch", "-f", "origin/main");
     write("old.test.ts", "export {};");
-    expect(checkTestSentences(root, "origin/main")).toEqual([
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([
       "computed decision",
       "computed suite",
       "computed table %s",
@@ -192,7 +192,7 @@ it("deleting an it.each row's sentence needs a Drops-test trailer like any test 
     commit("row baseline");
     git("branch", "-f", "origin/main");
     write("old.test.ts", rows(true));
-    expect(checkTestSentences(root, "origin/main")).toEqual([
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([
       "pressure shows a notice",
       "second positional row keeps case 2",
       "suite for deleted group",
@@ -201,12 +201,12 @@ it("deleting an it.each row's sentence needs a Drops-test trailer like any test 
       [
         "drop rows",
         "",
-        "Drops-test: pressure shows a notice",
-        "Drops-test: second positional row keeps case 2",
-        "Drops-test: suite for deleted group",
+        "Drops-test: pressure shows a notice — dead",
+        "Drops-test: second positional row keeps case 2 — dead",
+        "Drops-test: suite for deleted group — dead",
       ].join("\n"),
     );
-    expect(checkTestSentences(root, "origin/main")).toEqual([]);
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([]);
   });
 });
 
@@ -250,7 +250,7 @@ it("committed, staged, dirty, deleted and untracked test files share sentence re
     git("add", "staged.test.ts");
     write("dirty.scenario.ts", "export {};");
     NodeFS.unlinkSync(NodePath.join(root, "old.test.ts"));
-    expect(checkTestSentences(root, "origin/main")).toEqual([
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([
       "committed",
       "dirty",
       "routine memory reclaim shows no notice",
@@ -265,7 +265,7 @@ it("committed, staged, dirty, deleted and untracked test files share sentence re
         'it("staged", () => {});',
       ].join("\n"),
     );
-    expect(checkTestSentences(root, "origin/main")).toEqual([]);
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([]);
   });
 });
 
@@ -275,14 +275,14 @@ it("only exact Drops-test trailers in the comparison range approve removed sente
     git("branch", "-f", "origin/main");
     write("old.test.ts", "export {};");
     commit(
-      "a quoted approval is not a trailer\n\nDrops-test: routine memory reclaim shows no notice\n\nUnrelated final paragraph.",
+      "a quoted approval is not a trailer\n\nDrops-test: routine memory reclaim shows no notice — dead\n\nUnrelated final paragraph.",
     );
-    commit("near match\n\nDrops-test: routine memory reclaim shows no notices");
-    expect(checkTestSentences(root, "origin/main")).toEqual([
+    commit("near match\n\nDrops-test: routine memory reclaim shows no notices — dead");
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([
       "routine memory reclaim shows no notice",
     ]);
-    commit("approved\n\nDrops-test: routine memory reclaim shows no notice");
-    expect(checkTestSentences(root, "origin/main")).toEqual([]);
+    commit("approved\n\nDrops-test: routine memory reclaim shows no notice — dead");
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([]);
   });
 });
 
@@ -292,7 +292,7 @@ it("an explicit base controls both sentence comparison and approval history", ()
     commit("approved replacement\n\nDrops-test: routine memory reclaim shows no notice");
     git("branch", "selected");
     write("old.test.ts", "export {};");
-    expect(checkTestSentences(root, "selected")).toEqual(["replacement behaviour"]);
+    expect(checkTestSentences(root, "selected").dropped).toEqual(["replacement behaviour"]);
   });
 });
 
@@ -375,8 +375,10 @@ it("GitHub pull requests compare against their base and missing event history fa
     write("old.test.ts", "export {};");
     commit("drop sentence");
     git("branch", "-f", "origin/main");
-    expect(checkTestSentences(root, "origin/main")).toEqual([]);
-    expect(checkTestSentences(root, sha)).toEqual(["routine memory reclaim shows no notice"]);
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([]);
+    expect(checkTestSentences(root, sha).dropped).toEqual([
+      "routine memory reclaim shows no notice",
+    ]);
     installCli(root);
     const event = NodePath.join(root, "event.json");
     const run = () =>
@@ -408,13 +410,15 @@ it("GitHub pull requests compare against their base and missing event history fa
 it("extra spaces in a Drops-test title do not approve a different sentence", () => {
   fixture(({ root, write, commit }) => {
     write("old.test.ts", "export {};");
-    commit("different title\n\nDrops-test:  routine memory reclaim shows no notice");
-    commit("different trailer spelling\n\nDrops-test : routine memory reclaim shows no notice");
-    expect(checkTestSentences(root, "origin/main")).toEqual([
+    commit("different title\n\nDrops-test:  routine memory reclaim shows no notice — dead");
+    commit(
+      "different trailer spelling\n\nDrops-test : routine memory reclaim shows no notice — dead",
+    );
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([
       "routine memory reclaim shows no notice",
     ]);
-    commit("exact approval\n\nDrops-test: routine memory reclaim shows no notice");
-    expect(checkTestSentences(root, "origin/main")).toEqual([]);
+    commit("exact approval\n\nDrops-test: routine memory reclaim shows no notice — dead");
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([]);
   });
 });
 
@@ -471,7 +475,7 @@ it.each(
       write("old.test.ts", "export {};");
       commit(
         change === "approve main sentence"
-          ? "approve removal\n\nDrops-test: routine memory reclaim shows no notice"
+          ? "approve removal\n\nDrops-test: routine memory reclaim shows no notice — dead"
           : "drop main sentence",
       );
     }
@@ -503,5 +507,151 @@ it.each(
     if (expected === 1)
       expect(result.stderr).toContain("Needs Drops-test: routine memory reclaim shows no notice");
     else expect(result.stdout).toContain("Test sentences retained");
+  });
+});
+
+const ownerSource = "export const level = (used: number) => (used > 0.9 ? 'pressure' : 'quiet');\n";
+const ownerWitness = "// witness: owner.ts | used > 0.9 → used > 0.5";
+
+// witness: scripts/check-test-sentences.ts | testCase.titles.some((title) => !beforeTitles.has(title)) → false
+it("an added case without a witness line fails the sentence guard", () => {
+  fixture(({ root, write }) => {
+    write("owner.ts", ownerSource);
+    write("new.test.ts", 'it("pressure above nine tenths shows a notice", () => {});\n');
+    expect(checkTestSentences(root, "origin/main").problems).toEqual([
+      'new.test.ts:1: added case "pressure above nine tenths shows a notice" has no `// witness: <owner path> | <old> → <new>` line directly above it.',
+      "Cases without a witness grew from 0 at the base to 1 in the touched test files; witness each case.",
+    ]);
+    write(
+      "new.test.ts",
+      `${ownerWitness}\nit("pressure above nine tenths shows a notice", () => {});\n`,
+    );
+    expect(checkTestSentences(root, "origin/main").problems).toEqual([]);
+  });
+});
+
+// witness: scripts/check-test-sentences.ts | count === 1 ? undefined → count >= 1 ? undefined
+it("a witness whose old text occurs twice in its owner does not apply", () => {
+  fixture(({ root, write }) => {
+    write("owner.ts", `${ownerSource}export const other = (used: number) => used > 0.9;\n`);
+    write(
+      "new.test.ts",
+      `${ownerWitness}\nit("pressure above nine tenths shows a notice", () => {});\n`,
+    );
+    expect(checkTestSentences(root, "origin/main").problems).toEqual([
+      'new.test.ts:2: witness "owner.ts | used > 0.9 → used > 0.5" old text occurs 2 times in owner.ts, not exactly once.',
+    ]);
+  });
+});
+
+// witness: scripts/check-test-sentences.ts | if (nonOwnerPath(owner)) → if (false)
+it("a witness naming a test file as its owner does not apply", () => {
+  fixture(({ root, write }) => {
+    write(
+      "new.test.ts",
+      '// witness: old.test.ts | shows no notice → shows a notice\nit("pressure above nine tenths shows a notice", () => {});\n',
+    );
+    expect(checkTestSentences(root, "origin/main").problems).toEqual([
+      'new.test.ts:2: witness "old.test.ts | shows no notice → shows a notice" names old.test.ts, a test, fixture or recording path, as its owner.',
+    ]);
+  });
+});
+
+// witness: scripts/check-test-sentences.ts | !checked.has(path) && → false &&
+it("an owner edit that removes a witnessed old text fails in that commit", () => {
+  fixture(({ root, write, commit, git }) => {
+    write("owner.ts", ownerSource);
+    write(
+      "level.test.ts",
+      `${ownerWitness}\nit("pressure above nine tenths shows a notice", () => {});\n`,
+    );
+    commit("witnessed baseline");
+    git("branch", "-f", "origin/main");
+    write("owner.ts", ownerSource.replace("0.9", "0.8"));
+    commit("move the pressure threshold");
+    expect(checkTestSentences(root, "origin/main").problems).toEqual([
+      'level.test.ts:2: witness "owner.ts | used > 0.9 → used > 0.5" old text occurs 0 times in owner.ts, not exactly once.',
+    ]);
+  });
+});
+
+// witness: scripts/check-test-sentences.ts | droppedFiles.has(path) && !after.has(path) → false
+it("deleting a test file under Drops-test-file needs no per-title trailers", () => {
+  fixture(({ root, write, commit, git }) => {
+    write(
+      "gone.test.ts",
+      'it("first retired sentence", () => {});\nit("second retired sentence", () => {});\n',
+    );
+    commit("file baseline");
+    git("branch", "-f", "origin/main");
+    NodeFS.unlinkSync(NodePath.join(root, "gone.test.ts"));
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([
+      "first retired sentence",
+      "second retired sentence",
+    ]);
+    commit("retire the file\n\nDrops-test-file: gone.test.ts");
+    expect(checkTestSentences(root, "origin/main")).toEqual({ dropped: [], problems: [] });
+  });
+});
+
+// witness: scripts/check-test-sentences.ts | if (headCount > baseCount) → if (false)
+it("a lane that adds an unwitnessed case by renaming a witnessed one fails the witness ratchet", () => {
+  fixture(({ root, write, commit, git }) => {
+    write("owner.ts", ownerSource);
+    write(
+      "level.test.ts",
+      `${ownerWitness}\nit("pressure above nine tenths shows a notice", () => {});\n`,
+    );
+    commit("witnessed baseline");
+    git("branch", "-f", "origin/main");
+    git("mv", "level.test.ts", "renamed.test.ts");
+    write("renamed.test.ts", 'it("pressure above nine tenths shows a notice", () => {});\n');
+    commit("rename the case file");
+    expect(checkTestSentences(root, "origin/main")).toEqual({
+      dropped: [],
+      problems: [
+        "Cases without a witness grew from 0 at the base to 1 in the touched test files; witness each case.",
+      ],
+    });
+  });
+});
+
+// witness: scripts/check-test-sentences.ts | addsWitnessedCase(root, commit, witnesses) → true
+it("a reworded drop approves only when its commit adds a case carrying the dropped case's witness", () => {
+  fixture(({ root, write, commit, git }) => {
+    write("owner.ts", ownerSource);
+    write("level.test.ts", `${ownerWitness}\nit("pressure shows a notice", () => {});\n`);
+    commit("witnessed baseline");
+    git("branch", "-f", "origin/main");
+    const base = git("rev-parse", "HEAD");
+    write(
+      "level.test.ts",
+      `// witness: owner.ts | 'quiet' → 'calm'\nit("pressure above nine tenths shows a notice", () => {});\n`,
+    );
+    commit("reword under another witness\n\nDrops-test: pressure shows a notice — reworded");
+    const reworded = checkTestSentences(root, "origin/main");
+    expect(reworded.dropped).toEqual(["pressure shows a notice"]);
+    expect(reworded.problems).toHaveLength(1);
+    expect(reworded.problems[0]).toContain("Drops-test: pressure shows a notice — reworded needs");
+    git("reset", "-q", "--hard", base);
+    write(
+      "level.test.ts",
+      `${ownerWitness}\nit("pressure above nine tenths shows a notice", () => {});\n`,
+    );
+    commit("reword under the same witness\n\nDrops-test: pressure shows a notice — reworded");
+    expect(checkTestSentences(root, "origin/main")).toEqual({ dropped: [], problems: [] });
+  });
+});
+
+// witness: scripts/check-test-sentences.ts | kind === undefined ? beforeBare(commit) → kind === undefined ? true
+it("a bare Drops-test trailer approves only in commits up to the classed-trailer cutoff", () => {
+  fixture(({ root, write, commit, git }) => {
+    write("old.test.ts", "export {};");
+    commit("bare approval\n\nDrops-test: routine memory reclaim shows no notice");
+    expect(checkTestSentences(root, "origin/main").dropped).toEqual([
+      "routine memory reclaim shows no notice",
+    ]);
+    const cutoff = git("rev-parse", "HEAD");
+    expect(checkTestSentences(root, "origin/main", cutoff).dropped).toEqual([]);
   });
 });

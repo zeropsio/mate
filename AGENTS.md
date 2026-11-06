@@ -33,8 +33,9 @@ Name the tier before the first tool call. Its loop is the whole loop; no higher-
   look cropped to the surface at the reference viewport (1786 × 1000, menu at 435 px) in the report's
   theme, `vp check` the files, one commit. Nothing extra (test, harness, matrix, ledger entry,
   subagent, release) unless asked. Delete tests pinning the old class, pixel or colour; do not update them.
-- **Change** — behaviour: state, data, protocol, new control. RED → GREEN on logic (`*.logic.ts`,
-  server, runtime), targeted `vp test run`, package typecheck, one live look for UI.
+- **Change** — behaviour: state, data, protocol, new control. A witnessed case at the cheapest level
+  (OWNER.md Testing) or a named existing one, targeted `vp test run`, package typecheck, one live
+  look for UI.
 - **Pass** — a maintainer calls it a pass, or it redesigns several surfaces or lands a slice: loop below.
 
 The loop:
@@ -120,10 +121,8 @@ To answer a question, go to the home:
 - `docs/` lines must hold for something not yet existing: cross-surface rule, term, zcp↔mate seam,
   platform fact. One surface/flow/component belongs in tests (title is the product sentence; one-line
   why when the owner decided against the obvious) or code. Reasons/reversals belong in the commit message.
-- Few tests, highest value, fast: a test earns its cost or goes. Delete one that pins gone behaviour,
-  duplicates another or checks trivia, with a `Drops-test: <exact title>` commit trailer
-  (`scripts/check-test-sentences.ts`) and a line why. Rewrites change input arrangement, never what a
-  kept title says; removing a behaviour itself is the owner's call.
+- Test admission and removal: OWNER.md Testing. `scripts/check-test-sentences.ts` enforces
+  witness lines and `Drops-test`/`Drops-test-file` trailers.
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.
 - Paragraph-sized doc entries are list items, never table rows.
@@ -147,8 +146,6 @@ To answer a question, go to the home:
 - `apps/web/src/components/ui` exports own their look: pick a `variant`/`size`, never restyle with
   `className`, never add a `t3code/no-restyle` exception. If none fits, generic looks get a variant;
   feature-specific looks stay in the feature. Layout classes belong on the parent.
-- Tests pin behaviour (state, data, protocol, guards, render output, click effects), never class
-  strings, pixels or colours; the owner judges looks by eye. Backend behaviour ships with focused tests.
 - Owner-reported visual regressions get a geometry witness in the `owner-reported layout regressions`
   scenario suite, in the fix's change.
 - Important invariants get deterministic checks with an exception ledger that may only shrink.
