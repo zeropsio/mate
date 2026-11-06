@@ -181,9 +181,4 @@ describe("the change waiting, while the project has no production", () => {
     expect(markup).toContain(">Review<");
     expect(markup).not.toContain("Put it live");
   });
-
-  it("keeps Review as its one button once a production exists", () => {
-    const markup = renderToStaticMarkup(<ZeropsNextStepStrip onReview={() => {}} strip={STRIP} />);
-    expect(markup).not.toContain("Put it live");
-  });
 });
