@@ -30,7 +30,7 @@ function withProject(
     );
     NodeFS.writeFileSync(
       NodePath.join(directory, "case.test.ts"),
-      `import { it, expect, beforeAll, describe } from 'vite-plus/test'; ${source}`,
+      `import { it, expect, beforeAll, afterAll, describe } from 'vite-plus/test'; ${source}`,
     );
     let runs = 0;
     use((args = []) => {
@@ -96,14 +96,96 @@ it.each([
   });
 });
 
+it("the Signal runner attributes suite cleanup logs to the suite, not its last case", () =>
+  withProject(
+    `describe('group', () => {
+       it('last case', () => {});
+       afterAll(() => console.log('AFTER_SUITE_MARKER'));
+     });`,
+    (run) => {
+      const result = run(["--reporter=default"]);
+      expect(result.status).toBe(0);
+      expect(result.stdout).toMatch(/stdout \| .*case\.test\.ts > group\nAFTER_SUITE_MARKER/u);
+    },
+  ));
+
+it("Decision: the shard emits each original named failure before later cases, with secrets redacted", () =>
+  withProject(
+    `describe('Menu', () => {
+       it('shows the broken state', () => { throw new Error('expected Mate row; password=shard-secret-123\\n::notice::not a command; value=' + process.env.SIGNAL_TEST_TOKEN); });
+     });
+     it('continues', () => { process.stdout.write('FIXTURE_CONTINUED\\n'); });`,
+    (_run, directory) => {
+      const executable = NodePath.join(directory, "vp");
+      NodeFS.writeFileSync(
+        executable,
+        `#!/usr/bin/env node
+         import { spawnSync } from 'node:child_process';
+         const child = spawnSync(${JSON.stringify(NodePath.join(root, "node_modules/.bin/vp"))}, [
+           'test', 'run', '--config', ${JSON.stringify(NodePath.join(directory, "vite.config.ts"))},
+           '--reporter=verbose', '--reporter=json', '--outputFile.json=' + process.env.MATE_SIGNAL_REPORT + '.vitest.json',
+           '--reporter=' + ${JSON.stringify(NodePath.join(root, "scripts/signal-reporter.ts"))}
+         ], { cwd: ${JSON.stringify(directory)}, env: process.env, stdio: 'inherit' });
+         process.exit(child.status ?? 1);`,
+        { mode: 0o755 },
+      );
+      const result = NodeChildProcess.spawnSync(
+        process.execPath,
+        [NodePath.join(root, "scripts/signal.ts"), "shard", "non-c", "1/3"],
+        {
+          cwd: directory,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${directory}${NodePath.delimiter}${process.env.PATH ?? ""}`,
+            MATE_SIGNAL_DIRECTORY: directory,
+            SIGNAL_TEST_TOKEN: "unlabelled-secret-789",
+          },
+        },
+      );
+      const output = result.stdout + result.stderr;
+      expect(result.status, output).toBe(0);
+      const failure = output.indexOf("Signal original case failure");
+      expect(failure).toBeGreaterThanOrEqual(0);
+      expect(failure).toBeLessThan(output.indexOf("FIXTURE_CONTINUED"));
+      expect(output).toMatch(/::error file=.*title=Signal original case failure::/u);
+      expect(output).toContain(NodePath.relative(root, NodePath.join(directory, "case.test.ts")));
+      expect(output).toContain("Menu > shows the broken state");
+      expect(output).toContain("expected Mate row");
+      expect(output).toMatch(/case\.test\.ts > Menu > shows the broken state \d+ms/u);
+      expect(output).toMatch(/case\.test\.ts > continues \d+ms/u);
+      expect(output).not.toContain("shard-secret-123");
+      expect(output).not.toContain("unlabelled-secret-789");
+      expect(output).toContain("%0A::notice::not a command");
+      expect(output).not.toContain("\n::notice::not a command");
+      expect(output).not.toContain("fail-pass");
+      expect(output).not.toContain("fail-fail");
+      expect(
+        JSON.parse(NodeFS.readFileSync(NodePath.join(directory, "non-c-1.json"), "utf8")).tests[0]
+          .status,
+      ).toBe("failed");
+    },
+  ));
+
+it("Decision: shard infrastructure evidence names the cause without exposing secrets", () =>
+  withProject("throw new Error('scenario setup unavailable; token=shard-secret-456');", (run) => {
+    const result = run();
+    const output = result.stdout + result.stderr;
+    expect(output).toContain("Signal incomplete");
+    expect(output).toContain("scenario setup unavailable");
+    expect(output).not.toContain("shard-secret-456");
+    expect(output).not.toContain("fail-pass");
+    expect(output).not.toContain("fail-fail");
+  }));
+
 it("Signal's rerun executes only the failed test of a file and still certifies its evidence", () =>
   withProject(
     "describe('group', () => { it('flaky (1)', () => expect(1).toBe(2)); it('steady', () => {}); });",
     (run) => {
       const initial = readSignalReport(run().output);
-      const rerun = readSignalReport(
-        run(["--testNamePattern", failedSelection([initial]).testNamePattern]).output,
-      );
+      const rerunResult = run(["--testNamePattern", failedSelection([initial]).testNamePattern]);
+      const rerun = readSignalReport(rerunResult.output);
+      expect(rerunResult.stdout + rerunResult.stderr).not.toContain("Signal original case failure");
       expect(rerun.errors).toEqual([]);
       expect(rerun.tests.map(({ title, status }) => [title, status])).toEqual([
         ["group flaky (1)", "failed"],

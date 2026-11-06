@@ -27,6 +27,109 @@ const report = (status: string): SignalReport => ({
   errors: [],
 });
 
+it("Decision: missing and terminated shard reports name the incomplete case and never succeed", async () => {
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "signal-shard-"));
+  const scenario = NodePath.join(
+    import.meta.dirname,
+    "../apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
+  );
+  try {
+    const executable = NodePath.join(directory, "vp");
+    NodeFS.writeFileSync(
+      executable,
+      `#!/usr/bin/env node
+       const fs = require('node:fs');
+       fs.appendFileSync(process.env.MATE_SIGNAL_REPORT + '.progress.jsonl', JSON.stringify({ event: 'start', file: ${JSON.stringify(scenario)}, title: 'Chat > waiting for Mate' }) + '\\n');
+       if (process.env.FAKE_SIGNAL_RUN === 'missing') process.exit(0);
+       process.stdout.write('FIXTURE_SHARD_READY ' + process.pid + '\\n');
+       process.stdin.resume();`,
+      { mode: 0o755 },
+    );
+    const run = (mode: "missing" | "terminated" | "parent-only") =>
+      new Promise<{ mode: string; status: number | null; output: string }>((resolve, reject) => {
+        const child = NodeChildProcess.spawn(
+          process.execPath,
+          [NodePath.join(import.meta.dirname, "signal.ts"), "shard", "non-c", "1/3"],
+          {
+            cwd: directory,
+            detached: true,
+            env: {
+              ...process.env,
+              PATH: `${directory}${NodePath.delimiter}${process.env.PATH ?? ""}`,
+              MATE_SIGNAL_DIRECTORY: NodePath.join(directory, mode),
+              FAKE_SIGNAL_RUN: mode,
+            },
+          },
+        );
+        let output = "";
+        let signalled = false;
+        let runnerPid: number | undefined;
+        child.stdout.setEncoding("utf8");
+        child.stderr.setEncoding("utf8");
+        child.stdout.on("data", (chunk: string) => {
+          output += chunk;
+          const ready = /FIXTURE_SHARD_READY (\d+)\n/u.exec(output);
+          if (!signalled && ready) {
+            signalled = true;
+            runnerPid = Number(ready[1]);
+            if (mode === "terminated") process.kill(-child.pid!, "SIGTERM");
+            else child.kill("SIGTERM");
+          }
+        });
+        child.stderr.on("data", (chunk: string) => (output += chunk));
+        child.once("error", reject);
+        child.once("exit", () => {
+          if (runnerPid !== undefined) {
+            try {
+              process.kill(runnerPid, "SIGTERM");
+            } catch {
+              // The runner already exited after receiving the signal.
+            }
+          }
+        });
+        child.once("close", (status) => resolve({ mode, status, output }));
+      });
+    const results = [await run("missing"), await run("terminated"), await run("parent-only")];
+    expect(
+      results.map(({ mode, status, output }) => ({
+        mode,
+        failed: status !== 0,
+        incomplete: output.includes("Signal incomplete"),
+        named: output.includes("Chat > waiting for Mate"),
+        file: output.includes("apps/web/test/scenarios/areas/c-mate/chat.scenario.ts"),
+        classified: /fail-pass|fail-fail/u.test(output),
+      })),
+    ).toEqual([
+      {
+        mode: "missing",
+        failed: true,
+        incomplete: true,
+        named: true,
+        file: true,
+        classified: false,
+      },
+      {
+        mode: "terminated",
+        failed: true,
+        incomplete: true,
+        named: true,
+        file: true,
+        classified: false,
+      },
+      {
+        mode: "parent-only",
+        failed: true,
+        incomplete: true,
+        named: true,
+        file: true,
+        classified: false,
+      },
+    ]);
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 it.each([
   ["failed", "fail-fail"],
   ["passed", "fail-pass"],
