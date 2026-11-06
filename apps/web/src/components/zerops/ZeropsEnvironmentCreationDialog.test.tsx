@@ -93,6 +93,11 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(html).not.toContain("Agent's name");
     expect(html).not.toContain("Mate's name");
     expect(html).toContain("Add stage to Acme Docs");
+    expect(html).toContain(">New stage environment<");
+    expect(html).not.toContain('data-zerops-surface="new-mate-form"');
+    expect(html).toContain("Same services as the project");
+    expect(html).toContain("app, db");
+    expect(html).toContain("Empty");
   });
 
   it("hands a Mate to a form of its own: who it is, its project named as it is", () => {
@@ -111,19 +116,6 @@ describe("ZeropsEnvironmentCreationForm", () => {
       "Nova runs on its own computer, which Zerops bills by use while it runs. Zerops pricing",
     );
     expect(line?.querySelector("a")?.getAttribute("href")).toBe("https://zerops.io/pricing");
-  });
-
-  it("keeps a stage's own form, its title naming the role", () => {
-    const html = render();
-    expect(html).toContain(">New stage environment<");
-    expect(html).not.toContain('data-zerops-surface="new-mate-form"');
-  });
-
-  it("offers the project's own recipe, and nothing yet", () => {
-    const html = render();
-    expect(html).toContain("Same services as the project");
-    expect(html).toContain("app, db");
-    expect(html).toContain("Empty");
   });
 
   it("offers only an empty environment when HQ says nothing is merged on main", () => {
