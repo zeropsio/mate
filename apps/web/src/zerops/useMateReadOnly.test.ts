@@ -31,7 +31,6 @@ function Reader() {
 // Decision: admission does not invent signer ownership. Drop unrecorded-login and any blocking derived from who signed in.
 const mateReadOnly = (input: {
   snapshot: ZeropsAgentAuthSnapshot | null;
-  instanceId: string | undefined;
   viewerSubject: string | undefined;
   owner?: { readonly userId: string; readonly name: string } | undefined;
 }) => {
@@ -68,7 +67,6 @@ const snapshot = (...agents: ReadonlyArray<ZeropsAgentAuth>): ZeropsAgentAuthSna
 describe("mateReadOnly — whether the viewer only reads a Mate's conversation (D6)", () => {
   const base = {
     snapshot: snapshot(claude({ authorizedBy: { subject: "petra" } })),
-    instanceId: "claudeAgent",
     viewerSubject: "ada",
   } as const;
 
@@ -93,11 +91,6 @@ describe("mateReadOnly — whether the viewer only reads a Mate's conversation (
     },
     { case: "an agent whose sign-in is not read yet", input: { snapshot: null }, readOnly: false },
     {
-      case: "a conversation on an agent this product signs nobody in to",
-      input: { instanceId: "opencode" },
-      readOnly: false,
-    },
-    {
       case: "a viewer nobody can name",
       input: { viewerSubject: undefined },
       readOnly: false,
@@ -111,7 +104,6 @@ describe("mateReadOnly — whether the viewer only reads a Mate's conversation (
 describe("a colleague's Mate is read along from the quick-send as in its chat", () => {
   const base = {
     snapshot: snapshot(claude({ authorizedBy: { subject: "ada" } })),
-    instanceId: "claudeAgent",
     viewerSubject: "ada",
   } as const;
   it.each([
