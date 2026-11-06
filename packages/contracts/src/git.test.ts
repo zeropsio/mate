@@ -136,6 +136,7 @@ describe("GitRunStackedActionInput", () => {
 
     expect(parsed.actionId).toBe("action-1");
     expect(parsed.action).toBe("create_pr");
+    expect(() => decodeRunStackedActionInput({ cwd: "/repo", action: "create_pr" })).toThrow();
   });
 });
 
