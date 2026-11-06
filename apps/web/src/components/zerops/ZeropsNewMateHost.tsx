@@ -70,7 +70,6 @@ import {
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { useAddMateOffer, useHqOffers } from "../../zerops/useHqOffers";
 import { emptyApplications } from "./projects/emptyApps.logic";
-import { NewMateRepositories } from "./NewMateRepositories";
 
 export function ZeropsNewMateHost() {
   const asked = useNewMateDialog((state) => state.asked);
@@ -276,7 +275,6 @@ function NewMateDialog({
       <AutomatedMatesDialog
         again={again}
         forecast={forecast}
-        repositories={<NewMateRepositories appId={group.groupId} />}
         groupId={group.groupId}
         groupName={group.name}
         keyState={automatedKey}
@@ -322,7 +320,6 @@ function NewMateDialog({
         />
       )}
       {...(forecast === undefined ? {} : { forecast })}
-      repositories={<NewMateRepositories appId={group.groupId} />}
       closed={closed}
       // The Mate's own name, its project's built from it: started over, the name it was asked with.
       defaultName={defaultBotName}
@@ -399,7 +396,7 @@ function AutomatedMatesDialog({
       }}
       open
     >
-      <DialogPopup className="max-w-lg">
+      <DialogPopup className="max-w-lg" placement="center">
         <AddAutomatedMatesForm
           {...form}
           admin={roleAtLeast(activeOrganization?.roleCode, "ADMIN")}

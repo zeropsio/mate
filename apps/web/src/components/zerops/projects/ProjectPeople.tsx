@@ -550,7 +550,6 @@ export function ProjectAccessDraft({
   kind,
   onChange,
   label,
-  fold,
 }: {
   /** The app it is made in; `null` for a brand new app. */
   readonly groupId: string | null;
@@ -558,13 +557,9 @@ export function ProjectAccessDraft({
   readonly onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void;
   /** What the creation form names the section: "Project access", "Who can work with this Mate". */
   readonly label: string;
-  /**
-   * Said in one line, who can open it in the organization named here, the chips opened only to
-   * change it (`AccessDraftFold`); absent, the chips are drawn open.
-   */
-  readonly fold?: { readonly organization: string | null };
 }) {
   const { base, input } = useDraftInput(groupId, kind);
+  const organization = useZeropsSessionOptional()?.activeOrganization?.name ?? null;
   const [chosen, setChosen] = useState<ReadonlyArray<ProjectGrant> | null>(null);
   const prefill = useMemo(() => draftPrefill(input), [input]);
   const list = chosen ?? prefill ?? NO_GRANTS;
@@ -602,10 +597,9 @@ export function ProjectAccessDraft({
   );
   // Someone alone in the organization is asked nothing: the creator's own chip says nothing new.
   if (!draftSpeaks(view)) return null;
-  const summary =
-    fold === undefined
-      ? null
-      : draftSummary({ view, organization: fold.organization, prefill, list });
+  // Said in one line, the chips opened only to change it (`AccessDraftFold`); drawn open only
+  // while the people are still read or unreadable.
+  const summary = draftSummary({ view, organization, prefill, list });
   if (summary !== null)
     return (
       <AccessDraftFold label={label} summary={summary}>
