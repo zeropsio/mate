@@ -1,4 +1,14 @@
-import { HQ_SLOW, mateLinks, readsOfState, streamOf } from "@t3tools/client-runtime/data";
+import {
+  HQ_SLOW,
+  mateLinks,
+  readsOfState,
+  streamOf,
+  accountReadsAtom,
+  hqNavigation,
+  makeAccountStore,
+  observeAccount,
+  type HqWire,
+} from "@t3tools/client-runtime/data";
 import {
   hqDrops,
   graceOver,
@@ -24,13 +34,16 @@ import {
   type HqPlacement,
 } from "@t3tools/client-runtime/zerops/hq";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
-import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
+import { heldCandidates, type CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import { act, act as act_, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { RegistryContext } from "@effect/atom-react";
+import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { AtomRegistry } from "effect/reactivity";
 import * as Effect from "effect/Effect";
+import * as Cause from "effect/Cause";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
 import {
   makeAccountRuntime,
   type AccountEnvironmentPorts,
@@ -39,6 +52,7 @@ import {
   AccountEpoch,
   makeZeropsApiOrigin,
   ZeropsAccountId,
+  ZeropsOrganizationId,
 } from "@t3tools/client-runtime/zerops/data";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { it } from "@effect/vitest";
@@ -227,9 +241,12 @@ import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
 import { useProjectFlows } from "~/zerops/projectFlows";
 import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
-import { useHeldZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { allCandidateListingAtom, useHeldZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useMenuRows } from "~/zerops/useMenuRows";
 import { bindAccountEnvironments } from "~/zerops/accountEnvironments";
+import { hasNoZeropsProject } from "./ZeropsProjectsPage";
+import { ZeropsProjectsFlow } from "./projects/ZeropsProjectsFlow";
+import { FLOW_PROPS } from "./projects/flowTestFixtures";
 
 /** One comparison HQ answered for `appdev`: what a release would put live. */
 const compared = (commits: ReadonlyArray<{ readonly sha: string; readonly subject: string }>) => ({
@@ -5463,6 +5480,257 @@ it("a reader sees the protocol notice without an update action", () => {
   } finally {
     registry.dispose();
   }
+});
+
+describe("A: sign-in, session and organizations", () => {
+  it.live("switching organizations clears previous work and can return", () =>
+    Effect.gen(function* () {
+      const fetch = vi.fn(() => Promise.reject(new Error("Unexpected network request")));
+      vi.stubGlobal("fetch", fetch);
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const project = {
+        id: "Ada",
+        clientId: "ACME",
+        name: "Ada",
+        status: "ACTIVE",
+        tagList: ["mate"],
+        publicZone: "example.test",
+        zeropsSubdomainHost: "ada",
+        _version: 1,
+      };
+      const service = {
+        id: "service-Ada",
+        projectId: "Ada",
+        name: "zcp",
+        status: "ACTIVE",
+        subdomainAccess: true,
+        ports: [{ port: 8080, httpSupport: true }],
+        serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+        _version: 1,
+      };
+      const registrations: string[] = [];
+      const observation = observeAccount({
+        store,
+        wire: {
+          open: Effect.succeed({
+            receiverId: "zerops",
+            frames: Stream.never,
+            get: (path) =>
+              Effect.succeed(
+                path === "/project/Ada"
+                  ? { status: 200, body: project }
+                  : { status: 404, body: {} },
+              ),
+            post: (path, body) => {
+              const search = body.search as
+                | ReadonlyArray<{ readonly name: string; readonly value: unknown }>
+                | undefined;
+              const orgId = search?.find((entry) => entry.name === "clientId")?.value;
+              const inAcme = orgId === "ACME";
+              if (path === "/project/search" && body.wsOutputType === "listStream")
+                registrations.push(String(orgId));
+              const items =
+                body.wsOutputType !== "listStream"
+                  ? []
+                  : path === "/project/search" && inAcme
+                    ? [project]
+                    : path === "/service-stack/search" && inAcme
+                      ? [service]
+                      : [];
+              return Effect.succeed({ items });
+            },
+          }),
+        },
+        repairSession: Effect.void,
+      });
+      const hq = (orgId: string): HqWire => ({
+        withAccess: (request) => Effect.succeed({ ...request, accessToken: "access" }),
+        open: () =>
+          Effect.gen(function* () {
+            const messages = yield* Queue.unbounded<string, Cause.Done>();
+            return {
+              messages: Stream.fromQueue(messages),
+              send: (request) =>
+                Effect.gen(function* () {
+                  if (request.type !== "subscribe") return;
+                  for (const entry of request.scopes) {
+                    const scope = "scope" in entry ? entry.scope : entry;
+                    if (scope.kind !== "navigation") continue;
+                    const values =
+                      orgId === "ACME"
+                        ? [
+                            {
+                              key: "app:shop",
+                              value: {
+                                id: "shop",
+                                name: "Shop",
+                                can: {},
+                                contents: { empty: false, deletingProjectIds: [] },
+                                projectIds: ["Ada"],
+                                births: [],
+                                environments: [],
+                                changes: [],
+                                releaseOffer: null,
+                              },
+                            },
+                            {
+                              key: "project:Ada",
+                              value: {
+                                projectId: "Ada",
+                                appId: "shop",
+                                name: "Ada",
+                                kind: "mate",
+                                mate: { face: "", madeBy: null, standupRequestedBy: null },
+                                person: {
+                                  mine: false,
+                                  ownerUserId: null,
+                                  waitsOnViewer: false,
+                                  unseen: null,
+                                },
+                                signedInNow: {},
+                                everSignedIn: {},
+                              },
+                            },
+                          ]
+                        : [];
+                    yield* Queue.offer(
+                      messages,
+                      JSON.stringify({
+                        type: "scope-reset",
+                        scope,
+                        incarnation: "hq",
+                        revision: 1,
+                        values,
+                        removals: [],
+                      }),
+                    );
+                    yield* Queue.offer(
+                      messages,
+                      JSON.stringify({
+                        type: "scope-ready",
+                        scope,
+                        incarnation: "hq",
+                        revision: 1,
+                        core: { protocol: 1, build: "current" },
+                      }),
+                    );
+                  }
+                }),
+            };
+          }),
+      });
+      const wires = { ACME: hq("ACME"), Second: hq("Second") };
+      session.viewer = "owner";
+      stored.opened = new Set(["shop"]);
+      function Screen() {
+        const listing = useAtomValue(allCandidateListingAtom);
+        const rows = heldCandidates(listing);
+        return (
+          <>
+            <SidebarZeropsTree
+              candidates={rows.rows}
+              complete={rows.complete}
+              onBrowseProjects={() => {}}
+              onSelect={() => {}}
+            />
+            <ZeropsProjectsFlow
+              {...FLOW_PROPS}
+              noProjectYet={hasNoZeropsProject({ listing })}
+              reachesEveryProject
+            />
+          </>
+        );
+      }
+      const waitFor = (orgId: "ACME" | "Second", attempt: number) =>
+        new Promise<void>((resolve) => {
+          const check = () => {
+            const sentOrg = registrations[attempt - 1];
+            const view = hqNavigation.derive(readsOfState(store.state()), orgId);
+            if (
+              sentOrg !== undefined &&
+              store.state().streams.get(`zerops:${sentOrg}`)?.phase === "live" &&
+              view.live
+            ) {
+              stop();
+              resolve();
+            }
+          };
+          const stop = store.subscribe(check);
+          check();
+        });
+      const show = (orgId: "ACME" | "Second") => {
+        registry.set(zeropsSessionAtom, {
+          status: "signed-in",
+          organizationStatus: "selected",
+          activeOrganization: { ...organization, organizationId: ZeropsOrganizationId.make(orgId) },
+        });
+        registry.set(accountReadsAtom, {
+          data: store.data,
+          orgId,
+          viewer: {
+            id: orgId,
+            name: orgId,
+            membershipId: "member",
+            roleCode: orgId === "ACME" ? "OWNER" : "READ_ONLY",
+          },
+          demandDetail: observation.demandDetail,
+          renewHeld: observation.renewHeld,
+        });
+        observation.show(orgId);
+        observation.showHq({ orgId, wire: wires[orgId] });
+      };
+      try {
+        show("ACME");
+        const tree = mount(
+          <RegistryContext.Provider value={registry}>
+            <Screen />
+          </RegistryContext.Provider>,
+        );
+        yield* Effect.promise(() =>
+          act(async () => {
+            await waitFor("ACME", 1);
+          }),
+        );
+        expect(text(surface(tree, "sidebar-environments"))).toContain("Shop");
+        yield* Effect.promise(() =>
+          act(async () => {
+            show("Second");
+            await waitFor("Second", 2);
+          }),
+        );
+        const firstRun = tree.root
+          .findAll(
+            (node) =>
+              typeof node.type === "string" && node.props["data-zerops-surface"] === "first-run",
+          )
+          .map(text)
+          .join("");
+        expect(firstRun).toContain("No projects yet");
+        const secondMenu = tree.root
+          .findAll(
+            (node) =>
+              typeof node.type === "string" &&
+              node.props["data-zerops-surface"] === "sidebar-environments",
+          )
+          .map(text)
+          .join("");
+        expect(secondMenu).not.toContain("Shop");
+        expect(secondMenu).not.toContain("Ada");
+        yield* Effect.promise(() =>
+          act(async () => {
+            show("ACME");
+            await waitFor("ACME", 3);
+          }),
+        );
+        expect(text(surface(tree, "sidebar-environments"))).toContain("Shop");
+        expect(fetch).not.toHaveBeenCalled();
+      } finally {
+        observation.stop();
+        registry.dispose();
+      }
+    }),
+  );
 });
 
 it("HQ down retains a known Not in this HQ row", () => {
