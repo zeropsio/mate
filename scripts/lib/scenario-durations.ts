@@ -23,7 +23,6 @@ export const scenarioDurations: Readonly<Record<string, number>> = {
   "apps/web/test/scenarios/areas/c-mate/ownership-loading.scenario.ts": 43_887,
   "apps/web/test/scenarios/areas/c-mate/composer-overlap.scenario.ts": 39_668,
   "apps/web/test/scenarios/areas/foundation/realMate.scenario.ts": 35_612,
-  "apps/web/test/scenarios/areas/c-mate/health.scenario.ts": 28_466,
   "apps/web/test/scenarios/areas/f-create/new-mate-fits.scenario.ts": 27_059,
   "apps/web/test/scenarios/areas/foundation/examples.scenario.ts": 22_929,
   "apps/web/test/scenarios/areas/b-menu/liveness.scenario.ts": 22_636,
@@ -46,7 +45,6 @@ export const scenarioDurations: Readonly<Record<string, number>> = {
   "apps/web/test/scenarios/areas/c-mate/overview-filter.scenario.ts": 11_915,
   "apps/web/test/scenarios/areas/f-create/stage-paint.scenario.ts": 11_490,
   "apps/web/test/scenarios/areas/e-env/release-sheet-fits.scenario.ts": 11_124,
-  "apps/web/test/scenarios/areas/c-mate/composer.scenario.ts": 10_866,
   "apps/web/test/scenarios/areas/f-create/birth-chief.scenario.ts": 10_603,
   "apps/web/test/scenarios/areas/f-create/birth-tier-stage.scenario.ts": 10_061,
   "apps/web/test/scenarios/areas/f-create/birth-clean.scenario.ts": 9_900,
@@ -73,5 +71,4 @@ export const scenarioDurations: Readonly<Record<string, number>> = {
   "apps/web/test/scenarios/areas/f-create/birth-geometry.scenario.ts": 6_272,
   "apps/web/test/scenarios/areas/f-create/birth-role-loss.scenario.ts": 6_142,
   "apps/web/test/scenarios/areas/foundation/hqContract.scenario.ts": 4_571,
-  "apps/web/test/scenarios/areas/c-mate/context-window.scenario.ts": 4_519,
 };
