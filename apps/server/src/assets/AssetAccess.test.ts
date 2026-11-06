@@ -4,15 +4,17 @@ import * as NodeHttpPlatform from "@effect/platform-node/NodeHttpPlatform";
 import * as NodeFSP from "node:fs/promises";
 import { AssetPreviewTypeValidationError, ThreadId } from "@t3tools/contracts";
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@t3tools/shared/projectFavicon";
-import { describe, expect, it } from "@effect/vitest";
+import { afterAll, beforeAll, describe, expect, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
 import * as TestClock from "effect/testing/TestClock";
 import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
 import { HttpServerResponse } from "effect/http";
 import { vi } from "vite-plus/test";
 
@@ -1136,6 +1138,19 @@ describe("AssetAccess — an image outside the workspace", () => {
     return fixture;
   });
 
+  let fixture: Fixture;
+  let closeFixture: (() => Promise<void>) | undefined;
+  beforeAll(async () => {
+    const scope = await Effect.runPromise(Scope.make());
+    closeFixture = () => Effect.runPromise(Scope.close(scope, Exit.void));
+    fixture = await Effect.runPromise(
+      makeFixture.pipe(Scope.provide(scope), Effect.provide(NodeServices.layer)),
+    );
+  });
+  afterAll(async () => {
+    await closeFixture?.();
+  });
+
   const tokenAndName = (relativeUrl: string) => {
     const suffix = relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
     const separator = suffix.indexOf("/");
@@ -1205,7 +1220,6 @@ describe("AssetAccess — an image outside the workspace", () => {
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const fixture = yield* makeFixture;
       const filePath = at(fixture, path);
       const issue = issueAssetUrl({
         resource: { _tag: "workspace-file", threadId: ThreadId.make("thread-1"), path: filePath },
