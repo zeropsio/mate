@@ -666,22 +666,8 @@ describe("C: opening a Mate and chat", () => {
       );
     }
 
-    // Catches reload losing the selected chat/history or turning a kept session into a slow cold opening.
-    it.effect("reload restores history", () =>
-      Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        yield* s.given.signedIn;
-        yield* chat.when.open();
-        yield* chat.when.reload();
-        yield* chat.then.headerName("Ada");
-        yield* chat.then.text("The existing conversation is still here");
-        yield* chat.then.path(route(s));
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     // Catches Enter dropping a prompt, showing it only in the editor, or losing the acknowledged message on reload.
-    it.effect("sending a message puts it in the durable visible conversation", () =>
+    it.effect("sending a message puts it in the durable visible conversation", ({ annotate }) =>
       Effect.gen(function* () {
         const { s, chat } = yield* setup;
         yield* s.given.signedIn;
@@ -691,8 +677,11 @@ describe("C: opening a Mate and chat", () => {
           s.drivers.realMates.get("Ada")!.provider.sends.map((send) => send.input.input),
         ).toEqual(["Earlier question", "Please inspect the Shop project"]);
         yield* chat.then.once("Please inspect the Shop project");
+        yield* Effect.promise(() => annotate("reload restores history", "step"));
         yield* chat.when.reload("Ada", "Please inspect the Shop project");
         yield* chat.then.headerName("Ada");
+        yield* chat.then.text("The existing conversation is still here");
+        yield* chat.then.path(route(s));
         yield* chat.then.once("Please inspect the Shop project");
         yield* s.then.noExternalNetwork;
       }),
