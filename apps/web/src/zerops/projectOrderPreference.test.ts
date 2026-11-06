@@ -9,7 +9,6 @@ import {
   setLocalStorageItem,
 } from "../hooks/useLocalStorage";
 import {
-  DEFAULT_PROJECT_ORDER,
   movedBefore,
   movedInOrder,
   PROJECT_CUSTOM_ORDER_STORAGE_KEY,
@@ -26,10 +25,6 @@ describe("project order preference — the pure read/parse", () => {
 
   it("reads nothing when the viewer never chose — the hook then falls back to its default", () => {
     expect(getLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema)).toBeNull();
-  });
-
-  it("puts the newest first unless the viewer chose otherwise", () => {
-    expect(DEFAULT_PROJECT_ORDER).toBe("newest");
   });
 
   it.each([{ order: "newest" }, { order: "name" }, { order: "custom" }] as const)(

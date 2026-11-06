@@ -5,8 +5,9 @@ import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
-import { expect, it, vi } from "vite-plus/test";
+import { afterAll, beforeAll, expect, it, vi } from "vite-plus/test";
 import { RESERVED, reservePort } from "./test-ports.ts";
+import type { TestPostgresLease } from "./test-postgres.ts";
 
 /**
  * The supervisor's guard holds server.lock while PostgreSQL runs, so taking that lock is the
@@ -24,6 +25,15 @@ const postgresStopped = (home: string) =>
       code === 0 ? resolve() : reject(new Error(`flock exited ${String(code)}`)),
     );
   });
+
+// These cases each stop the supervisor; keeping its data directory avoids repeated initdb.
+let sharedHome: string;
+beforeAll(() => {
+  sharedHome = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-shared-"));
+});
+afterAll(() => {
+  NodeFS.rmSync(sharedHome, { recursive: true, force: true });
+});
 
 it("releases the lifecycle lock while a scenario run keeps its PostgreSQL lease open", async () => {
   const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-run-"));
@@ -187,30 +197,34 @@ it("admits another worktree's lease while the last release waits for its lifecyc
 });
 
 it("a lease client that disconnects before its answer leaves the supervisor and its held leases running", async () => {
-  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-gone-"));
+  const home = sharedHome;
   vi.stubEnv("MATE_TEST_PG_HOME", home);
   vi.resetModules();
+  let held: TestPostgresLease | undefined;
+  let gone: NodeNet.Socket | undefined;
   try {
     const { acquireTestPostgres } = await import("./test-postgres.ts");
-    const held = await acquireTestPostgres();
-    const gone = NodeNet.createConnection(NodePath.join(home, "supervisor.sock"));
-    gone.write("create\ncreate\n");
+    held = await acquireTestPostgres();
+    const disconnected = NodeNet.createConnection(NodePath.join(home, "supervisor.sock"));
+    gone = disconnected;
+    disconnected.write("create\ncreate\n");
     // The first answer proves the supervisor heard both; the second is written to a closed socket.
     await new Promise((resolve) =>
-      NodeReadline.createInterface({ input: gone }).once("line", resolve),
+      NodeReadline.createInterface({ input: disconnected }).once("line", resolve),
     );
-    gone.destroy();
+    disconnected.destroy();
     expect(await held.createDatabase()).toMatch(/^postgres:/u);
     await held.close();
-    await postgresStopped(home);
   } finally {
+    gone?.destroy();
+    await held?.close();
+    await postgresStopped(home);
     vi.unstubAllEnvs();
-    NodeFS.rmSync(home, { recursive: true, force: true });
   }
 });
 
 it("Decision: Releasing a PostgreSQL lease leaves its databases until the next supervisor starts, so a running worker never waits for their drop", async () => {
-  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-release-"));
+  const home = sharedHome;
   vi.stubEnv("MATE_TEST_PG_HOME", home);
   vi.resetModules();
   const leases: { close: () => Promise<void> }[] = [];
@@ -241,18 +255,19 @@ it("Decision: Releasing a PostgreSQL lease leaves its databases until the next s
     for (const lease of leases) await lease.close();
     await postgresStopped(home);
     vi.unstubAllEnvs();
-    NodeFS.rmSync(home, { recursive: true, force: true });
   }
 });
 
 it("admits a lease while another lease's database command waits on PostgreSQL", async () => {
-  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-wait-"));
+  const home = sharedHome;
   vi.stubEnv("MATE_TEST_PG_HOME", home);
   vi.resetModules();
   let holder: NodeChildProcess.ChildProcess | undefined;
+  const leases: { close: () => Promise<void> }[] = [];
   try {
     const { acquireTestPostgres, postgresBinDir } = await import("./test-postgres.ts");
     const first = await acquireTestPostgres();
+    leases.push(first);
     const maintenance = new URL(await first.createDatabase());
     maintenance.pathname = "/postgres";
     // A comment held open on the template blocks every CREATE DATABASE that copies it.
@@ -282,34 +297,36 @@ it("admits a lease while another lease's database command waits on PostgreSQL", 
     await blocked;
     // The CREATE stays blocked until the ROLLBACK below, so this admission happens while it waits.
     const second = await acquireTestPostgres();
+    leases.push(second);
     holder.stdin!.end("ROLLBACK;\n");
     expect(await waiting).toMatch(/^postgres:/u);
     await second.close();
     await first.close();
-    await postgresStopped(home);
   } finally {
-    holder?.stdin!.end();
+    if (holder?.stdin && !holder.stdin.writableEnded) holder.stdin.end("ROLLBACK;\n");
+    for (const lease of leases) await lease.close();
+    await postgresStopped(home);
     vi.unstubAllEnvs();
-    NodeFS.rmSync(home, { recursive: true, force: true });
   }
 });
 
 it("a running test PostgreSQL cluster's port is reserved, so no other test process is handed it", async () => {
-  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-port-"));
+  const home = sharedHome;
   vi.stubEnv("MATE_TEST_PG_HOME", home);
   vi.resetModules();
+  let lease: TestPostgresLease | undefined;
   try {
     const { acquireTestPostgres } = await import("./test-postgres.ts");
-    const lease = await acquireTestPostgres();
+    lease = await acquireTestPostgres();
     const port = Number(new URL(await lease.createDatabase()).port);
     expect(port).toBeGreaterThanOrEqual(RESERVED.first);
     expect(port).toBeLessThanOrEqual(RESERVED.last);
     await expect(reservePort([port])).rejects.toThrow("is free to reserve");
     await lease.close();
-    await postgresStopped(home);
   } finally {
+    await lease?.close();
+    await postgresStopped(home);
     vi.unstubAllEnvs();
-    NodeFS.rmSync(home, { recursive: true, force: true });
   }
 });
 

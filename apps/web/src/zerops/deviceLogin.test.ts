@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { describe, expect, it } from "vite-plus/test";
 
 import { runZeropsDeviceLogin, type ZeropsDeviceLoginStage } from "./deviceLogin";
 
@@ -105,6 +105,28 @@ function tab(options: {
   };
 }
 
+/** Hold a poll after its first `after` waits, and report when it reaches the hold. */
+function holdWait(after = 0) {
+  let release!: () => void;
+  let enter!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  let waits = 0;
+  return {
+    entered,
+    release,
+    wait: () => {
+      if (waits++ < after) return Promise.resolve();
+      enter();
+      return held;
+    },
+  };
+}
+
 const session = {
   accessToken: "access-1",
   refreshToken: "refresh-1",
@@ -163,25 +185,21 @@ describe("runZeropsDeviceLogin", () => {
 
   it("brings the window back, or opens it again once it was closed", async () => {
     const { opened, ports, onStage } = tab({});
-    let release!: () => void;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const hold = holdWait();
     const run = runZeropsDeviceLogin({
       kind: "login",
       apiBase: API,
       onStage,
-      ports: { ...ports, wait: () => held },
+      ports: { ...ports, wait: hold.wait },
     });
-    await Promise.resolve();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await hold.entered;
     run.reopen();
     expect(opened[0]?.window?.focused).toBe(1);
     opened[0]!.window!.closed = true;
     run.reopen();
     expect(opened.map((each) => each.url)).toEqual(["about:blank", `${VERIFY}&display=popup`]);
     run.cancel();
-    release();
+    hold.release();
     await expect(run.outcome).resolves.toEqual({ kind: "cancelled" });
   });
 
@@ -215,19 +233,16 @@ describe("runZeropsDeviceLogin", () => {
       renewals: true,
       checks: [new Response(null, { status: 404 }), { status: "PENDING" }],
     });
-    let release!: () => void;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let waits = 0;
+    const hold = holdWait(1);
     const run = runZeropsDeviceLogin({
       kind: "login",
       apiBase: API,
       onStage,
       // The first request's wait passes, its check finds it expired; the renewed one waits.
-      ports: { ...ports, wait: () => (++waits > 1 ? held : Promise.resolve()) },
+      ports: { ...ports, wait: hold.wait },
     });
-    await vi.waitFor(() => expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002" }));
+    await hold.entered;
+    expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002" });
     const window = opened[0]?.window;
     expect(window?.closed).toBe(false);
     // Not navigated: the person may be halfway through signing up in it.
@@ -240,7 +255,7 @@ describe("runZeropsDeviceLogin", () => {
       windowMayBeOlder: true,
     });
     run.cancel();
-    release();
+    hold.release();
     await expect(run.outcome).resolves.toEqual({ kind: "cancelled" });
   });
 
@@ -249,24 +264,21 @@ describe("runZeropsDeviceLogin", () => {
       renewals: true,
       checks: [new Response(null, { status: 404 })],
     });
-    let release!: () => void;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let waits = 0;
+    const hold = holdWait(1);
     const run = runZeropsDeviceLogin({
       kind: "login",
       apiBase: API,
       onStage,
-      ports: { ...ports, wait: () => (++waits > 1 ? held : Promise.resolve()) },
+      ports: { ...ports, wait: hold.wait },
     });
-    await vi.waitFor(() => expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002" }));
+    await hold.entered;
+    expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002" });
     run.reopen();
     const window = opened[0]?.window;
     expect(window?.location.href).toBe(`${VERIFY.replace("req-1", "req-2")}&display=popup`);
     expect(window?.focused).toBe(1);
     run.cancel();
-    release();
+    hold.release();
     await run.outcome;
   });
 
@@ -275,18 +287,15 @@ describe("runZeropsDeviceLogin", () => {
       renewals: true,
       checks: [new Response(null, { status: 404 })],
     });
-    let release!: () => void;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let waits = 0;
+    const hold = holdWait(1);
     const run = runZeropsDeviceLogin({
       kind: "login",
       apiBase: API,
       onStage,
-      ports: { ...ports, wait: () => (++waits > 1 ? held : Promise.resolve()) },
+      ports: { ...ports, wait: hold.wait },
     });
-    await vi.waitFor(() => expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002" }));
+    await hold.entered;
+    expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002" });
     expect(stages.find((stage) => stage.kind === "waiting")).toMatchObject({
       userCode: "ABCD-EFGH",
       windowMayBeOlder: false,
@@ -295,7 +304,7 @@ describe("runZeropsDeviceLogin", () => {
     run.reopen();
     expect(stages.at(-1)).toMatchObject({ userCode: "CODE-0002", windowMayBeOlder: false });
     run.cancel();
-    release();
+    hold.release();
     await run.outcome;
   });
 

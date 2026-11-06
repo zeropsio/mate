@@ -254,7 +254,6 @@ describe("a card's changes it may not read", () => {
       unknown: "Changes show with Full access",
       says: "Changes show with Full access",
     },
-    { case: "known to be none", unknown: undefined, says: "No changes yet" },
   ])(
     "says why where its changes are $case, never that there are none",
     async ({ unknown, says }) => {

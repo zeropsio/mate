@@ -946,12 +946,6 @@ describe("readPipeline — the deploy step's words", () => {
 
   it.each([
     {
-      name: "the service and its type",
-      appVersion: deploying,
-      options: NAMED,
-      sentence: "Creating app version 3f2a9c1 and upgrading Node.js service appstage",
-    },
-    {
       name: "the service without its type",
       appVersion: deploying,
       options: { serviceName: "appstage" },

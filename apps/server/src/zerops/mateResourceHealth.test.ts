@@ -4,7 +4,7 @@ import * as NodeChildProcess from "node:child_process";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { afterEach, describe, expect, it } from "@effect/vitest";
+import { afterAll, afterEach, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import * as Queue from "effect/Queue";
@@ -45,10 +45,16 @@ vi.mock("node:fs/promises", async (original) => {
 
 const readResourceHealth = readKernelResourceHealth;
 
-const dirs: string[] = [];
+const dirs: Record<"plain" | "pressure", string[]> = { plain: [], pressure: [] };
+const used = { plain: 0, pressure: 0 };
 async function fixture(values: Record<string, string> = {}) {
-  const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "mate-health-"));
-  dirs.push(dir);
+  const kind = "cgroup.pressure" in values ? "pressure" : "plain";
+  const index = used[kind]++;
+  let dir = dirs[kind][index];
+  if (dir === undefined) {
+    dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "mate-health-"));
+    dirs[kind].push(dir);
+  }
   const files = {
     "memory.current": "100",
     "memory.high": "max",
@@ -67,11 +73,19 @@ async function fixture(values: Record<string, string> = {}) {
   );
   return dir;
 }
-afterEach(async () => {
+afterEach(() => {
   reads.beforeCurrent = undefined;
   reads.cgroupDir = undefined;
   vi.mocked(NodeChildProcess.spawn).mockClear();
-  await Promise.all(dirs.splice(0).map((dir) => NodeFSP.rm(dir, { recursive: true, force: true })));
+  used.plain = 0;
+  used.pressure = 0;
+});
+afterAll(async () => {
+  await Promise.all(
+    Object.values(dirs)
+      .flat()
+      .map((dir) => NodeFSP.rm(dir, { recursive: true, force: true })),
+  );
 });
 describe("container resource evidence", () => {
   it("Sustained ancestor stalls remain visible when a descendant has a brief spike", async () => {

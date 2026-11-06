@@ -343,22 +343,11 @@ describe("a New project's first Mate, before its project exists", () => {
       failed: { reason: "The project may already exist.", uncertain: true },
     });
     openView();
+    expect(said()).toContain("The project may already exist.");
     expect(button("Go to projects")).toBeDefined();
     expect(button("Try again")).toBeUndefined();
     expect(button("Go to projects")!.parent!.props.render.props.to).toBe("/zerops");
     expect(verbs.tryAgain).not.toHaveBeenCalled();
-  });
-
-  it("never offers to make again what the platform may have made, only the way to the projects", () => {
-    hold({
-      ...ACME,
-      step: "create",
-      failed: { reason: "The project may already exist.", uncertain: true },
-    });
-    openView();
-    expect(said()).toContain("The project may already exist.");
-    expect(button("Try again")).toBeUndefined();
-    expect(button("Go to projects")).toBeDefined();
   });
 
   it("says a creation this tab no longer holds is not here, with the way to the projects", () => {

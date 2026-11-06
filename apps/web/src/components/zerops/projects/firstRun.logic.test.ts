@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { firstRunWords } from "./firstRun.logic";
 
 describe("an account with no project, by what its role may do", () => {
+  // Run 2: a Developer who joined a team's project was told only to start one of her own.
   it.each([
     {
       who: "an owner or an admin",
@@ -18,7 +19,7 @@ describe("an account with no project, by what its role may do", () => {
       reachesEveryProject: false,
       heading: "Start a project",
       offersNewProject: true,
-      says: "Projects an owner or admin gives you access to appear here",
+      says: "Projects an owner or admin gives you access to appear here.",
     },
     {
       who: "a Guest",
@@ -26,7 +27,7 @@ describe("an account with no project, by what its role may do", () => {
       reachesEveryProject: false,
       heading: "Nothing is shared with you yet",
       offersNewProject: false,
-      says: "Projects an owner or admin gives you access to appear here",
+      says: "Projects an owner or admin gives you access to appear here.",
     },
     {
       who: "a member who sees every project but may not create one",
@@ -59,16 +60,6 @@ describe("an account with no project, by what its role may do", () => {
     },
   ])("$who with nothing shared is told their role in one sentence", ({ create, role }) => {
     expect(firstRunWords({ create, reachesEveryProject: false }).body.startsWith(role)).toBe(true);
-  });
-
-  // Run 2: a Developer who joined a team's project was told only to start one of her own.
-  it.each([
-    { who: "a Developer", create: true },
-    { who: "a Guest", create: false },
-  ])("$who who sees only what is shared is told who can add them", ({ create }) => {
-    expect(firstRunWords({ create, reachesEveryProject: false }).body).toContain(
-      "Projects an owner or admin gives you access to appear here.",
-    );
   });
 
   it("never tells a member who may not create one to start a project", () => {

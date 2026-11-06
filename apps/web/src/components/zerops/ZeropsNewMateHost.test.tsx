@@ -50,6 +50,10 @@ vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSessionOptional: () => null,
 }));
 vi.mock("~/zerops/useEnvironmentCreation", () => ({ useEnvironmentCreation: () => vi.fn() }));
+vi.mock("~/zerops/useAutomationSettings", async (actual) => ({
+  ...(await actual<typeof import("~/zerops/useAutomationSettings")>()),
+  useOrgAiKeys: () => ({ read: { keys: { state: "unread" } } }),
+}));
 // The account's operations: the creation's steps run there once Add is pressed.
 vi.mock("~/zerops/accountOperations", async (actual) => ({
   ...(await actual<typeof import("~/zerops/accountOperations")>()),

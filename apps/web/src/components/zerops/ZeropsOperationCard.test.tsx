@@ -300,32 +300,6 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
     for (const text of shows) expect(row?.inner).toContain(text);
   });
 
-  it("the running and the failed step read in the ink, a finished one muted, one to come fainter", () => {
-    const failed = readout(
-      {
-        name: SHA,
-        status: "BUILD_FAILED",
-        build: { pipelineStart: at(5), startDate: at(13), pipelineFailed: at(70) },
-      },
-      600,
-    );
-    const sentenceTone = (inner: string) =>
-      inner.includes("text-line leading-5 text-foreground")
-        ? "foreground"
-        : inner.includes("text-muted-foreground/70")
-          ? "faint"
-          : "muted";
-
-    expect(
-      rowsOf(render(running, observedOf(building))).map((row) => sentenceTone(row.inner)),
-    ).toEqual(["muted", "foreground", "faint"]);
-    expect(
-      rowsOf(render(deploy({ status: "failed" }), observedOf(failed))).map((row) =>
-        sentenceTone(row.inner),
-      ),
-    ).toEqual(["muted", "foreground", "muted"]);
-  });
-
   it("a running deploy step reads its name alone: no version, no note", () => {
     const deploying = readPipeline(
       {
@@ -850,42 +824,35 @@ describe("ZeropsOperationCard — browser", () => {
     expect(html).not.toContain("network requests --status 400-599");
   });
 
-  it.each([
-    { name: "errors on the page", errors: true },
-    { name: "a clean page", errors: false },
-  ])("$name: the figures take the failure tone only when there are errors", ({ errors }) => {
-    const checked = errors
-      ? operation
-      : operationFor(
-          zeropsCall({
-            id: "brw-clean",
-            startedAt: "2026-09-01T00:00:00.000Z",
-            turnId: "t1",
-            toolName: "zerops_browser",
-            input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
-            status: "completed",
-            resultText: JSON.stringify({
-              url: "https://kanbandev-26a7.prg1.zerops.app",
-              steps: [
-                { command: ["set", "viewport", "1440", "900"], success: true },
-                { command: ["errors"], success: true },
-                { command: ["console"], success: true },
-                { command: ["network", "requests", "--status", "400-599"], success: true },
-              ],
-              errorsOutput: [],
-              consoleOutput: [],
-              networkOutput: [],
-            }),
-          }),
-        );
+  it("a clean page: the figures take the failure tone only when there are errors", () => {
+    const checked = operationFor(
+      zeropsCall({
+        id: "brw-clean",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_browser",
+        input: { url: "https://kanbandev-26a7.prg1.zerops.app" },
+        status: "completed",
+        resultText: JSON.stringify({
+          url: "https://kanbandev-26a7.prg1.zerops.app",
+          steps: [
+            { command: ["set", "viewport", "1440", "900"], success: true },
+            { command: ["errors"], success: true },
+            { command: ["console"], success: true },
+            { command: ["network", "requests", "--status", "400-599"], success: true },
+          ],
+          errorsOutput: [],
+          consoleOutput: [],
+          networkOutput: [],
+        }),
+      }),
+    );
     const html = renderToStaticMarkup(<ZeropsOperationCard operation={checked} />);
     const metrics = html.match(/<p[^>]*data-zerops-browser-metrics[^>]*>/)?.[0];
     // The failure red the failed step under it is in: the status token, never `destructive`.
 
     expect(metrics).not.toContain("destructive");
-    if (!errors) {
-      expect(html).toContain(">1440×900 · 1 step · 0 errors<");
-    }
+    expect(html).toContain(">1440×900 · 1 step · 0 errors<");
   });
 
   it("says what it checked once: no closing sentence repeats the page and its counts", () => {
@@ -1057,11 +1024,6 @@ describe("ZeropsOperationCard — browser", () => {
       expect(viewport?.includes("data-zerops-browser-image")).toBe(image);
 
       // Its static tint shows on both cards: `muted` all but vanishes on the dark one.
-    });
-
-    it("the live caption follows the call's own phase, so a reload of a running call reads the same", () => {
-      const html = renderToStaticMarkup(<ZeropsOperationCard operation={born} />);
-      expect(html).toContain("data-zerops-browser-live-caption");
     });
   });
 

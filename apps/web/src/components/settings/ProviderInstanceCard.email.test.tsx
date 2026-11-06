@@ -62,7 +62,9 @@ describe("provider account identity", () => {
         'button[aria-label="Toggle account email visibility"]',
       );
       if (!reveal) throw new Error("Configuration must offer account email visibility");
+      expect(container.textContent).toContain("Account email");
       expect(container.textContent).not.toContain("account@example.com");
+      expect(container.innerHTML).not.toContain("account@example.com");
       await act(() => reveal.click());
       expect(container.textContent).toContain("account@example.com");
       await act(() => reveal.click());

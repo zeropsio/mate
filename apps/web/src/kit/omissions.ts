@@ -16,7 +16,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "useSidebar, useOptionalSidebar, readSidebarOpen",
     source: "apps/web/src/components/ui/sidebar.tsx",
-    reason: "Hooks and a cookie read: behaviour, no look.",
+    reason: "Hooks and a stored-state read: behaviour, no look.",
   },
   {
     name: "useComboboxFilter, NumberFieldPrimitive, FieldControl, FieldValidity",

@@ -16,8 +16,10 @@
  *
  * @module crewEngineWorld
  */
+import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { beforeAll } from "vite-plus/test";
 
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -46,6 +48,8 @@ import {
 
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
 import { runMigrations } from "../../../persistence/Migrations.ts";
+import { restoreFixture, testFixturePool } from "../../../testing/testFixture.ts";
+import { testTempDir } from "../../../testing/testTempDir.ts";
 import * as ServerConfig from "../../../config.ts";
 import { Conversations } from "../../../engine/Conversations.ts";
 import { liveEngineLayer } from "../../../engine/live.ts";
@@ -82,6 +86,7 @@ import { evolveCrew } from "../engine/evolve.ts";
 import { delivering, initialCrewState, membersInOrder, type CrewState } from "../engine/state.ts";
 import { stintReasonWords } from "../crewCards.ts";
 import type { RotationReason } from "../rotationDecision.ts";
+import { initServiceRepository, remoteEnvWithSupervisor } from "./crewGitFixture.ts";
 import {
   KAREL,
   ZEROPS,
@@ -139,6 +144,21 @@ const QUICK_EFFECTS: ReadonlySet<string> = new Set([
   "crew.claim.read",
 ]);
 const ENGINE_FILE = "engine.sqlite";
+const serviceTemplate = testTempDir("t3-crew-service-template-");
+const workspaceTemplate = testTempDir("t3-crew-mate-template-");
+const fixtureDir = testFixturePool("t3-crew-engine-fixtures-");
+const supervisorEnv = remoteEnvWithSupervisor();
+
+beforeAll(() => {
+  initServiceRepository(serviceTemplate);
+  return Effect.runPromise(
+    runMigrations().pipe(
+      Effect.provide(
+        NodeSqliteClient.layer({ filename: NodePath.join(workspaceTemplate, ENGINE_FILE) }),
+      ),
+    ),
+  );
+});
 
 interface DeliveryRow {
   readonly payload_json: string;
@@ -178,7 +198,7 @@ const holdableProvider = (provider: ScriptedProvider, sendHold: Ref.Ref<SendHold
 /** One phase's port over its engine: `context` is that lifetime's, `fx` the world's. */
 const enginePort = (input: {
   readonly fx: CrewFixtureWorld;
-  readonly fixture: Effect.Success<typeof makeFixtureWorld>;
+  readonly fixture: Effect.Success<ReturnType<typeof makeFixtureWorld>>;
   readonly context: Context.Context<never>;
   readonly provider: ScriptedProvider;
   readonly started: Effect.Effect<void>;
@@ -1008,7 +1028,7 @@ const countingInstaller = (installs: Ref.Ref<number>): EngineCrewPolicyInstaller
 
 /** One server lifetime's layers over the world's file. */
 const lifeLayer = (
-  fixture: Effect.Success<typeof makeFixtureWorld>,
+  fixture: Effect.Success<ReturnType<typeof makeFixtureWorld>>,
   provider: ScriptedProvider,
   installer: EngineCrewPolicyInstaller,
   clock: Clock.Clock,
@@ -1021,7 +1041,7 @@ const lifeLayer = (
     Layer.succeed(CrewTimingConfig, { thawOfferMs: 600 }),
     platformFakes(world, signIns),
     admissionFake(world),
-    countingSsh(world.sshCalls, holds),
+    countingSsh(world.sshCalls, holds, supervisorEnv),
     ServerConfig.layer({
       cwd: world.workspace,
       attachmentsDir: NodePath.join(world.workspace, "attachments"),
@@ -1069,7 +1089,16 @@ export const engineWorld: CrewWorldRunner = <E>(
   options: CrewJourneyOptions,
 ) =>
   Effect.gen(function* () {
-    const fixture = yield* makeFixtureWorld;
+    const fixture = yield* Effect.sync(() => {
+      const dir = fixtureDir("journey-");
+      const root = NodePath.join(dir, "service");
+      const workspace = NodePath.join(dir, "workspace");
+      NodeFS.mkdirSync(root, { recursive: true });
+      NodeFS.mkdirSync(workspace, { recursive: true });
+      restoreFixture(serviceTemplate, root);
+      restoreFixture(workspaceTemplate, workspace);
+      return { root, workspace };
+    }).pipe(Effect.flatMap(({ root, workspace }) => makeFixtureWorld(root, workspace)));
     const installer: EngineCrewPolicyInstaller =
       options.toolProfiles === true
         ? (installCrewThreadPolicy.pipe(

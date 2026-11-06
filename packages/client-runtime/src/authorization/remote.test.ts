@@ -1,9 +1,10 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
-import * as TestClock from "effect/testing/TestClock";
 
 import { EnvironmentAuthInvalidError } from "@t3tools/contracts";
 import {
@@ -41,12 +42,14 @@ const recordedFetch = (...responses: ReadonlyArray<Response>) => {
 
 const hangingFetch = () => {
   const calls: Array<FetchCall> = [];
+  const started = Promise.withResolvers<void>();
   const fetchFn = ((input, init) => {
     calls.push([input, init ?? {}]);
+    started.resolve();
     return new Promise<Response>(() => undefined);
   }) satisfies typeof fetch;
 
-  return { fetchFn, calls };
+  return { fetchFn, calls, started: started.promise };
 };
 
 const provideRemoteHttp = (fetchFn: typeof fetch) => Effect.provide(remoteHttpClientLayer(fetchFn));
@@ -382,20 +385,33 @@ describe("remote environment authorization", () => {
   it.effect("fails hung fetch requests on the configured timeout", () =>
     Effect.gen(function* () {
       const fetch = hangingFetch();
+      const clock = yield* Clock.Clock;
+      const scheduled = yield* Deferred.make<Duration.Duration>();
+      const expire = yield* Deferred.make<void>();
 
       const errorFiber = yield* fetchRemoteEnvironmentDescriptor({
         httpBaseUrl: "http://remote.example.com/",
         timeoutMs: 25,
-      }).pipe(provideRemoteHttp(fetch.fetchFn), Effect.flip, Effect.forkScoped);
-      yield* Effect.yieldNow;
-      yield* TestClock.adjust(Duration.millis(25));
+      }).pipe(
+        provideRemoteHttp(fetch.fetchFn),
+        Effect.provideService(Clock.Clock, {
+          ...clock,
+          sleep: (duration) =>
+            Deferred.succeed(scheduled, duration).pipe(Effect.andThen(Deferred.await(expire))),
+        }),
+        Effect.flip,
+        Effect.forkScoped,
+      );
+      yield* Effect.promise(() => fetch.started);
+      expect(Duration.toMillis(yield* Deferred.await(scheduled))).toBe(25);
+      yield* Deferred.succeed(expire, undefined);
       const error = yield* Fiber.join(errorFiber);
 
       expect(error).toBeInstanceOf(RemoteEnvironmentAuthTimeoutError);
       expect(error.message).toBe(
         "Remote environment endpoint http://remote.example.com/.well-known/t3/environment timed out after 25ms.",
       );
-    }).pipe(Effect.provide(TestClock.layer())),
+    }),
   );
 
   it.effect("revives declared typed errors from remote auth failures", () =>

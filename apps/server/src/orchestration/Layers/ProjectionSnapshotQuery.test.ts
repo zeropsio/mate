@@ -3591,13 +3591,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery a long conversation's history",
           for (const step of card.steps) assert.isTrue(page.activities.has(step), step);
         }
       }
-    }),
-  );
 
-  it.effect("a helper's result keeps the start that sent it on its page", () =>
-    Effect.gen(function* () {
-      yield* seedLongThread({ callsPerAsk: 50 });
-      const pages = yield* readEveryPage();
       let resultsAfterTheirAsk = 0;
       for (const page of pages) {
         for (const id of page.activities) {

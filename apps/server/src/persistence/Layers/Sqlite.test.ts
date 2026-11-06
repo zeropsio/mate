@@ -9,6 +9,7 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
+import { afterAll, describe } from "vite-plus/test";
 
 import {
   SqlitePersistenceMemory,
@@ -44,47 +45,48 @@ const spawnWriteLockHolder = (dbPath: string, holdMs: number) =>
       }),
   );
 
-it.effect("waits out a concurrent writer instead of failing with SQLITE_BUSY", () => {
-  const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-sqlite-busy-"));
-  const dbPath = NodePath.join(tempDir, "state.sqlite");
+const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-sqlite-persistence-"));
+const dbPath = NodePath.join(tempDir, "state.sqlite");
+afterAll(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }));
 
-  return Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`CREATE TABLE busy_probe(id INTEGER PRIMARY KEY)`;
-    yield* spawnWriteLockHolder(dbPath, 300);
-    yield* sql`INSERT INTO busy_probe(id) VALUES (${1})`;
-    const rows = yield* sql<{ readonly id: number }>`SELECT id FROM busy_probe`;
-    assert.deepEqual([...rows], [{ id: 1 }]);
-  }).pipe(
-    Effect.provide(makeSqlitePersistenceLive(dbPath).pipe(Layer.provide(NodeServices.layer))),
-    Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),
+describe("disk persistence", { concurrent: false }, () => {
+  it.effect("waits out a concurrent writer instead of failing with SQLITE_BUSY", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`CREATE TABLE IF NOT EXISTS busy_probe(id INTEGER PRIMARY KEY)`;
+      yield* sql`DELETE FROM busy_probe`;
+      yield* spawnWriteLockHolder(dbPath, 300);
+      yield* sql`INSERT INTO busy_probe(id) VALUES (${1})`;
+      const rows = yield* sql<{ readonly id: number }>`SELECT id FROM busy_probe`;
+      assert.deepEqual([...rows], [{ id: 1 }]);
+    }).pipe(
+      Effect.provide(makeSqlitePersistenceLive(dbPath).pipe(Layer.provide(NodeServices.layer))),
+    ),
   );
-});
 
-it.effect("shrinks the WAL file back to the size limit after a large write", () => {
-  const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-sqlite-wal-"));
-  const dbPath = NodePath.join(tempDir, "state.sqlite");
-  const walFileSize = () => NodeFS.statSync(`${dbPath}-wal`).size;
-  // About 25% more 4 KB rows than the limit holds, in one transaction.
-  const rowCount = Math.ceil((WAL_SIZE_LIMIT_BYTES * 1.25) / 4000);
+  it.effect("shrinks the WAL file back to the size limit after a large write", () => {
+    const walFileSize = () => NodeFS.statSync(`${dbPath}-wal`).size;
+    // About 25% more 4 KB rows than the limit holds, in one transaction.
+    const rowCount = Math.ceil((WAL_SIZE_LIMIT_BYTES * 1.25) / 4000);
 
-  return Effect.gen(function* () {
-    const sql = yield* SqlClient.SqlClient;
-    yield* sql`CREATE TABLE wal_probe(payload BLOB)`;
-    yield* sql`
+    return Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`CREATE TABLE IF NOT EXISTS wal_probe(payload BLOB)`;
+      yield* sql`DELETE FROM wal_probe`;
+      yield* sql`
       WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < ${rowCount})
       INSERT INTO wal_probe(payload) SELECT randomblob(4000) FROM n
     `;
-    assert.isAbove(walFileSize(), WAL_SIZE_LIMIT_BYTES);
+      assert.isAbove(walFileSize(), WAL_SIZE_LIMIT_BYTES);
 
-    // The auto-checkpoint after the large commit copied every frame into the
-    // database, so the next commit restarts the WAL and cuts the file back.
-    yield* sql`INSERT INTO wal_probe(payload) VALUES (x'00')`;
-    assert.isAtMost(walFileSize(), WAL_SIZE_LIMIT_BYTES);
-  }).pipe(
-    Effect.provide(makeSqlitePersistenceLive(dbPath).pipe(Layer.provide(NodeServices.layer))),
-    Effect.ensuring(Effect.sync(() => NodeFS.rmSync(tempDir, { recursive: true, force: true }))),
-  );
+      // The auto-checkpoint after the large commit copied every frame into the
+      // database, so the next commit restarts the WAL and cuts the file back.
+      yield* sql`INSERT INTO wal_probe(payload) VALUES (x'00')`;
+      assert.isAtMost(walFileSize(), WAL_SIZE_LIMIT_BYTES);
+    }).pipe(
+      Effect.provide(makeSqlitePersistenceLive(dbPath).pipe(Layer.provide(NodeServices.layer))),
+    );
+  });
 });
 
 it.effect("applies busy_timeout in the shared persistence setup", () =>

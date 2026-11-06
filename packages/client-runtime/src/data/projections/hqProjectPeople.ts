@@ -58,13 +58,29 @@ function peopleOf(
           chief: { projectId: person.chiefProjectId, mine: person.mine },
         }),
     owned: person?.ownerUserId === undefined ? undefined : person.ownerUserId !== null,
-    owner: ownerOf(read, orgId, person?.ownerUserId),
+    owner: ownerOf(read, orgId, person?.ownerUserId ?? agentSigner(signedInNow, everSignedIn)),
     mine: person?.mine,
     waitsOnViewer: person?.waitsOnViewer,
     keyRefused: placement.mate?.keyRefused,
     signedInNow,
     everSignedIn,
   };
+}
+
+/**
+ * Whose a Mate is where HQ names no `OWNER` on its project: the person signed in to its coding agent
+ * now, else the last one who was (the owner, 2026-11-06: the faces on the menu's rows come back).
+ * HQ sends that person's record with name and picture.
+ */
+function agentSigner(
+  signedInNow: PlacementValue["signedInNow"] | undefined,
+  everSignedIn: PlacementValue["everSignedIn"] | undefined,
+): string | undefined {
+  for (const logins of [signedInNow, everSignedIn]) {
+    const id = logins?.["claude-code"] ?? logins?.["codex"] ?? Object.values(logins ?? {})[0];
+    if (id !== undefined && id.length > 0) return id;
+  }
+  return undefined;
 }
 
 function ownerOf(

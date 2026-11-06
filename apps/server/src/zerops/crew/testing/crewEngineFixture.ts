@@ -28,7 +28,6 @@ import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 
 import * as ProcessRunner from "../../../processRunner.ts";
-import { testTempDir } from "../../../testing/testTempDir.ts";
 import { ClaudeThreadExtensionRegistry } from "../../../spi/claudeThreadProfile.ts";
 import { type ProviderInstanceAgent, ProviderInstances } from "../../../spi/providerInstances.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
@@ -41,12 +40,7 @@ import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepos
 import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { CrewPlatformProcesses } from "../crewDeployState.ts";
-import {
-  makeServiceRepository,
-  remoteEnvWithSupervisor,
-  serviceRepository,
-  TEST_IDENTITY,
-} from "./crewGitFixture.ts";
+import { serviceRepository, TEST_IDENTITY } from "./crewGitFixture.ts";
 
 /** The person who presses: Alex, in his own session. */
 export const KAREL: TurnPrincipal = {
@@ -347,7 +341,11 @@ export const testAgentOf = (instanceId: string): ProviderInstanceAgent | undefin
   TEST_AGENTS.find(([prefix]) => instanceId === prefix || instanceId.startsWith(`${prefix}_`))?.[1];
 
 /** The local ssh shim, counting every session and holding the one a test asked for. */
-export const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray<PendingHold>>) =>
+export const countingSsh = (
+  calls: Ref.Ref<number>,
+  holds: Ref.Ref<ReadonlyArray<PendingHold>>,
+  remoteEnv: Readonly<Record<string, string>>,
+) =>
   Layer.effect(
     ProcessRunner.ProcessRunner,
     Effect.gen(function* () {
@@ -373,59 +371,60 @@ export const countingSsh = (calls: Ref.Ref<number>, holds: Ref.Ref<ReadonlyArray
           ).pipe(Effect.andThen(runner.run(input)), Effect.interruptible),
       });
     }),
-  ).pipe(Layer.provide(localSshProcessRunnerLayer(remoteEnvWithSupervisor())));
+  ).pipe(Layer.provide(localSshProcessRunnerLayer(remoteEnv)));
 
 /**
  * One world's fixture: a fresh service repository, the Mate's workspace and the fakes' records,
  * shared by every phase (server lifetime) of a journey.
  */
-export const makeFixtureWorld = Effect.gen(function* () {
-  const root = makeServiceRepository();
-  const workspace = NodeFS.realpathSync(testTempDir("t3-crew-mate-"));
-  const signIns = yield* PubSub.unbounded<SignIn>();
-  const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
-  const world: CrewWorld = {
-    root,
-    workspace,
-    admitted: yield* Ref.make<
-      ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
-    >([]),
-    refusal: yield* Ref.make<string | undefined>(undefined),
-    operated: yield* Ref.make<
-      ReadonlyArray<{
-        readonly instanceIds: ReadonlyArray<string>;
-        readonly principal: TurnPrincipal;
-      }>
-    >([]),
-    notTheirs: yield* Ref.make<ReadonlyMap<string, string>>(new Map()),
-    installs: yield* Ref.make(0),
-    sshCalls: yield* Ref.make(0),
-    logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
-    missingAgents: yield* Ref.make<ReadonlySet<string>>(new Set()),
-    providers: yield* Ref.make<ReadonlyArray<ServerProvider>>([]),
-    providerChanges: yield* PubSub.unbounded<ReadonlyArray<ServerProvider>>(),
-    processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
-    processReads: yield* Ref.make(0),
-    processPushes: yield* PubSub.unbounded<void>(),
-    holdSsh: (matches) =>
-      Effect.gen(function* () {
-        const hold: PendingHold = {
-          matches,
-          reached: yield* Deferred.make<void>(),
-          release: yield* Deferred.make<void>(),
-        };
-        yield* Ref.update(holds, (all) => [...all, hold]);
-        return {
-          reached: Deferred.await(hold.reached),
-          release: Deferred.succeed(hold.release, undefined).pipe(Effect.asVoid),
-        };
-      }),
-    signedIn: PubSub.publish(signIns, { _tag: "agent", agent: "claude-code" }).pipe(Effect.asVoid),
-    signedInAs: (agent) => PubSub.publish(signIns, { _tag: "agent", agent }).pipe(Effect.asVoid),
-    extraSignedIn: (id) => PubSub.publish(signIns, { _tag: "extra", id }).pipe(Effect.asVoid),
-  };
-  return { world, signIns, holds };
-});
+export const makeFixtureWorld = (root: string, workspace: string) =>
+  Effect.gen(function* () {
+    const signIns = yield* PubSub.unbounded<SignIn>();
+    const holds = yield* Ref.make<ReadonlyArray<PendingHold>>([]);
+    const world: CrewWorld = {
+      root,
+      workspace,
+      admitted: yield* Ref.make<
+        ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
+      >([]),
+      refusal: yield* Ref.make<string | undefined>(undefined),
+      operated: yield* Ref.make<
+        ReadonlyArray<{
+          readonly instanceIds: ReadonlyArray<string>;
+          readonly principal: TurnPrincipal;
+        }>
+      >([]),
+      notTheirs: yield* Ref.make<ReadonlyMap<string, string>>(new Map()),
+      installs: yield* Ref.make(0),
+      sshCalls: yield* Ref.make(0),
+      logins: yield* Ref.make<ReadonlyMap<string, MateLogin>>(new Map()),
+      missingAgents: yield* Ref.make<ReadonlySet<string>>(new Set()),
+      providers: yield* Ref.make<ReadonlyArray<ServerProvider>>([]),
+      providerChanges: yield* PubSub.unbounded<ReadonlyArray<ServerProvider>>(),
+      processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
+      processReads: yield* Ref.make(0),
+      processPushes: yield* PubSub.unbounded<void>(),
+      holdSsh: (matches) =>
+        Effect.gen(function* () {
+          const hold: PendingHold = {
+            matches,
+            reached: yield* Deferred.make<void>(),
+            release: yield* Deferred.make<void>(),
+          };
+          yield* Ref.update(holds, (all) => [...all, hold]);
+          return {
+            reached: Deferred.await(hold.reached),
+            release: Deferred.succeed(hold.release, undefined).pipe(Effect.asVoid),
+          };
+        }),
+      signedIn: PubSub.publish(signIns, { _tag: "agent", agent: "claude-code" }).pipe(
+        Effect.asVoid,
+      ),
+      signedInAs: (agent) => PubSub.publish(signIns, { _tag: "agent", agent }).pipe(Effect.asVoid),
+      extraSignedIn: (id) => PubSub.publish(signIns, { _tag: "extra", id }).pipe(Effect.asVoid),
+    };
+    return { world, signIns, holds };
+  });
 
 /**
  * The budget of a test that drives a live crew engine: the server suite's own (`testTimeout` in

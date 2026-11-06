@@ -535,7 +535,7 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly activeProjectResolving?: boolean | undefined;
   /**
    * The open conversation as the route names it, whether or not its Mate is found: what a reload
-   * opened on is never scrolled to; one opened afterwards is, once (`openMateReveal`).
+   * opened on is scrolled to at once; one opened afterwards slides there, once (`openMateReveal`).
    */
   readonly activeConversation?: string | null | undefined;
   /**
@@ -881,13 +881,15 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const addMateGate = useNewMateGate();
   const treeRef = useRef<HTMLElement>(null);
   const reorder = useProjectReorder(treeRef);
-  // A Mate opened from elsewhere — Add landing on the new Mate, a link, a
-  // page — stands in view in the menu: its row scrolled to the nearest edge
-  // once it is drawn (a new Mate's row comes a moment after its view, so every
-  // draw looks until it is there), once. Not the conversation open at mount,
-  // even found late: a reload leaves the menu where it was (`openMateReveal`).
+  // The open Mate stands in view in the menu: its row scrolled to the nearest
+  // edge once it is drawn (a new Mate's row comes a moment after its view, so
+  // every draw looks until it is there), once. A reload's own Mate is brought
+  // there before the paint, or at once when found late; one opened afterwards
+  // — Add landing on the new Mate, a link, a page — slides there
+  // (`openMateReveal`). A project drawn folded stands in view by its heading,
+  // which marks the conversation.
   const shownActiveRef = useRef<MateReveal | undefined>(undefined);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const conversation = activeConversation ?? null;
     const next = openMateReveal({
       seen: shownActiveRef.current,
@@ -897,12 +899,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     });
     shownActiveRef.current = next.seen;
     if (next.reveal === undefined) return;
-    const row = treeRef.current?.querySelector<HTMLElement>(
-      `[data-zerops-mate-row="${CSS.escape(next.reveal)}"]`,
-    );
+    const tree = treeRef.current;
+    const row =
+      tree?.querySelector<HTMLElement>(`[data-zerops-mate-row="${CSS.escape(next.reveal)}"]`) ??
+      (activeGroupId !== undefined && paintedFolded.current.has(activeGroupId)
+        ? tree?.querySelector<HTMLElement>(
+            `[data-zerops-group="${CSS.escape(activeGroupId)}"] [data-zerops-row]`,
+          )
+        : null);
     if (row == null) return;
-    shownActiveRef.current = { conversation, shown: next.reveal, owed: false };
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    shownActiveRef.current = { conversation, shown: next.reveal, owed: false, reload: false };
+    const still = next.instant || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     row.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
   });
   // What closes a stage's coming-up and first-deploy windows: the shared minute clock, so the

@@ -165,6 +165,7 @@ const makeHarness = Effect.fn("TestEnvironmentRegistry.makeHarness")(function* (
     // Runs before a credential write lands, standing in for the catalog's
     // asynchronous update.
     readonly beforeCredentialPut?: (credential: ConnectionCredential) => Effect.Effect<void>;
+    readonly afterCredentialPut?: (credential: ConnectionCredential) => Effect.Effect<void>;
   },
 ) {
   const storedTargets = yield* Ref.make(
@@ -336,6 +337,7 @@ const makeHarness = Effect.fn("TestEnvironmentRegistry.makeHarness")(function* (
             return next;
           }),
         ),
+        Effect.andThen(options?.afterCredentialPut?.(credential) ?? Effect.void),
       ),
     remove: (connectionId) =>
       Ref.update(storedCredentials, (current) => {
@@ -449,27 +451,6 @@ const makeHarness = Effect.fn("TestEnvironmentRegistry.makeHarness")(function* (
   };
 });
 
-function eventuallyCredential(
-  storedCredentials: Ref.Ref<Map<string, ConnectionCredential>>,
-  connectionId: string,
-  predicate: (credential: BearerConnectionCredential) => boolean,
-) {
-  return Effect.gen(function* () {
-    for (let iteration = 0; iteration < 200; iteration += 1) {
-      const stored = (yield* Ref.get(storedCredentials)).get(connectionId);
-      if (
-        stored !== undefined &&
-        stored._tag === "BearerConnectionCredential" &&
-        predicate(stored)
-      ) {
-        return stored;
-      }
-      yield* Effect.yieldNow;
-    }
-    return yield* Effect.die(new Error("Credential was not renewed."));
-  });
-}
-
 function rejectBearer(revokedToken: string) {
   return (
     _environmentId: EnvironmentId,
@@ -507,6 +488,17 @@ function awaitConnectionState(
       .stateChanges(environmentId)
       .pipe(Stream.filter(predicate), Stream.runHead, Effect.map(Option.getOrThrow));
   });
+}
+
+/** Drain registry work while a test-held credential operation is suspended. */
+function controlledRegistryScheduler() {
+  const dispatcher = new Scheduler.MixedScheduler("sync", () => () => {}).makeDispatcher();
+  const scheduler: Scheduler.Scheduler = {
+    executionMode: "sync",
+    shouldYield: () => false,
+    makeDispatcher: () => dispatcher,
+  };
+  return { scheduler, drain: Effect.sync(() => dispatcher.flush()) };
 }
 
 describe("EnvironmentRegistry", () => {
@@ -657,14 +649,11 @@ describe("EnvironmentRegistry", () => {
           CACHED_SNAPSHOT,
         );
 
-        const retryFiber = yield* Effect.forkChild(
-          awaitConnectionState(
-            registry,
-            TARGET.environmentId,
-            (state) => state.phase === "backoff",
-          ),
-        );
-        yield* Effect.yieldNow;
+        const retryFiber = yield* awaitConnectionState(
+          registry,
+          TARGET.environmentId,
+          (state) => state.phase === "backoff",
+        ).pipe(Effect.forkChild({ startImmediately: true }));
         yield* Deferred.fail(
           active!.closed,
           new ConnectionTransientError({
@@ -841,6 +830,7 @@ describe("EnvironmentRegistry", () => {
         origin: "zerops-identity",
       });
       const renewals = yield* Ref.make(0);
+      const written = yield* Deferred.make<void>();
       const harness = yield* makeHarness(
         [BEARER_TARGET],
         [BEARER_PROFILE],
@@ -850,6 +840,7 @@ describe("EnvironmentRegistry", () => {
             renew: () =>
               Ref.update(renewals, (count) => count + 1).pipe(Effect.as(Option.some(renewed))),
           },
+          afterCredentialPut: () => Deferred.succeed(written, undefined).pipe(Effect.asVoid),
         },
       );
 
@@ -864,12 +855,13 @@ describe("EnvironmentRegistry", () => {
         expect(yield* Ref.get(renewals)).toBe(0);
 
         yield* TestClock.adjust("2 minutes");
-        const stored = yield* eventuallyCredential(
-          harness.storedCredentials,
-          BEARER_TARGET.connectionId,
-          (credential) => credential.token === "renewed-token",
-        );
-        expect(stored.expiresAtEpochMs).toBe(1_620_000);
+        yield* Deferred.await(written);
+        const stored = (yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId);
+        expect(stored).toMatchObject({
+          _tag: "BearerConnectionCredential",
+          token: "renewed-token",
+          expiresAtEpochMs: 1_620_000,
+        });
         expect(yield* Ref.get(renewals)).toBe(1);
       }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
@@ -891,19 +883,22 @@ describe("EnvironmentRegistry", () => {
         [BEARER_PROFILE],
         [[BEARER_TARGET.connectionId, ZEROPS_CREDENTIAL]],
       );
-      yield* Effect.gen(function* () {
-        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-        yield* registry.start;
-        yield* awaitConnectionState(
-          registry,
-          RELAY_TARGET.environmentId,
-          (state) => state.phase === "connected",
-        );
-        for (let turn = 0; turn < 20; turn += 1) yield* Effect.yieldNow;
+      const { scheduler, drain } = controlledRegistryScheduler();
+      const context = yield* Layer.build(harness.layer).pipe(
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      const registry = Context.get(context, EnvironmentRegistry.EnvironmentRegistry);
+      yield* registry.start.pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+      yield* drain;
+      yield* awaitConnectionState(
+        registry,
+        RELAY_TARGET.environmentId,
+        (state) => state.phase === "connected",
+      );
+      yield* drain;
 
-        expect(yield* Ref.get(harness.sessions)).toHaveLength(1);
-        expect((yield* registry.state(BEARER_TARGET.environmentId)).desired).toBe(false);
-      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+      expect(yield* Ref.get(harness.sessions)).toHaveLength(1);
+      expect((yield* registry.state(BEARER_TARGET.environmentId)).desired).toBe(false);
     }),
   );
 
@@ -1189,31 +1184,44 @@ describe("EnvironmentRegistry", () => {
           ),
       });
 
-      yield* Effect.gen(function* () {
-        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-        const persistedRegistration = yield* registry
-          .register(new RelayConnectionRegistration({ target: shadowedTarget }))
-          .pipe(Effect.forkChild({ startImmediately: true }));
-        yield* Deferred.await(registrationStarted);
-
-        const platformRegistration = yield* registry
-          .registerPlatform(new PrimaryConnectionRegistration({ target: TARGET }))
-          .pipe(Effect.forkChild({ startImmediately: true }));
-        yield* Effect.yieldNow;
-        const removal = yield* Effect.flip(registry.remove(TARGET.environmentId)).pipe(
+      const { scheduler, drain } = controlledRegistryScheduler();
+      const context = yield* Layer.build(harness.layer).pipe(
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      const registry = Context.get(context, EnvironmentRegistry.EnvironmentRegistry);
+      const persistedRegistration = yield* registry
+        .register(new RelayConnectionRegistration({ target: shadowedTarget }))
+        .pipe(
           Effect.forkChild({ startImmediately: true }),
+          Effect.provideService(Scheduler.Scheduler, scheduler),
         );
+      yield* drain;
+      yield* Deferred.await(registrationStarted);
 
-        yield* Deferred.succeed(continueRegistration, undefined);
-        yield* Fiber.join(persistedRegistration);
-        yield* Fiber.join(platformRegistration);
-        const error = yield* Fiber.join(removal);
+      const platformRegistration = yield* registry
+        .registerPlatform(new PrimaryConnectionRegistration({ target: TARGET }))
+        .pipe(
+          Effect.forkChild({ startImmediately: true }),
+          Effect.provideService(Scheduler.Scheduler, scheduler),
+        );
+      yield* drain;
+      expect(platformRegistration.pollUnsafe()).toBeUndefined();
+      const removal = yield* Effect.flip(registry.remove(TARGET.environmentId)).pipe(
+        Effect.forkChild({ startImmediately: true }),
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      yield* drain;
 
-        expect(error._tag).toBe("PlatformEnvironmentRemovalError");
-        expect(
-          (yield* SubscriptionRef.get(registry.entries)).get(TARGET.environmentId)?.target,
-        ).toEqual(TARGET);
-      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+      yield* Deferred.succeed(continueRegistration, undefined);
+      yield* drain;
+      yield* Fiber.join(persistedRegistration);
+      yield* Fiber.join(platformRegistration);
+      const error = yield* Fiber.join(removal);
+
+      expect(error._tag).toBe("PlatformEnvironmentRemovalError");
+      expect(
+        (yield* SubscriptionRef.get(registry.entries)).get(TARGET.environmentId)?.target,
+      ).toEqual(TARGET);
     }),
   );
 
@@ -1228,29 +1236,41 @@ describe("EnvironmentRegistry", () => {
           ),
       });
 
-      yield* Effect.gen(function* () {
-        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-        yield* registry.start;
-        yield* awaitConnectionState(
-          registry,
-          TARGET.environmentId,
-          (state) => state.phase === "connected",
+      const { scheduler, drain } = controlledRegistryScheduler();
+      const context = yield* Layer.build(harness.layer).pipe(
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      const registry = Context.get(context, EnvironmentRegistry.EnvironmentRegistry);
+      yield* registry.start.pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+      yield* drain;
+      yield* awaitConnectionState(
+        registry,
+        TARGET.environmentId,
+        (state) => state.phase === "connected",
+      );
+
+      const removal = yield* registry
+        .remove(TARGET.environmentId)
+        .pipe(
+          Effect.forkChild({ startImmediately: true }),
+          Effect.provideService(Scheduler.Scheduler, scheduler),
         );
+      yield* drain;
+      yield* Deferred.await(removalStarted);
 
-        const removal = yield* Effect.forkChild(registry.remove(TARGET.environmentId));
-        yield* Deferred.await(removalStarted);
+      const stateLookup = yield* Effect.flip(registry.state(TARGET.environmentId)).pipe(
+        Effect.forkChild({ startImmediately: true }),
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      yield* drain;
+      expect(stateLookup.pollUnsafe()).toBeUndefined();
+      expect(yield* Ref.get(harness.sessions)).toHaveLength(1);
 
-        const stateLookup = yield* Effect.forkChild(
-          Effect.flip(registry.state(TARGET.environmentId)),
-        );
-        yield* Effect.yieldNow;
-        expect(yield* Ref.get(harness.sessions)).toHaveLength(1);
-
-        yield* Deferred.succeed(continueRemoval, undefined);
-        yield* Fiber.join(removal);
-        const error = yield* Fiber.join(stateLookup);
-        expect(error._tag).toBe("EnvironmentNotRegisteredError");
-      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+      yield* Deferred.succeed(continueRemoval, undefined);
+      yield* drain;
+      yield* Fiber.join(removal);
+      const error = yield* Fiber.join(stateLookup);
+      expect(error._tag).toBe("EnvironmentNotRegisteredError");
     }),
   );
 
@@ -1320,49 +1340,56 @@ describe("EnvironmentRegistry", () => {
           { authenticate: rejectBearer(revoked.token) },
         );
 
-        yield* Effect.gen(function* () {
-          const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-          const environmentId = BEARER_TARGET.environmentId;
-          yield* registry.start;
-          yield* awaitConnectionState(registry, environmentId, isAuthenticationBlock);
-          const entry = (yield* SubscriptionRef.get(registry.entries)).get(environmentId);
-          const supervisor = yield* registry.run(environmentId, currentSupervisor);
-          // `followStream` rebinds every consumer when the install generation
-          // moves, so a binding count of one is the install generation held.
-          const bound = yield* Deferred.make<void>();
-          const binds = yield* Ref.make(0);
-          const subscription = yield* Effect.forkChild(
-            registry
-              .followStream(environmentId, Stream.concat(Stream.succeed(undefined), Stream.never))
-              .pipe(
-                Stream.tap(() =>
-                  Ref.update(binds, (count) => count + 1).pipe(
-                    Effect.andThen(Deferred.succeed(bound, undefined)),
-                  ),
-                ),
-                Stream.runDrain,
+        const { scheduler, drain } = controlledRegistryScheduler();
+        const context = yield* Layer.build(harness.layer).pipe(
+          Effect.provideService(Scheduler.Scheduler, scheduler),
+        );
+        const registry = Context.get(context, EnvironmentRegistry.EnvironmentRegistry);
+        const environmentId = BEARER_TARGET.environmentId;
+        yield* registry.start.pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+        yield* drain;
+        yield* awaitConnectionState(registry, environmentId, isAuthenticationBlock);
+        const entry = (yield* SubscriptionRef.get(registry.entries)).get(environmentId);
+        const supervisor = yield* registry.run(environmentId, currentSupervisor);
+        // `followStream` rebinds every consumer when the install generation
+        // moves, so a binding count of one is the install generation held.
+        const bound = yield* Deferred.make<void>();
+        const binds = yield* Ref.make(0);
+        const subscription = yield* registry
+          .followStream(environmentId, Stream.concat(Stream.succeed(undefined), Stream.never))
+          .pipe(
+            Stream.tap(() =>
+              Ref.update(binds, (count) => count + 1).pipe(
+                Effect.andThen(Deferred.succeed(bound, undefined)),
               ),
+            ),
+            Stream.runDrain,
+            Effect.forkChild({ startImmediately: true }),
+            Effect.provideService(Scheduler.Scheduler, scheduler),
           );
-          yield* Deferred.await(bound).pipe(Effect.timeout("1 second"));
+        yield* drain;
+        yield* Deferred.await(bound).pipe(Effect.timeout("1 second"));
 
-          yield* registry.rotateCredential(environmentId, rotated);
-          yield* awaitConnectionState(
-            registry,
-            environmentId,
-            (state) => state.phase === "connected",
-          );
-          yield* Effect.yieldNow;
-          yield* Fiber.interrupt(subscription);
+        yield* registry
+          .rotateCredential(environmentId, rotated)
+          .pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+        yield* drain;
+        yield* awaitConnectionState(
+          registry,
+          environmentId,
+          (state) => state.phase === "connected",
+        );
+        yield* drain;
+        yield* Fiber.interrupt(subscription);
 
-          expect((yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId)).toBe(
-            rotated,
-          );
-          expect(yield* registry.run(environmentId, currentSupervisor)).toBe(supervisor);
-          expect(yield* Ref.get(binds)).toBe(1);
-          expect((yield* SubscriptionRef.get(registry.entries)).get(environmentId)).toBe(entry);
-          expect(yield* Ref.get(harness.cacheClears)).toEqual([]);
-          expect(yield* Ref.get(harness.ownedDataClears)).toEqual([]);
-        }).pipe(Effect.provide(harness.layer), Effect.scoped);
+        expect((yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId)).toBe(
+          rotated,
+        );
+        expect(yield* registry.run(environmentId, currentSupervisor)).toBe(supervisor);
+        expect(yield* Ref.get(binds)).toBe(1);
+        expect((yield* SubscriptionRef.get(registry.entries)).get(environmentId)).toBe(entry);
+        expect(yield* Ref.get(harness.cacheClears)).toEqual([]);
+        expect(yield* Ref.get(harness.ownedDataClears)).toEqual([]);
       }),
   );
 
@@ -1390,82 +1417,97 @@ describe("EnvironmentRegistry", () => {
         },
       );
 
-      yield* Effect.gen(function* () {
-        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-        yield* registry.start;
-        yield* awaitConnectionState(registry, BEARER_TARGET.environmentId, isAuthenticationBlock);
-        yield* awaitConnectionState(
-          registry,
-          SECOND_BEARER_TARGET.environmentId,
-          isAuthenticationBlock,
-        );
-        yield* awaitConnectionState(
-          registry,
-          RELAY_TARGET.environmentId,
-          (state) => state.phase === "connected",
-        );
-        const attemptsBefore = yield* Ref.get(attempts);
+      const { scheduler, drain } = controlledRegistryScheduler();
+      const context = yield* Layer.build(harness.layer).pipe(
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      const registry = Context.get(context, EnvironmentRegistry.EnvironmentRegistry);
+      yield* registry.start.pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+      yield* drain;
+      yield* awaitConnectionState(registry, BEARER_TARGET.environmentId, isAuthenticationBlock);
+      yield* awaitConnectionState(
+        registry,
+        SECOND_BEARER_TARGET.environmentId,
+        isAuthenticationBlock,
+      );
+      yield* awaitConnectionState(
+        registry,
+        RELAY_TARGET.environmentId,
+        (state) => state.phase === "connected",
+      );
+      const attemptsBefore = yield* Ref.get(attempts);
 
-        yield* registry.rotateCredential(BEARER_TARGET.environmentId, rotated);
-        yield* awaitConnectionState(
-          registry,
-          BEARER_TARGET.environmentId,
-          (state) => state.phase === "connected",
-        );
-        yield* Effect.yieldNow;
+      yield* registry
+        .rotateCredential(BEARER_TARGET.environmentId, rotated)
+        .pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+      yield* drain;
+      yield* awaitConnectionState(
+        registry,
+        BEARER_TARGET.environmentId,
+        (state) => state.phase === "connected",
+      );
+      yield* drain;
 
-        const attemptsAfter = yield* Ref.get(attempts);
-        expect(attemptsAfter.get(SECOND_BEARER_TARGET.environmentId)).toBe(
-          attemptsBefore.get(SECOND_BEARER_TARGET.environmentId),
-        );
-        expect(attemptsAfter.get(RELAY_TARGET.environmentId)).toBe(
-          attemptsBefore.get(RELAY_TARGET.environmentId),
-        );
-        expect(
-          isAuthenticationBlock(yield* registry.state(SECOND_BEARER_TARGET.environmentId)),
-        ).toBe(true);
-        expect(yield* Ref.get(harness.releasedSessions)).toBe(0);
-      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+      const attemptsAfter = yield* Ref.get(attempts);
+      expect(attemptsAfter.get(SECOND_BEARER_TARGET.environmentId)).toBe(
+        attemptsBefore.get(SECOND_BEARER_TARGET.environmentId),
+      );
+      expect(attemptsAfter.get(RELAY_TARGET.environmentId)).toBe(
+        attemptsBefore.get(RELAY_TARGET.environmentId),
+      );
+      expect(isAuthenticationBlock(yield* registry.state(SECOND_BEARER_TARGET.environmentId))).toBe(
+        true,
+      );
+      expect(yield* Ref.get(harness.releasedSessions)).toBe(0);
     }),
   );
 
   it.effect("keeps one session per environment across concurrent registrations and retries", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness([]);
+      const { scheduler, drain } = controlledRegistryScheduler();
+      const context = yield* Layer.build(harness.layer).pipe(
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      const registry = Context.get(context, EnvironmentRegistry.EnvironmentRegistry);
+      const registration = new PrimaryConnectionRegistration({ target: TARGET });
+      const registrations = yield* Effect.all(
+        Array.from({ length: 5 }, () => registry.registerPlatform(registration)),
+        { concurrency: "unbounded", discard: true },
+      ).pipe(
+        Effect.forkChild({ startImmediately: true }),
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      yield* drain;
+      yield* Fiber.join(registrations);
+      yield* awaitConnectionState(
+        registry,
+        TARGET.environmentId,
+        (state) => state.phase === "connected",
+      );
 
-      yield* Effect.gen(function* () {
-        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-        const registration = new PrimaryConnectionRegistration({ target: TARGET });
-        yield* Effect.all(
-          Array.from({ length: 5 }, () => registry.registerPlatform(registration)),
-          { concurrency: "unbounded", discard: true },
-        );
-        yield* awaitConnectionState(
-          registry,
-          TARGET.environmentId,
-          (state) => state.phase === "connected",
-        );
+      // Platform polls and explicit retries reach a healthy connection at once.
+      const simultaneous = yield* Effect.all(
+        [
+          ...Array.from({ length: 5 }, () => registry.registerPlatform(registration)),
+          ...Array.from({ length: 5 }, () => registry.retryNow(TARGET.environmentId)),
+          registry.reconcilePlatform([registration]),
+        ],
+        { concurrency: "unbounded", discard: true },
+      ).pipe(
+        Effect.forkChild({ startImmediately: true }),
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      yield* drain;
+      yield* Fiber.join(simultaneous);
+      yield* drain;
 
-        // Platform polls and explicit retries reach a healthy connection at once.
-        yield* Effect.all(
-          [
-            ...Array.from({ length: 5 }, () => registry.registerPlatform(registration)),
-            ...Array.from({ length: 5 }, () => registry.retryNow(TARGET.environmentId)),
-            registry.reconcilePlatform([registration]),
-          ],
-          { concurrency: "unbounded", discard: true },
-        );
-        for (let attempt = 0; attempt < 100; attempt += 1) {
-          yield* Effect.yieldNow;
-        }
-
-        expect(yield* Ref.get(harness.sessions)).toHaveLength(1);
-        expect(yield* Ref.get(harness.releasedSessions)).toBe(0);
-        expect(yield* registry.state(TARGET.environmentId)).toMatchObject({
-          phase: "connected",
-          generation: 1,
-        });
-      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+      expect(yield* Ref.get(harness.sessions)).toHaveLength(1);
+      expect(yield* Ref.get(harness.releasedSessions)).toBe(0);
+      expect(yield* registry.state(TARGET.environmentId)).toMatchObject({
+        phase: "connected",
+        generation: 1,
+      });
     }),
   );
 
@@ -1573,34 +1615,42 @@ describe("EnvironmentRegistry", () => {
         },
       );
 
-      yield* Effect.gen(function* () {
-        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-        const environmentId = BEARER_TARGET.environmentId;
-        yield* registry.start;
-        yield* awaitConnectionState(
-          registry,
-          environmentId,
-          (state) => state.phase === "connected",
+      const { scheduler, drain } = controlledRegistryScheduler();
+      const context = yield* Layer.build(harness.layer).pipe(
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      const registry = Context.get(context, EnvironmentRegistry.EnvironmentRegistry);
+      const environmentId = BEARER_TARGET.environmentId;
+      yield* registry.start.pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+      yield* drain;
+      yield* awaitConnectionState(registry, environmentId, (state) => state.phase === "connected");
+
+      const rotation = yield* registry
+        .rotateCredential(environmentId, rotated)
+        .pipe(
+          Effect.forkChild({ startImmediately: true }),
+          Effect.provideService(Scheduler.Scheduler, scheduler),
         );
-
-        const rotation = yield* registry
-          .rotateCredential(environmentId, rotated)
-          .pipe(Effect.forkChild({ startImmediately: true }));
-        yield* Deferred.await(putStarted);
-        const removal = yield* registry
-          .remove(environmentId)
-          .pipe(Effect.forkChild({ startImmediately: true }));
-        yield* Effect.yieldNow;
-
-        yield* Deferred.succeed(releasePut, undefined);
-        yield* Fiber.join(rotation);
-        yield* Fiber.join(removal);
-
-        expect((yield* Ref.get(harness.storedTargets)).has(environmentId)).toBe(false);
-        expect((yield* Ref.get(harness.storedCredentials)).has(BEARER_TARGET.connectionId)).toBe(
-          false,
+      yield* drain;
+      yield* Deferred.await(putStarted);
+      const removal = yield* registry
+        .remove(environmentId)
+        .pipe(
+          Effect.forkChild({ startImmediately: true }),
+          Effect.provideService(Scheduler.Scheduler, scheduler),
         );
-      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+      yield* drain;
+      expect(removal.pollUnsafe()).toBeUndefined();
+
+      yield* Deferred.succeed(releasePut, undefined);
+      yield* drain;
+      yield* Fiber.join(rotation);
+      yield* Fiber.join(removal);
+
+      expect((yield* Ref.get(harness.storedTargets)).has(environmentId)).toBe(false);
+      expect((yield* Ref.get(harness.storedCredentials)).has(BEARER_TARGET.connectionId)).toBe(
+        false,
+      );
     }),
   );
 
@@ -1646,46 +1696,55 @@ describe("EnvironmentRegistry", () => {
           },
         );
 
-        yield* Effect.gen(function* () {
-          const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-          const environmentId = BEARER_TARGET.environmentId;
-          yield* registry.start;
-          yield* Deferred.await(revokedAttemptStarted).pipe(Effect.timeout("1 second"));
-          const observed = yield* Ref.make<ReadonlyArray<SupervisorConnectionState>>([]);
-          const recording = yield* Deferred.make<void>();
-          const recorder = yield* Effect.forkChild(
-            registry
-              .stateChanges(environmentId)
-              .pipe(
-                Stream.runForEach((state) =>
-                  Ref.update(observed, (current) => [...current, state]).pipe(
-                    Effect.andThen(Deferred.succeed(recording, undefined)),
-                  ),
-                ),
-              ),
-          );
-          yield* Deferred.await(recording).pipe(Effect.timeout("1 second"));
+        const { scheduler, drain } = controlledRegistryScheduler();
+        const context = yield* Layer.build(harness.layer).pipe(
+          Effect.provideService(Scheduler.Scheduler, scheduler),
+        );
+        const registry = Context.get(context, EnvironmentRegistry.EnvironmentRegistry);
+        const environmentId = BEARER_TARGET.environmentId;
+        yield* registry.start.pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+        yield* drain;
+        yield* Deferred.await(revokedAttemptStarted).pipe(Effect.timeout("1 second"));
+        const observed = yield* Ref.make<ReadonlyArray<SupervisorConnectionState>>([]);
+        const recording = yield* Deferred.make<void>();
+        const recorder = yield* registry.stateChanges(environmentId).pipe(
+          Stream.runForEach((state) =>
+            Ref.update(observed, (current) => [...current, state]).pipe(
+              Effect.andThen(Deferred.succeed(recording, undefined)),
+            ),
+          ),
+          Effect.forkChild({ startImmediately: true }),
+          Effect.provideService(Scheduler.Scheduler, scheduler),
+        );
+        yield* drain;
+        yield* Deferred.await(recording).pipe(Effect.timeout("1 second"));
 
-          const rotation = yield* registry
-            .rotateCredential(environmentId, rotated)
-            .pipe(Effect.forkChild({ startImmediately: true }));
-          yield* Deferred.await(putStarted);
-          yield* Deferred.succeed(releaseRejection, undefined);
-          yield* Deferred.await(rejected);
-          yield* Effect.yieldNow;
-          yield* Deferred.succeed(releasePut, undefined);
-          yield* Fiber.join(rotation);
-          const settled = yield* awaitConnectionState(
-            registry,
-            environmentId,
-            (state) => state.phase === "connected" || isAuthenticationBlock(state),
+        const rotation = yield* registry
+          .rotateCredential(environmentId, rotated)
+          .pipe(
+            Effect.forkChild({ startImmediately: true }),
+            Effect.provideService(Scheduler.Scheduler, scheduler),
           );
-          yield* Fiber.interrupt(recorder);
+        yield* drain;
+        yield* Deferred.await(putStarted);
+        yield* Deferred.succeed(releaseRejection, undefined);
+        yield* drain;
+        yield* Deferred.await(rejected);
+        expect((yield* Ref.get(observed)).filter(isAuthenticationBlock)).toEqual([]);
+        yield* Deferred.succeed(releasePut, undefined);
+        yield* drain;
+        yield* Fiber.join(rotation);
+        const settled = yield* awaitConnectionState(
+          registry,
+          environmentId,
+          (state) => state.phase === "connected" || isAuthenticationBlock(state),
+        );
+        yield* drain;
+        yield* Fiber.interrupt(recorder);
 
-          expect(settled.phase).toBe("connected");
-          expect(yield* Ref.get(presented)).toEqual([revoked.token, rotated.token]);
-          expect((yield* Ref.get(observed)).filter(isAuthenticationBlock)).toEqual([]);
-        }).pipe(Effect.provide(harness.layer), Effect.scoped);
+        expect(settled.phase).toBe("connected");
+        expect(yield* Ref.get(presented)).toEqual([revoked.token, rotated.token]);
+        expect((yield* Ref.get(observed)).filter(isAuthenticationBlock)).toEqual([]);
       }),
   );
 
@@ -1739,6 +1798,8 @@ describe("EnvironmentRegistry", () => {
       const revoked = new BearerConnectionCredential({ token: "revoked-token" });
       const rotated = new BearerConnectionCredential({ token: "rotated-token" });
       const presented = yield* Ref.make<ReadonlyArray<string>>([]);
+      const putStarted = yield* Deferred.make<void>();
+      const releasePut = yield* Deferred.make<void>();
       const reject = rejectBearer(revoked.token);
       const harness = yield* makeHarness(
         [BEARER_TARGET],
@@ -1749,26 +1810,35 @@ describe("EnvironmentRegistry", () => {
             Ref.update(presented, (current) => [...current, credential?.token ?? ""]).pipe(
               Effect.andThen(reject(environmentId, credential)),
             ),
-          // The catalog write is asynchronous; an attempt started before it
-          // gets to run.
           beforeCredentialPut: () =>
-            Effect.forEach(Array.from({ length: 20 }), () => Effect.yieldNow, { discard: true }),
+            Deferred.succeed(putStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(releasePut)),
+            ),
         },
       );
 
-      yield* Effect.gen(function* () {
-        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-        const environmentId = BEARER_TARGET.environmentId;
+      const { scheduler, drain } = controlledRegistryScheduler();
+      const context = yield* Layer.build(harness.layer).pipe(
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      const registry = Context.get(context, EnvironmentRegistry.EnvironmentRegistry);
+      const environmentId = BEARER_TARGET.environmentId;
 
-        yield* registry.rotateCredential(environmentId, rotated);
-        yield* awaitConnectionState(
-          registry,
-          environmentId,
-          (state) => state.phase === "connected",
+      const rotation = yield* registry
+        .rotateCredential(environmentId, rotated)
+        .pipe(
+          Effect.forkChild({ startImmediately: true }),
+          Effect.provideService(Scheduler.Scheduler, scheduler),
         );
+      yield* drain;
+      yield* Deferred.await(putStarted);
+      expect(yield* Ref.get(presented)).toEqual([]);
 
-        expect(yield* Ref.get(presented)).toEqual([rotated.token]);
-      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+      yield* Deferred.succeed(releasePut, undefined);
+      yield* drain;
+      yield* Fiber.join(rotation);
+      yield* awaitConnectionState(registry, environmentId, (state) => state.phase === "connected");
+      expect(yield* Ref.get(presented)).toEqual([rotated.token]);
     }),
   );
 
@@ -1791,6 +1861,8 @@ describe("EnvironmentRegistry", () => {
         origin: "zerops-identity",
       });
       const renewedTokens = yield* Ref.make<ReadonlyArray<string>>([]);
+      const written = yield* Deferred.make<void>();
+      let watchingRenewal = false;
       const harness = yield* makeHarness(
         [BEARER_TARGET],
         [BEARER_PROFILE],
@@ -1811,6 +1883,10 @@ describe("EnvironmentRegistry", () => {
                 ),
               ),
           },
+          afterCredentialPut: () =>
+            watchingRenewal
+              ? Deferred.succeed(written, undefined).pipe(Effect.asVoid)
+              : Effect.void,
         },
       );
 
@@ -1821,6 +1897,7 @@ describe("EnvironmentRegistry", () => {
         yield* registry.unpark(BEARER_TARGET.environmentId);
         yield* TestClock.adjust("1 minute");
         yield* registry.rotateCredential(BEARER_TARGET.environmentId, rotated);
+        watchingRenewal = true;
 
         // Past the revoked bearer's renewal point (12 min), short of the
         // rotated one's (13 min).
@@ -1831,11 +1908,13 @@ describe("EnvironmentRegistry", () => {
         );
 
         yield* TestClock.adjust("1 minute");
-        yield* eventuallyCredential(
-          harness.storedCredentials,
-          BEARER_TARGET.connectionId,
-          (credential) => credential.token === "rotated-token-renewed",
-        );
+        yield* Deferred.await(written);
+        expect(
+          (yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId),
+        ).toMatchObject({
+          _tag: "BearerConnectionCredential",
+          token: "rotated-token-renewed",
+        });
         expect(yield* Ref.get(renewedTokens)).toEqual([rotated.token]);
       }).pipe(Effect.provide(harness.layer), Effect.scoped);
     }),
@@ -1884,25 +1963,32 @@ describe("EnvironmentRegistry", () => {
         },
       );
 
-      yield* Effect.gen(function* () {
-        const registry = yield* EnvironmentRegistry.EnvironmentRegistry;
-        yield* registry.start;
-        // A Mate's registration starts parked: this one is connected.
-        yield* registry.unpark(BEARER_TARGET.environmentId);
-        yield* TestClock.adjust("12 minutes");
-        yield* Deferred.await(renewalStarted);
+      const { scheduler, drain } = controlledRegistryScheduler();
+      const context = yield* Layer.build(harness.layer).pipe(
+        Effect.provideService(Scheduler.Scheduler, scheduler),
+      );
+      const registry = Context.get(context, EnvironmentRegistry.EnvironmentRegistry);
+      yield* registry.start.pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+      // A Mate's registration starts parked: this one is connected.
+      yield* registry
+        .unpark(BEARER_TARGET.environmentId)
+        .pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+      yield* drain;
+      yield* TestClock.adjust("12 minutes");
+      yield* drain;
+      yield* Deferred.await(renewalStarted);
 
-        yield* registry.rotateCredential(BEARER_TARGET.environmentId, rotated);
-        yield* Deferred.succeed(releaseRenewal, undefined);
-        yield* Effect.forEach(Array.from({ length: 20 }), () => Effect.yieldNow, {
-          discard: true,
-        });
+      yield* registry
+        .rotateCredential(BEARER_TARGET.environmentId, rotated)
+        .pipe(Effect.provideService(Scheduler.Scheduler, scheduler));
+      yield* drain;
+      yield* Deferred.succeed(releaseRenewal, undefined);
+      yield* drain;
 
-        expect((yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId)).toBe(
-          rotated,
-        );
-        expect(yield* Ref.get(renewedTokens)).toEqual([current.token]);
-      }).pipe(Effect.provide(harness.layer), Effect.scoped);
+      expect((yield* Ref.get(harness.storedCredentials)).get(BEARER_TARGET.connectionId)).toBe(
+        rotated,
+      );
+      expect(yield* Ref.get(renewedTokens)).toEqual([current.token]);
     }),
   );
 });

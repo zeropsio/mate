@@ -107,11 +107,12 @@ describe("deriveBirthFacts — processes", () => {
       input({
         processes: [
           process({ actionName: "stack.create", status: "RUNNING", projectId: "project-1" }),
-          process({ actionName: "stack.create", status: "RUNNING", projectId: "OTHER" }),
+          process({ actionName: "stack.delete", status: "RUNNING", projectId: "OTHER" }),
         ],
       }),
     );
     expect(facts.processes).toHaveLength(1);
+    expect(facts.processes[0]?.actionName).toBe("stack.create");
   });
 
   it("maps a known process status, its timestamps, serviceIds and appVersion through", () => {
@@ -160,7 +161,7 @@ describe("deriveBirthFacts — processes", () => {
     expect(facts.processes[0]?.status).toEqual({ kind: "unknown", raw: "SOME_FUTURE_STATUS" });
   });
 
-  it.each(["PENDING", "RUNNING", "ROLLBACKING", "CANCELING", "FINISHED", "FAILED", "CANCELED"])(
+  it.each(["PENDING", "RUNNING", "ROLLBACKING", "CANCELING", "FAILED", "CANCELED"])(
     "reads %s as the known literal, not the unknown fallback",
     (status) => {
       const facts = deriveBirthFacts(

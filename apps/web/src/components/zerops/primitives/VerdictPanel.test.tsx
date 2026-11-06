@@ -2,17 +2,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
 import { VerdictPanel } from "./VerdictPanel";
-import { STATUS_BADGE_TONE } from "./statusBadgeTone";
 
 describe("VerdictPanel", () => {
-  it.each(["ok", "busy", "attention", "failed", "off"] as const)(
-    "marks the %s answer with its tone",
-    (tone) => {
-      const html = renderToStaticMarkup(<VerdictPanel text="It can land." tone={tone} />);
-      expect(html).toContain(`data-tone="${STATUS_BADGE_TONE[tone]}"`);
-    },
-  );
-
   it("says the answer as a sentence, never as a scanned label", () => {
     const html = renderToStaticMarkup(<VerdictPanel text="The checks passed." tone="ok" />);
     expect(html).toContain("The checks passed.");

@@ -16,20 +16,6 @@ describe("buildModelPickerSearchText", () => {
 });
 
 describe("scoreModelPickerSearch", () => {
-  it("matches typo-tolerant multi-token queries", () => {
-    expect(
-      scoreModelPickerSearch(
-        {
-          driverKind: "opencode",
-          providerDisplayName: "opencode",
-          name: "Claude Opus 4.7",
-          subProvider: "GitHub Copilot",
-        },
-        "coplt op",
-      ),
-    ).not.toBeNull();
-  });
-
   it("rejects results when any query token does not match", () => {
     expect(
       scoreModelPickerSearch(

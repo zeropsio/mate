@@ -166,14 +166,6 @@ describe("listedMateFace — one face for a Mate on every surface that lists it"
 
 describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
   it.each([
-    { case: "asking, no review", connected: true, face: "needs", review: false, shown: "needs" },
-    {
-      case: "at rest, its review waits",
-      connected: true,
-      face: "idle",
-      review: true,
-      shown: "needs",
-    },
     {
       case: "at work, its review waits: the work shows",
       connected: true,

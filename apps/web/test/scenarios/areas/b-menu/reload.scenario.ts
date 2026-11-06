@@ -113,7 +113,9 @@ describe("B: menu reload", () => {
               { polling: "raf" },
             );
             await s.page.click('button[aria-label="Collapse sidebar"]');
-            await s.page.waitForFunction(() => document.cookie.includes("sidebar_state=false"));
+            await s.page.waitForFunction(
+              () => window.localStorage.getItem("mate:sidebar-state") === "false",
+            );
             await s.page.evaluateOnNewDocument(recordMenuWidths);
             await s.page.reload({ waitUntil: "domcontentloaded" });
             await s.page.waitForFunction(

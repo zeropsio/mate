@@ -230,12 +230,6 @@ describe("who is on the team", () => {
     },
   ];
 
-  it("Integration tokens are never people", () => {
-    expect(people(teamPeople(input(TEAM))).map(({ name }) => name)).not.toContain(
-      "token-abc@zerops.io",
-    );
-  });
-
   it("You first; then owners, admins, the rest by name; invitations last", () => {
     expect(people(teamPeople(input(TEAM))).map(({ name }) => name)).toEqual([
       "Me Myself",

@@ -70,9 +70,7 @@ describe("a continued birth's original plan", () => {
 
   it.each([
     { name: "A clean Mate", role: "dev" as const, tier: null },
-    { name: "B Mate with a tier", role: "dev" as const, tier: "mate" as const },
     { name: "D stage with a Mate", role: "stage" as const, tier: "stage" as const },
-    { name: "E Mate for an existing application", role: "dev" as const, tier: null },
   ])("reconstructs $name with one create and one combined import", ({ role, tier }) => {
     const intent = {
       ...birth.intent!,

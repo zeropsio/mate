@@ -107,40 +107,39 @@ export interface MateReveal {
   readonly conversation: string | null;
   /** The Mate whose row stands in view: the one a reload opened on, or the last brought there. */
   readonly shown: string | null;
-  /** The conversation was opened afterwards: its Mate's row is brought into view once found. */
+  /** Its Mate's row is still to be brought into view once found. */
   readonly owed: boolean;
+  /** The conversation is the one the page opened on, not yet brought into view. */
+  readonly reload: boolean;
 }
 
 /**
- * Which open Mate's row the menu scrolls into view, and what it has seen. A reload leaves the menu
- * where it was: the conversation it opened on is never revealed, however late the listing finds its
- * Mate (`resolving`, or missed first). Only a conversation opened afterwards — Add landing on a new
- * Mate, a link, a page — or a press lighting another Mate brings a row into view, once; the caller
- * marks it shown once its row is drawn, so rows drawn again never scroll the menu again.
+ * Which open Mate's row the menu scrolls into view, and what it has seen. A reload brings the
+ * conversation it opened on into view, however late the listing finds its Mate (`resolving`, or
+ * missed first), at once (`instant`): the menu never slides there from its top. A conversation
+ * opened afterwards — Add landing on a new Mate, a link, a page — or a press lighting another Mate
+ * brings its row into view too, once; the caller marks it shown once its row is drawn, so rows
+ * drawn again never scroll the menu again.
  */
 export function openMateReveal(input: {
   readonly seen: MateReveal | undefined;
   readonly conversation: string | null;
   readonly open: string | null;
   readonly resolving: boolean;
-}): { readonly reveal: string | undefined; readonly seen: MateReveal } {
+}): { readonly reveal: string | undefined; readonly instant: boolean; readonly seen: MateReveal } {
   const { conversation, open } = input;
-  if (input.seen === undefined)
-    return { reveal: undefined, seen: { conversation, shown: open, owed: false } };
-  const seen =
-    conversation === input.seen.conversation
-      ? input.seen
-      : { ...input.seen, conversation, owed: true };
-  if (!seen.owed) {
-    // The reload's own Mate, found late: it stands where the menu is, unscrolled.
-    if (seen.shown === null) return { reveal: undefined, seen: { ...seen, shown: open } };
-    return open !== null && open !== seen.shown
-      ? { reveal: open, seen }
-      : { reveal: undefined, seen };
-  }
-  if (input.resolving || open === null) return { reveal: undefined, seen };
-  if (open === seen.shown) return { reveal: undefined, seen: { ...seen, owed: false } };
-  return { reveal: open, seen };
+  const seen: MateReveal =
+    input.seen === undefined
+      ? { conversation, shown: null, owed: true, reload: conversation !== null }
+      : conversation === input.seen.conversation
+        ? input.seen
+        : { ...input.seen, conversation, owed: true, reload: false };
+  const instant = seen.reload;
+  if (!seen.owed)
+    return { reveal: open !== null && open !== seen.shown ? open : undefined, instant, seen };
+  if (input.resolving || open === null) return { reveal: undefined, instant, seen };
+  if (open === seen.shown) return { reveal: undefined, instant, seen: { ...seen, owed: false } };
+  return { reveal: open, instant, seen };
 }
 
 /**

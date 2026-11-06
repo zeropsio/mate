@@ -27,14 +27,23 @@ interface Check {
   readonly args: string[];
 }
 
+let reusable: { gate: ReturnType<typeof createFixture>; base: string } | undefined;
 function fixture(assertion: (gate: ReturnType<typeof createFixture>) => void) {
-  const gate = createFixture();
-  try {
-    assertion(gate);
-  } finally {
-    NodeFS.rmSync(gate.root, { recursive: true, force: true });
+  if (!reusable) {
+    const gate = createFixture();
+    gate.baseline();
+    reusable = { gate, base: gate.git("rev-parse", "HEAD") };
+  } else {
+    reusable.gate.git("reset", "--hard", reusable.base);
+    reusable.gate.git("clean", "-fd");
+    reusable.gate.clearChecks();
+    reusable.gate.clearReceipt();
   }
+  assertion(reusable.gate);
 }
+afterAll(() => {
+  if (reusable) NodeFS.rmSync(reusable.gate.root, { recursive: true, force: true });
+});
 
 function createFixture(cacheHome?: string) {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-rerun-"));
@@ -50,6 +59,7 @@ function createFixture(cacheHome?: string) {
   };
   for (const directory of ["scripts", "apps", "packages", "infra", "node_modules/.bin"])
     NodeFS.mkdirSync(NodePath.join(root, directory), { recursive: true });
+  for (const directory of ["apps", "packages", "infra"]) write(`${directory}/.gitkeep`, "");
   for (const file of gateRunnerFiles)
     NodeFS.copyFileSync(
       NodePath.join(import.meta.dirname, file),
@@ -143,8 +153,8 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
     git("config", "user.name", "Gate fixture");
     git("config", "user.email", "gate@example.test");
     git("add", ".");
-    git("commit", "-qm", "base");
-    git("branch", "base");
+    git("commit", "--allow-empty", "-qm", "base");
+    git("branch", "-f", "base");
   };
   const run = (args: string[] = [], fail = "") => {
     const result = NodeChildProcess.spawnSync(
@@ -158,9 +168,12 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
           PATH: [NodePath.dirname(process.execPath), process.env.PATH ?? ""].join(
             NodePath.delimiter,
           ),
+          // Fake scenario commands must not queue behind real machine-wide browser work.
           HOME: cacheHome ?? root,
           // The repository vp wrapper sets NODE_PATH; these fake installs have their own modules.
           NODE_PATH: cacheHome ? "" : process.env.NODE_PATH,
+          // Shared receipts require an uninstrumented Node, regardless of the test runner's preload.
+          NODE_OPTIONS: cacheHome ? "" : process.env.NODE_OPTIONS,
           XDG_CACHE_HOME: NodePath.join(cacheHome ?? root, ".cache"),
           CI: "",
           GITHUB_ACTIONS: "",

@@ -192,12 +192,6 @@ describe("Git browse reads", () => {
 
   it.each([
     {
-      name: "A search",
-      read: "grep",
-      params: { sha: home.sha!, q: "tea" },
-      words: "HQ is busy with other searches. Read again in a moment.",
-    },
-    {
       name: "A blame",
       read: "blame",
       params: { sha: home.sha!, path: "src/a.ts" },

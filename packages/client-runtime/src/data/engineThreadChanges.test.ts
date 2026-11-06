@@ -1,4 +1,5 @@
 import { EnvironmentId, ThreadId, type Item } from "@t3tools/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
@@ -71,12 +72,18 @@ describe("an engine Mate's conversation, for a reader that draws thread states",
             noteItem(run1, 2, "", { streaming: true }),
           ],
         });
+        const started = yield* Deferred.make<void>();
         const fiber = yield* Effect.forkChild(
-          until(engineThreadChanges(h.host, key), (next) =>
-            textsOf(next).includes("assistant: Deploying the"),
+          until(
+            engineThreadChanges(h.host, key).pipe(
+              Stream.tap((next) =>
+                Option.isSome(next.data) ? Deferred.succeed(started, undefined) : Effect.void,
+              ),
+            ),
+            (next) => textsOf(next).includes("assistant: Deploying the"),
           ),
         );
-        yield* Effect.yieldNow;
+        yield* Deferred.await(started);
         h.live.open(key, `${run1}/i/2`, "text", "Deploying");
         h.live.append(key, `${run1}/i/2`, "text", 9, " the");
         const streaming = yield* Fiber.join(fiber);

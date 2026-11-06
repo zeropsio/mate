@@ -15,6 +15,7 @@ import type { Known } from "../../zerops/knowledge/index.ts";
 import { resolveSpentLogin } from "../../zerops/logins.ts";
 import { signedOutAgent } from "../../zerops/agentSignIn.ts";
 import { MATE_READ_ACCESS_LINE } from "../../zerops/mateAccess.ts";
+import { agentOwnershipComposerNotice, resolveAgentOwnership } from "../../zerops/agentOwnership.ts";
 import {
   classifyZeropsAgentAuth,
   zeropsAgentUnavailableReason,
@@ -76,7 +77,10 @@ export function readsAlong(input: {
   return input.owner?.mine === false || input.operate === false;
 }
 
-/** Auth establishes admission; a signer's identity establishes no client permission. */
+/**
+ * Auth establishes admission, and so does whose sign-in the agent spends: an agent another project
+ * member signed in is read along, as the server refuses its turn (D6, `loginTurnRefusal`).
+ */
 export function agentAdmission(input: {
   readonly environmentId: string;
   readonly instanceId: string | undefined;
@@ -102,9 +106,10 @@ export function agentAdmission(input: {
    * says it waits for the organization's API key (`automatedAgentUsable`).
    */
   readonly automated?: boolean | undefined;
+  /** Who HQ records signed each login in (its project's `everSignedIn`), by login key. */
+  readonly hqSigners?: Readonly<Record<string, string>> | undefined;
 }) {
   if (input.automated === true) return automatedAdmission(input);
-  const readOnly = readsAlong(input);
   const snapshot = input.read?.state === "known" ? input.read.value : null;
   const provider = input.providers.find((p) => p.instanceId === input.instanceId) ?? null;
   const spent = resolveSpentLogin(input.instanceId, snapshot, input.providers);
@@ -112,6 +117,25 @@ export function agentAdmission(input: {
   const cold =
     input.owner === undefined || input.read?.state === "unread" || input.read?.state === "reading";
   const auth = spent === undefined ? null : classifyZeropsAgentAuth(spent.agent).kind;
+  // Whose sign-in it spends (D6), as before the admission refactor: the Mate's recorded signer,
+  // or HQ's record of it while the Mate's snapshot names none. A credential nobody is recorded for
+  // and one another member signed in are both read along; a project token is the project's.
+  const signer =
+    spent?.agent.authorizedBy?.subject || (spent ? input.hqSigners?.[spent.key] : undefined);
+  const ownership =
+    spent === undefined ||
+    cold ||
+    spent.agent.flagToken ||
+    input.viewerSubject === undefined ||
+    (auth !== "authorized" && auth !== "registering")
+      ? "none"
+      : resolveAgentOwnership({
+          credPresent: spent.agent.credPresent,
+          authorizedBy: signer ? { subject: signer } : undefined,
+          viewerSubject: input.viewerSubject,
+        });
+  const signerRefuses = ownership === "someone-else" || ownership === "unrecorded";
+  const readOnly = readsAlong(input) || signerRefuses;
   const pending = spent?.agent.login;
   const inProgress =
     pending !== undefined &&
@@ -164,7 +188,12 @@ export function agentAdmission(input: {
         });
   const needsSignIn = input.empty === true && admissionNeedsSignIn(input.read, input.providers);
   const holdsComposer = input.standUpHolds === true || needsSignIn;
-  const refusal = input.operate === false ? MATE_READ_ACCESS_LINE : (attention?.text ?? null);
+  const refusal =
+    input.operate === false
+      ? MATE_READ_ACCESS_LINE
+      : signerRefuses
+        ? (agentOwnershipComposerNotice(ownership) ?? null)
+        : (attention?.text ?? null);
   const held =
     readOnly || cold
       ? null
@@ -184,8 +213,7 @@ export function agentAdmission(input: {
     // Held a moment — its agents' sign-in still read, or its person's stand-up on its way — a send
     // goes by itself once that is over: a request waits for it (`composerAdmits`).
     sendWaits: refusal === null && !readOnly && (cold || input.standUpHolds === true),
-    // Signer records establish no client permission, including compact HQ records; HQ's recorded
-    // owner does.
+    // HQ's recorded owner, the project's operate permission, and the agent's signer each make it read along.
     readOnly,
     holdsComposer,
   };

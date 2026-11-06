@@ -102,6 +102,16 @@ function menuAction(id: string) {
   return action;
 }
 
+async function settledCheck() {
+  expect(verbs.check).toHaveBeenCalledTimes(1);
+  await verbs.check.mock.results[0]?.value;
+}
+
+async function settledConfirmation() {
+  expect(verbs.confirm).toHaveBeenCalledTimes(1);
+  await verbs.confirm.mock.results[0]?.value;
+}
+
 function render() {
   return renderToStaticMarkup(
     <ZeropsMateUpdateControl environmentId={ENVIRONMENT_ID}>
@@ -228,9 +238,9 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       });
       verbs.confirm.mockResolvedValue(answer);
       menuAction("update").onSelect();
-      await vi.waitFor(() => expect(verbs.confirm).toHaveBeenCalledTimes(1));
+      await settledCheck();
+      await settledConfirmation();
       expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to 0\.8\.1\?\n/);
-      await Promise.resolve();
       expect(verbs.update.mock.calls.map(([to]) => to)).toEqual(updates);
     },
   );
@@ -251,9 +261,9 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     });
     verbs.confirm.mockResolvedValue(true);
     menuAction("update").onSelect();
-    await vi.waitFor(() => expect(verbs.confirm).toHaveBeenCalledTimes(1));
+    await settledCheck();
+    await settledConfirmation();
     expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to 0\.8\.2\?\n/);
-    await Promise.resolve();
     expect(verbs.update.mock.calls.map(([to]) => to)).toEqual(["0.8.2"]);
   });
 
@@ -271,7 +281,8 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       verbs.check.mockResolvedValue(found);
       verbs.confirm.mockResolvedValue(true);
       menuAction("update").onSelect();
-      await vi.waitFor(() => expect(verbs.confirm).toHaveBeenCalledTimes(1));
+      if (check) await settledCheck();
+      await settledConfirmation();
       expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to the newest version\?\n/);
     },
   );
@@ -297,7 +308,9 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     verbs.check.mockResolvedValue(needsRestart);
     verbs.confirm.mockResolvedValue(true);
     menuAction("update").onSelect();
-    await vi.waitFor(() => expect(verbs.update).toHaveBeenCalledTimes(1));
+    await settledCheck();
+    await settledConfirmation();
+    expect(verbs.update).toHaveBeenCalledTimes(1);
     expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(
       /^Update Nova to Zerops Control Plane 9\.226\.0\?\n/,
     );
@@ -359,9 +372,7 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       checkedAt: "now",
     });
     menuAction("update").onSelect();
-    await vi.waitFor(() => expect(verbs.check).toHaveBeenCalledTimes(1));
-    await Promise.resolve();
-    await Promise.resolve();
+    await settledCheck();
     expect(verbs.confirm).not.toHaveBeenCalled();
     expect(verbs.update).not.toHaveBeenCalled();
   });
@@ -387,11 +398,12 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       verbs.check.mockResolvedValue(answer);
       verbs.confirm.mockResolvedValue(true);
       menuAction("check-for-updates").onSelect();
-      await vi.waitFor(() => expect(verbs.check).toHaveBeenCalledTimes(1));
-      await Promise.resolve();
-      await Promise.resolve();
+      await settledCheck();
       expect(verbs.confirm).toHaveBeenCalledTimes(asks);
-      if (asks > 0) expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to 0\.8\.2\?/);
+      if (asks > 0) {
+        await settledConfirmation();
+        expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to 0\.8\.2\?/);
+      }
     },
   );
 

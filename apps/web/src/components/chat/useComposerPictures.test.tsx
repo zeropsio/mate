@@ -30,7 +30,11 @@ vi.mock("../../lib/attachmentUploadQueue", () => ({
   retryAttachmentUpload: () => {},
 }));
 vi.mock("../../zerops/useZeropsMates", () => ({ useZeropsMate: () => ({ kind: "unknown" }) }));
-const copies = vi.hoisted(() => ({ fit: vi.fn(), sources: new Set<Promise<unknown>>() }));
+const copies = vi.hoisted(() => ({
+  fit: vi.fn(),
+  sources: new Set<Promise<unknown>>(),
+  pending: new Set<Promise<unknown>>(),
+}));
 vi.mock("../../lib/imageCompression", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../lib/imageCompression")>();
   return {
@@ -42,7 +46,13 @@ vi.mock("../../lib/imageCompression", async (importOriginal) => {
       work.then(done, done);
       return work;
     },
-    fitPictureCopy: (input: unknown) => copies.fit(input),
+    fitPictureCopy: (input: unknown) => {
+      const work: Promise<unknown> = Promise.resolve(copies.fit(input));
+      copies.pending.add(work);
+      const done = () => copies.pending.delete(work);
+      work.then(done, done);
+      return work;
+    },
     pictureCanvasEncoder: () => async () => null,
   };
 });
@@ -81,7 +91,11 @@ function deferred<A>() {
 }
 
 /** The bitmaps made, and a gate a decode waits at while a test holds it shut. */
-const decoding = { made: [] as FakeBitmap[], gate: null as Promise<unknown> | null };
+const decoding = {
+  made: [] as FakeBitmap[],
+  gate: null as Promise<unknown> | null,
+  pending: new Set<Promise<unknown>>(),
+};
 
 /** A PNG whose header names the size in its name. */
 function pngFile(name: string): File {
@@ -171,36 +185,54 @@ async function show(target: DraftId) {
 }
 
 /** Source reads have answered, and every visible copy has completed in its own draft. */
-async function settle() {
+async function settle(ready: () => boolean = () => true) {
+  const pending = () => [...copies.sources, ...decoding.pending, ...copies.pending];
+  do {
+    await act(async () => {
+      await Promise.allSettled(pending());
+    });
+  } while (pending().length > 0);
+  const settled = () =>
+    ready() &&
+    ![A, B]
+      .flatMap((target) => draftOf(target)?.images ?? [])
+      .some((image) => image.picture?.preparing === true);
   await act(async () => {
-    await vi.waitFor(() => expect(copies.sources.size).toBe(0), { timeout: 5_000 });
+    if (settled()) return;
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (!settled()) return;
+        unsubscribe();
+        resolve();
+      };
+      const unsubscribe = useComposerDraftStore.subscribe(check);
+      check();
+    });
   });
-  await vi.waitFor(
-    async () => {
-      await act(async () => {});
-      expect(
-        [A, B]
-          .flatMap((target) => draftOf(target)?.images ?? [])
-          .some((image) => image.picture?.preparing === true),
-      ).toBe(false);
-    },
-    { timeout: 5_000 },
-  );
 }
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal(
     "createImageBitmap",
-    vi.fn(async (file: File, ...args: unknown[]) => {
-      await decoding.gate;
-      const bitmap = new FakeBitmap(file, args);
-      decoding.made.push(bitmap);
-      return bitmap;
+    vi.fn((file: File, ...args: unknown[]) => {
+      const work = (async () => {
+        await decoding.gate;
+        const bitmap = new FakeBitmap(file, args);
+        decoding.made.push(bitmap);
+        return bitmap;
+      })();
+      decoding.pending.add(work);
+      const done = () => decoding.pending.delete(work);
+      work.then(done, done);
+      return work;
     }),
   );
   decoding.made.length = 0;
   decoding.gate = null;
+  decoding.pending.clear();
+  copies.sources.clear();
+  copies.pending.clear();
   useComposerDraftStore.setState({ draftsByThreadKey: {}, draftThreadsByThreadKey: {} });
   copies.fit.mockReset();
   copies.fit.mockResolvedValue({ kind: "as-pasted" });
@@ -572,7 +604,7 @@ describe("an image that reached the draft without being a picture", () => {
     useComposerDraftStore.getState().insertImage(A, P, plainImage(file), 0);
 
     await show(A);
-    await settle();
+    await settle(() => imageOf(A, "plain")?.picture !== undefined);
 
     expect(vi.mocked(createImageBitmap).mock.calls[0]).toEqual([
       file,

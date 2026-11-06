@@ -60,33 +60,31 @@ describe("harness tabs", () => {
 // than the test's 15 s — and its tab went on opening into the tests after it: the globals moved to
 // its window, and every test after it in the file read an empty page.
 describe("a tab whose test ended while it opened", () => {
-  let release = () => {};
-  let late: Promise<unknown> = Promise.resolve();
-
-  it("ends with its tab still opening", async () => {
+  it("never opens into the next test", async () => {
     const harness = makeAccountHarness({ people: [{ user: person, password: "secret" }] });
+    let release = () => {};
+    let entered = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    late = mountTab(harness, harness.browser.openTab(), {
+    const opening = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const late = mountTab(harness, harness.browser.openTab(), {
       path: "/zerops/late",
       page: async () => {
+        entered();
         await gate;
         return null;
       },
     }).catch((cause: unknown) => cause);
-    await settle();
-  });
-
-  it("never opens into the next test", async () => {
-    const harness = makeAccountHarness({ people: [{ user: person, password: "secret" }] });
+    await opening;
+    await unmountTabs();
     const next = await mountTab(harness, harness.browser.openTab(), { path: "/zerops/next" });
 
     release();
-    await settle();
-
-    expect(globalThis.window.location).toBe(next.location());
     expect(await late).toBeInstanceOf(Error);
+    expect(globalThis.window.location).toBe(next.location());
   });
 });
 
