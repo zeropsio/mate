@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { gatedPortal } from "../components/ui/portal-gate";
 import { readableText, TestNode } from "../zerops/__fixtures__/testDom";
 import { useMateVoice } from "../zerops/mateVoiceContext";
-import { AccountDataContext } from "../zerops/accountData";
 import { RouteGateView } from "./-routeGate";
 import {
   mateProjectUnavailable,
@@ -354,37 +353,3 @@ it("project deletion is named and leaves no dead Open in Zerops link", () => {
     registry.dispose();
   }
 });
-
-it.each([
-  { title: "HQ unavailable", hq: "unreachable", says: "HQ unavailable.", verb: "Try again" },
-  {
-    title: "HQ slow",
-    hq: "slow",
-    says: "HQ is connected but slow to answer. Still waiting…",
-    verb: "Try now",
-  },
-] as const)(
-  "a conversation only HQ can name says HQ's standing with its one verb, never that it isn't in your projects: $title",
-  ({ hq, says, verb }) => {
-    const gate = { kind: "wait", reachability: null, hq } as const;
-    act(() =>
-      root.render(
-        <AccountDataContext value={{ retry: () => undefined } as never}>
-          <RouteGateView
-            {...gateFor(READY, "empty")}
-            gate={gate}
-            phrase={routeGatePhrase(gate, { nowMs: 0, mateName: "Wren" })}
-            stage="the opening stage"
-          >
-            The existing conversation is still here
-          </RouteGateView>
-        </AccountDataContext>,
-      ),
-    );
-    const text = readableText(container);
-    expect(text).toContain(says);
-    expect(text).toContain(verb);
-    expect(text).not.toContain("isn't in your Zerops projects");
-    expect(text).not.toContain("the opening stage");
-  },
-);

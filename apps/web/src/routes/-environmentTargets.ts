@@ -12,6 +12,7 @@ import type { Instant } from "@t3tools/client-runtime/zerops/environments";
 import {
   environmentLinkable,
   mateLink,
+  mateListingsAtom,
   resolveEnvironment,
   routePreviewAtom,
   selectConversation,
@@ -31,15 +32,15 @@ import {
   hqIndexWord,
   listedProjectAtom,
   rosterAnswered,
-  STREAM_POLICY,
   type HqIndexWord,
   type ProjectValue,
 } from "@t3tools/client-runtime/data";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentShellState } from "@t3tools/client-runtime/state/shell";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { Atom } from "effect/reactivity";
-import { useCallback, useContext, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useReducer } from "react";
 
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
@@ -78,32 +79,21 @@ export type RouteOrganization = "chosen" | "choosing" | "not-chosen";
  * Mate; `without-mate` once they read it without one — its services, or the listing read again
  * after HQ named it, without the project; `with-mate` once a Mate is read there.
  */
-export type NamedProject =
-  | "none"
-  | "reading"
-  | "without-mate"
-  | "with-mate"
-  /** Only HQ can name it, and HQ's answer is due past the first answer's patience. */
-  | "hq-slow"
-  /** Only HQ can name it, and HQ is refused or failing past its grace. */
-  | "hq-unreachable";
+export type NamedProject = "none" | "reading" | "without-mate" | "with-mate";
 
 /**
  * `NamedProject` from the reads: the project HQ names, whether the Zerops listing's latest read
  * answered (`rosterAnswered`) and lists it, and its rows as read (`routePreviewAtom`). Absence is
  * claimed only on that evidence: a listing that answered with the project but not yet its
- * services says nothing of its Mate. An environment nothing remembers is named by HQ alone — the
- * Zerops listing never carries environments — so it is absent only once HQ named every Mate it
- * places with its environment (`hqIndexWord`) and none with this one; until then it waits, says
- * HQ is slow past the first answer's patience, and says HQ is unavailable where it is refused or
- * failing, never that the conversation is gone.
+ * services says nothing of its Mate, and HQ naming no project says nothing while its first
+ * answer is due — past its patience, only the whole listing says it.
  */
 export function namedProject(input: {
   readonly hqProject: string | null;
   /** Where HQ's index of the reader's Mates stands for the organization (`hqIndexWord`). */
   readonly hqIndex: HqIndexWord;
-  /** HQ's answer has been due for less than the first answer's patience. */
-  readonly patient: boolean;
+  /** The organization's Mate listing is complete: every project's services read. */
+  readonly listingComplete: boolean;
   /** The organization the account shows: a project another one owns is not listed here. */
   readonly orgId: string | null;
   readonly listingAnswered: boolean;
@@ -114,14 +104,11 @@ export function namedProject(input: {
   if (input.hqProject === null) {
     // No organization shown: no HQ answers for one, and the organization's choice speaks.
     if (input.orgId === null) return "none";
-    switch (input.hqIndex) {
-      case "answered":
-        return "none";
-      case "due":
-        return input.patient ? "reading" : "hq-slow";
-      case "silent":
-        return "hq-unreachable";
-    }
+    // HQ not having named it yet is no word: its first answer is waited for, inside its patience.
+    if (input.hqIndex === "due") return "reading";
+    // HQ silent past that: only the listing, read whole, may say no project holds it.
+    if (input.hqIndex === "silent" && !input.listingComplete) return "reading";
+    return "none";
   }
   if (input.rows !== null)
     return input.rows.some((row) => row.service !== undefined) ? "with-mate" : "without-mate";
@@ -173,23 +160,10 @@ export function routeTarget(input: {
     input.named === "reading" ||
     input.named === "with-mate";
   if (discovering) return { kind: "unresolved", discovery: "pending" };
-  if (input.named === "hq-slow" || input.named === "hq-unreachable")
-    return { kind: "unresolved", discovery: input.named };
   return {
     kind: "unresolved",
     discovery: input.organization === "not-chosen" ? "no-organization" : "settled",
   };
-}
-
-/** Whether `ms` has passed since `key` began to be waited on; a new key (or none) starts over. */
-function usePatienceSpent(key: string | null, ms: number): boolean {
-  const [spent, setSpent] = useState<string | null>(null);
-  useEffect(() => {
-    if (key === null) return;
-    const timer = window.setTimeout(() => setSpent(key), ms);
-    return () => window.clearTimeout(timer);
-  }, [key, ms]);
-  return key !== null && spent === key;
 }
 
 const ORGANIZATION: Record<ZeropsOrganizationStatus, RouteOrganization> = {
@@ -259,13 +233,10 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   const listingAnswered = useProjection(rosterAnswered, orgId, ANSWERED);
   const row = useAtomValue(hqProject === null ? NO_ROW : listedProjectAtom(hqProject));
   const hqIndex = useProjection(hqIndexWord, orgId, HQ_SILENT);
-  // HQ's first answer gets the menu's patience before the wait for it says HQ is slow.
-  const patient = !usePatienceSpent(
-    environmentId !== null && hqProject === null && hqIndex === "due"
-      ? `${orgId ?? ""}/${environmentId}`
-      : null,
-    // The menu's patience with its sources' first answers (`MENU_SOURCES_PATIENCE_MS`).
-    STREAM_POLICY.reconnectGraceMs,
+  const listingComplete = useAtomValue(mateListingsAtom, (listings) =>
+    listings.some(
+      (listed) => listed.organizationId === orgId && heldCandidates(listed.listing).complete,
+    ),
   );
   const preview = useAtomValue(hqProject === null ? NO_PREVIEW : routePreviewAtom(hqProject));
   const target =
@@ -279,7 +250,7 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           named: namedProject({
             hqProject,
             hqIndex,
-            patient,
+            listingComplete,
             orgId,
             listingAnswered,
             row,

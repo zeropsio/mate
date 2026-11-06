@@ -1,5 +1,4 @@
 import {
-  askAgainLabel,
   conversationPhrase,
   type ConversationView,
   type RouteGate,
@@ -17,7 +16,6 @@ import type { RecoveryNotice } from "@t3tools/client-runtime/data";
 import { MateConnectionState } from "../components/zerops/ZeropsMateEmptyState";
 import { PortalGate } from "../components/ui/portal-gate";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
-import { useAccountDataOptional } from "../zerops/accountData";
 
 /**
  * What a route renders under the route gate (DESIGN §4.8). The outlet keeps its place in the tree
@@ -91,16 +89,6 @@ export function RouteGateView({
         return (
           <RouteGateWords phrase={recoveryPhrase} projectId={null} tone={recoveryPhrase.tone} />
         );
-      // Only HQ can name the conversation's Mate, and it is slow or cannot be reached: the wait
-      // says so in HQ's words, with its one verb — never that the conversation is gone.
-      if (gate.hq !== undefined)
-        return (
-          <RouteGateWords
-            phrase={phrase}
-            projectId={null}
-            tone={gate.hq === "unreachable" ? "warning" : undefined}
-          />
-        );
       // The Mate's stage (`MateLinkStage`, drawn by the root): face asleep, name, the link's line.
       return stage;
     case "unavailable":
@@ -151,8 +139,6 @@ function RouteGateActions({
   readonly phrase: RouteGatePhrase;
   readonly projectId: string | null;
 }) {
-  const retry = useAccountDataOptional()?.retry;
-  const askAgain = askAgainLabel(phrase.actions);
   const openInZerops = projectId !== null && phrase.actions.includes("open-in-zerops");
   const toProjects = phrase.actions.some(
     (action) =>
@@ -162,15 +148,9 @@ function RouteGateActions({
       action === "restart" ||
       (action === "open-in-zerops" && projectId === null),
   );
-  if (!openInZerops && !toProjects && (askAgain === null || retry === undefined)) return null;
+  if (!openInZerops && !toProjects) return null;
   return (
     <>
-      {askAgain === null || retry === undefined ? null : (
-        // The account's sources asked again now — HQ's among them, as the menu's *Try again*.
-        <Button onClick={retry} size="sm" variant="secondary">
-          {askAgain}
-        </Button>
-      )}
       {openInZerops ? (
         <Button
           render={<a href={zeropsProjectUrl(projectId)} target="_blank" rel="noreferrer" />}

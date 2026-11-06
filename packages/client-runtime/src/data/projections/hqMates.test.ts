@@ -368,27 +368,9 @@ describe("hqIndexWord", () => {
       word: "due",
     },
     {
-      title: "its navigation read, a placed Mate's record naming no environment",
+      title: "its navigation read and every Mate it places answered",
       arrange: (store: ReturnType<typeof makeAccountStore>) =>
-        seedHqNavigation(store, "org", {
-          structure: placedAB,
-          mates: { a: mate, b: { ...mate, identity: null } as never },
-        }),
-      word: "due",
-    },
-    {
-      title: "its navigation read and every Mate it places named with its environment",
-      arrange: (store: ReturnType<typeof makeAccountStore>) =>
-        seedHqNavigation(store, "org", {
-          structure: placedAB,
-          mates: {
-            a: mate,
-            b: {
-              ...mate,
-              identity: { ...mate.identity, environmentId: EnvironmentId.make("env-b") },
-            },
-          },
-        }),
+        seedHqNavigation(store, "org", { structure: placedAB, mates: { a: mate } }),
       word: "answered",
     },
     {
@@ -404,7 +386,7 @@ describe("hqIndexWord", () => {
       word: "silent",
     },
   ])(
-    "an environment HQ's index does not name is absent from it only once HQ named every Mate it places with its environment: $title",
+    "an environment HQ's index does not name is absent from it only once HQ answered, or can say nothing: $title",
     ({ arrange, word }) => {
       const store = makeAccountStore(AtomRegistry.make());
       arrange(store);

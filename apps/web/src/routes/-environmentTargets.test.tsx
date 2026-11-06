@@ -1026,9 +1026,9 @@ describe("routeTarget", () => {
   type Named = Parameters<typeof namedProject>[0];
   /** HQ answered for the organization unless a case says otherwise. */
   const target = (
-    named: Omit<Named, "hqIndex" | "patient"> & {
+    named: Omit<Named, "hqIndex" | "listingComplete"> & {
       readonly hqIndex?: Named["hqIndex"] | undefined;
-      readonly patient?: boolean | undefined;
+      readonly listingComplete?: boolean | undefined;
     },
   ) =>
     routeTarget({
@@ -1038,7 +1038,7 @@ describe("routeTarget", () => {
       named: namedProject({
         ...named,
         hqIndex: named.hqIndex ?? "answered",
-        patient: named.patient ?? true,
+        listingComplete: named.listingComplete ?? false,
       }),
       inventoryKnown: true,
       organization: "chosen",
@@ -1123,6 +1123,18 @@ describe("routeTarget", () => {
       name: "HQ naming nothing",
       named: { hqProject: null, listingAnswered: true, orgId: ORG_1, row: null, rows: null },
     },
+    {
+      name: "HQ silent past its patience, the listing read whole",
+      named: {
+        hqProject: null,
+        hqIndex: "silent" as const,
+        listingComplete: true,
+        listingAnswered: true,
+        orgId: ORG_1,
+        row: null,
+        rows: null,
+      },
+    },
   ])(
     "once the listing read after HQ named it still lacks the project, the conversation says it isn't in your Zerops projects: $name",
     ({ named }) => {
@@ -1134,46 +1146,28 @@ describe("routeTarget", () => {
     },
   );
   it.each([
+    { name: "HQ's first answer still due", hqIndex: "due", listingComplete: true },
     {
-      name: "HQ's first answer still due, inside its patience",
-      hqIndex: "due",
-      patient: true,
-      gate: { kind: "wait", reachability: null },
-      text: "Opening this conversation…",
-      actions: [],
-    },
-    {
-      name: "HQ's first answer due past its patience",
-      hqIndex: "due",
-      patient: false,
-      gate: { kind: "wait", reachability: null, hq: "slow" },
-      text: "HQ is connected but slow to answer. Still waiting…",
-      actions: ["try-now"],
-    },
-    {
-      name: "HQ refused or failing, the listing never read whole",
+      name: "HQ silent past its patience, the listing not read whole",
       hqIndex: "silent",
-      patient: true,
-      gate: { kind: "wait", reachability: null, hq: "unreachable" },
-      text: "HQ unavailable.",
-      actions: ["try-again"],
+      listingComplete: false,
     },
   ] as const)(
-    "a conversation nothing remembers names never says it isn't in your projects before HQ named every Mate it places: $name",
-    ({ hqIndex, patient, gate, text, actions }) => {
-      const selected = selectRouteGate(
-        target({
-          hqProject: null,
-          hqIndex,
-          patient,
-          listingAnswered: true,
-          orgId: ORG_1,
-          row: null,
-          rows: null,
-        }),
-      );
-      expect(selected).toEqual(gate);
-      expect(routeGatePhrase(selected, { nowMs: 0, mateName: "Ada" })).toEqual({ text, actions });
+    "a conversation nothing remembered names waits for HQ's first answer instead of saying it isn't in your projects: $name",
+    ({ hqIndex, listingComplete }) => {
+      expect(
+        selectRouteGate(
+          target({
+            hqProject: null,
+            hqIndex,
+            listingComplete,
+            listingAnswered: true,
+            orgId: ORG_1,
+            row: null,
+            rows: null,
+          }),
+        ),
+      ).toEqual({ kind: "wait", reachability: null });
     },
   );
 });
@@ -1192,7 +1186,7 @@ it.each([
         named: namedProject({
           hqProject: "project-1",
           hqIndex: "answered",
-          patient: true,
+          listingComplete: false,
           listingAnswered,
           orgId: ORG_1,
           row: OWN_ROW,
