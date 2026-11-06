@@ -247,20 +247,25 @@ const enginePort = (input: {
   /** The first current frame that satisfies `check`. */
   const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
     Effect.flatMap(crew, (service) =>
-      Effect.gen(function* () {
-        const head = (yield* crewState).headSeq;
-        yield* eventually(
-          Effect.map(
-            Stream.runHead(service.snapshot),
-            (frame) => Option.isSome(frame) && (frame.value.revision?.seq ?? head) >= head,
-          ),
-        );
-        return yield* service.snapshot.pipe(
-          Stream.filter(check),
-          Stream.runHead,
-          Effect.map(Option.getOrThrow),
-        );
-      }),
+      Effect.scoped(
+        Effect.gen(function* () {
+          if (service.subscribeUpdateChanges === undefined)
+            return yield* Effect.die("Crew fixture has no update receipt subscription");
+          const updates = yield* service.subscribeUpdateChanges;
+          const head = (yield* crewState).headSeq;
+          return yield* Stream.concat(Stream.succeed(undefined), updates.changes).pipe(
+            Stream.mapEffect(() => Stream.runHead(service.snapshot)),
+            Stream.filter(
+              (frame) =>
+                Option.isSome(frame) &&
+                (frame.value.revision?.seq ?? head) >= head &&
+                check(frame.value),
+            ),
+            Stream.runHead,
+            Effect.map((frame) => Option.getOrThrow(Option.getOrThrow(frame))),
+          );
+        }),
+      ),
     );
 
   /** The crew's first state `holds` for, read again on each of its durable receipts. */

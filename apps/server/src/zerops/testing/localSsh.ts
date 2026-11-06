@@ -81,13 +81,17 @@ if ($pid == 0) { setpgrp(0, 0); exec "/bin/sh", "-c", $remote or exit 127 }
 # second to stop, then KILL, whoever is left.
 my $end = sub {
   kill "-TERM", $pid;
-  for (1 .. 20) { last unless kill 0, -$pid; select undef, undef, undef, 0.05 }
+  for (1 .. 20) {
+    waitpid($pid, WNOHANG);
+    last unless kill 0, -$pid;
+    select undef, undef, undef, 0.05;
+  }
   kill "-KILL", $pid;
   exit 143;
 };
 $SIG{$_} = $end for qw(TERM INT HUP);
-# Polled, so a signal reaches the handler while the far side runs.
-until (waitpid($pid, WNOHANG)) { select undef, undef, undef, 0.05 }
+# Perl dispatches the handlers while the blocking wait is interrupted by a signal.
+waitpid($pid, 0);
 exit($? & 127 ? 128 + ($? & 127) : $? >> 8);
 `;
 
