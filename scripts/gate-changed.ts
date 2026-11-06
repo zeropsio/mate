@@ -819,12 +819,14 @@ const readGit = async (root: string, args: ReadonlyArray<string>) =>
 
 /** Everything a receipt reads from Git about the lane, read concurrently once per evaluation. */
 async function laneSnapshot(root: string, comparison: string) {
-  const [changes, inventory, log] = await Promise.all([
+  const [changes, inventory, log, head] = await Promise.all([
     Promise.all(laneReads(comparison).map((args) => readGit(root, args))),
     readGit(root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]),
     readGit(root, ["log", "--format=%(trailers)", `${comparison}..HEAD`]),
+    readGit(root, ["rev-parse", "--verify", "HEAD^{commit}"]),
   ]);
   return {
+    headSha: head.trim(),
     paths: lanePaths(changes),
     inventory: inventory
       .split("\0")
@@ -904,16 +906,32 @@ interface GateStage {
 }
 
 interface GateReceipt {
+  readonly headSha: string;
+  readonly baseSha: string;
   readonly stageHashes?: Readonly<Record<string, string>>;
   readonly diffHash: string;
   readonly selectionHash: string;
   readonly selectedStages: GateStage[];
+  readonly omittedWitnesses: OmittedWitness[];
   results: { name: string; status: number; durationMs: number }[];
   durationMs: number;
   queueWaitMs: number;
   completed: boolean;
   atRisk: TimeoutRisk[];
 }
+
+type OmittedWitness =
+  | {
+      readonly file: string;
+      readonly kind: "scenario";
+      readonly reason: "opt-out" | "cap" | "unrelated";
+    }
+  | {
+      readonly file: string;
+      readonly kind: "smoke";
+      readonly reason: "opt-out";
+      readonly cases: ReadonlyArray<string>;
+    };
 
 const baseTreeArgs = (comparison: string) => ["ls-tree", "-r", "-t", "-z", comparison];
 
@@ -932,7 +950,7 @@ const baseIdentity = (base: ReadonlyMap<string, string>, paths: ReadonlyArray<st
   JSON.stringify(paths.flatMap((path) => base.get(path) ?? []));
 
 // Hash before/after file identities, independent of whether additions are untracked, staged or committed.
-// Only the lane's changed paths participate, so unrelated main changes preserve the receipt on rebase.
+// Only the lane's changed paths participate, so unchanged stages can be reused after a rebase.
 function diffHash(
   root: string,
   base: ReadonlyMap<string, string>,
@@ -1401,16 +1419,22 @@ function readReceipt(path: string): GateReceipt | undefined {
 
 function reusableReceipt(
   receipt: GateReceipt | undefined,
+  headSha: string,
+  baseSha: string,
   hash: string,
   selection: string,
   stages: GateStage[],
+  omissions: OmittedWitness[],
 ): boolean {
   return (
     receipt !== undefined &&
     receipt.completed === true &&
+    receipt.headSha === headSha &&
+    receipt.baseSha === baseSha &&
     receipt.diffHash === hash &&
     receipt.selectionHash === selection &&
     JSON.stringify(receipt.selectedStages) === JSON.stringify(stages) &&
+    JSON.stringify(receipt.omittedWitnesses) === JSON.stringify(omissions) &&
     Number.isFinite(receipt.durationMs) &&
     receipt.durationMs >= 0 &&
     Number.isFinite(receipt.queueWaitMs) &&
@@ -1564,9 +1588,10 @@ export function selectGateSteps(
   },
 ) {
   const { workspace, units, related } = graph;
-  const files = (withScenarios ? inventory : []).map((file) =>
-    NodePath.posix.relative("apps/web", file),
-  );
+  const selectedScenarios = withScenarios
+    ? inventory
+    : inventory.filter((file) => paths.includes(file) && existing.includes(file));
+  const files = selectedScenarios.map((file) => NodePath.posix.relative("apps/web", file));
   const packages = typecheckPackages(paths, workspace);
   const steps: GateStage[] = [];
   steps.push({
@@ -1764,7 +1789,7 @@ export function selectGateSteps(
       args: [`GATE_SLOTS=${slots}`, gateSlotDirectory()],
       slot: true,
     });
-  return { steps, ownedUnits };
+  return { steps, ownedUnits, selectedScenarios };
 }
 
 /** The CLI for one worktree; resolves to the exit status. */
@@ -1828,23 +1853,70 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
   const scenarioPaths = meaningful.paths.filter(browserPath);
   const smokeFiles = scenarioPaths.length ? Object.keys(stateOnlySmoke) : [];
   validateSelectedFiles(root, smokeFiles);
-  const graph = buildGateGraph(root, meaningful.previous, meaningful.paths);
+  // Even a comment-only edit to an existing scenario must execute that scenario.
+  const selectionPaths = [
+    ...new Set([...meaningful.paths, ...existing.filter((file) => file.endsWith(".scenario.ts"))]),
+  ].sort();
+  const graph = buildGateGraph(root, meaningful.previous, selectionPaths);
   const { inventory, selectedScenarios, overflowScenarios } = selectScenarioFiles(
     graph,
-    meaningful.paths,
+    selectionPaths,
     existing,
     namedScenarios,
     relatedScenarioLimit,
   );
   validateSelectedFiles(root, inventory);
+  const { steps, selectedScenarios: selectedFilesForGate } = selectGateSteps(graph, {
+    comparison,
+    existing,
+    paths: selectionPaths,
+    inventory,
+    smokeFiles,
+    slots,
+    withScenarios,
+  });
+  const selectedFiles = new Set(selectedFilesForGate);
+  const related = new Set(selectedScenarios.map(({ file }) => file));
+  const overflow = new Set(overflowScenarios.map(({ file }) => file));
+  const omittedWitnesses: OmittedWitness[] = [
+    ...graph.scenarios
+      .filter((file) => !selectedFiles.has(file))
+      .sort()
+      .map((file): OmittedWitness => ({
+        file,
+        kind: "scenario",
+        reason: overflow.has(file)
+          ? withScenarios
+            ? "cap"
+            : "opt-out"
+          : related.has(file)
+            ? "opt-out"
+            : "unrelated",
+      })),
+    ...(!withScenarios
+      ? smokeFiles
+          .filter((file) => !selectedFiles.has(file))
+          .map((file): OmittedWitness => ({
+            file,
+            kind: "smoke",
+            reason: "opt-out",
+            cases: stateOnlySmoke[file as keyof typeof stateOnlySmoke],
+          }))
+      : []),
+  ];
+  // Unrelated inventory is recorded, but it is not an affected omission.
+  const affectedOmissions = omittedWitnesses.filter(({ reason }) => reason !== "unrelated").length;
+  const reportOmissions = () => {
+    if (affectedOmissions) console.log(`${affectedOmissions} affected witnesses omitted`);
+  };
   if (verbose || args.includes("--list")) {
     console.log(
-      `Scenario files: ${inventory.length}; reason: ${meaningful.paths.length || namedScenarios.length ? "edited files, explicit --scenarios or import graph" : "documentation/comments only"}`,
+      `Scenario files: ${inventory.length}; reason: ${selectionPaths.length || namedScenarios.length ? "edited files, explicit --scenarios or import graph" : "documentation/comments only"}`,
     );
     for (const file of inventory)
       console.log(
         `Scenario ${file}; reason: ${[
-          ...(meaningful.paths.includes(file) ? ["changed file"] : []),
+          ...(paths.includes(file) ? ["changed file"] : []),
           ...(namedScenarios.includes(file) ? ["explicit --scenarios"] : []),
           ...selectedScenarios
             .filter((selected) => selected.file === file)
@@ -1857,15 +1929,6 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
   );
   for (const { file, distance } of overflowScenarios)
     console.log(`Deferred scenario ${file}; import graph distance ${distance}`);
-  const { steps } = selectGateSteps(graph, {
-    comparison,
-    existing,
-    paths: meaningful.paths,
-    inventory,
-    smokeFiles,
-    slots,
-    withScenarios,
-  });
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
@@ -1873,7 +1936,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     const receiptPath = NodePath.join(root, ".gate-receipt.json");
     const hash = diffHash(root, baseTree, paths);
     const selection = selectionHash(root);
-    // The ancestor SHA may move on rebase while the lane patch and selected checks stay identical.
+    // Stage inputs normalize the ancestor so unchanged checks can survive a rebase.
     const selectedStages = steps.map((step) => ({
       ...step,
       args: step.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
@@ -1900,13 +1963,37 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       return fingerprints;
     };
     const fingerprints = fingerprintsFor(lane);
+    const unchanged = async () => {
+      const after = await laneSnapshot(root, comparison);
+      return (
+        after.headSha === lane.headSha &&
+        comparisonBase(root, base) === comparison &&
+        diffHash(root, baseTree, after.paths) === hash &&
+        selectionHash(root) === selection &&
+        JSON.stringify(fingerprintsFor(after)) === JSON.stringify(fingerprints) &&
+        (!shared || (await shared.unchanged()))
+      );
+    };
     const previousReceipt = full ? undefined : readReceipt(receiptPath);
     if (
       !full &&
-      reusableReceipt(previousReceipt, hash, selection, selectedStages) &&
+      reusableReceipt(
+        previousReceipt,
+        lane.headSha,
+        comparison,
+        hash,
+        selection,
+        selectedStages,
+        omittedWitnesses,
+      ) &&
       JSON.stringify(previousReceipt?.stageHashes) === JSON.stringify(fingerprints)
     ) {
+      if (!(await unchanged()))
+        throw new Error(
+          "Lane revision, diff or selection inputs changed during the gate; run again for the changed code.",
+        );
       console.log(`reused receipt: ${receiptPath} (${hash})`);
+      reportOmissions();
       return 0;
     }
     const reusable = new Map(
@@ -1935,10 +2022,13 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       }
     const gateStarted = Date.now();
     const receipt: GateReceipt = {
+      headSha: lane.headSha,
+      baseSha: comparison,
       diffHash: hash,
       stageHashes: fingerprints,
       selectionHash: selection,
       selectedStages,
+      omittedWitnesses,
       results: [...reusable.values()],
       durationMs: 0,
       queueWaitMs: 0,
@@ -2070,19 +2160,14 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       if (status !== 0) {
         console.error(failureSummary(NodeFS.readFileSync(logPath, "utf8"), logPath));
         slot?.release();
+        reportOmissions();
         return status;
       }
     }
     slot?.release();
-    const after = await laneSnapshot(root, comparison);
-    if (
-      diffHash(root, baseTree, after.paths) !== hash ||
-      selectionHash(root) !== selection ||
-      JSON.stringify(fingerprintsFor(after)) !== JSON.stringify(fingerprints) ||
-      (shared && !(await shared.unchanged()))
-    )
+    if (!(await unchanged()))
       throw new Error(
-        "Lane diff or selection inputs changed during the gate; run again for the changed code.",
+        "Lane revision, diff or selection inputs changed during the gate; run again for the changed code.",
       );
     if (shared)
       for (const step of steps) {
@@ -2094,6 +2179,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     writeReceipt(receiptPath, receipt);
     removeGateLogs(logs);
   }
+  reportOmissions();
   return 0;
 }
 

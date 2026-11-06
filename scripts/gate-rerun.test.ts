@@ -45,6 +45,7 @@ function createFixture(cacheHome?: string) {
   const git = (...args: string[]) => {
     const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
     if (result.status !== 0) throw new Error(result.stderr);
+    return result.stdout.trim();
   };
   for (const directory of ["scripts", "apps", "packages", "infra", "node_modules/.bin"])
     NodeFS.mkdirSync(NodePath.join(root, directory), { recursive: true });
@@ -163,8 +164,156 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
   const clearChecks = () => NodeFS.rmSync(NodePath.join(root, "checks.log"), { force: true });
   const clearReceipt = () =>
     NodeFS.rmSync(NodePath.join(root, ".gate-receipt.json"), { force: true });
-  return { root, write, baseline, run, checks, clearChecks, clearReceipt };
+  return { root, write, git, baseline, run, checks, clearChecks, clearReceipt };
 }
+
+describe("revision-bound witness receipts", () => {
+  let gate: ReturnType<typeof createFixture>;
+  const dependency = "apps/web/src/witness.ts";
+  const directory = "apps/web/test/scenarios/areas/b-menu";
+  const edited = `${directory}/edited.scenario.ts`;
+  const unrelated = `${directory}/unrelated.scenario.ts`;
+  const related = Array.from(
+    { length: 10 },
+    (_, index) => `${directory}/related-${index}.scenario.ts`,
+  );
+  const receipt = () =>
+    JSON.parse(NodeFS.readFileSync(NodePath.join(gate.root, ".gate-receipt.json"), "utf8")) as {
+      headSha: string;
+      baseSha: string;
+      completed: boolean;
+      selectedStages: { name: string; args: string[] }[];
+      omittedWitnesses: { file: string; kind: string; reason: string; cases?: string[] }[];
+    };
+
+  beforeAll(() => {
+    gate = createFixture();
+    gate.write(dependency, "export const witness = 0;\n");
+    gate.write(edited, "export {};\n");
+    gate.write(unrelated, "export {};\n");
+    for (const file of related) gate.write(file, 'import "../../../../src/witness.ts";\n');
+    gate.baseline();
+  });
+  afterAll(() => NodeFS.rmSync(gate.root, { recursive: true, force: true }));
+
+  it("a changed scenario runs without opting in, even when only its comment changes", () => {
+    gate.write(edited, "export {}; // updated comment\n");
+    const result = gate.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(receipt().selectedStages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "edited scenario files",
+          args: expect.arrayContaining(["test/scenarios/areas/b-menu/edited.scenario.ts"]),
+        }),
+      ]),
+    );
+    expect(
+      gate.checks().some((check) => check.args.includes(NodePath.join(gate.root, edited))),
+    ).toBe(true);
+  });
+
+  it("a different HEAD creates a new verdict while unchanged stages are reused", () => {
+    gate.write(edited, "export {};\n");
+    gate.write("README.md", "after\n");
+    const first = gate.run();
+    expect(first.status, first.stderr).toBe(0);
+    const oldHead = gate.git("rev-parse", "HEAD");
+    expect(receipt().headSha).toBe(oldHead);
+    gate.git("commit", "--allow-empty", "-qm", "new revision");
+    const head = gate.git("rev-parse", "HEAD");
+    gate.clearChecks();
+    const newHead = gate.run();
+    expect(newHead.status, newHead.stderr).toBe(0);
+    expect(newHead.stdout).not.toContain("reused receipt");
+    expect(newHead.stdout).toContain("reused stage:");
+    expect(gate.checks()).toEqual([]);
+    expect(receipt().headSha).toBe(head);
+    expect(receipt().baseSha).toBe(gate.git("rev-parse", "base"));
+    expect(head).not.toBe(oldHead);
+  });
+
+  it("a different diff base creates a new verdict while unchanged stages are reused", () => {
+    gate.write(edited, "export {};\n");
+    gate.write("README.md", "after\n");
+    gate.git("commit", "--allow-empty", "-qm", "same tree for a new base");
+    const head = gate.git("rev-parse", "HEAD");
+    const first = gate.run();
+    expect(first.status, first.stderr).toBe(0);
+    gate.clearChecks();
+    const newBase = gate.run(["--base", "HEAD"]);
+    expect(newBase.status, newBase.stderr).toBe(0);
+    expect(newBase.stdout).not.toContain("reused receipt");
+    expect(newBase.stdout).toContain("reused stage:");
+    expect(gate.checks()).toEqual([]);
+    expect(receipt().baseSha).toBe(head);
+  });
+
+  it("the receipt and final line disclose opted-out affected witnesses", () => {
+    gate.write(edited, "export {};\n");
+    gate.write(dependency, "export const witness = 1;\n");
+    const defaultRun = gate.run();
+    expect(defaultRun.status, defaultRun.stderr).toBe(0);
+    expect(receipt().omittedWitnesses).toEqual(
+      expect.arrayContaining([
+        { file: related[0], kind: "scenario", reason: "opt-out" },
+        { file: unrelated, kind: "scenario", reason: "unrelated" },
+        {
+          file: Object.keys(stateOnlySmoke)[0],
+          kind: "smoke",
+          reason: "opt-out",
+          cases: Object.values(stateOnlySmoke)[0],
+        },
+      ]),
+    );
+    const omitted = receipt().omittedWitnesses;
+    expect(
+      omitted
+        .filter((entry) => entry.kind === "scenario" && entry.reason === "opt-out")
+        .map((entry) => entry.file)
+        .sort(),
+    ).toEqual(related);
+    expect(
+      omitted
+        .filter((entry) => entry.kind === "smoke" && entry.reason === "opt-out")
+        .map((entry) => entry.file)
+        .sort(),
+    ).toEqual(Object.keys(stateOnlySmoke).sort());
+    expect(omitted).toContainEqual({ file: unrelated, kind: "scenario", reason: "unrelated" });
+    expect(defaultRun.stdout.trim().split("\n").at(-1)).toBe("13 affected witnesses omitted");
+    const reused = gate.run();
+    expect(reused.stdout.trim().split("\n").at(-1)).toBe("13 affected witnesses omitted");
+    const failed = gate.run(["--force"], "check");
+    expect(failed.status).toBe(9);
+    expect(failed.stdout.trim().split("\n").at(-1)).toBe("13 affected witnesses omitted");
+    expect(receipt().completed).toBe(false);
+  });
+
+  it("the receipt and final line disclose capped affected witnesses", () => {
+    gate.write(edited, "export {};\n");
+    gate.write(dependency, "export const witness = 1;\n");
+    const capped = gate.run(["--with-scenarios"]);
+    expect(capped.status, capped.stderr).toBe(0);
+    expect(receipt().omittedWitnesses).toEqual(
+      expect.arrayContaining([
+        { file: related[8], kind: "scenario", reason: "cap" },
+        { file: related[9], kind: "scenario", reason: "cap" },
+      ]),
+    );
+    expect(
+      receipt()
+        .omittedWitnesses.filter((entry) => entry.kind === "scenario" && entry.reason === "cap")
+        .map((entry) => entry.file)
+        .sort(),
+    ).toEqual(related.slice(8));
+    expect(
+      receipt()
+        .selectedStages.find((stage) => stage.name === "edited scenario files")
+        ?.args.slice(-8),
+    ).toEqual(related.slice(0, 8).map((file) => file.replace(/^apps\/web\//u, "")));
+    expect(capped.stdout.trim().split("\n").at(-1)).toBe("2 affected witnesses omitted");
+  });
+});
 
 describe("shared guard and cycle receipts", () => {
   let home: string;
