@@ -234,3 +234,47 @@ export function pictureAnswersOf(
   }
   return answers;
 }
+
+const FENCE = /```picture-ask[^\n]*\n([\s\S]*?)```/gu;
+const asked = new WeakMap<ChatMessage, ReadonlyArray<string>>();
+
+/** The asks a Mate's message sets up, by key. */
+function asksIn(message: ChatMessage): ReadonlyArray<string> {
+  let keys = asked.get(message);
+  if (keys === undefined) {
+    keys = [...message.text.matchAll(FENCE)].flatMap((match) => {
+      const ask = parsePictureAsk(match[1] ?? "");
+      return ask === null ? [] : [ask.key];
+    });
+    asked.set(message, keys);
+  }
+  return keys;
+}
+
+/**
+ * The asks the person moved past: they wrote something that answers none of an ask's pictures
+ * while it was still open. Such an ask offers nothing more; answering a picture keeps it open.
+ */
+export function pictureAsksPassed(messages: ReadonlyArray<ChatMessage>): ReadonlySet<string> {
+  const passed = new Set<string>();
+  const open = new Set<string>();
+  for (const message of messages) {
+    if (message.role === "assistant") {
+      for (const key of asksIn(message)) open.add(key);
+      continue;
+    }
+    if (message.role !== "user" || open.size === 0) continue;
+    const answering = new Set(
+      (message.attachments ?? []).flatMap((attachment) => {
+        const answer = pictureAnswerOf(attachment.name);
+        return answer === null ? [] : [answer.key];
+      }),
+    );
+    for (const key of open) {
+      if (answering.has(key)) continue;
+      passed.add(key);
+      open.delete(key);
+    }
+  }
+  return passed;
+}

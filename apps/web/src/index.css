@@ -2222,6 +2222,21 @@ code {
   margin: 0.65rem 0;
 }
 
+/* A card drawn in an answer (a Mate's picture ask) keeps its own rhythm: its gaps, not the
+   answer's paragraph margins. */
+.chat-markdown :where(.chat-markdown-island) :where(p, ul, ol, blockquote, pre, figure, dl, dd) {
+  margin: 0;
+}
+
+.chat-markdown .chat-markdown-island :is(ul, ol) {
+  padding-left: 0;
+  list-style: none;
+}
+
+.chat-markdown .chat-markdown-island li + li {
+  margin-top: 0;
+}
+
 /* The heading scale, set against an answer's 15 px body: h1 and h2 19/26 with
    28 px above and 8 below, h3 16.5/24 with 20 and 6, h4 to h6 the body's own
    size and line in the muted ink with 16 and 4. A heading is never smaller

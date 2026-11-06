@@ -2,7 +2,8 @@
  * A Mate's picture ask (`picture-ask` fence) as its card: what the Mate set up, and its one press.
  * With Adobe Express on, the press opens the Express tab on it already set up, and the save goes
  * straight back to the Mate; anyone can answer with their own picture instead. Its progress is read
- * from the pictures the conversation holds, so a reload shows the same.
+ * from the conversation, so a reload shows the same: answered, or passed once the person wrote
+ * about something else, it shrinks to its title and one line, with nothing left to press.
  */
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { createContext, type ReactNode, use, useMemo, useRef, useState } from "react";
@@ -13,7 +14,7 @@ import { useRightPanelStore } from "../../rightPanelStore";
 import { useExpressOpen } from "../express/expressOpen";
 import { useExpressGate } from "../express/useExpressGate";
 import { Button } from "../ui/button";
-import { AskCard, AskFacts, AskFooter, type AskStep, AskSteps } from "./AskCard";
+import { AskCard, AskFooter, type AskStep, AskSteps } from "./AskCard";
 import type { AskState } from "./ask.logic";
 import {
   PICTURE_CANVASES,
@@ -25,11 +26,14 @@ import {
   pictureAnswersOf,
   pictureAnswerWords,
   pictureAskSteps,
+  pictureAsksPassed,
 } from "./pictureAsk.logic";
 
 export interface PictureAskScope {
   /** The steps each ask has had answered (`pictureAnswersOf`). */
   readonly answers: ReadonlyMap<string, ReadonlySet<number>>;
+  /** The asks the person moved past (`pictureAsksPassed`). */
+  readonly passed: ReadonlySet<string>;
   /** Sends an answer's pictures with its words; `null` where the conversation takes none. */
   readonly answer: ((files: File[], words: string) => void) | null;
   readonly mate: string | undefined;
@@ -37,30 +41,34 @@ export interface PictureAskScope {
 
 export const PictureAskContext = createContext<PictureAskScope>({
   answers: new Map(),
+  passed: new Set(),
   answer: null,
   mate: undefined,
 });
 
 const NO_STEPS: ReadonlySet<number> = new Set();
 const NO_ANSWERS: ReadonlyMap<string, ReadonlySet<number>> = new Map();
+const NO_KEYS: ReadonlySet<string> = new Set();
 
 /**
- * The conversation's answered picture ask steps. The value changes when an answer does, never on
- * each word a Mate writes, so the cards draw only then.
+ * The conversation's picture asks as their cards read them: the steps answered and the asks
+ * passed. The values change when one of those does, never on each word a Mate writes, so the
+ * cards draw only then.
  */
-export function usePictureAnswers(
-  messages: ReadonlyArray<ChatMessage> | undefined,
-): ReadonlyMap<string, ReadonlySet<number>> {
+export function usePictureAsks(messages: ReadonlyArray<ChatMessage> | undefined): {
+  readonly answers: ReadonlyMap<string, ReadonlySet<number>>;
+  readonly passed: ReadonlySet<string>;
+} {
   const answers = useMemo(() => pictureAnswersOf(messages ?? []), [messages]);
-  const identity = [...answers]
-    .map(([key, steps]) => `${key}:${[...steps].toSorted((a, b) => a - b).join(",")}`)
-    .join(";");
-  const [held, hold] = useState({ identity: "", answers: NO_ANSWERS });
-  if (identity !== held.identity) hold({ identity, answers });
-  return identity === held.identity ? held.answers : answers;
+  const passed = useMemo(() => pictureAsksPassed(messages ?? []), [messages]);
+  const identity = [
+    [...answers].map(([key, steps]) => `${key}:${[...steps].toSorted((a, b) => a - b).join(",")}`),
+    [...passed].toSorted(),
+  ].join("|");
+  const [held, hold] = useState({ identity: "", answers: NO_ANSWERS, passed: NO_KEYS });
+  if (identity !== held.identity) hold({ identity, answers, passed });
+  return identity === held.identity ? held : { answers, passed };
 }
-/** A picture beside its line: 40 px at twice the pixels. */
-const THUMB = { width: 80, height: 80 } as const;
 
 /** A fence's card once its words are whole; words that set up no ask stay the code they are. */
 export function PictureAskFence({
@@ -78,7 +86,12 @@ export function PictureAskFence({
   // Half-written JSON is nothing to read: the card appears once the Mate finished it.
   if (isStreaming) return null;
   if (ask === null || threadRef === undefined) return children;
-  return <PictureAskCard ask={ask} threadRef={threadRef} />;
+  return (
+    // The card sits in an answer's words; it keeps its own rhythm, not the answer's paragraphs.
+    <div className="chat-markdown-island my-4 max-w-[34rem]">
+      <PictureAskCard ask={ask} threadRef={threadRef} />
+    </div>
+  );
 }
 
 function PictureAskCard({
@@ -88,7 +101,7 @@ function PictureAskCard({
   readonly ask: PictureAsk;
   readonly threadRef: ScopedThreadRef;
 }) {
-  const { answers, answer, mate } = use(PictureAskContext);
+  const { answers, passed, answer, mate } = use(PictureAskContext);
   const express = useExpressGate() === "on";
   const working = useExpressOpen((state) => state.working);
   const upload = useRef<HTMLInputElement>(null);
@@ -108,22 +121,24 @@ function PictureAskCard({
           words: steps > 1 ? `${steps} pictures sent to ${name}` : `Sent to ${name}`,
           told: null,
         }
-      : working?.key === ask.key
-        ? {
-            kind: "working",
-            words: `Finish in Adobe Express, then press Use for ${name}.`,
-            pressed: null,
-          }
-        : { kind: "waiting" };
-  const ownPicture = answer === null || next === undefined ? null : next;
-  const main =
-    next === undefined
-      ? null
-      : express
-        ? { label: expressPress(ask, answered.size), onPress: () => open(next) }
-        : ownPicture === null
-          ? null
-          : { label: "Upload a picture", onPress: () => upload.current?.click() };
+      : passed.has(ask.key)
+        ? { kind: "replaced", words: "Not answered" }
+        : working?.key === ask.key
+          ? {
+              kind: "working",
+              words: `Finish in Adobe Express, then press Use for ${name}.`,
+              pressed: null,
+            }
+          : { kind: "waiting" };
+  const live = state.kind === "waiting" || state.kind === "working";
+  const ownPicture = live && answer !== null && next !== undefined ? next : null;
+  const main = !live
+    ? null
+    : express
+      ? { label: expressPress(ask, answered.size), onPress: () => open(next!) }
+      : ownPicture === null
+        ? null
+        : { label: "Upload a picture", onPress: () => upload.current?.click() };
 
   return (
     <AskCard
@@ -163,10 +178,12 @@ function PictureAskCard({
       kind="picture"
       state={state.kind}
       title={ask.title}
-      where={{ scope: "mate", detail: ask.target ?? null }}
-      why={ask.why === undefined ? null : { who: name, words: ask.why }}
+      where={null}
+      why={live && ask.why !== undefined ? { who: name, words: ask.why } : null}
     >
-      <PictureAskBody answered={answered} ask={ask} next={next} threadRef={threadRef} />
+      {live ? (
+        <PictureAskBody answered={answered} ask={ask} next={next} threadRef={threadRef} />
+      ) : null}
     </AskCard>
   );
 }
@@ -195,25 +212,30 @@ function PictureAskBody({
   readonly next: number | undefined;
   readonly threadRef: ScopedThreadRef;
 }) {
-  const picture = (path: string) => (
-    <AskPicture environmentId={threadRef.environmentId} path={path} threadId={threadRef.threadId} />
+  const picture = (path: string, size: "sm" | "lg") => (
+    <AskPicture
+      environmentId={threadRef.environmentId}
+      path={path}
+      size={size}
+      threadId={threadRef.threadId}
+    />
   );
+  const goesTo = ask.target === undefined ? [] : [{ label: "Goes to", value: ask.target }];
   switch (ask.kind) {
     case "generate":
       return (
         <>
-          <p className="text-body text-foreground" data-picture-prompt>
-            {ask.prompt}
-          </p>
-          <AskFacts
+          <PictureWords label="Picture of" words={ask.prompt} />
+          <PictureFacts
+            picture={ask.styleLike === undefined ? null : picture(ask.styleLike, "lg")}
             rows={[
               { label: "Shape", value: ask.shape },
               ...(ask.styleLike === undefined
                 ? []
-                : [{ label: "Style like", value: fileNameOf(ask.styleLike) }]),
+                : [{ label: "Matches", value: fileNameOf(ask.styleLike) }]),
+              ...goesTo,
             ]}
           />
-          {ask.styleLike === undefined ? null : picture(ask.styleLike)}
         </>
       );
     case "edit": {
@@ -221,8 +243,8 @@ function PictureAskBody({
         id: `${step}`,
         label: (
           <span className="inline-flex min-w-0 items-center gap-2 align-middle">
-            {picture(path)}
-            <span className="truncate font-mono text-caption">{fileNameOf(path)}</span>
+            {picture(path, "sm")}
+            <span className="truncate">{fileNameOf(path)}</span>
           </span>
         ),
         state: answered.has(step) ? "done" : step === next ? "now" : "next",
@@ -230,7 +252,10 @@ function PictureAskBody({
       }));
       return (
         <>
-          <p className="text-caption text-muted-foreground">{PICTURE_TOOLS[ask.tool]}</p>
+          <PictureFacts
+            picture={null}
+            rows={[{ label: "Edit", value: PICTURE_TOOLS[ask.tool] }, ...goesTo]}
+          />
           <AskSteps steps={steps} />
         </>
       );
@@ -238,39 +263,90 @@ function PictureAskBody({
     case "design":
       return (
         <>
-          <AskFacts
+          <PictureFacts
+            picture={ask.startWith === undefined ? null : picture(ask.startWith, "lg")}
             rows={[
-              ...(ask.templates === undefined
-                ? []
-                : [{ label: "Templates", value: ask.templates }]),
               ...(ask.canvas === undefined
                 ? []
                 : [{ label: "Size", value: PICTURE_CANVASES[ask.canvas] }]),
               ...(ask.startWith === undefined
                 ? []
                 : [{ label: "Starts with", value: fileNameOf(ask.startWith) }]),
+              ...(ask.templates === undefined
+                ? []
+                : [{ label: "Templates", value: `“${ask.templates}”` }]),
+              ...goesTo,
             ]}
           />
-          {ask.startWith === undefined ? null : picture(ask.startWith)}
-          {ask.words === undefined ? null : <DesignWords words={ask.words} />}
+          {ask.words === undefined ? null : (
+            <PictureWords copy label="Words for the design" words={ask.words} />
+          )}
         </>
       );
   }
 }
 
-/** Words for the design, with a copy for pasting into it. */
-function DesignWords({ words }: { readonly words: string }) {
+/** What the ask is set up with, beside the picture it starts from. */
+function PictureFacts({
+  picture,
+  rows,
+}: {
+  readonly picture: ReactNode;
+  readonly rows: ReadonlyArray<{ readonly label: string; readonly value: string }>;
+}) {
+  if (rows.length === 0 && picture === null) return null;
   return (
     <div className="flex min-w-0 items-start gap-3">
-      <p className="min-w-0 flex-1 text-body">{words}</p>
-      <Button
-        onClick={() => void navigator.clipboard.writeText(words).catch(() => undefined)}
-        size="sm"
-        variant="secondary"
-      >
-        Copy
-      </Button>
+      {picture}
+      <dl className="grid min-w-0 flex-1 grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-caption">
+        {rows.map((row) => (
+          <div className="contents" key={row.label}>
+            <dt className="text-muted-foreground">{row.label}</dt>
+            <dd className="min-w-0 break-words text-foreground">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
+  );
+}
+
+/** Words the ask carries, under their name: the picture's description, or text to paste. */
+function PictureWords({
+  label,
+  words,
+  copy = false,
+}: {
+  readonly label: string;
+  readonly words: string;
+  readonly copy?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <figure className="grid min-w-0 gap-1">
+      <figcaption className="flex min-h-7 items-center justify-between gap-3 text-caption text-muted-foreground">
+        {label}
+        {copy ? (
+          <Button
+            onClick={() =>
+              void navigator.clipboard.writeText(words).then(
+                () => {
+                  setCopied(true);
+                  window.setTimeout(() => setCopied(false), 1500);
+                },
+                () => undefined,
+              )
+            }
+            size="sm"
+            variant="ghost"
+          >
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        ) : null}
+      </figcaption>
+      <div className="whitespace-pre-line border-foreground/15 border-s-2 ps-3 text-body text-foreground">
+        {words}
+      </div>
+    </figure>
   );
 }
 
@@ -279,18 +355,27 @@ function AskPicture({
   environmentId,
   threadId,
   path,
+  size,
 }: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly path: string;
+  readonly size: "sm" | "lg";
 }) {
   const { url } = useMateImage({
     environmentId,
     resource: { _tag: "media-file", threadId, path },
-    rendition: THUMB,
+    // Twice the pixels it is drawn at: 32 or 72 px.
+    rendition: size === "sm" ? { width: 64, height: 64 } : { width: 144, height: 144 },
   });
   return (
-    <span className="inline-block size-10 shrink-0 overflow-hidden rounded-md bg-muted">
+    <span
+      className={
+        size === "sm"
+          ? "inline-block size-8 shrink-0 overflow-hidden rounded-md bg-muted"
+          : "inline-block size-18 shrink-0 overflow-hidden rounded-lg bg-muted"
+      }
+    >
       {url === undefined ? null : (
         <img alt={fileNameOf(path)} className="size-full object-cover" src={url} />
       )}
