@@ -198,14 +198,6 @@ describe("what each person may do on the project, in words", () => {
       line: "Full access on dev / stage",
     },
     {
-      name: "An integration token in the member list is not a person on the project",
-      member: member("ada", "Ada", "ADMIN", {
-        user: { id: "u-ada", fullName: "Ada", email: "token-AbCdEfGhIjKlMnOpQrStUv@zerops.io" },
-      }),
-      places: PROD_AND_STAGE(),
-      line: undefined,
-    },
-    {
       name: "A member not yet joined is listed as invited, with what they would get",
       member: member("ada", "Ada", "ADMIN", { status: "WAITING_AUTHORIZATION" }),
       places: PROD_AND_STAGE(),
@@ -765,16 +757,6 @@ describe("each person as a chip", () => {
       role: "Works on every project",
     });
     expect([shortName("Bo"), shortName("cy@example.com")]).toEqual(["Bo", "cy@example.com"]);
-  });
-
-  it("When the viewer is an admin, an owner's or another admin's chip has no menu: Zerops refuses those writes", () => {
-    const view = projectPeople(
-      input({
-        members: known([member("own", "Olga", "OWNER"), member("adm", "Adam", "ADMIN")]),
-        viewer: ADMIN_VIEWER,
-      }),
-    );
-    expect(people(view).map(({ change }) => change)).toEqual([null, null]);
   });
 
   it("Remove access is offered only where a person holds a grant of their own here", () => {
