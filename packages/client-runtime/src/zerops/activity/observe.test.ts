@@ -50,11 +50,26 @@ describe("observe — the three-state observation layer", () => {
   // A card that never read says what the feed says, never what a timer guessed: catching up is
   // stale, however long; the first connect is still waiting.
   it.each([
-    { name: "while the feed first connects: waiting", feed: "connecting", kind: "observing" },
-    { name: "while the feed catches up: stale, after 5 s", feed: "catching-up", kind: "stale" },
-    { name: "while the feed catches up: stale, after 5 min", feed: "catching-up", kind: "stale" },
-  ] as const)("never read — $name", ({ feed, kind }) => {
-    const state = observe(baseInput({ feed }), NOW + 5 * 60_000);
+    {
+      name: "while the feed first connects: waiting",
+      feed: "connecting",
+      kind: "observing",
+      elapsedMs: 5 * 60_000,
+    },
+    {
+      name: "while the feed catches up: stale, after 5 s",
+      feed: "catching-up",
+      kind: "stale",
+      elapsedMs: 5_000,
+    },
+    {
+      name: "while the feed catches up: stale, after 5 min",
+      feed: "catching-up",
+      kind: "stale",
+      elapsedMs: 5 * 60_000,
+    },
+  ] as const)("never read — $name", ({ feed, kind, elapsedMs }) => {
+    const state = observe(baseInput({ feed }), NOW + elapsedMs);
     expect(state.kind).toBe(kind);
   });
 
