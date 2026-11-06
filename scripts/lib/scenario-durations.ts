@@ -48,7 +48,6 @@ export const scenarioDurations: Readonly<Record<string, number>> = {
   "apps/web/test/scenarios/areas/f-create/birth-chief.scenario.ts": 10_603,
   "apps/web/test/scenarios/areas/f-create/birth-tier-stage.scenario.ts": 10_061,
   "apps/web/test/scenarios/areas/f-create/birth-clean.scenario.ts": 9_900,
-  "apps/web/test/scenarios/areas/e-env/observation.scenario.ts": 9_616,
   "apps/web/test/scenarios/areas/b-menu/drafts.scenario.ts": 9_605,
   "apps/web/test/scenarios/areas/e-env/projects-layout.scenario.ts": 9_545,
   "apps/web/test/scenarios/areas/c-mate/first-send.scenario.ts": 9_193,
