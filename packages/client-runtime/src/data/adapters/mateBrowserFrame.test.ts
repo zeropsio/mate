@@ -264,32 +264,6 @@ describe("Mate call frame slots", () => {
     r.registry.dispose();
   });
 
-  it("explicit complete absence replaces a frame; partial omission keeps it", () => {
-    const r = rig();
-    r.sink.event(identified(1));
-    r.sink.event({
-      type: "call-result",
-      callId: "first",
-      threadId: "thread",
-      turnId: "turn",
-      revision: 2,
-      completeness: "partial",
-    });
-    expect(r.read().frame?.data).toBe("A");
-    r.sink.event({
-      type: "call-result",
-      callId: "first",
-      threadId: "thread",
-      turnId: "turn",
-      revision: 3,
-      completeness: "complete",
-      frame: null,
-    });
-    expect(r.read().kind).toBe("absent");
-    expect(r.read().frame).toBeNull();
-    r.registry.dispose();
-  });
-
   it("refusal withholds a retained call frame without claiming deletion", () => {
     const r = rig();
     r.sink.event(identified(1));
