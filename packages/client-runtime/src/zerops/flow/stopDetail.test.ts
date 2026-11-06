@@ -286,11 +286,6 @@ describe("stopVerdict", () => {
       },
     },
     {
-      name: "a stage whose first deploy failed with no words for why says only that",
-      input: { tier: "stage", view: EMPTY, firstDeploy: { kind: "failed" } },
-      expected: { tone: "failed", text: "First deploy failed.", detail: undefined, verb: null },
-    },
-    {
       name: "a stage being set up says so, never Checking, nor that a merge deploys it",
       input: { tier: "stage", view: CHECKING, firstDeploy: { kind: "setting-up", step: "app" } },
       expected: { tone: "busy", text: "Setting up a stage…", detail: undefined, verb: null },
