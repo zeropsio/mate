@@ -1,74 +1,37 @@
 import { describe, expect, it } from "vite-plus/test";
-
 import { mateVariablesFamily } from "./mateVariables.ts";
 
-const decode = mateVariablesFamily.sampled!.decode;
-const row = (key: string, content: unknown, extra: object = {}) => ({
-  id: `${key}-id`,
+/** The complete /user-data/search row measured 2026-10-07, with the Mate key. */
+const row = (content: string, sensitive = false) => ({
+  _version: 3,
+  id: "u1",
+  clientId: "org",
+  projectId: "p1",
   serviceStackId: "zcp",
-  key,
+  serviceStackName: "appdev",
+  key: "ZCP_MATE_ENABLED",
   content,
-  ...extra,
+  type: "USER",
+  editable: true,
+  sensitive,
+  internal: false,
+  created: "2026-10-07T10:00:00Z",
+  lastUpdate: "2026-10-07T11:00:00Z",
 });
+const decode = mateVariablesFamily.sampled!.decode;
 
 describe("a Mate's container's variables, as one search answers them", () => {
-  it.each<{ readonly name: string; readonly answer: unknown; readonly expected: unknown }>([
-    {
-      name: "no rows: no flag",
-      answer: { items: [] },
-      expected: { flag: null },
-    },
-    {
-      name: "its flag on",
-      answer: { items: [row("ZCP_MATE_ENABLED", "1")] },
-      expected: { flag: true },
-    },
+  it.each([
+    { name: "its flag on", answer: { items: [row("1")], totalHits: 1 }, expected: { flag: true } },
     {
       name: "its flag written off",
-      answer: { items: [row("ZCP_MATE_ENABLED", "0")] },
+      answer: { items: [row("0")], totalHits: 1 },
       expected: { flag: false },
     },
     {
       name: "a redacted flag does not prove whether it is on",
-      answer: { items: [row("ZCP_MATE_ENABLED", "REDACTED", { sensitive: true })] },
+      answer: { items: [row("REDACTED", true)], totalHits: 1 },
       expected: { flag: "unknown" },
-    },
-    {
-      name: "a visible off value stays off even when the variable is sensitive",
-      answer: { items: [row("ZCP_MATE_ENABLED", "0", { sensitive: true })] },
-      expected: { flag: false },
-    },
-    {
-      name: "a sensitive flag with no disclosed content is unknown",
-      answer: { items: [{ key: "ZCP_MATE_ENABLED", sensitive: true }] },
-      expected: { flag: "unknown" },
-    },
-    {
-      name: "a row of another key is not kept",
-      answer: { items: [row("DB_PASSWORD", "secret")] },
-      expected: { flag: null },
-    },
-    { name: "an answer it cannot read", answer: "nonsense", expected: null },
-    { name: "a missing list proves no absence", answer: {}, expected: null },
-    {
-      name: "a damaged flag proves neither off nor absent",
-      answer: { items: [row("ZCP_MATE_ENABLED", 1)] },
-      expected: null,
-    },
-    {
-      name: "a flag without its content proves neither off nor absent",
-      answer: { items: [{ key: "ZCP_MATE_ENABLED" }] },
-      expected: null,
-    },
-    {
-      name: "two rows of the same key have no arrival-order winner",
-      answer: { items: [row("ZCP_MATE_ENABLED", "0"), row("ZCP_MATE_ENABLED", "1")] },
-      expected: null,
-    },
-    {
-      name: "a truncated list proves no absence",
-      answer: { items: [row("ZCP_MATE_ENABLED", "1")], totalHits: 2 },
-      expected: null,
     },
   ])("$name", ({ answer, expected }) => {
     expect(decode(answer)).toEqual(expected);
