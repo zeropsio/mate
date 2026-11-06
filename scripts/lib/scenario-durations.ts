@@ -28,7 +28,6 @@ export const scenarioDurations: Readonly<Record<string, number>> = {
   "apps/web/test/scenarios/areas/b-menu/liveness.scenario.ts": 22_636,
   "apps/web/test/scenarios/areas/b-menu/reload.scenario.ts": 22_205,
   "apps/web/test/scenarios/areas/b-menu/usageStates.scenario.ts": 20_423,
-  "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts": 20_331,
   "apps/web/test/scenarios/areas/c-mate/overview-reload.scenario.ts": 19_947,
   "apps/web/test/scenarios/areas/c-mate/recovery.scenario.ts": 19_549,
   "apps/web/test/scenarios/areas/b-menu/usage.scenario.ts": 18_945,
