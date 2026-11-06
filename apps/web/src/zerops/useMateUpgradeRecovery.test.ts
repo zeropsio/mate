@@ -28,6 +28,7 @@ const mock = vi.hoisted(() => ({
   data: {},
   progress: { stage: "accepted", operationId: "proc-restart" } as OperationProgress,
   restart: vi.fn(),
+  submit: vi.fn(),
   reconnect: vi.fn(),
   /** The container's initAt read before the verb. */
   readInitAt: vi.fn(),
@@ -39,13 +40,7 @@ const mock = vi.hoisted(() => ({
 }));
 
 vi.mock("./accountOperations", () => ({
-  useAccountOperations: () => ({
-    submit: async (...args: unknown[]) => {
-      const answer = await mock.restart(...args);
-      mock.progress = answer.progress;
-      return answer;
-    },
-  }),
+  useAccountOperations: () => ({ submit: mock.submit }),
 }));
 vi.mock("./ZeropsAccountData", () => ({
   useAccountData: () => ({ orgId: "org-1", data: mock.data }),
@@ -93,13 +88,23 @@ function render() {
   return recovery;
 }
 
+/** Wait for the init read and the submitted operation the hook is following. */
+async function confirmRestart() {
+  render().confirm();
+  const read = mock.readInitAt.mock.results[0];
+  expect(read?.type).toBe("return");
+  await read?.value;
+  // The hook already awaits this submission before the init-read continuation reaches the test.
+  const submission = mock.submit.mock.results[0];
+  expect(submission?.type).toBe("return");
+  await submission?.value;
+}
+
 /** Asks for the restart and lets the platform accept it. */
 async function restart() {
-  let recovery = render();
-  recovery.request();
-  recovery = render();
-  recovery.confirm();
-  await vi.waitFor(() => expect(mock.intents).toHaveLength(1));
+  render().request();
+  await confirmRestart();
+  expect(mock.intents).toHaveLength(1);
   return render();
 }
 
@@ -112,6 +117,11 @@ beforeEach(() => {
     requestId: "r1",
     evidence: null,
     progress: { stage: "accepted", operationId: "proc-restart" },
+  });
+  mock.submit.mockReset().mockImplementation(async (...args: unknown[]) => {
+    const answer = await mock.restart(...args);
+    mock.progress = answer.progress;
+    return answer;
   });
   mock.reconnect.mockReset();
   mock.readInitAt.mockReset().mockResolvedValue(INIT_AT);
@@ -189,8 +199,8 @@ describe("useMateUpgradeRecovery", () => {
     });
 
     render().request();
-    render().confirm();
-    await vi.waitFor(() => expect(render().state).toBe("failed"));
+    await confirmRestart();
+    expect(render().state).toBe("failed");
 
     expect(render().error).toBe("Your role in this project doesn't allow this.");
     expect(mock.intents).toEqual([]);
@@ -204,8 +214,8 @@ describe("useMateUpgradeRecovery", () => {
     });
 
     render().request();
-    render().confirm();
-    await vi.waitFor(() => expect(render().state).toBe("failed"));
+    await confirmRestart();
+    expect(render().state).toBe("failed");
 
     expect(render().error).toBe("Service stack is failed.");
     expect(mock.intents).toEqual([]);
@@ -219,8 +229,8 @@ it("a refused restart survives surface remount through its operation identity", 
     progress: { stage: "refused", reason: "No restart" },
   });
   render().request();
-  render().confirm();
-  await vi.waitFor(() => expect(render().state).toBe("failed"));
+  await confirmRestart();
+  expect(render().state).toBe("failed");
   reactHookHarness.reset();
   render();
   expect(render()).toMatchObject({ state: "failed", error: "No restart" });
@@ -234,8 +244,8 @@ it("a lost acceptance answer is unresolved and never installs a guessed restart 
     progress: { stage: "uncertain", next: "ask-owner-again" },
   });
   render().request();
-  render().confirm();
-  await vi.waitFor(() => expect(render().state).toBe("unresolved"));
+  await confirmRestart();
+  expect(render().state).toBe("unresolved");
   expect(mock.intents).toEqual([]);
   reactHookHarness.reset();
   render();
