@@ -102,18 +102,9 @@ export const organizations = Effect.fn("signin.organizations")(function* (s: Sce
   yield* s.given.project("Ada", { mate: true, app: "Shop" });
 });
 
-export const sessionEnds = Effect.fn("signin.sessionEnds")(function* (
-  s: Scenario,
-  fault: "outage" | "expiry" | "refusal",
-) {
+export const sessionEnds = Effect.fn("signin.sessionEnds")(function* (s: Scenario) {
   yield* Effect.promise(() => s.hq.ready());
-  yield* Effect.promise(() => endSessionCheck(s.drivers, [...s.hq.links.values()], fault));
-});
-
-export const retryHq = Effect.fn("signin.retryHq")(function* (s: Scenario) {
-  yield* Effect.promise(() =>
-    s.page.locator('button[data-zerops-surface="sidebar-hq-outage"]').click(),
-  );
+  yield* Effect.promise(() => endSessionCheck(s.drivers));
 });
 
 export function unchangedHandovers(s: Scenario) {

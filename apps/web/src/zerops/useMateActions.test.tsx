@@ -6,12 +6,17 @@
  * Mate's (D3).
  */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import { ZeropsApiClient, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import {
   makeAccountStore,
   creationPressStoreAtom,
   makeOperations,
   makeHqExecutor,
+  makeZeropsExecutor,
+  accountReadsAtom,
+  historyScope,
+  projectsScope,
+  sharedBirthsAtom,
   operationProgress,
   runToEnd,
   type AccountStore,
@@ -20,18 +25,21 @@ import {
   type Projection,
   shownMateVisibilitiesAtom,
 } from "@t3tools/client-runtime/data";
+import { liveProjects, membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 import { Atom } from "effect/reactivity";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { HqMateOfferStates, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/reactivity";
-import { act } from "react";
+import { act, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Menu } from "../components/ui/menu";
 import { MateMenuItems } from "../components/zerops/SidebarMateMenu";
+import { SharedBirthStage } from "../components/zerops/ZeropsMateComingPage";
+import { SidebarZeropsTree } from "../components/zerops/SidebarZeropsTree";
 import { sidebarMateVerbs } from "./useSidebarMateMenus";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
@@ -43,6 +51,7 @@ import {
   openAccountLifetime,
 } from "./accountLifetime";
 import { useMateActions, type MateActions } from "./useMateActions";
+import { menuRowsAtom } from "./menuRows";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
@@ -101,6 +110,8 @@ const mock = vi.hoisted(() => ({
   faceRegistry: null as AtomRegistry.AtomRegistry | null,
   faceOperations: null as Operations | null,
   faceRun: null as RunToEnd | null,
+  deleteRun: null as RunToEnd | null,
+  liveBirths: false,
   /** HQ's move of a project, and its creation of an application a Mate is moved into. */
   moveProject: vi.fn(),
   moveRemainders: new Map<
@@ -162,6 +173,8 @@ const mock = vi.hoisted(() => ({
       readonly onOpenChange: (open: boolean) => void;
       readonly onConfirm: (alsoApplication?: boolean) => void;
       readonly error: string | null;
+      readonly name: string;
+      readonly words: { readonly label: string; readonly submit: string };
       readonly cleanup?: boolean;
       readonly application?: { readonly name: string };
     } | null,
@@ -196,8 +209,12 @@ const mock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../state/entities", () => ({ useThreadShells: () => mock.threads }));
-vi.mock("./useHqOffers", () => ({
+vi.mock("../state/entities", async (original) => ({
+  ...(await original<typeof import("../state/entities")>()),
+  useThreadShells: () => mock.threads,
+}));
+vi.mock("./useHqOffers", async (original) => ({
+  ...(await original<typeof import("./useHqOffers")>()),
   useMateOffers: () => mock.mateOffers,
   // HQ offers writing the structure to the org's owners and admins (`create_app`).
   useOrgOffers: () => () =>
@@ -205,17 +222,21 @@ vi.mock("./useHqOffers", () => ({
       ? { kind: "allowed" }
       : { kind: "refused", reason: "not_structure_writer" },
 }));
-vi.mock("./ZeropsAccountData", () => ({
+vi.mock("./ZeropsAccountData", async (original) => ({
+  ...(await original<typeof import("./ZeropsAccountData")>()),
   useProjection: (
     projection: Projection<unknown, unknown>,
     key: unknown,
     fallback: Atom.Atom<unknown>,
   ) => {
     const value = useAtomValue(
-      projection.name === "faceAction" && key !== null && mock.faceStore !== null
+      (mock.liveBirths || projection.name === "faceAction") &&
+        key !== null &&
+        mock.faceStore !== null
         ? mock.faceStore.data.project(projection, key)
         : fallback,
     );
+    if (mock.liveBirths) return value;
     if (projection.name === "faceAction") return value;
     if (projection.name === "organizationMembers") return key === null ? value : mock.members;
     return {
@@ -223,7 +244,7 @@ vi.mock("./ZeropsAccountData", () => ({
       deletions: [],
     };
   },
-  useAccountOrgId: () => null,
+  useAccountOrgId: () => (mock.liveBirths ? mock.organizationId : null),
   useDetailDemand: (family: string, _listing: unknown, ownerId: string | null) => {
     if (ownerId !== null) mock.demanded.push(`${family}:${ownerId}`);
   },
@@ -238,15 +259,33 @@ vi.mock("./ZeropsAccountData", () => ({
     },
   }),
 }));
-vi.mock("./deleteProject", () => ({
+vi.mock("./deleteProject", async (original) => ({
+  ...(await original<typeof import("./deleteProject")>()),
   useDeleteProject: () => mock.deleteProject,
 }));
-vi.mock("./useMenuMateReadings", () => ({ useMateComingOf: () => () => mock.coming }));
-vi.mock("./sharedBirths", async (original) => ({
-  ...(await original<typeof import("./sharedBirths")>()),
-  useSharedBirths: () => mock.births,
+vi.mock("./useMenuMateReadings", async (original) => ({
+  ...(await original<typeof import("./useMenuMateReadings")>()),
+  useMateComingOf: () => () => mock.coming,
 }));
-vi.mock("./useBirthActions", () => ({
+vi.mock("./useNowMs", async (original) => {
+  const actual = await original<typeof import("./useNowMs")>();
+  return {
+    ...actual,
+    useNowMs: () => (mock.liveBirths ? 0 : actual.useNowMs()),
+    useSecondsNowMs: (active: boolean) => (mock.liveBirths ? 0 : actual.useSecondsNowMs(active)),
+    useWakeAt: (deadlines: ReadonlyArray<number>) =>
+      mock.liveBirths ? 0 : actual.useWakeAt(deadlines),
+  };
+});
+vi.mock("./sharedBirths", async (original) => {
+  const actual = await original<typeof import("./sharedBirths")>();
+  return {
+    ...actual,
+    useSharedBirths: () => (mock.liveBirths ? actual.useSharedBirths() : mock.births),
+  };
+});
+vi.mock("./useBirthActions", async (original) => ({
+  ...(await original<typeof import("./useBirthActions")>()),
   useBirthActions: () => ({ proceed: mock.proceedBirth, deleteBirthOnly: mock.deleteBirthOnly }),
 }));
 vi.mock("./MateDeployConfirmation", () => ({
@@ -255,10 +294,12 @@ vi.mock("./MateDeployConfirmation", () => ({
     return null;
   },
 }));
-vi.mock("./mateRestart", () => ({
+vi.mock("./mateRestart", async (original) => ({
+  ...(await original<typeof import("./mateRestart")>()),
   useRestartMate: () => mock.restartContainer,
 }));
-vi.mock("./zeropsContainers", () => ({
+vi.mock("./zeropsContainers", async (original) => ({
+  ...(await original<typeof import("./zeropsContainers")>()),
   readContainerInitAt: async () => null,
   intendContainer: () => {},
 }));
@@ -269,17 +310,20 @@ vi.mock("../components/zerops/ZeropsRestartMateDialog", () => ({
   },
 }));
 
-vi.mock("./accountEnvironments", () => ({
+vi.mock("./accountEnvironments", async (original) => ({
+  ...(await original<typeof import("./accountEnvironments")>()),
   currentAccountEnvironments: () => ({ setDeleting: mock.setDeleting }),
 }));
 
-vi.mock("./accountInvalidations", () => ({
+vi.mock("./accountInvalidations", async (original) => ({
+  ...(await original<typeof import("./accountInvalidations")>()),
   invalidateZerops: (invalidation: unknown) => {
     mock.invalidated.push(invalidation);
   },
 }));
 
-vi.mock("./ZeropsSessionProvider", () => ({
+vi.mock("./ZeropsSessionProvider", async (original) => ({
+  ...(await original<typeof import("./ZeropsSessionProvider")>()),
   useZeropsSession: () => ({
     activeOrganization: {
       id: mock.organizationId,
@@ -298,7 +342,8 @@ vi.mock("./ZeropsSessionProvider", () => ({
   }),
 }));
 // The account's operations: a rename Zerops refuses is said with its reason.
-vi.mock("./accountOperations", () => ({
+vi.mock("./accountOperations", async (original) => ({
+  ...(await original<typeof import("./accountOperations")>()),
   useAccountOperations: () => ({
     submit: async (intent: { readonly kind: string }) => {
       if (intent.kind === "hand-over-mate") return mock.handOverMate(intent);
@@ -355,6 +400,15 @@ vi.mock("./accountOperations", () => ({
       },
       options: { requestId?: string; orgId?: string; unobserved?: string },
     ) => {
+      if (intent.kind === "delete-project" && mock.deleteRun !== null)
+        return mock.deleteRun(
+          { kind: "delete-project", orgId: intent.orgId!, projectId: intent.projectId! },
+          {
+            ...(options.requestId === undefined ? {} : { requestId: options.requestId }),
+            orgId: options.orgId!,
+            unobserved: options.unobserved!,
+          },
+        );
       if (intent.kind === "update-mate-face")
         return mock.faceRun!(
           {
@@ -419,32 +473,45 @@ vi.mock("./accountOperations", () => ({
   }),
 }));
 // The account's runtime: no platform command is answered here.
-vi.mock("./zeropsDataContext", () => ({
+vi.mock("./zeropsDataContext", async (original) => ({
+  ...(await original<typeof import("./zeropsDataContext")>()),
   useZeropsData: () => ({
     organizationRef: (organizationId: string) => ({ organizationId }),
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {},
   }),
 }));
-vi.mock("./useZeropsCandidates", () => ({
+vi.mock("./useZeropsCandidates", async (original) => ({
+  ...(await original<typeof import("./useZeropsCandidates")>()),
   useZeropsDetailCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),
   useTakenBotNames: () => ({ names: [], complete: true }),
 }));
-vi.mock("@tanstack/react-router", () => ({
+vi.mock("@tanstack/react-router", async (original) => ({
+  ...(await original<typeof import("@tanstack/react-router")>()),
   useRouter: () => ({ state: { matches: [] }, navigate: () => {} }),
+  useNavigate: () => () => undefined,
 }));
-vi.mock("./useOpenMate", () => ({ useOpenMate: () => () => {} }));
-vi.mock("../routes/-environmentTargets", () => ({
+vi.mock("./useOpenMate", async (original) => ({
+  ...(await original<typeof import("./useOpenMate")>()),
+  useOpenMate: () => () => {},
+}));
+vi.mock("../routes/-environmentTargets", async (original) => ({
+  ...(await original<typeof import("../routes/-environmentTargets")>()),
   useEnvironmentLinks: () => ({ linkTarget: () => undefined }),
 }));
-vi.mock("./usePressesElsewhere", () => ({
+vi.mock("./usePressesElsewhere", async (original) => ({
+  ...(await original<typeof import("./usePressesElsewhere")>()),
   usePressesElsewhere: () => (projectId: string) => mock.pressElsewhere(projectId),
 }));
-vi.mock("./inventoryContext", async () => {
+vi.mock("./inventoryContext", async (original) => {
   const { useDialogState } = await import("./useDialogState");
-  return { useProjectDialog: useDialogState };
+  return {
+    ...(await original<typeof import("./inventoryContext")>()),
+    useProjectDialog: useDialogState,
+  };
 });
-vi.mock("./accountHq", () => ({
+vi.mock("./accountHq", async (original) => ({
+  ...(await original<typeof import("./accountHq")>()),
   configuredHq: () => ({ projectId: "p-hq", address: "https://hq.example.test" }),
   accountHqApi: () => ({
     updateMate: mock.updateMate,
@@ -454,7 +521,10 @@ vi.mock("./accountHq", () => ({
     completeProjectDeletion: mock.completeProjectDeletion,
   }),
 }));
-vi.mock("./projectOrderPreference", () => ({ useProjectOrderOptions: () => ({ order: "name" }) }));
+vi.mock("./projectOrderPreference", async (original) => ({
+  ...(await original<typeof import("./projectOrderPreference")>()),
+  useProjectOrderOptions: () => ({ order: "name" }),
+}));
 vi.mock("../components/zerops/ZeropsDeleteMateDialog", () => ({
   ZeropsDeleteMateDialog: (props: NonNullable<typeof mock.deleteDialog.current>) => {
     mock.deleteDialog.current = props;
@@ -522,12 +592,22 @@ function Probe() {
   return <>{handed.dialogs}</>;
 }
 
+function SharedBirthProbe() {
+  const birth = useAtomValue(sharedBirthsAtom("user-ada")).open[0];
+  return birth === undefined ? null : <SharedBirthStage birth={birth} />;
+}
+
+const renderedText = (node: ReactTestInstance | string): string =>
+  typeof node === "string" ? node : node.children.map(renderedText).join("");
+
 const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
   openAccountLifetime("user-ada");
   appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
   mock.coming = undefined;
   mock.births = [];
+  mock.liveBirths = false;
+  mock.deleteRun = null;
   mock.proceedBirth.mockReset().mockResolvedValue("started");
   mock.deleteBirthOnly.mockReset().mockResolvedValue(undefined);
   mock.deployDialog = null;
@@ -588,13 +668,19 @@ afterEach(() => {
   closeAccountLifetime();
   appAtomRegistry.get(creationPressStoreAtom)?.close();
   appAtomRegistry.set(creationPressStoreAtom, null);
+  vi.unstubAllGlobals();
 });
 
 /** The hook mounted, over `registry` where the case seeds HQ's structure in one. */
-function mount(registry?: AtomRegistry.AtomRegistry): void {
+function mount(
+  registry?: AtomRegistry.AtomRegistry,
+  seed?: (store: AccountStore) => void,
+  element: ReactElement = <Probe />,
+): void {
   registry ??= AtomRegistry.make();
   mock.faceRegistry = registry;
   mock.faceStore = makeAccountStore(registry);
+  seed?.(mock.faceStore);
   const unused = () => Promise.reject(new Error("Unexpected HQ write"));
   mock.faceOperations = makeOperations({
     makeId: () => "unnamed-face",
@@ -640,11 +726,9 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
     mounted.push(
       create(
         registry === undefined ? (
-          <Probe />
+          element
         ) : (
-          <RegistryContext.Provider value={registry}>
-            <Probe />
-          </RegistryContext.Provider>
+          <RegistryContext.Provider value={registry}>{element}</RegistryContext.Provider>
         ),
       ),
     );
@@ -687,6 +771,240 @@ it("a bound shared birth offers Continue and Delete through the same Mate action
     );
   });
   expect(verbs(FEN).map((entry) => entry.id)).toEqual(["delete"]);
+});
+
+it("Remove cleans up only the failed creation's project", async () => {
+  const registry = AtomRegistry.make();
+  const noDom = Object.fromEntries(
+    ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
+  );
+  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
+  vi.stubGlobal("document", Object.assign(new EventTarget(), { activeElement: null, body: {} }));
+  for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
+  const orgId = "org-acme";
+  const projects = new Map([
+    ["Ada", { id: "Ada", name: "Shop - Ada", status: "ACTIVE", clientId: orgId }],
+    ["created-1", { id: "created-1", name: "Shop - Nova", status: "ACTIVE", clientId: orgId }],
+  ]);
+  mock.liveBirths = true;
+  mock.listing.current = {
+    state: "known",
+    value: [],
+    asOf: { ordinal: 1, atMs: 1_000 },
+    coverage: "complete",
+    freshness: { kind: "live" },
+  };
+  registry.set(zeropsSessionAtom, {
+    status: "signed-in",
+    organizationStatus: "selected",
+    activeOrganization: { organizationId: orgId, id: orgId },
+  } as never);
+  mount(
+    registry,
+    (store) => {
+      registry.set(accountReadsAtom, {
+        data: store.data,
+        orgId,
+        demandDetail: () => () => {},
+        renewHeld: () => {},
+      });
+      liveProjects(orgId, [...projects.values()]).forEach(store.dispatch);
+      membershipInputs("OWNER", true, 1, orgId).forEach(store.dispatch);
+      const history = historyScope(orgId, "created-1");
+      store.dispatch({
+        kind: "stream",
+        key: history,
+        now: 0,
+        event: { kind: "demand", demanded: true },
+      });
+      store.dispatch({ kind: "stream", key: history, now: 0, event: { kind: "attempt" } });
+      store.dispatch({ kind: "stream", key: history, now: 0, event: { kind: "handshake" } });
+      store.dispatch({ kind: "baseline-begin", scope: history, generation: 1 });
+      store.dispatch({
+        kind: "baseline-commit",
+        scope: history,
+        generation: 1,
+        via: "zerops-read",
+        members: ["created-1-creation"],
+        rows: [
+          {
+            family: "process",
+            id: "created-1-creation",
+            value: {
+              id: "created-1-creation",
+              projectId: "created-1",
+              serviceStackIds: [],
+              status: "FAILED",
+              actionName: "project.create",
+              created: "2026-11-05T10:00:00Z",
+              error: { code: "creationFailed", message: "Project capacity exhausted." },
+            },
+            revision: { kind: "zerops", version: 1 },
+          },
+        ],
+      });
+      store.dispatch({
+        kind: "stream",
+        key: history,
+        now: 0,
+        event: { kind: "baseline-committed" },
+      });
+      mountHqNavigation(
+        registry,
+        orgId,
+        {
+          structure: {
+            apps: [
+              {
+                id: "shop",
+                name: "Shop",
+                projects: [
+                  { projectId: "Ada", name: "Shop - Ada", kind: "mate", mate: { face: "" } },
+                ],
+                births: [
+                  {
+                    id: "birth",
+                    projectId: "created-1",
+                    face: "rose:seal",
+                    madeBy: "user-ada",
+                    intent: {
+                      projectName: "Shop - Nova",
+                      recipe: { kind: "none" },
+                      agents: ["codex"],
+                      standUp: false,
+                      automated: false,
+                      placement: { role: "dev", name: "Nova", chief: false },
+                      location: null,
+                      userRoles: [],
+                    },
+                    attempts: {},
+                  },
+                ],
+              },
+            ],
+            ungrouped: [],
+          },
+        },
+        store,
+      );
+    },
+    <SharedBirthProbe />,
+  );
+  const store = mock.faceStore!;
+  const calls: Array<{ method: string; path: string; status: number }> = [];
+  const client = new ZeropsApiClient({
+    baseUrl: "https://api.example.test",
+    fetch: async (url, init) => {
+      const method = init?.method ?? "GET";
+      const path = new URL(url).pathname;
+      const projectId = path.split("/").at(-1)!;
+      if (method !== "DELETE" || !projects.has(projectId))
+        throw new Error(`Unexpected ${method} ${path}`);
+      projects.delete(projectId);
+      const response = Response.json({
+        id: "proc-delete",
+        actionName: "project.delete",
+        status: "PENDING",
+      });
+      calls.push({ method, path, status: response.status });
+      store.dispatch({
+        kind: "membership",
+        scope: projectsScope(orgId),
+        generation: 1,
+        delta: { add: [], remove: [projectId] },
+      });
+      store.dispatch({
+        kind: "proven-deletion",
+        family: "project",
+        id: projectId,
+        evidence: "The fake platform completed deletion",
+      });
+      return response;
+    },
+  });
+  client.restoreSession({
+    accessToken: "test",
+    refreshToken: "test",
+    expiresIn: 432_000,
+    userId: "user-ada",
+  });
+  const executor = makeZeropsExecutor({
+    client,
+    hqApiOf: () => null,
+    viewerOf: () => ({ id: orgId, name: "Acme", membershipId: "member", roleCode: "OWNER" }),
+    active: () => true,
+    readDetail: async () => false,
+    store,
+    registry,
+    demandDetail: () => () => {},
+    revalidate: () => {},
+    nowMs: () => 0,
+    run: () => Promise.reject(new Error("Unexpected nested operation")),
+    makeId: () => "nested",
+  });
+  const operations = makeOperations({
+    store,
+    executors: { zerops: executor },
+    makeId: () => "delete",
+  });
+  const run = runToEnd({ operations, store, registry });
+  const completed = Promise.withResolvers<void>();
+  mock.deleteRun = async (intent, options) => {
+    try {
+      return await run(intent, options);
+    } catch (error) {
+      completed.reject(error);
+      throw error;
+    }
+  };
+  mock.completeProjectDeletion.mockImplementation(async () => completed.resolve());
+
+  expect(registry.get(sharedBirthsAtom("user-ada")).open).toMatchObject([
+    { id: "birth", projectId: "created-1", canDelete: true },
+  ]);
+  const stage = mounted.at(-1)!;
+  expect(renderedText(stage.root)).toContain("Project capacity exhausted.");
+  const deleteButton = stage.root.find(
+    (node) => node.type === "button" && renderedText(node) === "Delete",
+  );
+  act(() => {
+    deleteButton.props.onClick();
+  });
+  expect(mock.deleteDialog.current).toMatchObject({
+    name: "Nova",
+    words: { label: "Type Nova to confirm", submit: "Delete Nova" },
+  });
+  await act(async () => {
+    mock.deleteDialog.current!.onConfirm();
+  });
+
+  expect(mock.deleteDialog.current?.error ?? null).toBeNull();
+  expect(calls).toEqual([
+    { method: "DELETE", path: "/api/rest/public/project/created-1", status: 200 },
+  ]);
+  await act(async () => {
+    await completed.promise;
+  });
+  expect([...projects.keys()]).toEqual(["Ada"]);
+  const menu = registry.get(menuRowsAtom(orgId, [], { waitedOut: false, drawn: true }));
+  let sidebar: ReactTestRenderer | undefined;
+  act(() => {
+    sidebar = create(
+      <RegistryContext.Provider value={registry}>
+        <SidebarZeropsTree
+          candidates={menu.rows}
+          complete={menu.settled}
+          onSelect={() => {}}
+          onBrowseProjects={() => {}}
+        />
+      </RegistryContext.Provider>,
+    );
+  });
+  mounted.push(sidebar!);
+  const names = sidebar!.root.findAll(
+    (node) => node.props["data-zerops-surface"] === "sidebar-mate-name",
+  );
+  expect(names.map(renderedText).join(" ")).toContain("Ada");
 });
 
 function openFace(candidate: ZeropsCandidatePresentation): void {
