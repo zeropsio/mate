@@ -141,7 +141,7 @@ describe("selectKnownTerminalSessions", () => {
   });
 
   it("does not materialize unrelated raw thread identifiers", () => {
-    const metadata = [summary(" untrimmed-thread ", "terminal-1"), summary(threadA, "terminal-2")];
+    const metadata = [summary("   ", "terminal-1"), summary(threadA, "terminal-2")];
     expect(
       selectKnownTerminalSessions(metadata, environmentA, threadA).map(
         (session) => session.target.threadId,
