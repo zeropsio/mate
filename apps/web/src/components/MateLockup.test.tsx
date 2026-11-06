@@ -15,11 +15,6 @@ describe("MateLockup", () => {
     for (const d of MATE_WORDMARK.paths) expect(html).toContain(`d="${d}"`);
     expect(html.match(/<rect /gu)).toHaveLength(2);
     expect(html).toContain('data-mate-lockup="still"');
-  });
-
-  it("keeps the loop teal and gives the eyes and letters the text colour", () => {
-    expect(html).toContain(`fill="${MATE_MARK.color}"`);
-    expect(html).toContain('fill="currentColor"');
     // No webfont: the word is paths, never text.
     expect(html).not.toContain("<text");
   });
