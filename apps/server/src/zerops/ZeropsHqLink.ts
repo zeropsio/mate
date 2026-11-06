@@ -200,6 +200,7 @@ export interface ZeropsHqLinkOptions {
    */
   readonly ticket?: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
   readonly closeSession?: (sessionId: string) => Effect.Effect<void>;
+  readonly chiefOpener?: (userId: string | null | undefined) => Effect.Effect<void>;
   /** Whom the Mate's own access list names, latest first, then after each change (`access_report`). */
   readonly accessReports?: Stream.Stream<AccessReport>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
@@ -562,7 +563,8 @@ export const makeZeropsHqLink = (
             return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
           case "state":
             if (sentKey !== undefined) reportedKey = sentKey;
-            return SubscriptionRef.set(state, Option.some(frame.mate)).pipe(
+            return (options.chiefOpener?.(frame.mate.chiefOpenerUserId) ?? Effect.void).pipe(
+              Effect.andThen(SubscriptionRef.set(state, Option.some(frame.mate))),
               Effect.andThen(Ref.set(refusal, undefined)),
               Effect.andThen(Ref.set(automatedHere, frame.mate.automated === true)),
               Effect.andThen(options.mateChanges?.(frame.mate) ?? Effect.void),
@@ -919,6 +921,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         accessReports: access.reports,
         ticket: connections.ticket,
         closeSession: connections.closeSession,
+        chiefOpener: connections.chiefOpener,
         gitCredential: credential.write,
         observeCredential: observeCredential.write,
         signers: signIns.heard,
