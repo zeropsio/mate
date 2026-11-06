@@ -48,11 +48,18 @@ function messageEvent(threadId: ThreadId, id: string): Omit<OrchestrationEvent, 
 
 const layer = it.layer(
   OrchestrationEventStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+  { concurrent: false },
 );
+
+const clearEvents = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  yield* sql`DELETE FROM orchestration_events`;
+});
 
 layer("OrchestrationEventStore", (it) => {
   it.effect("stores json columns as strings and replays CLI-origin events", () =>
     Effect.gen(function* () {
+      yield* clearEvents;
       const eventStore = yield* OrchestrationEventStore;
       const sql = yield* SqlClient.SqlClient;
       const now = "2026-01-01T00:00:00.000Z";
@@ -109,6 +116,7 @@ layer("OrchestrationEventStore", (it) => {
 
   it.effect("fails with PersistenceDecodeError when stored json is invalid", () =>
     Effect.gen(function* () {
+      yield* clearEvents;
       const eventStore = yield* OrchestrationEventStore;
       const sql = yield* SqlClient.SqlClient;
       const now = "2026-01-01T00:00:00.000Z";
@@ -179,6 +187,7 @@ layer("OrchestrationEventStore", (it) => {
 
   it.effect("reads one aggregate through the captured head across pruned global gaps", () =>
     Effect.gen(function* () {
+      yield* clearEvents;
       const store = yield* OrchestrationEventStore;
       const sql = yield* SqlClient.SqlClient;
       const threadId = ThreadId.make("shared-stream-id");
@@ -223,6 +232,7 @@ layer("OrchestrationEventStore", (it) => {
 
   it.effect("bounds thread replay metadata and counts UTF-8 bytes without decoding payloads", () =>
     Effect.gen(function* () {
+      yield* clearEvents;
       const store = yield* OrchestrationEventStore;
       const sql = yield* SqlClient.SqlClient;
       const rows = yield* sql<{ readonly sequence: number }>`
@@ -277,6 +287,7 @@ layer("OrchestrationEventStore", (it) => {
 
   it.effect("keeps later pages below the captured head when new events are appended", () =>
     Effect.gen(function* () {
+      yield* clearEvents;
       const store = yield* OrchestrationEventStore;
       const threadId = ThreadId.make("paged-thread");
       const persisted = yield* Effect.forEach(
@@ -317,44 +328,54 @@ layer("OrchestrationEventStore", (it) => {
   );
 });
 
-it.effect.each(
-  Array.from(["all", "aggregate"] as const, (reader) => ({
-    title: `releases consumed pages during ${reader} replay`,
-    reader,
-  })),
-)("$title", ({ reader }) =>
+const retentionThreadId = ThreadId.make("retention");
+const retentionLayer = Layer.effectDiscard(
   Effect.gen(function* () {
     const store = yield* OrchestrationEventStore;
-    const threadId = ThreadId.make(`retention-${reader}`);
     yield* Effect.forEach(
       Array.from({ length: 1_501 }, (_, index) => index),
-      (index) => store.append(messageEvent(threadId, `retention-${reader}-${index}`)),
+      (index) => store.append(messageEvent(retentionThreadId, `retention-${index}`)),
       { discard: true },
     );
-    // oxlint-disable-next-line typescript/no-extraneous-class -- Identifies page markers for V8's heap query.
-    class ReplayPage {}
-    let count = 0;
-    const replay =
-      reader === "all"
-        ? store.readAll()
-        : store.readAggregateRange({
-            aggregateKind: "thread",
-            aggregateId: threadId,
-            fromSequenceExclusive: 0,
-            toSequenceInclusive: 1_501,
-            limit: 1_501,
-          });
-    yield* Stream.runForEach(replay, (event) =>
-      Effect.sync(() => {
-        assert.equal(event.sequence, count + 1);
-        if (count % 500 === 0) {
-          // Count live page markers after full GC, without timing or heap-size thresholds.
-          Object.assign(event, { replayPage: new ReplayPage() });
-          assert.isAtMost(NodeV8.queryObjects(ReplayPage, { format: "count" }), 1);
-        }
-        count++;
-      }),
-    );
-    assert.equal(count, 1_501);
-  }).pipe(Effect.provide(OrchestrationEventStoreLive.pipe(Layer.provide(SqlitePersistenceMemory)))),
+  }),
+).pipe(
+  Layer.provideMerge(OrchestrationEventStoreLive.pipe(Layer.provideMerge(SqlitePersistenceMemory))),
 );
+
+it.layer(retentionLayer, { concurrent: false })("event replay retention", (it) => {
+  it.effect.each(
+    Array.from(["all", "aggregate"] as const, (reader) => ({
+      title: `releases consumed pages during ${reader} replay`,
+      reader,
+    })),
+  )("$title", ({ reader }) =>
+    Effect.gen(function* () {
+      const store = yield* OrchestrationEventStore;
+      // oxlint-disable-next-line typescript/no-extraneous-class -- Identifies page markers for V8's heap query.
+      class ReplayPage {}
+      let count = 0;
+      const replay =
+        reader === "all"
+          ? store.readAll()
+          : store.readAggregateRange({
+              aggregateKind: "thread",
+              aggregateId: retentionThreadId,
+              fromSequenceExclusive: 0,
+              toSequenceInclusive: 1_501,
+              limit: 1_501,
+            });
+      yield* Stream.runForEach(replay, (event) =>
+        Effect.sync(() => {
+          assert.equal(event.sequence, count + 1);
+          if (count % 500 === 0) {
+            // Count live page markers after full GC, without timing or heap-size thresholds.
+            Object.assign(event, { replayPage: new ReplayPage() });
+            assert.isAtMost(NodeV8.queryObjects(ReplayPage, { format: "count" }), 1);
+          }
+          count++;
+        }),
+      );
+      assert.equal(count, 1_501);
+    }),
+  );
+});
