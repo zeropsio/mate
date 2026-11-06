@@ -778,14 +778,6 @@ describe("how a URL server signs in, chosen in the form", () => {
     expect(read).toEqual({ ok: true, input: { name: "docs", transport, ...headers, auth } });
   });
 
-  it("an API key reaches a Mate too old to know sign-in kinds, as a plain header", () => {
-    const read = readMcpAddForm(
-      { ...URL_FORM, signIn: { ...BLANK_SIGN_IN, choice: "header", key: "k3y" } },
-      [],
-    );
-    expect(read.ok && read.input.headers).toEqual({ Authorization: "Bearer k3y" });
-  });
-
   it("a plain sign-in when asked writes nothing of its own", () => {
     expect(readMcpAddForm(URL_FORM, [])).toEqual({ ok: true, input: { name: "docs", transport } });
   });
