@@ -179,6 +179,14 @@ export function runStateSmoke(root: string, args: ReadonlyArray<string>): number
   if (part.files.length)
     stages.push({ files: part.files.map((file) => NodePath.join(root, file)) });
 
+  const report = process.env.MATE_SIGNAL_REPORT
+    ? NodePath.resolve(root, process.env.MATE_SIGNAL_REPORT)
+    : undefined;
+  if (report) {
+    NodeFS.mkdirSync(NodePath.dirname(report), { recursive: true });
+    NodeFS.rmSync(`${report}.progress.jsonl`, { force: true });
+    NodeFS.rmSync(`${report}.errors.json`, { force: true });
+  }
   for (const { files, selection } of stages) {
     const result = NodeChildProcess.spawnSync(
       "vp",
@@ -194,12 +202,14 @@ export function runStateSmoke(root: string, args: ReadonlyArray<string>): number
         "--allowOnly=false",
         "--reporter=default",
         `--reporter=../../scripts/${selection ? "gate-smoke" : "chat-gate"}-reporter.ts`,
+        ...(report ? ["--reporter=../../scripts/signal-reporter.ts"] : []),
       ],
       {
         cwd: NodePath.join(root, "apps/web"),
         stdio: "inherit",
         env: {
           ...process.env,
+          MATE_SIGNAL_REPORT: report,
           VITEST_MAX_WORKERS: undefined,
           MATE_GATE_SMOKE_CASES: JSON.stringify(smoke),
         },

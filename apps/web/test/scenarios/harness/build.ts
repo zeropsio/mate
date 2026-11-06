@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- build the real web bundle with the repository's CLI.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
 import * as NodeURL from "node:url";
 import { cachedBundle } from "./buildCache.ts";
 import type { TestProject } from "vite-plus/test/node";
@@ -56,9 +57,15 @@ export async function buildScenarioBundle(bundle: ScenarioBundle = "handover") {
       child.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(log))));
     });
   });
+  const durationMs = performance.now() - started;
   console.log(
-    `scenario web (${bundle}): ${built ? "built" : "reused"} (${((performance.now() - started) / 1000).toFixed(2)}s)`,
+    `scenario web (${bundle}): ${built ? "built" : "reused"} (${(durationMs / 1000).toFixed(2)}s)`,
   );
+  if (process.env.MATE_SIGNAL_REPORT)
+    NodeFS.appendFileSync(
+      `${process.env.MATE_SIGNAL_REPORT}.progress.jsonl`,
+      JSON.stringify({ event: "phase", phase: "bundle", bundle, built, durationMs }) + "\n",
+    );
   return dist;
 }
 

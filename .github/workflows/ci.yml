@@ -790,6 +790,7 @@ jobs:
       # The bundle build reads it too: an external HQ changes the bundle's HQ origin.
       MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/conformance/scripts/test-hq.ts
       MATE_HQ_PREFLIGHT_SHA: ${{ needs.prepare.outputs.hq_ref }}
+      MATE_SIGNAL_REPORT: state-smoke-reports/${{ matrix.shard }}.json
     steps:
       - name: Require the mate-hq deploy key
         env:
@@ -866,6 +867,7 @@ jobs:
         env: *verified_lockfile
         run: |
           vp install --frozen-lockfile
+          echo "MATE_HQ_REVISION=$(git -C .. rev-parse HEAD)" >> "$GITHUB_ENV"
           ../scripts/ci-install-object-store.sh
           ../scripts/ci-install-postgres.sh
 
@@ -889,6 +891,15 @@ jobs:
         run: |
           vp run test:browser
           timeout --signal=TERM --kill-after=10s 10m node scripts/state-smoke.ts --selection "$MATE_STATE_SMOKE_SELECTION" --shard ${{ matrix.shard }}/${{ matrix.total }}
+
+      - name: Upload shard evidence
+        if: ${{ always() && hashFiles('state-smoke-reports/*.progress.jsonl') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: state-smoke-shard-${{ matrix.shard }}
+          path: state-smoke-reports/
+          if-no-files-found: error
+          retention-days: 30
 
   # Independent suites run concurrently; the existing Test context reports
   # their combined verdict without serializing package execution.

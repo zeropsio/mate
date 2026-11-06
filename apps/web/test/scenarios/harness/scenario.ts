@@ -41,7 +41,8 @@ import {
   sendConversationMessage,
   waitForConversation,
 } from "./browser.ts";
-import { trackSteps } from "./lastStep.ts";
+import { recordPhaseDuration, trackSteps } from "./lastStep.ts";
+import { scenarioMonotonicTime } from "./clientClock.ts";
 
 const decodeOverview = Schema.decodeUnknownEffect(MateOverview);
 const encodeLink = Schema.encodeEffect(MateLinkUp);
@@ -117,6 +118,15 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   extensions: ScenarioExtension[] = [],
   options: ScenarioOptions = {},
 ) {
+  const setupStarted = process.env.MATE_SIGNAL_REPORT ? scenarioMonotonicTime() : undefined;
+  let cleanupStarted: number | undefined;
+  if (setupStarted !== undefined)
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        if (cleanupStarted !== undefined)
+          recordPhaseDuration("scenarioCleanup", scenarioMonotonicTime() - cleanupStarted);
+      }),
+    );
   const cleanup: (() => Promise<void>)[] = [];
   yield* Effect.addFinalizer(() =>
     Effect.promise(async () => {
@@ -761,6 +771,14 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     const page = yield* Effect.promise(() => web.newPage(context));
     return tracked(actor(page, options.person ?? "owner"));
   });
+  if (setupStarted !== undefined) {
+    recordPhaseDuration("scenarioSetup", scenarioMonotonicTime() - setupStarted);
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        cleanupStarted = scenarioMonotonicTime();
+      }),
+    );
+  }
   // oxlint-disable-next-line unicorn/no-thenable -- the scenario keeps its `then` step, never awaited.
   return {
     ...tracked({ ...primary, given: { ...primary.given, browserActor: newActor } }),

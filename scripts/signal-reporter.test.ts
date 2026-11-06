@@ -51,7 +51,13 @@ function withProject(
         {
           cwd: directory,
           encoding: "utf8",
-          env: { ...plainRunnerEnv, MATE_SIGNAL_REPORT: output },
+          env: {
+            ...plainRunnerEnv,
+            MATE_SIGNAL_REPORT: output,
+            GITHUB_SHA: "a".repeat(40),
+            MATE_HQ_REVISION: "b".repeat(40),
+            EVID_TEST_SECRET: "example-secret-evid",
+          },
           stdio: "pipe",
           timeout: 30_000,
         },
@@ -62,6 +68,96 @@ function withProject(
     NodeFS.rmSync(directory, { recursive: true, force: true });
   }
 }
+
+it("a finished failed case keeps its first error, revisions and phase timings in incremental evidence", () =>
+  withProject(
+    `import * as Effect from ${JSON.stringify(NodePath.join(root, "apps/web/node_modules/effect/dist/Effect.js"))};
+     import { trackSteps } from ${JSON.stringify(NodePath.join(root, "apps/web/test/scenarios/harness/lastStep.ts"))};
+     const given = trackSteps('given', { ready: Effect.void });
+     const when = trackSteps('when', { act: Effect.void });
+     const then = trackSteps('then', { check: Effect.sync(() => expect('actual example-secret-evid').toBe('expected')) });
+     const assertion = trackSteps('assertion', { row: () => ({ appears: () => Effect.void }) });
+     it('reported failure', async () => {
+       await Effect.runPromise(given.ready);
+       await Effect.runPromise(when.act);
+       await Effect.runPromise(assertion.row().appears());
+       await Effect.runPromise(then.check);
+     });`,
+    (run, directory) => {
+      const result = run();
+      expect(result.status, result.stderr).toBe(1);
+      expect(
+        NodeFS.existsSync(`${result.output}.progress.jsonl`),
+        result.stdout + result.stderr + NodeFS.readFileSync(`${result.output}.vitest.json`, "utf8"),
+      ).toBe(true);
+      const events = NodeFS.readFileSync(`${result.output}.progress.jsonl`, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(events.find((event) => event.event === "start")).toMatchObject({
+        event: "start",
+        file: NodePath.join(directory, "case.test.ts"),
+        title: "reported failure",
+        sha: "a".repeat(40),
+        hqRevision: "b".repeat(40),
+      });
+      const finished = events.find((event) => event.event === "end");
+      expect(finished).toMatchObject({
+        status: "failed",
+        firstError: { message: expect.stringContaining("expected") },
+        timings: {
+          caseMs: expect.any(Number),
+          phases: {
+            given: expect.any(Number),
+            when: expect.any(Number),
+            assertion: expect.any(Number),
+          },
+        },
+      });
+      expect(finished.firstError.message).toContain("actual");
+      expect(JSON.stringify(finished.firstError)).not.toContain("example-secret-evid");
+      expect(finished.timings.phases["then"]).toEqual(expect.any(Number));
+      for (const duration of [finished.timings.caseMs, ...Object.values(finished.timings.phases)]) {
+        expect(Number.isFinite(duration) && Number(duration) >= 0).toBe(true);
+      }
+    },
+  ));
+
+it("a running case persists completed phase timings before it finishes", () =>
+  withProject(
+    `import * as NodeFS from 'node:fs';
+     import * as Effect from ${JSON.stringify(NodePath.join(root, "apps/web/node_modules/effect/dist/Effect.js"))};
+     import { trackSteps } from ${JSON.stringify(NodePath.join(root, "apps/web/test/scenarios/harness/lastStep.ts"))};
+     const given = trackSteps('given', { ready: Effect.void });
+     it('running case', async () => {
+       await Effect.runPromise(given.ready);
+       const report = process.env.MATE_SIGNAL_REPORT + '.progress.jsonl';
+       const events = NodeFS.existsSync(report)
+         ? NodeFS.readFileSync(report, 'utf8').trim().split('\\n').map((line) => JSON.parse(line))
+         : [];
+       expect(events).toContainEqual(expect.objectContaining({ event: 'casePhase', phase: 'given' }));
+     });`,
+    (run, directory) => {
+      const result = run();
+      expect(
+        result.status,
+        result.stdout + result.stderr + NodeFS.readFileSync(`${result.output}.vitest.json`, "utf8"),
+      ).toBe(0);
+      const events = NodeFS.readFileSync(`${result.output}.progress.jsonl`, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(events).toContainEqual({
+        event: "casePhase",
+        file: NodePath.join(directory, "case.test.ts"),
+        title: "running case",
+        sha: "a".repeat(40),
+        hqRevision: "b".repeat(40),
+        phase: "given",
+        durationMs: expect.any(Number),
+      });
+    },
+  ));
 
 it.each([
   { kind: "assertion", source: "it('deliberate failure', () => expect(1).toBe(2));" },
@@ -240,6 +336,12 @@ it("a shard killed mid-case leaves its finished cases and names the running one"
     ["running case", "failed", "hung: the shard ended while this case was running"],
   ]);
   expect(failedSelection([report]).files).toEqual([]);
+  const phaseBeforeStart = reportFromProgress([
+    { event: "casePhase", file, title: "running case", phase: "given", durationMs: 1 },
+  ]);
+  expect(
+    phaseBeforeStart.tests.map(({ title, status, reason }) => [title, status, reason]),
+  ).toEqual([["running case", "failed", "hung: the shard ended while this case was running"]]);
 });
 
 it("Signal classifies an assertion recorded before a killed shard without rerunning its timed-out case", () => {
