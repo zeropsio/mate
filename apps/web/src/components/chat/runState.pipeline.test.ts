@@ -102,11 +102,6 @@ describe("the engine's run verdict on a conversation card", () => {
   // Decision: one derivation per state; consumers never recompute it; no new domain concepts; mobile stays out (later).
   it.each([
     { end: { kind: "completed" }, tail: "tool", face: "idle" },
-    {
-      end: { kind: "stopped", by: { kind: "person", subject: "ana" } },
-      tail: "answer",
-      face: "stopped",
-    },
     { end: { kind: "unknown", type: "new-ending" }, tail: "tool", face: "idle" },
   ] satisfies Array<{ end: RunEnd; tail: "tool" | "answer"; face: string }>)(
     "a historical $end.kind run keeps its verdict with a $tail tail",

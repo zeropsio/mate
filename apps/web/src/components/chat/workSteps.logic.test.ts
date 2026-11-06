@@ -444,19 +444,6 @@ describe("stepOf", () => {
     });
   });
 
-  // A bubble draws a command whole, folded past its eighth line; its line of
-  // words in the record kept only the first.
-  it("keeps a command's whole script, its preamble dropped", () => {
-    const step = stepOf(
-      command("1", "cd /var/www/app && python3 - <<'EOF'\nimport sys\nprint(1)\nEOF"),
-    );
-    expect(step).toMatchObject({
-      code: "python3 - <<'EOF'",
-      script: "python3 - <<'EOF'\nimport sys\nprint(1)\nEOF",
-      codeLines: 4,
-    });
-  });
-
   // The script is the command inside the shell, never the shell's call.
   it("keeps a shell-wrapped command's script without its shell", () => {
     const step = stepOf(
@@ -482,11 +469,21 @@ describe("stepOf", () => {
     expect(step).toMatchObject({ words: "Reading page.tsx", state: "running", endedAt: null });
   });
 
+  // A bubble draws a command whole; its line of words in the record keeps only the first.
   it.each([
     { command: "cd /var/www/app && npm test", lines: 1 },
-    { command: "cd /var/www/app && python3 - <<'EOF'\nimport sys\nprint(1)\nEOF", lines: 4 },
-  ])("counts the lines of $command", ({ command: text, lines }) => {
-    expect(stepOf(command("1", text)).codeLines).toBe(lines);
+    {
+      command: "cd /var/www/app && python3 - <<'EOF'\nimport sys\nprint(1)\nEOF",
+      lines: 4,
+      full: {
+        code: "python3 - <<'EOF'",
+        script: "python3 - <<'EOF'\nimport sys\nprint(1)\nEOF",
+      },
+    },
+  ])("counts the lines of $command", ({ command: text, lines, full }) => {
+    const step = stepOf(command("1", text));
+    expect(step.codeLines).toBe(lines);
+    if (full) expect(step).toMatchObject(full);
   });
 
   it("an unfinished call of a settled run is no longer running", () => {

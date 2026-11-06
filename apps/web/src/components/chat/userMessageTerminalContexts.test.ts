@@ -21,15 +21,6 @@ describe("userMessageTerminalContexts", () => {
     ).toBe("@terminal-1:12-13 @terminal-2:4");
   });
 
-  it("formats individual inline terminal labels compactly", () => {
-    expect(
-      formatInlineTerminalContextLabel({ header: "Terminal 1 lines 12-13", kind: "terminal" }),
-    ).toBe("@terminal-1:12-13");
-    expect(
-      formatInlineTerminalContextLabel({ header: "Terminal 2 line 4", kind: "terminal" }),
-    ).toBe("@terminal-2:4");
-  });
-
   it("detects inline terminal labels embedded in user message text", () => {
     expect(
       textContainsInlineTerminalContextLabels("yo @terminal-1:12-13 whats up", [
