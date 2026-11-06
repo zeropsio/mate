@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { DesktopBridge, DesktopZeropsSignInProgress } from "@t3tools/contracts";
 import { readZeropsHandover } from "@t3tools/client-runtime/zerops/handover";
@@ -12,6 +12,10 @@ import {
 } from "./nativeSignIn";
 
 type ZeropsSignIn = NonNullable<DesktopBridge["zeropsSignIn"]>;
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function fakeBridge(impl: ZeropsSignIn): ZeropsSignIn {
   return vi.fn(impl);
@@ -49,20 +53,17 @@ describe("readZeropsNativeSignInBridge", () => {
   it("is null in a browser without the desktop bridge", () => {
     vi.stubGlobal("window", {});
     expect(readZeropsNativeSignInBridge()).toBeNull();
-    vi.unstubAllGlobals();
   });
 
   it("is null on a desktop build old enough to lack the method", () => {
     vi.stubGlobal("window", { desktopBridge: {} });
     expect(readZeropsNativeSignInBridge()).toBeNull();
-    vi.unstubAllGlobals();
   });
 
   it("returns the bridge method when the desktop build offers it", () => {
     const zeropsSignIn = fakeBridge(async () => ({ kind: "cancelled" }));
     vi.stubGlobal("window", { desktopBridge: { zeropsSignIn } });
     expect(readZeropsNativeSignInBridge()).toBe(zeropsSignIn);
-    vi.unstubAllGlobals();
   });
 });
 
@@ -70,14 +71,12 @@ describe("readZeropsNativeSignInProgress", () => {
   it("is null on a desktop build that runs the hand-over only", () => {
     vi.stubGlobal("window", { desktopBridge: { zeropsSignIn: vi.fn() } });
     expect(readZeropsNativeSignInProgress()).toBeNull();
-    vi.unstubAllGlobals();
   });
 
   it("returns the progress subscription when the desktop build offers it", () => {
     const onZeropsSignInProgress = vi.fn(() => () => undefined);
     vi.stubGlobal("window", { desktopBridge: { onZeropsSignInProgress } });
     expect(readZeropsNativeSignInProgress()).toBe(onZeropsSignInProgress);
-    vi.unstubAllGlobals();
   });
 });
 
