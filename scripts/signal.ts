@@ -3,11 +3,12 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import * as NodeReadline from "node:readline";
 import type { JsonTestResults } from "vite-plus/test/node";
 import { chatGateStages, chatGateTestFiles } from "./chat-gate.ts";
 import { scenarioDurations } from "./lib/scenario-durations.ts";
 import { spreadShard } from "./lib/spread-shard.ts";
-import type { SignalProgress } from "./signal-reporter.ts";
+import { maskSignalSecrets, signalEvidence, type SignalProgress } from "./signal-reporter.ts";
 
 export interface SignalReport {
   /** `path` is the test's describe titles then its own: what Vitest's name filter reads. */
@@ -194,13 +195,13 @@ export function readSignalReport(output: string): SignalReport {
   };
 }
 
-function runScenarios(args: string[], output: string): SignalReport {
+async function runScenarios(args: string[], output: string): Promise<SignalReport | undefined> {
   NodeFS.mkdirSync(NodePath.dirname(output), { recursive: true });
   NodeFS.rmSync(output, { force: true });
   NodeFS.rmSync(`${output}.vitest.json`, { force: true });
   NodeFS.rmSync(`${output}.errors.json`, { force: true });
   NodeFS.rmSync(`${output}.progress.jsonl`, { force: true });
-  const result = NodeChildProcess.spawnSync(
+  const child = NodeChildProcess.spawn(
     "vp",
     [
       "test",
@@ -218,33 +219,98 @@ function runScenarios(args: string[], output: string): SignalReport {
     ],
     {
       cwd: NodePath.join(root, "apps/web"),
-      stdio: "inherit",
+      stdio: ["inherit", "pipe", "pipe"],
       env: { ...process.env, MATE_SIGNAL_REPORT: output, VITEST_MAX_WORKERS: undefined },
     },
   );
-  if (result.error || result.signal || !NodeFS.existsSync(`${output}.vitest.json`))
-    throw new Error(
-      `Signal runner failed: ${result.error?.message ?? result.signal ?? "missing report"}`,
-    );
-  const report = readSignalReport(output);
-  validateReport(report);
-  if (result.status !== 0 && !report.tests.some((test) => test.status === "failed"))
-    throw new Error(`Signal runner exited ${result.status} without a failed test`);
+  // A complete line keeps secrets split across stream chunks together without delaying case output.
+  for (const [input, output] of [
+    [child.stdout, process.stdout],
+    [child.stderr, process.stderr],
+  ] as const)
+    NodeReadline.createInterface({ input }).on("line", (line) => {
+      const masked = maskSignalSecrets(line);
+      // Keep our annotations; failure text must not create other workflow commands.
+      const annotation =
+        /^::error (?:file=[^,]*,)?title=Signal (?:original case failure|incomplete)::/u;
+      output.write(`${annotation.test(masked) ? masked : masked.replaceAll("::", "%3A%3A")}\n`);
+    });
+  let interrupted: NodeJS.Signals | undefined;
+  const interrupt = (signal: NodeJS.Signals) => {
+    interrupted ??= signal;
+    child.kill(signal);
+  };
+  const onTerm = () => interrupt("SIGTERM");
+  const onInt = () => interrupt("SIGINT");
+  process.once("SIGTERM", onTerm);
+  process.once("SIGINT", onInt);
+  let failure: Error | undefined;
+  const result = await new Promise<{ status: number | null; signal: NodeJS.Signals | null }>(
+    (resolve) => {
+      child.once("error", (error) => (failure = error));
+      child.once("close", (status, signal) => resolve({ status, signal }));
+    },
+  );
+  process.removeListener("SIGTERM", onTerm);
+  process.removeListener("SIGINT", onInt);
+
+  if (
+    failure ||
+    interrupted ||
+    result.signal ||
+    !NodeFS.existsSync(`${output}.vitest.json`) ||
+    !NodeFS.existsSync(`${output}.errors.json`)
+  ) {
+    const reason = failure?.message ?? interrupted ?? result.signal ?? "missing report";
+    let running: SignalReport["tests"] = [];
+    try {
+      running = reportFromProgress(readProgress(output)).tests.filter(
+        (test) => test.reason === "hung: the shard ended while this case was running",
+      );
+    } catch {
+      // A truncated progress receipt cannot certify which case was running.
+    }
+    if (running.length)
+      for (const test of running)
+        signalEvidence("Signal incomplete", `${test.title}: shard ended (${reason})`, test.file);
+    else signalEvidence("Signal incomplete", `shard ended (${reason})`);
+    return undefined;
+  }
+  let report: SignalReport;
+  try {
+    report = readSignalReport(output);
+  } catch (error) {
+    signalEvidence("Signal incomplete", `cannot read report: ${String(error)}`);
+    return undefined;
+  }
+  const reason = infrastructureReason(report);
+  if (reason !== undefined) {
+    // The reporter has already emitted each error; only an empty run needs a new explanation.
+    if (!report.errors.length) signalEvidence("Signal incomplete", reason);
+    return undefined;
+  }
+  if (result.status !== 0 && !report.tests.some((test) => test.status === "failed")) {
+    signalEvidence("Signal incomplete", `runner exited ${result.status} without a failed test`);
+    return undefined;
+  }
   NodeFS.writeFileSync(output, JSON.stringify(report));
   return report;
 }
 
-if (import.meta.main) {
+async function main(): Promise<void> {
   const [mode, group, shard] = process.argv.slice(2);
   const directory = NodePath.resolve(process.env.MATE_SIGNAL_DIRECTORY ?? "signal-reports");
   if (mode === "shard" && ["c", "non-c"].includes(group ?? "") && /^\d+\/\d+$/u.test(shard ?? "")) {
     const [index, count] = shard!.split("/").map(Number) as [number, number];
     if (index < 1 || index > count) throw new Error("Invalid Signal shard");
     const files = signalShardFiles(group as "c" | "non-c", index, count);
-    runScenarios(
-      files.map((file) => NodePath.join(root, file)),
-      NodePath.join(directory, `${group}-${index}.json`),
-    );
+    if (
+      !(await runScenarios(
+        files.map((file) => NodePath.join(root, file)),
+        NodePath.join(directory, `${group}-${index}.json`),
+      ))
+    )
+      process.exitCode = 1;
   } else if (mode === "classify") {
     const killed: string[] = [];
     const infrastructure: { shard: string; reason: string }[] = [];
@@ -281,7 +347,7 @@ if (import.meta.main) {
       JSON.stringify(infrastructure, null, 2) + "\n",
     );
     for (const { shard, reason } of infrastructure)
-      console.log(`::error title=Signal infrastructure::${shard}: ${reason}`);
+      signalEvidence("Signal infrastructure", `${shard}: ${reason}`);
     const { files, testNamePattern } = failedSelection(initial);
     const run = Number(process.env.GITHUB_RUN_ID);
     if (!Number.isSafeInteger(run) || run <= 0)
@@ -299,15 +365,21 @@ if (import.meta.main) {
     );
     for (const report of timeouts)
       for (const failure of report.tests)
-        console.log(
-          `::error file=${failure.file},title=Signal timed out, not rerun::${failure.title}: ${failure.reason}`,
+        signalEvidence(
+          "Signal timed out, not rerun",
+          `${failure.title}: ${failure.reason}`,
+          failure.file,
         );
     const rerun = files.length
-      ? runScenarios(
+      ? await runScenarios(
           [...files.map((file) => NodePath.join(root, file)), "--testNamePattern", testNamePattern],
           NodePath.join(directory, "rerun.json"),
         )
       : { tests: [], errors: [] };
+    if (!rerun) {
+      process.exitCode = 1;
+      return;
+    }
     const failures = classifyFailures(initial, rerun, run);
     NodeFS.writeFileSync("signal-failures.json", JSON.stringify(failures, null, 2) + "\n");
     console.log(`Signal classified ${failures.length} original test failures`);
@@ -318,8 +390,7 @@ if (import.meta.main) {
         JSON.parse(NodeFS.readFileSync(previous, "utf8")) as SignalFailure[],
         failures,
       );
-      for (const red of reds)
-        console.log(`::error file=${red.file},title=Standing red::${red.title}`);
+      for (const red of reds) signalEvidence("Standing red", red.title, red.file);
       if (reds.length)
         throw new Error(`Signal: ${reds.length} tests fail-fail on two consecutive kh-next runs`);
     } else console.log("Signal has no previous kh-next classification to compare");
@@ -328,3 +399,5 @@ if (import.meta.main) {
       throw new Error(`Signal: shards ${killed.join(", ")} ended without writing their report`);
   } else throw new Error("Usage: node scripts/signal.ts shard c|non-c <index/count> | classify");
 }
+
+if (import.meta.main) await main();

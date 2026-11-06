@@ -1,10 +1,24 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off -- stops admission in the worker, before the next case starts.
 import * as NodeFS from "node:fs";
 import { inject, TestRunner, type RunnerTestCase } from "vite-plus/test";
-import { hungReason } from "./signal-reporter.ts";
+import { hungReason, signalEvidence } from "./signal-reporter.ts";
 import type {} from "./scenario-budget.setup.ts";
 
 export default class ScenarioBudgetRunner extends TestRunner {
+  override onAfterRunTask(test: RunnerTestCase): void {
+    super.onAfterRunTask(test);
+    if (
+      process.env.MATE_SIGNAL_REPORT &&
+      !this.config.testNamePattern &&
+      test.result?.state === "fail"
+    )
+      signalEvidence(
+        "Signal original case failure",
+        `${test.fullTestName}: ${test.result.errors?.map((error) => error.message).join("; ") || "case failed"}`,
+        test.file.filepath,
+      );
+  }
+
   onAfterRetryTask(test: RunnerTestCase): void {
     const receipt = inject("scenarioTimeoutStreak");
     const timedOut =

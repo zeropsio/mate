@@ -1,5 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- writes Vitest evidence for Signal classification.
 import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+import { maskSecrets } from "@t3tools/shared/messagePreview";
 import type { Reporter, TestCase } from "vite-plus/test/node";
 
 /** Test failures are evidence; setup, collection and unhandled errors break the workflow. */
@@ -9,6 +11,33 @@ export type SignalProgress =
   | { event: "end"; file: string; title: string; status: string; reason?: string };
 
 const TIMED_OUT = /(?:Test|Hook) timed out in (\d+)ms/u;
+const root = NodePath.resolve(import.meta.dirname, "..");
+
+/** Mask credential-shaped text and known secret environment values in shard output. */
+export function maskSignalSecrets(text: string): string {
+  let masked = text;
+  for (const [key, value] of Object.entries(process.env))
+    if (
+      value &&
+      /(?:password|passwd|secret|token|credential|api_?key|private_?key|authorization|(?:^|_)(?:pat|pass|pwd)(?:_|$))/iu.test(
+        key,
+      )
+    )
+      for (const part of value.split(/\r?\n/u))
+        if (part.length >= 4) masked = masked.replaceAll(part, "••••••");
+  return maskSecrets(masked);
+}
+
+/** Emit masked evidence, escaping workflow-command delimiters in the message and file. */
+export function signalEvidence(title: string, message: string, file?: string): void {
+  const safe = (text: string) =>
+    maskSignalSecrets(text).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A");
+  const property = (text: string) => safe(text).replaceAll(":", "%3A").replaceAll(",", "%2C");
+  const location = file
+    ? `file=${property(NodePath.isAbsolute(file) ? NodePath.relative(root, file) : file)},`
+    : "";
+  process.stdout.write(`::error ${location}title=${safe(title)}::${safe(message)}\n`);
+}
 
 /** The reason a timed-out case carries: it hung, and where it stood. */
 export function hungReason(message: string, lastStep: unknown): string | undefined {
@@ -66,9 +95,15 @@ export default class SignalReporter implements Reporter {
     }>,
     errors: ReadonlyArray<{ message: string }>,
   ): void {
-    const failures = [...errors, ...modules.flatMap((module) => module.errors())].map(
-      (error) => error.message,
-    );
+    const failures = errors.map((error) => {
+      signalEvidence("Signal incomplete", error.message);
+      return error.message;
+    });
+    for (const module of modules)
+      for (const error of module.errors()) {
+        signalEvidence("Signal incomplete", error.message, module.moduleId);
+        failures.push(error.message);
+      }
     // Keep the chat gate's execution contract. A failing assertion is signal; a case that
     // never executes, or expects failure, cannot certify the promised scenario inventory.
     for (const module of modules)
@@ -76,8 +111,11 @@ export default class SignalReporter implements Reporter {
         if (
           (this.namePattern?.test(test.fullName) ?? true) &&
           (test.options.fails || !["passed", "failed"].includes(test.result().state))
-        )
-          failures.push(`Scenario did not certify execution: ${test.fullName}`);
+        ) {
+          const message = `Scenario did not certify execution: ${test.fullName}`;
+          signalEvidence("Signal incomplete", message, module.moduleId);
+          failures.push(message);
+        }
     const path = process.env.MATE_SIGNAL_REPORT;
     if (!path) throw new Error("Signal report path is missing");
     NodeFS.writeFileSync(`${path}.errors.json`, JSON.stringify(failures));
