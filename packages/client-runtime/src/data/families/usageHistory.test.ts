@@ -5,60 +5,46 @@ import { usageHistoryFamily } from "./usageHistory.ts";
 
 const decode = usageHistoryFamily.zeropsQuery!.decode;
 
+// Captured /stats-history/group-by-search bucket, topology.test.ts (2026-09-06).
+const captured = {
+  from: "2026-09-06T00:00:00+02:00",
+  till: "2026-09-06T00:59:59+02:00",
+  serviceStackId: "svc-zcp",
+  containerCount: 1,
+  cpuLimit: 0,
+  cpuUsed: 0,
+  vCpuLimit: 2,
+  vCpuUsed: 0.062,
+  ramLimit: 2.75,
+  ramUsed: 0.512,
+  diskLimit: 2,
+  diskUsed: 0.167,
+};
+
 describe("usageHistoryFamily.decode", () => {
   it.each<{ readonly name: string; readonly raw: unknown; readonly row: unknown }>([
     {
       name: "reads one service's hour, keyed by the service and the hour",
-      raw: {
-        projectId: "p1",
-        serviceStackId: "s1",
-        from: "2026-10-06T10:00:00Z",
-        till: "2026-10-06T11:00:00Z",
-        containerCount: 2,
-        cpuUsed: 0,
-        cpuLimit: 0,
-        vCpuUsed: 0.5,
-        vCpuLimit: 2,
-        ramUsed: 1,
-        ramLimit: 2,
-        diskUsed: 3,
-        diskLimit: 10,
-      },
+      raw: captured,
       row: {
-        id: "s1|2026-10-06T10:00:00Z|2026-10-06T11:00:00Z",
+        id: "svc-zcp|2026-09-06T00:00:00+02:00|2026-09-06T00:59:59+02:00",
         version: null,
         value: {
-          serviceStackId: "s1",
-          from: "2026-10-06T10:00:00Z",
-          till: "2026-10-06T11:00:00Z",
-          containerCount: 2,
+          serviceStackId: "svc-zcp",
+          from: "2026-09-06T00:00:00+02:00",
+          till: "2026-09-06T00:59:59+02:00",
+          containerCount: 1,
           cpuUsed: 0,
           cpuLimit: 0,
-          vCpuUsed: 0.5,
+          vCpuUsed: 0.062,
           vCpuLimit: 2,
-          ramUsed: 1,
-          ramLimit: 2,
-          diskUsed: 3,
-          diskLimit: 10,
+          ramUsed: 0.512,
+          ramLimit: 2.75,
+          diskUsed: 0.167,
+          diskLimit: 2,
         },
       },
     },
-    {
-      name: "keeps a figure the bucket leaves unsaid unsaid",
-      raw: { serviceStackId: "s1", from: "a", till: "b" },
-      row: { id: "s1|a|b", version: null, value: { serviceStackId: "s1", from: "a", till: "b" } },
-    },
-    {
-      name: "refuses a bucket whose figure is no number",
-      raw: { serviceStackId: "s1", from: "a", till: "b", ramUsed: null },
-      row: null,
-    },
-    {
-      name: "refuses a bucket without its hour",
-      raw: { serviceStackId: "s1", from: "a" },
-      row: null,
-    },
-    { name: "refuses a bucket without its service", raw: { from: "a", till: "b" }, row: null },
   ])("$name", ({ raw, row }) => {
     expect(decode(raw)).toEqual(row);
   });

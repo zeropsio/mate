@@ -978,7 +978,7 @@
         "apps/server/src/zerops/mateResourceHealth.test.ts",
         "packages/client-runtime/src/data/projections/mateHealth.test.ts",
         "apps/web/test/engine-oracle/mateHealth.oracle.test.ts",
-        "apps/web/test/scenarios/areas/c-mate/health.scenario.ts"
+        "apps/web/src/components/ChatView.health.test.tsx"
       ],
       "captures": []
     },
@@ -2432,7 +2432,6 @@
         "none": "Admission behavior is protected by consumed-record tests."
       },
       "tests": [
-        "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
         "apps/web/src/components/chat/threadErrorNotice.test.tsx",
         "packages/client-runtime/src/data/projections/agentAdmission.test.ts"
       ],

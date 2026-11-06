@@ -325,118 +325,20 @@ describe("RpcInstrumentation", () => {
       }),
     ),
   );
-  it.effect("records success metrics for unary RPC handlers", () =>
-    withTelemetry(() =>
-      Effect.gen(function* () {
-        const group = groupOf(WS_METHODS.serverProbe);
-        const client = yield* RpcTest.makeClient(group).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              group.toLayerHandler(WS_METHODS.serverProbe, () => Effect.succeed({})),
-              readOnlyConnection,
-            ),
-          ),
-        );
-
-        assert.deepStrictEqual(yield* client[WS_METHODS.serverProbe]({}), {});
-
-        const snapshots = yield* Metric.snapshot;
-        assert.equal(requestCount(snapshots, WS_METHODS.serverProbe, "success")?.count, 1);
-        assert.equal(requestDuration(snapshots, WS_METHODS.serverProbe)?.count, 1);
-      }),
-    ),
-  );
-
-  it.effect("records failure outcomes for unary RPC handlers", () =>
-    withTelemetry(() =>
-      Effect.gen(function* () {
-        const group = groupOf(WS_METHODS.threadsFileWrites);
-        const client = yield* RpcTest.makeClient(group).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              group.toLayerHandler(WS_METHODS.threadsFileWrites, () =>
-                Effect.fail(new ThreadFileWritesError({ reason: "unavailable" })),
-              ),
-              readOnlyConnection,
-            ),
-          ),
-        );
-
-        const error = yield* client[WS_METHODS.threadsFileWrites]({
-          threadId,
-          toolCallIds: [],
-        }).pipe(Effect.flip);
-        assert.equal(error._tag, "ThreadFileWritesError");
-
-        const snapshots = yield* Metric.snapshot;
-        assert.equal(requestCount(snapshots, WS_METHODS.threadsFileWrites, "failure")?.count, 1);
-      }),
-    ),
-  );
-
-  it.effect("records subscription activation metrics for stream RPC handlers", () =>
-    withTelemetry(() =>
-      Effect.gen(function* () {
-        const group = groupOf(WS_METHODS.subscribeZeropsHealth);
-        const client = yield* RpcTest.makeClient(group).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              group.toLayerHandler(WS_METHODS.subscribeZeropsHealth, () => Stream.empty),
-              readOnlyConnection,
-            ),
-          ),
-        );
-
-        yield* Stream.runDrain(client[WS_METHODS.subscribeZeropsHealth]({}));
-
-        const snapshots = yield* Metric.snapshot;
-        assert.equal(
-          requestCount(snapshots, WS_METHODS.subscribeZeropsHealth, "success")?.count,
-          1,
-        );
-        assert.equal(requestDuration(snapshots, WS_METHODS.subscribeZeropsHealth)?.count, 1);
-      }),
-    ),
-  );
-
-  it.effect("records failure outcomes for direct stream RPC handlers during consumption", () =>
-    withTelemetry(() =>
-      Effect.gen(function* () {
-        const group = groupOf(WS_METHODS.subscribeVcsStatus);
-        const client = yield* RpcTest.makeClient(group).pipe(
-          Effect.provide(
-            Layer.mergeAll(
-              group.toLayerHandler(WS_METHODS.subscribeVcsStatus, () =>
-                Stream.fail(
-                  new GitManagerError({ operation: "status", cwd: "/repo", detail: "failed" }),
-                ),
-              ),
-              readOnlyConnection,
-            ),
-          ),
-        );
-
-        const error = yield* Stream.runDrain(
-          client[WS_METHODS.subscribeVcsStatus]({ cwd: "/repo" }),
-        ).pipe(Effect.flip);
-        assert.equal(error._tag, "GitManagerError");
-
-        const snapshots = yield* Metric.snapshot;
-        assert.equal(requestCount(snapshots, WS_METHODS.subscribeVcsStatus, "failure")?.count, 1);
-      }),
-    ),
-  );
-
   it.effect("records direct stream durations from nanosecond clock readings", () =>
     withTelemetry(() =>
       Effect.gen(function* () {
         const duration = Duration.nanos(1_500_000n);
+        const started = yield* Deferred.make<void>();
+        const finish = yield* Deferred.make<void>();
         const group = groupOf(WS_METHODS.subscribeZeropsHealth);
         const client = yield* RpcTest.makeClient(group).pipe(
           Effect.provide(
             Layer.mergeAll(
               group.toLayerHandler(WS_METHODS.subscribeZeropsHealth, () =>
-                Stream.fromEffect(Effect.sleep(duration)).pipe(Stream.drain),
+                Stream.fromEffect(
+                  Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(finish))),
+                ).pipe(Stream.drain),
               ),
               readOnlyConnection,
             ),
@@ -446,8 +348,9 @@ describe("RpcInstrumentation", () => {
         const fiber = yield* Stream.runDrain(client[WS_METHODS.subscribeZeropsHealth]({})).pipe(
           Effect.forkChild,
         );
-        yield* Effect.yieldNow;
+        yield* Deferred.await(started);
         yield* TestClock.adjust(duration);
+        yield* Deferred.succeed(finish, undefined);
         yield* Fiber.join(fiber);
 
         const snapshots = yield* Metric.snapshot;

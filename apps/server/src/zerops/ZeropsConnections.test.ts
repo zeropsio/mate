@@ -107,6 +107,95 @@ const evaOverride = (roleCode: string) => ({
 });
 
 describe("ZeropsConnections", () => {
+  it.effect(
+    "A Chief registration narrows native grants and closes excluded connections, retaining its verdict across absent states",
+    () =>
+      Effect.gen(function* () {
+        const { connections, closed, open } = yield* setupScene({
+          jan: "OWNER",
+          eva: "BASIC_USER",
+          read: "READ_ONLY",
+        });
+        assert.isTrue(Option.isSome(yield* open("jan", "jan")));
+        assert.isTrue(Option.isSome(yield* open("eva", "eva")));
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("issued", "jan"))),
+          "open",
+        );
+        yield* connections.chiefOpener("eva");
+        assert.deepEqual(closed, ["jan"]);
+        assert.isTrue(Option.isSome(yield* connections.current("eva")));
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("owner", "jan"))),
+          "not_in_list",
+        );
+        yield* connections.chiefOpener(undefined);
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("still-owner", "jan"))),
+          "not_in_list",
+        );
+        yield* connections.chiefOpener("read");
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("reader", "read"))),
+          "read_only",
+        );
+        yield* connections.chiefOpener("unknown");
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("unknown", "unknown"))),
+          "not_in_list",
+        );
+        yield* connections.chiefOpener(null);
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("nobody", "eva"))),
+          "not_in_list",
+        );
+        yield* connections.chiefOpener("jan");
+        assert.isTrue(Option.isNone(yield* connections.admit({ ticket: "issued" }, Effect.void)));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("A Chief registration refuses a ticket waiting on a native access read", () =>
+    Effect.gen(function* () {
+      const readAnswers = yield* Deferred.make<void>();
+      const { connections, tickets } = yield* setupWith({
+        projectId: "P_MATE",
+        read: Deferred.await(readAnswers).pipe(Effect.as(sceneRead({ jan: "OWNER" }))),
+      });
+      const answer = yield* connections.ticket(ticket("pending", "jan"));
+      const verdict = yield* Effect.forkChild(answer);
+      yield* connections.chiefOpener("eva");
+      yield* connections.chiefOpener("jan");
+      yield* Deferred.succeed(readAnswers, undefined);
+      assert.strictEqual(yield* Fiber.join(verdict), "not_in_list");
+      assert.isTrue(Option.isNone(yield* tickets.consume({ ticket: "pending" })));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("A registered opener still needs the tagged Chief project's native owner grant", () =>
+    Effect.gen(function* () {
+      const rows = sceneRead({ jan: "OWNER", eva: "BASIC_USER" });
+      if (rows.kind !== "read") return yield* Effect.die("expected rows");
+      const { connections } = yield* setupWith({
+        projectId: "P_MATE",
+        read: Effect.succeed({
+          ...rows,
+          project: { ...rows.project, tagList: ["chief"], overrides: { "cu-jan": "OWNER" } },
+        }),
+      });
+      yield* TestClock.adjust(0);
+      yield* connections.chiefOpener("eva");
+      assert.strictEqual(
+        yield* Effect.flatten(connections.ticket(ticket("eva", "eva"))),
+        "not_in_list",
+      );
+      assert.strictEqual(
+        yield* Effect.flatten(connections.ticket(ticket("jan", "jan"))),
+        "not_in_list",
+      );
+      yield* connections.chiefOpener("jan");
+      assert.strictEqual(yield* Effect.flatten(connections.ticket(ticket("owner", "jan"))), "open");
+    }).pipe(Effect.scoped),
+  );
   it.effect.each([
     { name: "a project override", wire: evaOverride("READ_ONLY") },
     { name: "an org role for a person with no override", wire: evaOrgRole("READ_ONLY") },

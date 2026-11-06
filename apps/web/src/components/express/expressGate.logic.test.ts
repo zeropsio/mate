@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { expressGate, expressLabNote } from "./expressGate.logic";
+import { expressGate } from "./expressGate.logic";
 
 describe("the Adobe Express Labs switch", () => {
   it.each([
@@ -25,11 +25,5 @@ describe("the Adobe Express Labs switch", () => {
     },
   ] as const)("$title", ({ on, key, gate }) => {
     expect(expressGate(on, key)).toBe(gate);
-  });
-
-  it("the Labs row says what Express needs, and that a build without Adobe's key cannot offer it", () => {
-    expect(expressLabNote("off")).toContain("Adobe account");
-    expect(expressLabNote("on")).toContain("Adobe account");
-    expect(expressLabNote("missing-key")).toContain("isn't available in this build");
   });
 });

@@ -1,10 +1,12 @@
 import { assert, describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -418,9 +420,6 @@ const ended: ProviderSignal = {
   outcome: { kind: "completed" },
   source: "agent",
 };
-const yieldMany = Effect.forEach(Array.from({ length: 300 }), () => Effect.yieldNow, {
-  discard: true,
-});
 
 describe("EffectWorker: a restart", () => {
   it.effect("the first message after a restart opens a new session and reaches the agent", () =>
@@ -527,12 +526,27 @@ describe("EffectWorker: the worker", () => {
         });
         const boot = newBoot();
         yield* outbox.claim(boot, 0);
+        const idle = yield* Deferred.make<void>();
+        const idleByPool = { conversations: 0, owners: 0 };
+        const due: Array<Option.Option<number>> = [];
         const counting = {
           ...outbox,
           claim: (b: typeof boot, now: number, pool?: EffectPool) =>
             Effect.andThen(
               Effect.sync(() => count++),
               outbox.claim(b, now, pool),
+            ),
+          nextAvailableAt: (pool?: EffectPool) =>
+            outbox.nextAvailableAt(pool).pipe(
+              Effect.tap((next) =>
+                Effect.gen(function* () {
+                  if (pool === undefined) return;
+                  due.push(next);
+                  idleByPool[pool]++;
+                  if (idleByPool.conversations >= 2 && idleByPool.owners >= 2)
+                    yield* Deferred.succeed(idle, undefined);
+                }),
+              ),
             ),
         };
         // Four fibers in all: two for the conversations, two for the other owners.
@@ -541,10 +555,11 @@ describe("EffectWorker: the worker", () => {
           ownerConcurrency: 2,
         }).pipe(Effect.provideService(EffectOutbox, counting));
         yield* worker.start;
-        yield* yieldMany;
-        return count;
+        yield* Deferred.await(idle);
+        return { count, due };
       }).pipe(Effect.scoped, Effect.provide(engineLayer(file, world.handlers())));
-      expect(claims).toBeLessThanOrEqual(8);
+      expect(claims.count).toBeLessThanOrEqual(8);
+      expect(claims.due.every(Option.isNone)).toBe(true);
     }),
   );
 
@@ -608,16 +623,27 @@ describe("EffectWorker: the worker", () => {
           : Effect.void;
       const rang = yield* Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
-        const conversations = yield* Conversations;
-        const worker = yield* makeEffectWorker(newBoot());
-        const bell = yield* (yield* EngineSignals.EngineSignals).effects.consumer;
+        const signals = yield* EngineSignals.EngineSignals;
+        let ringCount = 0;
+        const observedSignals = {
+          ...signals,
+          effects: {
+            ...signals.effects,
+            ring: signals.effects.ring.pipe(Effect.tap(() => Effect.sync(() => ringCount++))),
+          },
+        };
+        const conversations = yield* ConversationsModule.makeConversations().pipe(
+          Effect.provideService(EngineSignals.EngineSignals, observedSignals),
+        );
+        const worker = yield* makeEffectWorker(newBoot()).pipe(
+          Effect.provideService(Conversations, conversations),
+          Effect.provideService(EngineSignals.EngineSignals, observedSignals),
+        );
         const rings = <A, E>(write: Effect.Effect<A, E>) =>
           Effect.gen(function* () {
-            yield* bell.arm;
+            const before = ringCount;
             yield* Effect.exit(write);
-            const heard = yield* Effect.forkChild(bell.wait);
-            yield* Effect.yieldNow;
-            return heard.pollUnsafe() !== undefined;
+            return ringCount > before;
           });
         // Each write below is the only one its step makes: an outcome, a backoff, a settle put
         // off, a row closed, rows queued.
@@ -650,6 +676,7 @@ describe("EffectWorker: the worker", () => {
         };
         return { settled, retried, settledLater, closed, queued, rows };
       }).pipe(
+        Effect.scoped,
         Effect.provide(
           engineLayer(tempDb("rings"), handlersOf(echo, flaky), { fault: () => fault() }),
         ),
@@ -667,35 +694,113 @@ describe("EffectWorker: the worker", () => {
 
   it.effect("the effect worker sleeps to the next due row or the bell; no 30 s wake", () =>
     Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const release = yield* Deferred.make<void>();
       const later: EffectHandler = {
         kind: "test.later",
-        run: () => Effect.succeed({ _tag: "Retry", reason: "not yet", patient: true }),
+        run: (row) => {
+          const result = { _tag: "Retry", reason: "not yet", patient: true } as const;
+          return row.attempt === 1
+            ? Deferred.succeed(started, undefined).pipe(
+                Effect.andThen(Deferred.await(release)),
+                Effect.as(result),
+              )
+            : Effect.succeed(result);
+        },
       };
       const seen = yield* Effect.gen(function* () {
         const outbox = yield* EffectOutbox;
         const sql = yield* SqlClient.SqlClient;
+        const signals = yield* EngineSignals.EngineSignals;
+        const clock = yield* Clock.Clock;
+        const waiting = yield* Queue.unbounded<EffectPool>();
+        const secondClaim = yield* Deferred.make<void>();
+        const timers = new Map<number, number>();
+        let timerId = 0;
+        let consumers = 0;
         let looks = 0;
+        const observedSignals = {
+          ...signals,
+          effects: {
+            ...signals.effects,
+            consumer: signals.effects.consumer.pipe(
+              Effect.map((bell) => {
+                const pool: EffectPool = consumers++ === 0 ? "conversations" : "owners";
+                return {
+                  ...bell,
+                  wait: Effect.gen(function* () {
+                    // Start the real wait before announcing it: a receipt means it is suspended.
+                    const child = yield* bell.wait.pipe(
+                      Effect.forkChild({ startImmediately: true }),
+                    );
+                    if (child.pollUnsafe() === undefined) yield* Queue.offer(waiting, pool);
+                    yield* Fiber.join(child);
+                  }),
+                };
+              }),
+            ),
+          },
+        };
+        const observedClock: Clock.Clock = {
+          ...clock,
+          sleep: (duration) =>
+            Effect.gen(function* () {
+              // Starting immediately registers TestClock's timer before the bell-wait receipt.
+              const child = yield* clock
+                .sleep(duration)
+                .pipe(Effect.forkChild({ startImmediately: true }));
+              const id = ++timerId;
+              if (child.pollUnsafe() === undefined)
+                timers.set(id, clock.currentTimeMillisUnsafe() + Duration.toMillis(duration));
+              yield* Fiber.join(child).pipe(Effect.ensuring(Effect.sync(() => timers.delete(id))));
+            }),
+        };
+        const waitFor = (conversations: number, owners: number) =>
+          Effect.gen(function* () {
+            const pools = yield* Queue.takeN(waiting, conversations + owners);
+            expect(pools.filter((pool) => pool === "conversations").length).toBe(conversations);
+            expect(pools.filter((pool) => pool === "owners").length).toBe(owners);
+          });
         const counting = {
           ...outbox,
           claim: (b: BootId, now: number, pool?: EffectPool) =>
             Effect.andThen(
               Effect.sync(() => looks++),
-              outbox.claim(b, now, pool),
+              outbox
+                .claim(b, now, pool)
+                .pipe(
+                  Effect.tap((row) =>
+                    Option.isSome(row) && row.value.attempt === 2
+                      ? Deferred.succeed(secondClaim, undefined)
+                      : Effect.void,
+                  ),
+                ),
             ),
         };
         const worker = yield* makeEffectWorker(newBoot(), {
           ownerRetry: { maxAttempts: 3, delayMs: () => 45_000 },
-        }).pipe(Effect.provideService(EffectOutbox, counting));
-        yield* worker.start;
-        yield* yieldMany;
+        }).pipe(
+          Effect.provideService(EffectOutbox, counting),
+          Effect.provideService(EngineSignals.EngineSignals, observedSignals),
+        );
+        yield* worker.start.pipe(Effect.provideService(Clock.Clock, observedClock));
+        // Handlers are uninterruptible; release the held attempt if an assertion fails.
+        yield* Effect.addFinalizer(() => Deferred.succeed(release, undefined).pipe(Effect.asVoid));
+        yield* waitFor(4, 8);
+        expect([...timers.values()]).toEqual([]);
         const idleFrom = looks;
         yield* TestClock.adjust(10 * 60_000);
-        yield* yieldMany;
         const whileIdle = looks - idleFrom;
 
         yield* enqueue(mate, [{ id: "mate/e/test.later/1", kind: "test.later", lane: "side" }]);
-        yield* (yield* EngineSignals.EngineSignals).effects.ring;
-        yield* yieldMany;
+        yield* signals.effects.ring;
+        yield* Deferred.await(started);
+        yield* waitFor(3, 8);
+        yield* Deferred.succeed(release, undefined);
+        yield* waitFor(4, 8);
+        expect([...timers.values()]).toEqual(
+          Array.from({ length: 4 }, () => clock.currentTimeMillisUnsafe() + 45_000),
+        );
         const attempt = Effect.map(
           sql<{ readonly attempt: number }>`
             SELECT attempt FROM engine_effect WHERE effect_id = 'mate/e/test.later/1'
@@ -705,10 +810,9 @@ describe("EffectWorker: the worker", () => {
         const triedOnce = yield* attempt;
         const waitFrom = looks;
         yield* TestClock.adjust(45_000 - 1);
-        yield* yieldMany;
         const beforeDue = looks - waitFrom;
         yield* TestClock.adjust(1);
-        yield* yieldMany;
+        yield* Deferred.await(secondClaim);
         return { whileIdle, triedOnce, beforeDue, atDue: yield* attempt };
       }).pipe(Effect.scoped, Effect.provide(engineLayer(tempDb("sleeps"), handlersOf(later))));
       expect(seen).toEqual({ whileIdle: 0, triedOnce: 1, beforeDue: 0, atDue: 2 });
@@ -794,14 +898,33 @@ describe("EffectWorker: another owner kind", () => {
     });
 
   /** A crew check that holds its fiber until the test lets it go. */
-  const holding = (release: Deferred.Deferred<void>): EffectHandler => ({
+  const holding = (
+    release: Deferred.Deferred<void>,
+    started: Deferred.Deferred<void>,
+  ): EffectHandler => ({
     kind: "test.hold",
     run: () =>
-      Effect.as(Deferred.await(release), {
-        _tag: "Done",
-        outcome: { kind: "ok" },
-      } satisfies HandlerResult),
+      Effect.as(
+        Deferred.succeed(started, undefined).pipe(Effect.andThen(Deferred.await(release))),
+        {
+          _tag: "Done",
+          outcome: { kind: "ok" },
+        } satisfies HandlerResult,
+      ),
   });
+  const crewSettled = (ids: ReadonlyArray<string>) =>
+    Effect.flatMap(Conversations, (conversations) =>
+      conversations
+        .owner(tallyDomain)
+        .subscribe(tallyOwner, 0)
+        .pipe(
+          Stream.filter(
+            (event) => event._tag === "EffectOutcomeRecorded" && ids.includes(event.effectId),
+          ),
+          Stream.take(ids.length),
+          Stream.runDrain,
+        ),
+    );
   /** Fails until its seventh try: an ssh connection that comes back after a minute. */
   const outage: EffectHandler = {
     kind: "test.outage",
@@ -832,23 +955,27 @@ describe("EffectWorker: another owner kind", () => {
   it.effect("a long effect on one lane never holds another lane", () =>
     Effect.gen(function* () {
       const release = yield* Deferred.make<void>();
+      const started = yield* Deferred.make<void>();
       const states = yield* Effect.gen(function* () {
         const long = yield* askCrew("check-ana", "test.hold", "check/ana");
         const behind = yield* askCrew("check-ana-2", "test.echo", "check/ana");
         const other = yield* askCrew("git-bo", "test.echo", "git/bo");
+        const otherDone = yield* crewSettled([other]).pipe(Effect.forkScoped);
+        const allDone = yield* crewSettled([long, behind, other]).pipe(Effect.forkScoped);
         const worker = yield* makeEffectWorker(boot1, { concurrency: 1, ownerConcurrency: 2 });
         yield* worker.start;
-        yield* yieldMany;
+        yield* Deferred.await(started);
+        yield* Fiber.join(otherDone);
         const whileHeld = {
           long: yield* rowState(long),
           behind: yield* rowState(behind),
           other: yield* rowState(other),
         };
         yield* Deferred.succeed(release, undefined);
-        yield* yieldMany;
+        yield* Fiber.join(allDone);
         const crew = yield* (yield* Conversations).owner(tallyDomain).state(tallyOwner);
         return { whileHeld, settled: [...crew.settled].sort() };
-      }).pipe(Effect.scoped, Effect.provide(withCrew([holding(release)])));
+      }).pipe(Effect.scoped, Effect.provide(withCrew([holding(release, started)])));
       expect(states).toEqual({
         whileHeld: { long: "running", behind: "pending", other: "done" },
         settled: [
@@ -863,22 +990,34 @@ describe("EffectWorker: another owner kind", () => {
   it.effect("crew's cap leaves conversation effects running", () =>
     Effect.gen(function* () {
       const release = yield* Deferred.make<void>();
+      const started = yield* Deferred.make<void>();
       const states = yield* Effect.gen(function* () {
         const long = yield* askCrew("check-ana", "test.hold", "check/ana");
         const capped = yield* askCrew("git-bo", "test.echo", "git/bo");
         yield* enqueue(mate, [{ id: "mate/e/test.echo/1", lane: "turn" }]);
+        const conversationDone = yield* (yield* Conversations).subscribe(mate, 0).pipe(
+          Stream.filter(
+            (event) =>
+              event._tag === "EffectOutcomeRecorded" && event.effectId === "mate/e/test.echo/1",
+          ),
+          Stream.take(1),
+          Stream.runDrain,
+          Effect.forkScoped,
+        );
+        const cappedDone = yield* crewSettled([capped]).pipe(Effect.forkScoped);
         const worker = yield* makeEffectWorker(boot1, { concurrency: 1, ownerConcurrency: 1 });
         yield* worker.start;
-        yield* yieldMany;
+        yield* Deferred.await(started);
+        yield* Fiber.join(conversationDone);
         const whileHeld = {
           crewLong: yield* rowState(long),
           crewCapped: yield* rowState(capped),
           conversation: yield* rowState("mate/e/test.echo/1"),
         };
         yield* Deferred.succeed(release, undefined);
-        yield* yieldMany;
+        yield* Fiber.join(cappedDone);
         return { whileHeld, capped: yield* rowState(capped) };
-      }).pipe(Effect.scoped, Effect.provide(withCrew([holding(release)])));
+      }).pipe(Effect.scoped, Effect.provide(withCrew([holding(release, started)])));
       expect(states).toEqual({
         whileHeld: { crewLong: "running", crewCapped: "pending", conversation: "done" },
         capped: "done",

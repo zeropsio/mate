@@ -12,7 +12,12 @@ import * as Layer from "effect/Layer";
 
 import { Conversations } from "../Conversations.ts";
 import type { Command } from "../domain/command.ts";
-import { EffectHandlers, handlersOf, makeEffectWorker } from "../outbox/EffectWorker.ts";
+import {
+  EffectHandlers,
+  handlersOf,
+  makeEffectWorker,
+  type EffectHandler,
+} from "../outbox/EffectWorker.ts";
 import { LeaseRelease } from "../ports.ts";
 import { World, audit, engineLayerWith, newBoot, tempDb } from "../testing/world.ts";
 import { makeLeaseRelease } from "./leaseRelease.ts";
@@ -42,10 +47,14 @@ const tell = (conversation: ConversationId, command: Command) =>
   );
 
 /** The engine with the world's handlers and the server's own `lease.release`, over `port`. */
-const leaseEngine = (world: World, port?: LeaseRelease["Service"]) => {
+const leaseEngine = (
+  world: World,
+  port?: LeaseRelease["Service"],
+  worldHandlers: ReadonlyMap<string, EffectHandler> = world.handlers(),
+) => {
   const handlers = Layer.effect(
     EffectHandlers,
-    Effect.map(makeLeaseRelease, (lease) => handlersOf(...world.handlers().values(), lease)),
+    Effect.map(makeLeaseRelease, (lease) => handlersOf(...worldHandlers.values(), lease)),
   );
   return engineLayerWith(
     tempDb("lease"),
@@ -171,19 +180,28 @@ describe("lease.release", () => {
     Effect.gen(function* () {
       const world = new World();
       const hung = yield* Deferred.make<LeaseReleaseResult>();
-      const port = LeaseRelease.of({ release: () => Deferred.await(hung) });
-      const yieldMany = Effect.forEach(Array.from({ length: 300 }), () => Effect.yieldNow, {
-        discard: true,
+      const releaseStarted = yield* Deferred.make<void>();
+      const sent = yield* Deferred.make<void>();
+      const port = LeaseRelease.of({
+        release: () =>
+          Deferred.succeed(releaseStarted, undefined).pipe(Effect.andThen(Deferred.await(hung))),
+      });
+      const handlers = new Map(world.handlers());
+      const send = handlers.get("provider.send");
+      if (send === undefined) return yield* Effect.die("The world has no provider.send handler");
+      handlers.set("provider.send", {
+        ...send,
+        run: (row) => send.run(row).pipe(Effect.tap(() => Deferred.succeed(sent, undefined))),
       });
       yield* Effect.gen(function* () {
         yield* tell(ana, { _tag: "BindLease", lease: webpool3 });
         yield* tell(ana, { _tag: "Archive" });
         const worker = yield* makeEffectWorker(newBoot(), { concurrency: 1, ownerConcurrency: 1 });
         yield* worker.start;
-        yield* yieldMany;
+        yield* Deferred.await(releaseStarted);
         yield* tell(bo, { _tag: "Send", text: "still here" });
-        yield* yieldMany;
-      }).pipe(Effect.scoped, Effect.provide(leaseEngine(world, port)));
+        yield* Deferred.await(sent);
+      }).pipe(Effect.scoped, Effect.provide(leaseEngine(world, port, handlers)));
       expect(world.received.map((said) => said.text)).toEqual(["still here"]);
     }),
   );

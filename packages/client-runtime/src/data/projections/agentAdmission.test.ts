@@ -299,20 +299,6 @@ it.each(["unsupported", "broken"] as const)(
 );
 
 describe("one admission answer for composer, Send and Continue", () => {
-  const snapshot = {
-    available: true,
-    agents: [
-      {
-        agentId: "codex",
-        credPresent: true,
-        flagOAuth: true,
-        flagToken: false,
-        providerAuth: "authenticated",
-        state: "authorized",
-        authorizedBy: { subject: "another" },
-      },
-    ],
-  } as const;
   const base = {
     environmentId: "rig",
     instanceId: "codex",
@@ -338,35 +324,6 @@ describe("one admission answer for composer, Send and Continue", () => {
       });
     },
   );
-  it("Decision: admission does not invent signer ownership. Drop unrecorded-login and any blocking derived from who signed in.", () => {
-    for (const subject of [undefined, "viewer", "another"]) {
-      const value = {
-        ...snapshot,
-        agents: snapshot.agents.map((agent) => ({
-          ...agent,
-          authorizedBy: subject === undefined ? undefined : { subject },
-        })),
-      };
-      expect(
-        agentAdmission({
-          owner: null,
-          ...base,
-          read: {
-            state: "known",
-            value,
-            asOf: { ordinal: 1, atMs: 0 },
-            coverage: "complete",
-            freshness: { kind: "live" },
-          },
-        }),
-      ).toMatchObject({
-        attention: null,
-        footer: "composer",
-        canSend: true,
-        readOnly: false,
-      });
-    }
-  });
 });
 
 describe("mateArrivalHoldsComposer", () => {
@@ -578,23 +535,88 @@ describe("admission on the conversation's auth input", () => {
     coverage: "complete",
     freshness: { kind: "live" },
   });
-  const derive = (read: Known<ZeropsAgentAuthSnapshot>) =>
+  const derive = (
+    read: Known<ZeropsAgentAuthSnapshot>,
+    hqSigners?: Readonly<Record<string, string>>,
+  ) =>
     agentAdmission({
       owner: null,
       environmentId: "env-Ada",
       instanceId: provider.instanceId,
       viewerSubject: "viewer",
       read,
+      hqSigners,
       providers: [provider],
       mateName: "Ada",
     });
+
+  const signedInBy = (subject: string, token = false): ZeropsAgentAuthSnapshot => ({
+    ...ready,
+    agents: ready.agents.map((agent) => ({
+      ...agent,
+      flagToken: token,
+      state: token ? "authorized-token" : "authorized",
+      authorizedBy: { subject },
+    })),
+  });
+  const composer = (
+    snapshot: ZeropsAgentAuthSnapshot,
+    hqSigners?: Readonly<Record<string, string>>,
+  ) => {
+    const { footer, canSend, sendBlockReason } = derive(known(snapshot), hqSigners);
+    return { footer, canSend, sendBlockReason };
+  };
+  const anotherMembersSignIn = {
+    footer: "read-only",
+    canSend: false,
+    sendBlockReason: "Signed in by another project member — only they can run this agent.",
+  };
+  const usableComposer = { footer: "composer", canSend: true, sendBlockReason: null };
+
+  it("an agent another member signed in replaces the composer with whose sign-in it is", () => {
+    expect(composer(signedInBy("colleague"))).toEqual(anotherMembersSignIn);
+  });
+
+  it("the member's own agent restores the composer", () => {
+    expect([composer(signedInBy("colleague")), composer(signedInBy("viewer"))]).toEqual([
+      anotherMembersSignIn,
+      usableComposer,
+    ]);
+  });
+
+  it("HQ's signer fills an absent Mate signer, and the Mate's signer takes precedence", () => {
+    expect([
+      composer(ready, { "claude-code": "colleague" }),
+      composer(ready, { "claude-code": "viewer" }),
+      composer(signedInBy("viewer"), { "claude-code": "colleague" }),
+    ]).toEqual([anotherMembersSignIn, usableComposer, usableComposer]);
+  });
+
+  it("an unrecorded sign-in reads along without claiming another member's login", () => {
+    expect([composer(signedInBy("colleague")), composer(ready)]).toEqual([
+      anotherMembersSignIn,
+      {
+        footer: "read-only",
+        canSend: false,
+        sendBlockReason:
+          "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it.",
+      },
+    ]);
+  });
+
+  it("a project token restores the composer when another member last signed in", () => {
+    expect([composer(signedInBy("colleague")), composer(signedInBy("colleague", true))]).toEqual([
+      anotherMembersSignIn,
+      usableComposer,
+    ]);
+  });
 
   it("A cold auth read holds sending without flashing stale sign-in guidance", () => {
     const states: ReadonlyArray<Known<ZeropsAgentAuthSnapshot>> = [
       { state: "unread", waitingFor: null },
       { state: "reading", sinceMs: 0, attempt: 1 },
       { state: "reading", sinceMs: 0, attempt: 2 },
-      known(ready),
+      known(signedInBy("viewer")),
     ];
     // Every observed cold state holds input and Send; the first authoritative answer releases both.
     expect(
@@ -747,6 +769,7 @@ it.each([
               credPresent: true,
               flagOAuth: true,
               flagToken: false,
+              authorizedBy: { subject: "viewer" },
             },
           ],
         },

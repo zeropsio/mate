@@ -14,7 +14,7 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 import type { SpiEvent } from "@t3tools/contracts";
-import { assert, describe, it } from "vite-plus/test";
+import { assert, describe, it, vi } from "vite-plus/test";
 
 import type { BridgeDriver, RequestKey, SessionId, TurnHandle } from "./spi3.ts";
 import { type BridgeInput, makeTranslator } from "./translate.ts";
@@ -1579,41 +1579,53 @@ const refusedWindow = () => {
   };
 };
 
-describe("real adapters, driven by a mock or an authored wire", () => {
-  it("claudeAgent [mock]: a refused window parks the turn with no end, until when it says", async () => {
-    const window = refusedWindow();
-    assert.deepStrictEqual(
-      await record("claudeAgent", recordClaude([...claudeTurnSoFar, window.message])),
-      [
-        ...OPENS_H1,
-        "h1.i1 text running",
-        "h1.i1 text completed",
-        "context usage",
-        `usage limit parks-turn h1 until ${window.resetsAt}`,
-        "notice warning",
-      ],
-    );
-  });
+// Keep the reset classification deterministic without replacing the adapter's real timers.
+const withRefusalClock = async (body: () => Promise<void>) => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1_790_000_000_000);
+  try {
+    await body();
+  } finally {
+    clock.mockRestore();
+  }
+};
 
-  it("claudeAgent [mock]: a refused window with no believable reset parks the turn with a limit whose reset is unknown", async () => {
-    const pastReset = {
-      type: "rate_limit_event",
-      rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt: 1788008400 },
-      uuid: "limit-1",
-      session_id: CLAUDE_SESSION,
-    };
-    assert.deepStrictEqual(
-      await record("claudeAgent", recordClaude([...claudeTurnSoFar, pastReset])),
-      [
-        ...OPENS_H1,
-        "h1.i1 text running",
-        "h1.i1 text completed",
-        "context usage",
-        "usage limit parks-turn h1 until unknown",
-        "notice warning",
-      ],
-    );
-  });
+describe("real adapters, driven by a mock or an authored wire", () => {
+  it("claudeAgent [mock]: a refused window parks the turn with no end, until when it says", () =>
+    withRefusalClock(async () => {
+      const window = refusedWindow();
+      assert.deepStrictEqual(
+        await record("claudeAgent", recordClaude([...claudeTurnSoFar, window.message])),
+        [
+          ...OPENS_H1,
+          "h1.i1 text running",
+          "h1.i1 text completed",
+          "context usage",
+          `usage limit parks-turn h1 until ${window.resetsAt}`,
+          "notice warning",
+        ],
+      );
+    }));
+
+  it("claudeAgent [mock]: a refused window with no believable reset parks the turn with a limit whose reset is unknown", () =>
+    withRefusalClock(async () => {
+      const pastReset = {
+        type: "rate_limit_event",
+        rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt: 1788008400 },
+        uuid: "limit-1",
+        session_id: CLAUDE_SESSION,
+      };
+      assert.deepStrictEqual(
+        await record("claudeAgent", recordClaude([...claudeTurnSoFar, pastReset])),
+        [
+          ...OPENS_H1,
+          "h1.i1 text running",
+          "h1.i1 text completed",
+          "context usage",
+          "usage limit parks-turn h1 until unknown",
+          "notice warning",
+        ],
+      );
+    }));
 
   it("claudeAgent [mock]: a background shell outlives its turn, and its result wakes the agent into a turn of its own", async () => {
     const lines = await record(

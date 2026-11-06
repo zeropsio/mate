@@ -190,9 +190,12 @@ describe("withMetrics", () => {
     Effect.gen(function* () {
       const duration = Duration.nanos(1_500_000n);
       const timer = Metric.timer("with_metrics_nanos_duration");
+      const started = yield* Deferred.make<void>();
+      const finish = yield* Deferred.make<void>();
 
       yield* Effect.gen(function* () {
-        const fiber = yield* Effect.sleep(duration).pipe(
+        const fiber = yield* Deferred.succeed(started, undefined).pipe(
+          Effect.andThen(Deferred.await(finish)),
           withMetrics({
             timer,
             attributes: {
@@ -201,9 +204,9 @@ describe("withMetrics", () => {
           }),
           Effect.forkChild,
         );
-
-        yield* Effect.yieldNow;
+        yield* Deferred.await(started);
         yield* TestClock.adjust(duration);
+        yield* Deferred.succeed(finish, undefined);
         yield* Fiber.join(fiber);
       }).pipe(Effect.provide(TestClock.layer()));
 

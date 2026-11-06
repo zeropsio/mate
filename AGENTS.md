@@ -1,8 +1,8 @@
 # mate — Zerops Mate
 
 Zerops Mate is a hard fork of T3 Code: a control surface for coding agents in Zerops project
-containers. A Node WebSocket server in each container drives provider CLIs and serves the web client
-at `/mate/`; zcp installs it from this repo's GitHub release.
+containers. A Node WebSocket server in each container drives provider CLIs; zcp installs it from
+this repo's stable GitHub release. The web client is hosted separately.
 
 **Upstream.** Never `git merge` or rebase onto `upstream/main`. Before importing, porting or editing
 imported/ported zones, read and follow [`docs/internals/zerops/fork.md`](docs/internals/zerops/fork.md).
@@ -47,8 +47,8 @@ The loop:
   files, and the gate once more; it reuses passed stages.
 - CI runs blocking verification on `main`, `kh-next`, `kh-bisect/**` and pull requests (a newer push
   cancels older runs except on `main`; `kh-next` is the integration branch that fast-forwards `main`);
-  browser scenario shards run in the non-blocking `Signal` workflow, where a failure gets one
-  same-commit rerun to tell a flake from a regression.
+  browser scenario shards run nightly on `main` and on demand in the non-blocking `Signal`
+  workflow, where a failure gets one same-commit rerun to tell a flake from a regression.
 - Markdown tables: `vp fmt` the file before committing; unaligned rows fail CI's Check job.
 - The server is event-sourced; async flows emit typed receipts. Wait on receipts and worker drains,
   never sleeps or polling.
@@ -104,6 +104,8 @@ Before calling frontend work done, decide which apply:
 This file is a map, never a cache of facts from code, tests or other documents.
 To answer a question, go to the home:
 
+- Conceptual architecture → private `zeropsio/mate-hq`, `docs/architecture/README.md`; public
+  product contracts here and in the zcp spec remain self-contained.
 - The zcp↔mate seam → `../zcp/docs/spec-mate.md` §2.8 (sibling repo zeropsio/zcp).
 - Domain terms (Mate, HQ, application, environments, release, crew) → `docs/internals/zerops/primer.md`.
 - Runtime terms (thread, turn, decider, projector, reactor) → `docs/internals/glossary.md`.

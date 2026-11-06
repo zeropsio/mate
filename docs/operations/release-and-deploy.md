@@ -14,7 +14,7 @@ How mate reaches users. Each step names the file that owns its detail.
   deploy: `/sw.js` becomes a worker that clears its caches and unregisters on each browser's next
   navigation. Keep that deploy up; deleting the variable or `/sw.js` strands installed workers on
   their kept page.
-- **Shared production HQ.** Deploys from the private mate-hq repository's `scripts/deploy-hq.ts`.
+- **Shared production HQ.** Deployment is owned by the private `zeropsio/mate-hq` repository.
 - **Mate server release.** `node scripts/release-mate.ts` (`--minor` when the client's compatibility
   floor rises, `--dry-run` prints the plan). It calls GitHub through `gh`; set `MATE_GH` to use a
   wrapper that holds the release token instead. zcp installs the latest stable release in containers by itself.
