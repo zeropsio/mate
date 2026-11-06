@@ -82,6 +82,7 @@ const unitTestProject = {
   test: {
     name: "unit",
     fsModuleCache: true,
+    isolate: false,
     // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
     taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
     include: ["src/**/*.test.{ts,tsx}"],

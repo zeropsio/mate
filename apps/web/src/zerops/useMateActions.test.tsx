@@ -249,8 +249,7 @@ vi.mock("./sharedBirths", async (original) => {
     useSharedBirths: () => (mock.liveBirths ? actual.useSharedBirths() : mock.births),
   };
 });
-vi.mock("./useBirthActions", async (original) => ({
-  ...(await original<typeof import("./useBirthActions")>()),
+vi.mock("./useBirthActions", () => ({
   useBirthActions: () => ({ proceed: mock.proceedBirth, deleteBirthOnly: mock.deleteBirthOnly }),
 }));
 vi.mock("./MateDeployConfirmation", () => ({
