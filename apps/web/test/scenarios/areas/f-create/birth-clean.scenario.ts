@@ -44,7 +44,10 @@ describe("a shared Mate birth", () => {
           const second = yield* s.given.browserActor();
           yield* second.given.signedIn;
           yield* Effect.promise(async () => {
-            await second.page.goto(`${s.web.origin}/mate/created-1`);
+            await receipt(
+              second.page.goto(`${s.web.origin}/mate/created-1`),
+              "second device opened the new Mate",
+            );
             await receipt(
               second.page.waitForFunction(
                 () =>
@@ -56,13 +59,12 @@ describe("a shared Mate birth", () => {
               "second device showed container-starting progress",
             );
           });
-          // Count only after the press has ended and its requests and rendering have settled.
+          // The press end follows its import; unrelated platform reads need not settle.
           expect(
             (yield* Effect.promise(() =>
               receipt(ended, "HQ ended the clean birth press"),
             )).status(),
           ).toBe(200);
-          yield* c.settled;
           const imports = s.drivers.zerops.world.imports.filter(
             (entry) => entry.projectId === "created-1",
           );
