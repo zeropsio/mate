@@ -70,6 +70,17 @@ it.each([
     rebuild: true,
   },
   { title: "rebuilds the bundle after a lockfile edit", path: "pnpm-lock.yaml", rebuild: true },
+  { title: "rebuilds the bundle after an HQ pin edit", path: ".mate-hq-ref", rebuild: true },
+  {
+    title: "rebuilds the bundle after a dependency patch edit",
+    path: "patches/effect@4.0.1.patch",
+    rebuild: true,
+  },
+  {
+    title: "rebuilds the bundle after a generated route tree edit",
+    path: "apps/web/src/routeTree.gen.ts",
+    rebuild: true,
+  },
   {
     title: "rebuilds the bundle after a Vite config edit",
     path: "apps/web/vite.config.ts",
@@ -101,6 +112,17 @@ it.each([
     const after = await bundleKey(root, {});
     if (rebuild) expect(after).not.toBe(before);
     else expect(after).toBe(before);
+  } finally {
+    await NodeFSP.rm(root, { recursive: true, force: true });
+  }
+});
+
+it("rebuilds the bundle when the Babel environment changes", async () => {
+  const root = await cacheFixture();
+  try {
+    expect(await bundleKey(root, { BABEL_ENV: "production" })).not.toBe(
+      await bundleKey(root, { BABEL_ENV: "test" }),
+    );
   } finally {
     await NodeFSP.rm(root, { recursive: true, force: true });
   }
@@ -221,6 +243,54 @@ it("never publishes a failed or concurrently edited build", async () => {
       await NodeFSP.writeFile(NodePath.join(dist, "index.html"), "fresh");
     });
     expect(await NodeFSP.readFile(NodePath.join(dist, "index.html"), "utf8")).toBe("fresh");
+  } finally {
+    await NodeFSP.rm(root, { recursive: true, force: true });
+  }
+});
+
+it("builds again when the route generator updates its tracked output", async () => {
+  const root = await cacheFixture();
+  const route = NodePath.join(root, "apps/web/src/routeTree.gen.ts");
+  let builds = 0;
+  try {
+    await NodeFSP.mkdir(NodePath.dirname(route), { recursive: true });
+    await NodeFSP.writeFile(route, "old route tree");
+    const dist = await cachedBundle(root, { GITHUB_ACTIONS: "true" }, async (output) => {
+      builds++;
+      if (builds === 1) await NodeFSP.writeFile(route, "generated route tree");
+      await NodeFSP.writeFile(NodePath.join(output, "index.html"), await NodeFSP.readFile(route));
+    });
+    expect(builds).toBe(2);
+    expect(await NodeFSP.readFile(NodePath.join(dist, "index.html"), "utf8")).toBe(
+      "generated route tree",
+    );
+  } finally {
+    await NodeFSP.rm(root, { recursive: true, force: true });
+  }
+});
+
+it("rejects a damaged or partial bundle before reusing it", async () => {
+  const root = await cacheFixture();
+  let builds = 0;
+  try {
+    const build = async (dist: string) => {
+      builds++;
+      await NodeFSP.mkdir(NodePath.join(dist, "assets"));
+      await NodeFSP.writeFile(NodePath.join(dist, "index.html"), "<script src=assets/app.js>");
+      await NodeFSP.writeFile(NodePath.join(dist, "assets/app.js"), "certified bytes");
+    };
+    const dist = await cachedBundle(root, { GITHUB_ACTIONS: "true" }, build);
+    await NodeFSP.writeFile(NodePath.join(dist, "assets/app.js"), "poisoned bytes");
+    expect(await cachedBundle(root, { GITHUB_ACTIONS: "true" }, build)).toBe(dist);
+    expect(await NodeFSP.readFile(NodePath.join(dist, "assets/app.js"), "utf8")).toBe(
+      "certified bytes",
+    );
+    await NodeFSP.rm(NodePath.join(dist, "assets/app.js"));
+    expect(await cachedBundle(root, { GITHUB_ACTIONS: "true" }, build)).toBe(dist);
+    expect(await NodeFSP.readFile(NodePath.join(dist, "assets/app.js"), "utf8")).toBe(
+      "certified bytes",
+    );
+    expect(builds).toBe(3);
   } finally {
     await NodeFSP.rm(root, { recursive: true, force: true });
   }
