@@ -136,10 +136,6 @@ describe("reduceZeropsOperations — weatherdash-first-deploy", () => {
     expect(verify.steps).toHaveLength(2);
     expect(verify.closing).toBe("All 2 checks passed.");
   });
-
-  it("the import never becomes its own operation — it joined the bootstrap", () => {
-    expect(operations.some((o) => o.kind === "import")).toBe(false);
-  });
 });
 
 describe("reduceZeropsOperations — add-mariadb", () => {

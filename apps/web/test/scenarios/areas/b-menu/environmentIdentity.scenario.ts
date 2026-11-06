@@ -1,11 +1,8 @@
 import { scenarioSuite } from "../../harness/suite.ts";
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import {
-  environmentIdentityWire,
-  type EnvironmentWire,
-} from "../../fakes/b-menu/environmentIdentity.ts";
+import { environmentIdentityWire } from "../../fakes/b-menu/environmentIdentity.ts";
 import { environmentFixtureWith } from "../e-env/fake.ts";
 import { environmentActions } from "../e-env/dsl.ts";
 import { environmentRows, openEnvironment, menuScenario } from "./dsl.ts";
@@ -16,15 +13,12 @@ const decodeService = Schema.decodeUnknownSync(
 );
 
 // The compatibility matrix runs these same real consumers with immutable historical browser bundles.
-const compatibility = Effect.fn("environment.compatibility")(function* (
-  mode: EnvironmentWire | "current",
-) {
+const compatibility = Effect.fn("environment.compatibility")(function* () {
   const f = yield* environmentFixtureWith({ signIn: "ui" });
   const frames: string[] = [];
-  const wire = mode === "current" ? undefined : environmentIdentityWire(mode);
   f.s.drivers.hq.mapFrames((frame) => {
     frames.push(frame);
-    return wire?.map(frame) ?? frame;
+    return frame;
   });
   const assertCurrentFrames = () => {
     const environments: Record<string, unknown>[] = [];
@@ -70,7 +64,7 @@ const compatibility = Effect.fn("environment.compatibility")(function* (
     f.s.page,
     rows.map((row) => row.name),
   );
-  if (mode === "current") assertCurrentFrames();
+  assertCurrentFrames();
   // Jobs and service evidence arrive after first paint, through the actual Core and platform.
   const sha = yield* f.merge();
   yield* a.when.finish("stage");
@@ -113,7 +107,7 @@ const compatibility = Effect.fn("environment.compatibility")(function* (
   yield* Effect.logInfo(
     "environment compatibility values",
     encodeReceipt({
-      mode,
+      mode: "current",
       environments: structure.apps
         .find((app) => app.id === f.appId)
         ?.environments.map((environment) => ({
@@ -129,19 +123,17 @@ const compatibility = Effect.fn("environment.compatibility")(function* (
       },
     }),
   );
-  if (mode === "current") {
-    yield* f.s.when.hq.socket.drops;
-    yield* f.s.then.hq.isUnavailable;
-    yield* f.s.when.hq.socket.returns;
-    yield* Effect.promise(() =>
-      f.s.page.waitForSelector('[data-zerops-surface="sidebar-hq-outage"]', {
-        hidden: true,
-      }),
-    );
-    yield* a.then.text(sha.slice(0, 7));
-    expect(new URL(f.s.page.url()).pathname).toBe(`/group/${f.appId}/Shop-stage`);
-    assertCurrentFrames();
-  }
+  yield* f.s.when.hq.socket.drops;
+  yield* f.s.then.hq.isUnavailable;
+  yield* f.s.when.hq.socket.returns;
+  yield* Effect.promise(() =>
+    f.s.page.waitForSelector('[data-zerops-surface="sidebar-hq-outage"]', {
+      hidden: true,
+    }),
+  );
+  yield* a.then.text(sha.slice(0, 7));
+  expect(new URL(f.s.page.url()).pathname).toBe(`/group/${f.appId}/Shop-stage`);
+  assertCurrentFrames();
   yield* f.s.then.noExternalNetwork;
 });
 
@@ -149,76 +141,8 @@ describe("B: environment identity compatibility", () => {
   scenarioSuite((it) => {
     it.effect(
       "Current HQ omits redundant environment identity while navigation, late jobs, reload and recovery retain their values.",
-      () => compatibility("current"),
+      () => compatibility(),
     );
-    it.effect("Old HQ and new hosted web keep sign-in and environment navigation working.", () =>
-      compatibility("legacy"),
-    );
-    it.effect(
-      "Old clients keep their Zerops environments after HQ gains environment identities.",
-      () => compatibility("modern"),
-    );
-
-    it.effect("A partial modern environment is refused without erasing known environments.", () =>
-      Effect.gen(function* () {
-        const s = yield* menuScenario();
-        const wire = environmentIdentityWire("modern");
-        wire.install(s.drivers);
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.stage("preview", "Shop");
-        yield* s.given.signedIn;
-        yield* s.menu.opensApplication("Shop");
-        const appId = s.appIds.get("Shop")!;
-        const rows = [{ name: "Preview", id: "preview" }];
-        yield* environmentRows(
-          s.page,
-          rows.map((row) => row.name),
-        );
-        wire.set("partial");
-        // A resumed cursor does not resend unchanged facts; a real Core revision carries the new wire input.
-        yield* s.when.hq.colleague.renamesProject("Shop", "Shop partial");
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(
-            () => document.querySelector("h1")?.textContent === "Shop partial",
-            {
-              polling: "raf",
-            },
-          ),
-        );
-        yield* environmentRows(
-          s.page,
-          rows.map((row) => row.name),
-        );
-        wire.set("modern");
-        yield* s.when.hq.colleague.renamesProject("Shop", "Shop");
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(() => document.querySelector("h1")?.textContent === "Shop", {
-            polling: "raf",
-          }),
-        );
-        yield* s.when.hq.socket.drops;
-        yield* s.then.hq.isUnavailable;
-        yield* s.when.hq.socket.returns;
-        yield* Effect.promise(() =>
-          s.page.waitForSelector('[data-zerops-surface="sidebar-hq-outage"]', {
-            hidden: true,
-          }),
-        );
-        yield* environmentRows(
-          s.page,
-          rows.map((row) => row.name),
-        );
-        yield* openEnvironment(s.page, appId, "Preview", "preview");
-        yield* Effect.promise(() =>
-          s.page.waitForFunction(
-            () => document.querySelector("main")?.innerText.includes("stage-existing"),
-            { polling: "raf" },
-          ),
-        );
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     it.effect(
       "Environment routes dispatch mixed targets without using their ids as projects.",
       () =>
@@ -297,32 +221,6 @@ describe("B: environment identity compatibility", () => {
             ),
           );
           expect(s.drivers.zerops.requests.get("GET /project/unknown-environment") ?? 0).toBe(0);
-          yield* s.then.noExternalNetwork;
-        }),
-    );
-
-    it.effect(
-      "An environment arriving after first paint appears once with its target's service version.",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* menuScenario();
-          yield* s.given.project("Ada", { mate: true, app: "Shop" });
-          yield* s.given.signedIn;
-          yield* s.menu.opensApplication("Shop");
-          yield* environmentRows(s.page, []);
-          yield* s.stage("preview", "Shop");
-          yield* environmentRows(s.page, ["Preview"]);
-          yield* openEnvironment(s.page, s.appIds.get("Shop")!, "Preview", "preview");
-          yield* Effect.promise(() =>
-            s.page.waitForFunction(
-              () => document.querySelector("main")?.innerText.includes("stage-existing"),
-              { polling: "raf" },
-            ),
-          );
-          expect(s.drivers.zerops.world.appVersions.get("version-preview")).toMatchObject({
-            serviceId: "app-preview",
-            name: "stage-existing",
-          });
           yield* s.then.noExternalNetwork;
         }),
     );

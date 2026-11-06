@@ -62,7 +62,11 @@ describe("updateProjectTags' writer", () => {
   it("a concurrent replacement fails visibly after one write", async () => {
     const rest = platform([], { afterWrite: () => ["theirs"] });
     const writer = makeProjectTagWriter({ source: rest.source });
-    await expect(writer.write("p1", { kind: "mate" })).rejects.toMatchObject({ kind: "rejected" });
+    await expect(writer.write("p1", { kind: "mate" })).rejects.toMatchObject({
+      _tag: "ZeropsProjectTagWriteError",
+      kind: "rejected",
+      retryable: true,
+    });
     expect(rest.log).toEqual(["GET", "PUT", "GET"]);
   });
 
@@ -74,23 +78,6 @@ describe("updateProjectTags' writer", () => {
 
     expect(written.kind).toBe("unchanged");
     expect(rest.log).toEqual(["GET"]);
-  });
-
-  it("gives up once other writers replaced its list every time, and says so", async () => {
-    const rest = platform([]);
-    const replaced: ProjectTagSource = {
-      ...rest.source,
-      // Every write lands and is at once replaced by a record without it.
-      writeProject: async (project) => project,
-    };
-    const writer = makeProjectTagWriter({ source: replaced });
-
-    await expect(writer.write("p1", { kind: "mate" })).rejects.toMatchObject({
-      _tag: "ZeropsProjectTagWriteError",
-      kind: "rejected",
-      retryable: true,
-    });
-    expect(rest.log).toEqual(["GET", "GET"]);
   });
 
   it("one page serializes its own writes to a project with no locks at all", async () => {

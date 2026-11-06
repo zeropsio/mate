@@ -29,9 +29,12 @@ describe("KeyedLock", () => {
         )
         .pipe(Effect.forkChild);
       yield* Deferred.await(firstEntered);
-      const second = yield* lock.withLock("key", record("second")).pipe(Effect.forkChild);
-      const third = yield* lock.withLock("key", record("third")).pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
+      const second = yield* lock
+        .withLock("key", record("second"))
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      const third = yield* lock
+        .withLock("key", record("third"))
+        .pipe(Effect.forkChild({ startImmediately: true }));
       assert.deepStrictEqual(yield* Ref.get(events), ["first:start"]);
 
       yield* Deferred.succeed(releaseFirst, undefined);
@@ -78,9 +81,12 @@ describe("KeyedLock", () => {
         .pipe(Effect.forkChild);
       yield* Deferred.await(entered);
       // A waiter that gives up and one that runs.
-      const abandoned = yield* lock.withLock("key", Effect.void).pipe(Effect.forkChild);
-      const waiting = yield* lock.withLock("key", Effect.void).pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
+      const abandoned = yield* lock
+        .withLock("key", Effect.void)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      const waiting = yield* lock
+        .withLock("key", Effect.void)
+        .pipe(Effect.forkChild({ startImmediately: true }));
       assert.deepStrictEqual(yield* lock.activeKeys, ["key"]);
 
       yield* Fiber.interrupt(abandoned);

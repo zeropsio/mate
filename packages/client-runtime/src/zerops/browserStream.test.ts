@@ -59,14 +59,6 @@ describe("mapCanvasPointToDevicePixels", () => {
     expect(point).toEqual({ x: 100, y: 50 });
   });
 
-  it("is the identity mapping when the canvas is drawn at the frame's own device size with no scroll", () => {
-    const point = mapCanvasPointToDevicePixels(
-      { canvasWidth: 640, canvasHeight: 360, x: 12, y: 34 },
-      frame({ width: 640, height: 360 }),
-    );
-    expect(point).toEqual({ x: 12, y: 34 });
-  });
-
   it("applies independent x/y scale factors", () => {
     const point = mapCanvasPointToDevicePixels(
       { canvasWidth: 100, canvasHeight: 50, x: 10, y: 10 },

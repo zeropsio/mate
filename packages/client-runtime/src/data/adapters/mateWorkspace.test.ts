@@ -520,8 +520,13 @@ it("starting an MCP sign-in leaves the tab's server list as the Mate last answer
   const reads = makeWorkspaceReads(store, {
     read: () => Effect.succeed(listed),
   } as WorkspaceWire);
+  const listedByMate = waitFor(
+    store,
+    () =>
+      workspaceReading("mcp").derive(readsOfState(store.state()), target).result._tag === "Success",
+  );
   const release = reads.demand("mcp", target);
-  await Promise.resolve();
+  await listedByMate;
   const act = makeWorkspaceActions({
     store,
     current: () => true,

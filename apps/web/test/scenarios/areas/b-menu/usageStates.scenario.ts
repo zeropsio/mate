@@ -4,52 +4,57 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { HqStreamMessage } from "@t3tools/shared/hqStream";
 import { createScenario } from "../../harness/scenario.ts";
+import { recordStep } from "../../harness/lastStep.ts";
 import { recordedReport, statistics } from "../../../../src/components/usage/usageTestFixtures.ts";
 
 describe("B: Usage read states", () => {
   scenarioSuite((it) => {
-    for (const width of [1786, 390, 320])
-      it.effect(
-        `Loading and recorded Usage keep the same totals columns and section frames at ${width} pixels`,
-        () =>
-          Effect.gen(function* () {
-            const s = yield* createScenario();
-            yield* s.given.project("Ada", { mate: true, app: "Shop" });
-            let reading = true;
-            s.drivers.hq.mapFrames((frame) => {
-              const message = JSON.parse(frame) as HqStreamMessage;
-              if (
-                (message.type !== "scope-ready" &&
-                  message.type !== "scope-reset" &&
-                  message.type !== "scope-values") ||
-                message.scope.kind !== "agentUsage"
-              )
-                return frame;
-              // Loading is a read HQ has not answered: none of its answer reaches the page, its
-              // ready mark included, or the page holds the read as answered and Refresh resumes it
-              // empty instead of asking afresh.
-              if (reading) return JSON.stringify({ type: "ping" });
-              if (message.type === "scope-ready") return frame;
-              const query = message.scope.query;
-              const report = recordedReport({
-                query,
-                provenance: query.provenance ?? "live-responses",
-                nativeCosts: { '["USD","provider-reported-estimate",7]': "8265478" },
-                groups: [
-                  {
-                    key: "Ada",
-                    provider: "claude",
-                    model: "recorded-model",
-                    period: (query.since ?? "2026-10-01").slice(0, 10),
-                    totals: statistics(),
-                    costUsdNanos: "7830000000",
-                  },
-                ],
-              });
-              return JSON.stringify({ ...message, values: [{ key: "report", value: report }] });
+    it.effect(
+      "Loading and recorded Usage keep the same totals columns and section frames at 1786 pixels",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario();
+          yield* s.given.project("Ada", { mate: true, app: "Shop" });
+          let reading = true;
+          s.drivers.hq.mapFrames((frame) => {
+            const message = JSON.parse(frame) as HqStreamMessage;
+            if (
+              (message.type !== "scope-ready" &&
+                message.type !== "scope-reset" &&
+                message.type !== "scope-values") ||
+              message.scope.kind !== "agentUsage"
+            )
+              return frame;
+            // Loading is a read HQ has not answered: none of its answer reaches the page, its
+            // ready mark included, or the page holds the read as answered and Refresh resumes it
+            // empty instead of asking afresh.
+            if (reading) return JSON.stringify({ type: "ping" });
+            if (message.type === "scope-ready") return frame;
+            const query = message.scope.query;
+            const report = recordedReport({
+              query,
+              provenance: query.provenance ?? "live-responses",
+              nativeCosts: { '["USD","provider-reported-estimate",7]': "8265478" },
+              groups: [
+                {
+                  key: "Ada",
+                  provider: "claude",
+                  model: "recorded-model",
+                  period: (query.since ?? "2026-10-01").slice(0, 10),
+                  totals: statistics(),
+                  costUsdNanos: "7830000000",
+                },
+              ],
             });
-            yield* s.given.signedIn;
-            yield* Effect.promise(async () => {
+            return JSON.stringify({ ...message, values: [{ key: "report", value: report }] });
+          });
+          yield* s.given.signedIn;
+          yield* Effect.promise(async () => {
+            for (const width of [1786, 390, 320]) {
+              recordStep(
+                `Loading and recorded Usage keep the same totals columns and section frames at ${width} pixels`,
+              );
+              reading = true;
               await s.page.setViewport({ width, height: 1000 });
               await s.page.goto(`${s.web.origin}/usage`);
               if (width > 1000) await s.page.locator('::-p-aria(Cost[role="button"])').click();
@@ -58,6 +63,18 @@ describe("B: Usage read states", () => {
                 await s.page.locator('::-p-aria(Cost[role="option"])').click();
               }
               await s.page.waitForFunction(() => document.body.innerText.includes("Totals"));
+              await s.page.waitForFunction(() => {
+                const text = document.body.innerText;
+                return (
+                  text.includes("Reading usage…") ||
+                  text.includes("HQ is connected but slow to answer. Still waiting…") ||
+                  text.includes("1 turn")
+                );
+              });
+              expect(
+                await s.page.evaluate(() => document.body.innerText),
+                `ASSERTION: the usage feed is still loading at ${width} pixels`,
+              ).toMatch(/Reading usage…|HQ is connected but slow to answer\. Still waiting…/);
               const geometry = () =>
                 s.page.evaluate(() => {
                   const sections = [...document.querySelectorAll("section")];
@@ -144,9 +161,10 @@ describe("B: Usage read states", () => {
                 ).toBeLessThanOrEqual(width);
                 expect(await s.page.evaluate(() => document.body.innerText)).not.toContain("Back");
               }
-            });
-            yield* s.then.noExternalNetwork;
-          }),
-      );
+            }
+          });
+          yield* s.then.noExternalNetwork;
+        }),
+    );
   });
 });

@@ -172,7 +172,8 @@ describe("makeMateAdapter", () => {
     adapter.dispose();
     const completed: number[] = [];
     receipts.forEach((receipt, index) => void receipt.then(() => completed.push(index)));
-    await expect.poll(() => completed, { timeout: 1000 }).toEqual([0, 1]);
+    await Promise.all(receipts);
+    expect(completed).toEqual([0, 1]);
     expect(mateLinks.derive(read(store), null).containers.size).toBe(0);
     await adapter.settled();
   });
@@ -193,11 +194,13 @@ describe("makeMateAdapter", () => {
   });
 
   it("reads the route's Mate, exchanges at its door and goes live once installed", async () => {
-    const { adapter, store, exchanges, installs } = rig();
+    const { adapter, store, exchanges, installs, probes } = rig();
     adapter.setTargets([target("p1"), target("p2")]);
     adapter.setDemand("route", ["p1:zcp"]);
     await flush();
     expect(exchanges.map((exchange) => exchange.key)).toEqual(["p1:zcp"]);
+    // The door's descriptor read also answers for the container.
+    expect(probes).toEqual([]);
     expect(installs).toEqual(["p1:zcp"]);
     const link = mateLink.derive(read(store), "p1:zcp");
     expect(link?.environment.credential).toMatchObject({ kind: "held", installed: true });
@@ -453,18 +456,6 @@ describe("makeMateAdapter", () => {
     await flush();
     expect([...mateLinks.derive(read(store), null).machines.keys()]).toEqual(["p1:zcp"]);
     expect(mateLink.derive(read(store), "p2:zcp")?.shown).toBe(false);
-  });
-
-  // Reading every listed Mate's descriptor and health check repeats remote work,
-  // the stopped and unready ones failing with CORS errors in the console.
-  it("reads a Mate once per connection attempt: the door's descriptor read stands for its container", async () => {
-    const { adapter, store, probes, exchanges } = rig();
-    adapter.setTargets([target("p1")]);
-    adapter.setDemand("route", ["p1:zcp"]);
-    await flush();
-    expect(exchanges.map((exchange) => exchange.key)).toEqual(["p1:zcp"]);
-    expect(probes).toEqual([]);
-    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("ready");
   });
 
   it.each(["STOPPED", "RESTARTING", "ACTION_FAILED"])(

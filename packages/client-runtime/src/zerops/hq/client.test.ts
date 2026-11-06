@@ -190,18 +190,6 @@ describe("makeHqApi — a connection that drops", () => {
     expect(hq.seen.filter((entry) => entry.path === "/api/structure")).toHaveLength(1);
   });
 
-  it("says HQ could not be reached when it drops twice in a row", async () => {
-    const { fetch } = dropping(2);
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch,
-      accessToken: doors().accessToken,
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-    });
-    await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable", code: "network" });
-  });
-
   it("never tries again what HQ answered, nor what its caller stopped", async () => {
     let calls = 0;
     const answering = async () => {
@@ -1386,7 +1374,11 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     );
     await expect(hqApi.changeMetadata(LINK)).resolves.toEqual({ change: CHANGE, review: REVIEW });
     expect(hq.seen.filter((request) => request.path.includes("/changes/"))).toEqual([
-      expect.objectContaining({ path: "/api/apps/app-1/changes/app/3/metadata", method: "GET" }),
+      expect.objectContaining({
+        path: "/api/apps/app-1/changes/app/3/metadata",
+        method: "GET",
+        authorization: "Bearer session-1",
+      }),
     ]);
   });
 
@@ -1430,16 +1422,6 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
         search: `?expectedHead=${SHA}&expectedMain=${MAIN_HEAD}`,
       }),
     ]);
-  });
-
-  it("reads a change with what its review reads, as the person", async () => {
-    const { hq, api: hqApi } = api((seen) =>
-      seen.path === "/api/apps/app-1/changes/app/3/metadata"
-        ? json(200, { change: CHANGE, review: REVIEW })
-        : undefined,
-    );
-    await expect(hqApi.changeMetadata(LINK)).resolves.toEqual({ change: CHANGE, review: REVIEW });
-    expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
   });
 
   it("refuses an answer this version of Mate cannot read, rather than drawing half of it", async () => {

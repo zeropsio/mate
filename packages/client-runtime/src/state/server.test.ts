@@ -80,6 +80,53 @@ describe("server state projection", () => {
     const result = Option.getOrThrow(projected);
     expect(result.config.settings).toBe(settings);
     expect(result.latestEvent.type).toBe("settingsUpdated");
+
+    const keybindings: ServerConfig["keybindings"] = [];
+    const issues: ServerConfig["issues"] = [];
+    const withKeybindings = Option.getOrThrow(
+      applyServerConfigProjection(projected, {
+        version: 1,
+        type: "keybindingsUpdated",
+        payload: { keybindings, issues },
+      }),
+    );
+    expect(withKeybindings.config.keybindings).toBe(keybindings);
+    expect(withKeybindings.config.issues).toBe(issues);
+    expect(withKeybindings.latestEvent.type).toBe("keybindingsUpdated");
+
+    const providers = [{ instanceId: "live" }] as unknown as ServerConfig["providers"];
+    const withProviders = Option.getOrThrow(
+      applyServerConfigProjection(Option.some(withKeybindings), {
+        version: 1,
+        type: "providerStatuses",
+        payload: { providers },
+      }),
+    );
+    expect(withProviders.config.providers).toBe(providers);
+    expect(withProviders.latestEvent.type).toBe("providerStatuses");
+
+    const update = { installed: "1", latest: "2", available: true, checkedAt: "now" };
+    const withUpdate = Option.getOrThrow(
+      applyServerConfigProjection(Option.some(withProviders), {
+        version: 1,
+        type: "mateUpdate",
+        payload: { update },
+      }),
+    );
+    expect(withUpdate.config.environment.update).toBe(update);
+    expect(withUpdate.latestEvent.type).toBe("mateUpdate");
+
+    const sources = [{ id: "live" }] as unknown as NonNullable<ServerConfig["usageLimitSources"]>;
+    const withSources = Option.getOrThrow(
+      applyServerConfigProjection(Option.some(withUpdate), {
+        version: 1,
+        type: "usageLimitSourcesUpdated",
+        payload: { sources },
+      }),
+    );
+    expect(withSources.config.usageLimitSources).toBe(sources);
+    expect(withSources.latestEvent.type).toBe("usageLimitSourcesUpdated");
+    expect(withSources.config.settings).toBe(settings);
   });
 
   it("retains welcome when a ready event follows in the same stream chunk", () => {
@@ -186,7 +233,7 @@ describe("server state projection", () => {
           );
           expect(Option.getOrThrow(yield* SubscriptionRef.get(state)).config).toBe(CONFIG);
 
-          const providers: ServerConfig["providers"] = [];
+          const providers = [{ instanceId: "live" }] as unknown as ServerConfig["providers"];
           yield* Queue.offer(events, {
             version: 1,
             type: "providerStatuses",
@@ -205,7 +252,7 @@ describe("server state projection", () => {
         }),
       );
 
-      expect((yield* Queue.take(savedConfigs)).providers).toEqual([]);
+      expect((yield* Queue.take(savedConfigs)).providers).toEqual([{ instanceId: "live" }]);
     }),
   );
 

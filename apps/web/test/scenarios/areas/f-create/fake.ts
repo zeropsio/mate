@@ -7,7 +7,6 @@ import type { SearchTerm } from "../../fakes/zerops.ts";
 
 type CreationControl = CreationFake & {
   holdCreation: boolean;
-  deleted: string[];
   mateKeys: string[];
 };
 const controls = new WeakMap<ScenarioDrivers, CreationControl>();
@@ -20,7 +19,6 @@ export const creationOf = (drivers: ScenarioDrivers) => {
 export const installCreation: ScenarioExtension = async (drivers) => {
   const creation = Object.assign(new CreationFake(drivers.zerops), {
     holdCreation: false,
-    deleted: [] as string[],
     mateKeys: [] as string[],
   });
   controls.set(drivers, creation);
@@ -71,10 +69,6 @@ export const installCreation: ScenarioExtension = async (drivers) => {
           else drivers.zerops.faults.set("process:push", previousPush);
         }
       }
-      if (creation.creationStatus === "FAILED") {
-        const project = drivers.zerops.rows("project").find((row) => row.id === "created-1");
-        if (project) drivers.zerops.put("project", { ...project, status: "NEW" });
-      }
       if (creation.holdCreation) {
         const process = drivers.zerops
           .rows("process")
@@ -83,17 +77,7 @@ export const installCreation: ScenarioExtension = async (drivers) => {
       }
       return response;
     }
-    const target = path.match(/^\/project\/([^/]+)$/u)?.[1];
-    if (request.method !== "DELETE" || !target) return undefined;
-    if (!creation.accepted.some((project) => project.id === target)) return undefined;
-    const credential = request.headers.authorization?.replace(/^Bearer /u, "") ?? "";
-    if (!drivers.zerops.canWrite(credential, target))
-      return drivers.zerops.error(403, "insufficientPermissions");
-    creation.deleted.push(target);
-    const processId = drivers.zerops.writes.start(target, "project.delete", []);
-    drivers.zerops.remove("project", target);
-    drivers.zerops.writes.transition(processId, "FINISHED");
-    return { body: { id: processId } };
+    return undefined;
   });
   drivers.zerops.handlers.push(creation.handle);
   const proxy = await replyLossProxy(drivers.zerops, creation);

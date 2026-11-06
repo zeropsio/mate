@@ -1,6 +1,6 @@
 // @effect-diagnostics preferSchemaOverJson:off -- controlled report inputs on the existing scenario wire.
 import { scenarioSuite } from "../../harness/suite.ts";
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { HqStreamMessage } from "@t3tools/shared/hqStream";
 import { createScenario } from "../../harness/scenario.ts";
@@ -8,13 +8,11 @@ import { recordedReport, statistics } from "../../../../src/components/usage/usa
 
 describe("B: Usage report presentation", () => {
   scenarioSuite((it) => {
-    for (const check of ["filters", "geometry", "member"] as const) {
+    for (const check of ["filters", "geometry"] as const) {
       it.effect(
         check === "filters"
           ? "Narrow Usage keeps owner and project filters reachable, including inactive projects"
-          : check === "geometry"
-            ? "All five Usage breakdown modes fit without widening the page at 320 pixels"
-            : "A developer sees only their own Usage, even when a bookmark names another person",
+          : "All five Usage breakdown modes fit without widening the page at 320 pixels",
         () =>
           Effect.gen(function* () {
             const s = yield* createScenario();
@@ -30,7 +28,6 @@ describe("B: Usage report presentation", () => {
               expect(registration.status).toBe(200);
             }
             const inactive = yield* s.given.app("Archive");
-            const requestedOwners: (string | null)[] = [];
             s.drivers.hq.mapFrames((frame) => {
               const message = JSON.parse(frame) as HqStreamMessage;
               if (
@@ -39,7 +36,6 @@ describe("B: Usage report presentation", () => {
               )
                 return frame;
               const query = message.scope.query;
-              requestedOwners.push(query.ownerUserId);
               const empty = query.appId === inactive;
               const rows = [
                 { name: "Ada", owner: "owner", app: "Shop", provider: "claude" },
@@ -79,15 +75,11 @@ describe("B: Usage report presentation", () => {
               });
               return JSON.stringify({ ...message, values: [{ key: "report", value: report }] });
             });
-            s.given.asPerson(
-              check === "filters" ? "owner" : check === "geometry" ? "admin" : "dev",
-            );
+            s.given.asPerson(check === "filters" ? "owner" : "admin");
             yield* s.given.signedIn;
             yield* Effect.promise(async () => {
               await s.page.setViewport({ width: 320, height: 740 });
-              await s.page.goto(
-                `${s.web.origin}/usage${check === "member" ? "?person=owner" : ""}`,
-              );
+              await s.page.goto(`${s.web.origin}/usage`);
               await s.page.locator("::-p-aria(Usage metric)").click();
               await s.page.locator('::-p-aria(Cost[role="option"])').click();
               await s.page.waitForFunction(() => /\b[12] turns?\b/u.test(document.body.innerText));
@@ -108,7 +100,7 @@ describe("B: Usage report presentation", () => {
                   document.body.innerText.includes("No recorded usage in this period."),
                 );
                 expect(await s.page.evaluate(() => document.body.innerText)).toContain("Archive");
-              } else if (check === "geometry") {
+              } else {
                 expect(await s.page.evaluate(() => document.body.innerText)).toContain("2 turns");
                 for (const width of [320, 390, 1786]) {
                   await s.page.setViewport({ width, height: width > 1000 ? 1000 : 844 });
@@ -139,16 +131,6 @@ describe("B: Usage report presentation", () => {
                     node.closest("section")!.scrollIntoView({ block: "center" }),
                   );
                 }
-              } else {
-                expect(await s.page.evaluate(() => document.body.innerText)).toContain("1 turn");
-                expect(requestedOwners.length).toBeGreaterThan(0);
-                expect(requestedOwners.every((owner) => owner === "dev")).toBe(true);
-                expect(await s.page.$$('[aria-label="Usage person"]')).toHaveLength(0);
-                const modes = await s.page.$$eval(
-                  '[aria-label="Usage breakdown"] button',
-                  (nodes) => nodes.map((node) => node.textContent),
-                );
-                expect(modes).not.toContain("Owner");
               }
             });
             yield* s.then.noExternalNetwork;

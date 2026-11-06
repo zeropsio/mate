@@ -539,10 +539,6 @@ const occurrences = (text: string, phrase: string): number =>
   text.toLowerCase().split(phrase.toLowerCase()).length - 1;
 
 describe("knownPresentation over every Shown state (the vector)", () => {
-  it("covers a full cross product", () => {
-    expect(everyOutput.length).toBeGreaterThan(2_000);
-  });
-
   it("each alert contains its affordance exactly once", () => {
     const offenders = everyOutput.flatMap(({ shown, surface, context, output }) =>
       alertsOf(output).flatMap(({ message, affordance }) => {

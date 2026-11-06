@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 
-import { ConversationId, RunTurnState, itemId, runId } from "./engine.ts";
+import {
+  ConversationAgent,
+  ConversationId,
+  Millis,
+  RunTurnState,
+  itemId,
+  runId,
+} from "./engine.ts";
 import {
   ConversationHeader,
   EngineAnswer,
@@ -311,7 +318,23 @@ describe("a conversation's settings on the wire", () => {
   });
 
   it("an older client reads a header that names the runtime and interaction modes", () => {
-    const header = {
+    // The header before runtime and interaction modes were added.
+    const olderHeader = Schema.Struct({
+      conversationId: ConversationId,
+      agent: Schema.NullOr(ConversationAgent),
+      archived: Schema.Boolean,
+      model: Schema.NullOr(Schema.String),
+      session: Schema.NullOr(
+        Schema.Struct({
+          driver: Schema.String,
+          model: Schema.NullOr(Schema.String),
+          steer: Schema.Boolean,
+        }),
+      ),
+      pausedUntil: Schema.NullOr(Schema.Union([Millis, Schema.Literal("unknown")])),
+      queued: Schema.Int,
+    });
+    const oldFields = {
       conversationId: "mate",
       agent: null,
       archived: false,
@@ -319,9 +342,14 @@ describe("a conversation's settings on the wire", () => {
       session: null,
       pausedUntil: null,
       queued: 0,
+    };
+    const header = {
+      ...oldFields,
       runtimeMode: "approval-required",
       interactionMode: "plan",
     };
     roundTrips(ConversationHeader, header);
+    const encoded = Schema.encodeUnknownSync(ConversationHeader)(decodeHeader(header));
+    expect(Schema.decodeUnknownSync(olderHeader)(encoded)).toEqual(oldFields);
   });
 });

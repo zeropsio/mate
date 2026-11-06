@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -17,6 +18,7 @@ import {
   connectCrossTabInvalidations,
   makeInvalidationBus,
   type Invalidation,
+  type InvalidationBus,
   type InvalidationBusOptions,
   type InvalidationSignal,
 } from "./invalidation.ts";
@@ -43,32 +45,65 @@ const container = (projectId: string): Invalidation => ({
   target: `${projectId}:zcp`,
 });
 
-/** Lets the fibers a delivered message woke run up to their next timer. */
-const settle = Effect.gen(function* () {
-  for (let turn = 0; turn < 5; turn += 1) yield* Effect.yieldNow;
-});
-
 /** The login the receiving tab has open. */
 const OPEN_LOGIN = { userId: "user-1", loginGeneration: "generation-2" };
 
 /** A bus under test: the signals it hears, and everything a subscriber received so far. */
 const openBus = (options: Partial<Pick<InvalidationBusOptions, "shown">> = {}) =>
   Effect.gen(function* () {
-    const signals = yield* Queue.unbounded<InvalidationSignal>();
+    const signals = yield* Queue.unbounded<{
+      readonly signal: InvalidationSignal;
+      readonly processed: Deferred.Deferred<void>;
+    }>();
+    let previous: Deferred.Deferred<void> | undefined;
+    // The next pull happens after the bus has processed the preceding signal.
+    const signalStream = Stream.fromEffectRepeat(
+      Effect.gen(function* () {
+        if (previous !== undefined) yield* Deferred.succeed(previous, undefined);
+        const entry = yield* Queue.take(signals);
+        previous = entry.processed;
+        return entry.signal;
+      }),
+    );
     const bus = yield* makeInvalidationBus({
-      signals: Stream.fromQueue(signals),
+      signals: signalStream,
       shown: options.shown ?? (() => false),
     });
     const subscription = yield* bus.subscribe;
     const received: Array<Invalidation> = [];
     const drain = Effect.gen(function* () {
-      yield* Effect.yieldNow;
       received.push(...(yield* PubSub.takeUpTo(subscription, Number.POSITIVE_INFINITY)));
       return received;
     });
     const signal = (next: InvalidationSignal) =>
-      Queue.offer(signals, next).pipe(Effect.andThen(Effect.yieldNow));
+      Effect.gen(function* () {
+        const processed = yield* Deferred.make<void>();
+        yield* Queue.offer(signals, { signal: next, processed });
+        yield* Deferred.await(processed);
+      });
     return { bus, drain, signal };
+  });
+
+/** A sentinel after the subject proves the receiving worker processed the subject first. */
+const watchReceipt = (bus: InvalidationBus, sentinel: Invalidation) =>
+  Effect.gen(function* () {
+    const processed = yield* Deferred.make<void>();
+    return {
+      bus: {
+        ...bus,
+        invalidate: (invalidation: Invalidation) =>
+          bus
+            .invalidate(invalidation)
+            .pipe(
+              Effect.tap(() =>
+                JSON.stringify(invalidation) === JSON.stringify(sentinel)
+                  ? Deferred.succeed(processed, undefined)
+                  : Effect.void,
+              ),
+            ),
+      },
+      processed: Deferred.await(processed),
+    };
   });
 
 describe("the invalidation union (DESIGN §6.2)", () => {
@@ -191,17 +226,22 @@ describe("cross-tab invalidations (DESIGN §6.7)", () => {
         const browser = makeHarnessBrowser();
         const [sender, receiver] = [browser.openTab(), browser.openTab()];
         const { bus, drain } = yield* openBus();
+        const sentinel = container("cross-tab-receipt");
+        const watched = yield* watchReceipt(bus, sentinel);
         yield* connectCrossTabInvalidations({
-          bus,
+          bus: watched.bus,
           openChannel: () => new receiver.BroadcastChannel("mate:account"),
           owner: () => OPEN_LOGIN,
         });
+        const channel = new sender.BroadcastChannel("mate:account");
         // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel stays within its origin
-        new sender.BroadcastChannel("mate:account").postMessage(message);
+        channel.postMessage(message);
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel stays within its origin
+        channel.postMessage({ ...OPEN_LOGIN, invalidation: sentinel });
         yield* Effect.promise(browser.delivered);
-        yield* settle;
+        yield* watched.processed;
         yield* TestClock.adjust(250);
-        expect(yield* drain).toEqual(delivered ? [tags("a")] : []);
+        expect(yield* drain).toEqual(delivered ? [tags("a"), sentinel] : [sentinel]);
       }),
     ),
   );
@@ -210,27 +250,42 @@ describe("cross-tab invalidations (DESIGN §6.7)", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const browser = makeHarnessBrowser();
-        const openTab = (login: { readonly userId: string; readonly loginGeneration: string }) =>
+        const sameLoginSentinel = container("same-login-receipt");
+        const otherLoginSentinel = container("other-login-receipt");
+        const openTab = (
+          login: { readonly userId: string; readonly loginGeneration: string },
+          sentinel: Invalidation,
+        ) =>
           Effect.gen(function* () {
             const tab = browser.openTab();
             const opened = yield* openBus();
+            const watched = yield* watchReceipt(opened.bus, sentinel);
             const crossTab = yield* connectCrossTabInvalidations({
-              bus: opened.bus,
+              bus: watched.bus,
               openChannel: () => new tab.BroadcastChannel("mate:account"),
               owner: () => login,
             });
-            return { ...opened, crossTab };
+            return { ...opened, crossTab, processed: watched.processed };
           });
-        const writer = yield* openTab(OPEN_LOGIN);
-        const sibling = yield* openTab(OPEN_LOGIN);
-        const stranger = yield* openTab({ ...OPEN_LOGIN, loginGeneration: "generation-3" });
+        const writer = yield* openTab(OPEN_LOGIN, sameLoginSentinel);
+        const sibling = yield* openTab(OPEN_LOGIN, sameLoginSentinel);
+        const otherLogin = { ...OPEN_LOGIN, loginGeneration: "generation-3" };
+        const stranger = yield* openTab(otherLogin, otherLoginSentinel);
         yield* writer.crossTab.broadcast(tags("a"));
+        const proofTab = browser.openTab();
+        const channel = new proofTab.BroadcastChannel("mate:account");
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel stays within its origin
+        channel.postMessage({ ...OPEN_LOGIN, invalidation: sameLoginSentinel });
+        // oxlint-disable-next-line unicorn/require-post-message-target-origin -- a BroadcastChannel stays within its origin
+        channel.postMessage({ ...otherLogin, invalidation: otherLoginSentinel });
         yield* Effect.promise(browser.delivered);
-        yield* settle;
+        yield* writer.processed;
+        yield* sibling.processed;
+        yield* stranger.processed;
         yield* TestClock.adjust(250);
-        expect(yield* writer.drain).toEqual([tags("a")]);
-        expect(yield* sibling.drain).toEqual([tags("a")]);
-        expect(yield* stranger.drain).toEqual([]);
+        expect(yield* writer.drain).toEqual([tags("a"), sameLoginSentinel]);
+        expect(yield* sibling.drain).toEqual([tags("a"), sameLoginSentinel]);
+        expect(yield* stranger.drain).toEqual([otherLoginSentinel]);
       }),
     ),
   );

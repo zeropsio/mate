@@ -77,13 +77,24 @@ function stage() {
   const store = makeAccountStore(registry);
   const events: Array<string> = [];
   const demanded: Array<DetailDemand> = [];
+  let exchanged!: () => void;
+  const exchangeStarted = new Promise<void>((resolve) => {
+    exchanged = resolve;
+  });
+  let released!: () => void;
+  const routeServicesReleased = new Promise<void>((resolve) => {
+    released = resolve;
+  });
   registry.set(accountReadsAtom, {
     data: store.data,
     orgId: ORG,
     demandDetail: (demand) => {
       demanded.push(demand);
       events.push(`demand ${demand.listing ?? demand.family}`);
-      return () => events.push(`release ${demand.listing ?? demand.family}`);
+      return () => {
+        events.push(`release ${demand.listing ?? demand.family}`);
+        if (demand.listing === "route-services") released();
+      };
     },
     renewHeld: () => undefined,
   });
@@ -99,6 +110,7 @@ function stage() {
       exchange: (request) => {
         exchanges.push(request);
         events.push(`exchange ${request.origin}`);
+        exchanged();
         return new Promise<ExchangeAnswer<DoorCredential>>(() => undefined);
       },
       readDescriptor: () => new Promise(() => undefined),
@@ -134,7 +146,7 @@ function stage() {
   const started = wiring.start(makeMateAdapter(wiring.adapterPorts));
   started.environments.setActiveOrganization(ORG);
   started.environments.setRoute(ROUTE);
-  return { store, events, demanded, exchanges, started };
+  return { store, events, demanded, exchanges, exchangeStarted, routeServicesReleased, started };
 }
 
 describe("the route's Mate before the organization's listing", () => {
@@ -149,7 +161,7 @@ describe("the route's Mate before the organization's listing", () => {
   });
 
   it("the route's Mate is exchanged at its door from what was read ahead, before any listing answers", async () => {
-    const { store, events, exchanges, started } = stage();
+    const { store, events, exchanges, exchangeStarted, started } = stage();
 
     commitAhead(store, routeProjectScope(ORG, PROJECT), {
       family: "project",
@@ -163,7 +175,7 @@ describe("the route's Mate before the organization's listing", () => {
       value: ZCP,
       revision: { kind: "zerops", version: null },
     } as Row);
-    await Promise.resolve();
+    await exchangeStarted;
 
     expect(
       exchanges.map(({ key, origin, projectId, organizationId }) => ({
@@ -184,7 +196,7 @@ describe("the route's Mate before the organization's listing", () => {
   });
 
   it("once the listing reads the route's project itself, its reads ahead are let go and its Mate stays the one exchanged", async () => {
-    const { store, events, exchanges, started } = stage();
+    const { store, events, exchanges, exchangeStarted, routeServicesReleased, started } = stage();
     const readAhead = () => {
       commitAhead(store, routeProjectScope(ORG, PROJECT), {
         family: "project",
@@ -200,11 +212,11 @@ describe("the route's Mate before the organization's listing", () => {
       } as Row);
     };
     readAhead();
-    await Promise.resolve();
+    await exchangeStarted;
 
     for (const input of [...liveProjects(ORG, [PROJECT_ROW]), ...liveServices(ORG, [ZCP])])
       store.dispatch(input);
-    await Promise.resolve();
+    await routeServicesReleased;
 
     expect(events).toEqual([
       "demand route-project",

@@ -65,12 +65,21 @@ describe("a sampled read, as a screen reads it", () => {
     readonly inputs: ReadonlyArray<AccountInput>;
     /** The grace of each stream still in one ran out. */
     readonly pastGrace?: boolean;
-    readonly expected: Partial<MembersRead>;
+    readonly expected: Partial<Omit<MembersRead, "fact" | "stream">> & {
+      readonly fact?: Partial<MembersRead["fact"]>;
+      readonly stream?: Partial<MembersRead["stream"]>;
+    };
   }>([
     {
       name: "nothing demanded: loading, no value",
       inputs: [],
-      expected: { members: [], status: "loading", settled: false, refused: false },
+      expected: {
+        members: [],
+        status: "loading",
+        settled: false,
+        refused: false,
+        fact: { kind: "unknown" },
+      },
     },
     {
       name: "being read the first time: loading",
@@ -141,7 +150,15 @@ describe("a sampled read, as a screen reads it", () => {
         failed(MEMBERS, "transient"),
       ],
       pastGrace: true,
-      expected: { members: [ANNA], status: "failed", settled: false, refused: false },
+      expected: {
+        members: [ANNA],
+        status: "failed",
+        settled: false,
+        refused: false,
+        fact: { kind: "known", value: [ANNA] },
+        coverage: "complete",
+        stream: { phase: "recovering", fault: { outcome: "transient", message: "transient" } },
+      },
     },
     {
       name: "refused by its owner: failed for good",
@@ -206,29 +223,7 @@ describe("a sampled read, as a screen reads it", () => {
   });
 });
 
-it("a failed sampled revalidation retains its PublicRead and failure without claiming ready", () => {
-  const reads = readsOfState(
-    pastGrace(
-      apply(emptyAccount, [
-        ...begun(MEMBERS),
-        ...answered(MEMBERS, "organizationMembers", [ANNA]),
-        revalidating(MEMBERS),
-        failed(MEMBERS, "transient"),
-      ]),
-    ),
-  );
-  expect(organizationMembers.derive(reads, { orgId: ORG, clientId: ORG })).toMatchObject({
-    members: [ANNA],
-    status: "failed",
-    settled: false,
-    fact: { kind: "known", value: [ANNA] },
-    coverage: "complete",
-    stream: { phase: "recovering", fault: { outcome: "transient", message: "transient" } },
-  });
-});
-
 it.each([
-  { name: "unknown", inputs: [], fact: "unknown", status: "loading" },
   {
     name: "confirmed empty",
     inputs: [...begun(MEMBERS), ...answered(MEMBERS, "organizationMembers", [])],

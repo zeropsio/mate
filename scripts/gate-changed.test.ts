@@ -287,7 +287,7 @@ it.each([
     chatGate: false,
     includes: [
       "test/scenarios/areas/b-menu/usage.scenario.ts",
-      "test/scenarios/areas/b-menu/decode.scenario.ts",
+      "test/scenarios/areas/b-menu/environmentIdentity.scenario.ts",
       "test/scenarios/areas/b-menu/liveness.scenario.ts",
       "test/scenarios/areas/b-menu/drafts.scenario.ts",
       "test/scenarios/fakes/b-menu/overview.test.ts",
@@ -1568,7 +1568,6 @@ it.each(["changed", "deleted"])(
 
 const smokeTitles = [
   "cold direct conversation URL opens the named Mate and its history",
-  "reload restores history",
   "sending a message puts it in the durable visible conversation",
   "approve an agent command and see it resolve",
   "a secret the person gives never reaches the Mate's records or its agent",

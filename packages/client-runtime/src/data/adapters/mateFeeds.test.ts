@@ -493,14 +493,20 @@ it.live("a Mate connection sends one config subscription, the account's config f
     Effect.gen(function* () {
       const r = rig();
       const messages = yield* Queue.unbounded<string>();
-      const sockets: TestWebSocket[] = [];
+      const created = yield* Deferred.make<TestWebSocket>();
       const factory = yield* RpcSessionModule.RpcSessionFactory.pipe(
         Effect.provide(
           RpcSessionModule.layerWithOptions(MATE_SERVER_CONFIG_SUBSCRIPTION).pipe(
             Layer.provide(
               Layer.succeed(Socket.WebSocketConstructor, (url) => {
-                const socket = new TestWebSocket(url, messages);
-                sockets.push(socket);
+                const socket = new (class extends TestWebSocket {
+                  override addEventListener(
+                    ...args: Parameters<TestWebSocket["addEventListener"]>
+                  ) {
+                    super.addEventListener(...args);
+                    if (args[0] === "open") Deferred.doneUnsafe(created, Effect.succeed(this));
+                  }
+                })(url, messages);
                 return socket as unknown as globalThis.WebSocket;
               }),
             ),
@@ -516,14 +522,13 @@ it.live("a Mate connection sends one config subscription, the account's config f
         target: { kind: "primary" } as never,
       });
       const ready = yield* Effect.forkChild(session.ready);
-      while (sockets.length === 0) yield* Effect.yieldNow;
-      const socket = sockets[0]!;
+      const socket = yield* Deferred.await(created);
       socket.open();
       const requests = () =>
         socket.sent
           .map((message) => JSON.parse(message) as { _tag: string; id: string; tag: string })
           .filter((message) => message._tag === "Request");
-      while (requests().length === 0) yield* Effect.yieldNow;
+      while (requests().length === 0) yield* Queue.take(messages);
       const config: ServerConfig = {
         environment: {
           environmentId: EnvironmentId.make("mate"),
@@ -575,7 +580,18 @@ it.live("a Mate connection sends one config subscription, the account's config f
         input: {},
       };
       const release = feeds.hold(configKey);
-      yield* settle;
+      yield* Effect.callback<void>((resume) => {
+        const check = () => {
+          if (
+            mateFeed("mateServerConfig").derive(readsOfState(r.store.state()), configKey).state ===
+            "known"
+          )
+            resume(Effect.void);
+        };
+        const stop = r.store.subscribe(check);
+        check();
+        return Effect.sync(stop);
+      });
       expect(
         mateFeed("mateServerConfig").derive(readsOfState(r.store.state()), configKey),
       ).toMatchObject({ state: "known", value: { config: { cwd: "/mate" } } });
