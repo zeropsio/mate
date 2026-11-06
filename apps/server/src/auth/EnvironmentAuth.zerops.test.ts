@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { AuthZeropsClientScopes } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -86,6 +87,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth Zerops connections", (it) => {
         assert.notEqual(session.sessionId, "opaque-ticket");
         assert.notEqual(session.sessionId, "hq-session");
         assert.include(session.scopes, "exec:operate");
+        assert.deepEqual([...session.scopes].sort(), [...AuthZeropsClientScopes].sort());
         yield* connections.close("opaque-ticket");
         assert.isTrue(Exit.isFailure(yield* Effect.exit(read)));
       }).pipe(Effect.scoped),

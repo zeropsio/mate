@@ -197,6 +197,9 @@ describe("BackgroundPolicy", () => {
     Effect.gen(function* () {
       const firstSnapshotStarted = yield* Deferred.make<void>();
       const releaseFirstSnapshot = yield* Deferred.make<void>();
+      // Keep the second publication from replacing the first in the sliding stream.
+      const releaseSecondSnapshot = yield* Deferred.make<void>();
+      const firstPublication = yield* Deferred.make<void>();
       const snapshotReads = yield* Ref.make(0);
       const hostLayer = Layer.succeed(
         HostPowerMonitor.HostPowerMonitor,
@@ -208,7 +211,9 @@ describe("BackgroundPolicy", () => {
                     Effect.andThen(Deferred.await(releaseFirstSnapshot)),
                     Effect.as(nominalHostPower),
                   )
-                : Effect.succeed(nominalHostPower),
+                : count === 2
+                  ? Deferred.await(releaseSecondSnapshot).pipe(Effect.as(nominalHostPower))
+                  : Effect.succeed(nominalHostPower),
             ),
           ),
           report: () => Effect.void,
@@ -223,23 +228,27 @@ describe("BackgroundPolicy", () => {
         const policy = yield* BackgroundPolicy.BackgroundPolicy;
         const updatesFiber = yield* policy.streamChanges.pipe(
           Stream.take(2),
+          Stream.tap(() => Deferred.succeed(firstPublication, undefined)),
           Stream.runCollect,
-          Effect.forkChild,
+          Effect.forkChild({ startImmediately: true }),
         );
-        yield* Effect.yieldNow;
         const reportFiber = yield* policy
           .reportClientActivity(AuthSessionId.make("session-1"), RpcClientId.make(1), makeReport())
           .pipe(Effect.forkChild);
         yield* Deferred.await(firstSnapshotStarted);
         const removeFiber = yield* policy
           .removeRpcClient(AuthSessionId.make("session-1"), RpcClientId.make(1))
-          .pipe(Effect.forkChild);
-        yield* Effect.yieldNow;
+          .pipe(Effect.forkChild({ startImmediately: true }));
+        const readsWhileHeld = yield* Ref.get(snapshotReads);
         yield* Deferred.succeed(releaseFirstSnapshot, undefined);
+        yield* Deferred.await(firstPublication);
+        yield* Deferred.succeed(releaseSecondSnapshot, undefined);
         yield* Fiber.join(reportFiber);
         yield* Fiber.join(removeFiber);
         const updates = Array.from(yield* Fiber.join(updatesFiber));
 
+        assert.equal(readsWhileHeld, 1);
+        assert.equal(updates[0]?.activeForegroundLeaseCount, 1);
         assert.equal(updates.at(-1)?.activeForegroundLeaseCount, 0);
         assert.deepStrictEqual(updates.at(-1)?.activeScopeKeys, []);
       }).pipe(Effect.provide(layer));

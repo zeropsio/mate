@@ -3,6 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -30,8 +31,9 @@ describe("HostPowerMonitor", () => {
       } as const;
       yield* monitor.report(initial);
 
-      const nextChange = yield* Stream.runHead(monitor.streamChanges).pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
+      const nextChange = yield* Stream.runHead(monitor.streamChanges).pipe(
+        Effect.forkChild({ startImmediately: true }),
+      );
       yield* monitor.report({
         ...initial,
         idleSeconds: 1,
@@ -85,15 +87,19 @@ describe("HostPowerMonitor", () => {
       const desktopChanges = yield* PubSub.sliding<DesktopHostTelemetrySnapshot>(1);
       const diagnosticsDemandWrites = yield* Ref.make(0);
       const receiverLayer = DesktopTelemetryReceiver.layerTest({
-        changes: Stream.fromPubSub(desktopChanges),
+        subscribe: Effect.gen(function* () {
+          const subscription = yield* PubSub.subscribe(desktopChanges);
+          return { latest: Option.none(), changes: Stream.fromSubscription(subscription) };
+        }),
         setDiagnosticsDemand: () => Ref.update(diagnosticsDemandWrites, (count) => count + 1),
       });
       const layer = HostPowerMonitor.layer.pipe(Layer.provide(receiverLayer));
 
       yield* Effect.gen(function* () {
         const monitor = yield* HostPowerMonitor.HostPowerMonitor;
-        const nextPower = yield* Stream.runHead(monitor.streamChanges).pipe(Effect.forkChild);
-        yield* Effect.yieldNow;
+        const nextPower = yield* Stream.runHead(monitor.streamChanges).pipe(
+          Effect.forkChild({ startImmediately: true }),
+        );
         yield* PubSub.publish(desktopChanges, {
           version: 1,
           type: "desktopTelemetry",
@@ -158,6 +164,7 @@ describe("HostPowerMonitor", () => {
           },
         };
         const desktopChanges = yield* PubSub.sliding<DesktopHostTelemetrySnapshot>(1);
+        const consumed = yield* Latch.make(false);
         const receiverLayer = DesktopTelemetryReceiver.layerTest({
           latest: Effect.succeedSome(initial),
           changes: Stream.empty,
@@ -166,7 +173,11 @@ describe("HostPowerMonitor", () => {
             yield* PubSub.publish(desktopChanges, updated);
             return {
               latest: Option.some(initial),
-              changes: Stream.fromSubscription(subscription),
+              changes: Stream.concat(
+                Stream.fromSubscription(subscription).pipe(Stream.take(1)),
+                // The consumer pulls again only after it has applied the first update.
+                Stream.fromEffect(consumed.open.pipe(Effect.andThen(Effect.never))),
+              ),
             };
           }),
         });
@@ -174,13 +185,7 @@ describe("HostPowerMonitor", () => {
 
         yield* Effect.gen(function* () {
           const monitor = yield* HostPowerMonitor.HostPowerMonitor;
-          for (
-            let attempt = 0;
-            attempt < 100 && (yield* monitor.snapshot).onBattery !== "true";
-            attempt += 1
-          ) {
-            yield* Effect.yieldNow;
-          }
+          yield* consumed.await;
           expect((yield* monitor.snapshot).onBattery).toBe("true");
         }).pipe(Effect.provide(layer));
       }),

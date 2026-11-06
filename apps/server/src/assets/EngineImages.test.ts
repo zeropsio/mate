@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off - the retained preview is the expected HTTP body.
+import * as NodeFSP from "node:fs/promises";
 import { layerLoopbackTest } from "../testing/loopbackHttpServer.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AuthOrchestrationReadScope, AuthSessionId, ThreadId } from "@t3tools/contracts";
@@ -73,16 +75,22 @@ it.effect.each(["screenshot", "attachment"] as const)(
       yield* Effect.gen(function* () {
         yield* Layer.build(HttpRouter.serve(assetRouteLayer));
         const preview = yield* Effect.promise(() => store.preview(occurrence.id, 100, 60));
-        for (const url of [
-          `/api/assets/objects/${occurrence.original.status === "ready" ? occurrence.original.digest : ""}/original`,
-          preview.relativeUrl,
+        const previewBytes = yield* Effect.promise(async () =>
+          NodeFSP.readFile((await store.object(preview.digest, true)).path),
+        );
+        for (const { url, expected } of [
+          {
+            url: `/api/assets/objects/${occurrence.original.status === "ready" ? occurrence.original.digest : ""}/original`,
+            expected: bytes,
+          },
+          { url: preview.relativeUrl, expected: previewBytes },
         ]) {
           const response = yield* HttpClient.get(url);
           expect(
             response.status,
             "ASSERTION: retained engine image bytes are readable without a V1 thread",
           ).toBe(200);
-          expect((yield* response.arrayBuffer).byteLength).toBeGreaterThan(0);
+          expect(Buffer.from(yield* response.arrayBuffer)).toEqual(expected);
           allowed = false;
           for (const headers of [{}, { "if-none-match": "*" }, { range: "bytes=0-20" }]) {
             expect((yield* HttpClient.get(url, { headers })).status).toBe(403);

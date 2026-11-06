@@ -124,12 +124,6 @@ describe("the scopes a Mate client asks for", () => {
     },
   );
 
-  it("asks for exactly what the Zerops door grants", () => {
-    // The exchange refuses a request for any scope the grant does not carry,
-    // so one scope too many is no session at all.
-    expect([...AuthZeropsClientScopes].sort()).toEqual([...AuthZeropsClientScopes].sort());
-  });
-
   it("is what both shells actually put on the wire", () => {
     // The list above is only the real one if the connection layers name it.
     for (const source of [

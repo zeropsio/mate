@@ -15,8 +15,7 @@ describe("the effect worker's doorbells", () => {
       // An owner's fiber looks for work again right after the ring, before the conversations' waits.
       yield* bells.ring;
       yield* owners.arm;
-      const woke = yield* conversations.wait.pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
+      const woke = yield* conversations.wait.pipe(Effect.forkChild({ startImmediately: true }));
       assert.isDefined(woke.pollUnsafe(), "the conversations' fiber slept through the ring");
       yield* Fiber.join(woke);
     }),
