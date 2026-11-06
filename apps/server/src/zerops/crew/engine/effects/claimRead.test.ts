@@ -45,10 +45,13 @@ describe("crew.claim.read", () => {
             const handler = yield* makeClaimRead;
             yield* createLane("backend");
             const nothing = okValue(yield* attempt(handler, row()));
-            const lane = yield* Effect.scoped(
-              Effect.andThen(devServer(root, { handle: "backend" }), () =>
-                Effect.map(attempt(handler, row()), okValue),
-              ),
+            const { lane, again } = yield* Effect.scoped(
+              Effect.gen(function* () {
+                yield* devServer(root, { handle: "backend" });
+                const lane = okValue(yield* attempt(handler, row(1)));
+                const again = okValue(yield* attempt(handler, row(2)));
+                return { lane, again };
+              }),
             );
             const tree = yield* Effect.scoped(
               Effect.andThen(devServer(root, "tree"), () =>
@@ -56,31 +59,14 @@ describe("crew.claim.read", () => {
               ),
             );
             assert.deepStrictEqual(
-              { nothing, lane, tree },
+              { nothing, lane, again, tree },
               {
                 nothing: { served: { by: "unknown" }, devServer: null },
                 lane: { served: { by: "crewmate", handle: "backend" }, devServer: DECLARED },
+                again: { served: { by: "crewmate", handle: "backend" }, devServer: DECLARED },
                 tree: { served: { by: "tree" }, devServer: DECLARED },
               },
             );
-          }),
-        ),
-      SUPERVISED,
-    ),
-  );
-
-  it.effect("a claim read the restart cut reads dev again and moves nothing", () =>
-    withCrewEffects(
-      (root) =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            const handler = yield* makeClaimRead;
-            yield* createLane("backend");
-            yield* devServer(root, { handle: "backend" });
-            const first = okValue(yield* attempt(handler, row(1)));
-            const again = okValue(yield* attempt(handler, row(2)));
-            const served = { served: { by: "crewmate", handle: "backend" }, devServer: DECLARED };
-            assert.deepStrictEqual({ first, again }, { first: served, again: served });
           }),
         ),
       SUPERVISED,
