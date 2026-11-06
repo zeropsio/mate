@@ -10,6 +10,7 @@ import {
   parseZeropsSessionOwner,
   transitionZeropsSession,
   type ZeropsSessionEffect,
+  type ZeropsSessionDriver,
   type ZeropsSessionEvent,
   type ZeropsSessionOwner,
   type ZeropsSessionPorts,
@@ -519,9 +520,28 @@ function makeOrigin(initial: { session: ZeropsSession | null; owner: ZeropsSessi
   };
 }
 
-const flush = async () => {
-  for (let turn = 0; turn < 10; turn++) await Promise.resolve();
-};
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+function waitForState(
+  driver: ZeropsSessionDriver,
+  predicate: (state: ZeropsSessionState) => boolean,
+) {
+  return new Promise<void>((resolve) => {
+    const check = () => {
+      if (!predicate(driver.state())) return;
+      unsubscribe();
+      resolve();
+    };
+    const unsubscribe = driver.subscribe(check);
+    check();
+  });
+}
 
 describe("makeZeropsSessionDriver", () => {
   it("retries a boot the platform could not answer when its retry time comes", async () => {
@@ -529,11 +549,11 @@ describe("makeZeropsSessionDriver", () => {
     const answers: ZeropsPrincipalVerdict[] = [unavailable, user(person)];
     const tab = origin.tab({ verify: async () => answers.shift()! });
     tab.driver.start();
-    await flush();
+    await waitForState(tab.driver, (state) => state.status === "unavailable");
     expect(tab.driver.state().status).toBe("unavailable");
 
     tab.advance(RETRY_RUNGS_MS[0]!);
-    await flush();
+    await waitForState(tab.driver, (state) => state.status === "signed-in");
 
     expect(tab.driver.state().status).toBe("signed-in");
     expect(tab.events).toEqual(["open user-1"]);
@@ -546,25 +566,28 @@ describe("makeZeropsSessionDriver", () => {
     "a Verify again during a background retry is never undone by it: %s",
     async (_name, order) => {
       const origin = makeOrigin({ session: stored, owner: null });
-      const pending: Array<(verdict: ZeropsPrincipalVerdict) => void> = [];
+      const pending: Array<ReturnType<typeof deferred<ZeropsPrincipalVerdict>>> = [];
       const tab = origin.tab({
-        verify: () => new Promise<ZeropsPrincipalVerdict>((resolve) => pending.push(resolve)),
+        verify: () => {
+          const answer = deferred<ZeropsPrincipalVerdict>();
+          pending.push(answer);
+          return answer.promise;
+        },
       });
       tab.driver.start();
-      await flush();
-      pending.shift()!(unavailable);
-      await flush();
+      await waitForState(tab.driver, (state) => state.status === "verifying");
+      pending.shift()!.resolve(unavailable);
+      await waitForState(tab.driver, (state) => state.status === "unavailable");
       expect(tab.driver.state().status).toBe("unavailable");
       // The timed retry goes out in the background; the person presses Verify again meanwhile.
       tab.advance(RETRY_RUNGS_MS[0]!);
-      await flush();
       tab.driver.send({ type: "VERIFY_AGAIN" });
-      await flush();
       const [backgroundCheck, ownCheck] = [pending[0]!, pending[1]!];
-      const answers = [() => backgroundCheck(unavailable), () => ownCheck(user(person))];
+      const answers = [backgroundCheck, ownCheck];
+      const verdicts = [unavailable, user(person)];
       for (const index of order) {
-        answers[index]!();
-        await flush();
+        answers[index]!.resolve(verdicts[index]!);
+        await answers[index]!.promise;
       }
       expect(tab.driver.state().status).toBe("signed-in");
     },
@@ -580,18 +603,17 @@ describe("makeZeropsSessionDriver", () => {
       },
     });
     tab.driver.start();
-    await flush();
+    await waitForState(tab.driver, (state) => state.status === "unavailable");
     expect(calls).toBe(1);
 
     tab.driver.send({ type: "VERIFY_AGAIN" });
-    await flush();
+    await waitForState(tab.driver, (state) => state.status === "unavailable");
     expect(calls).toBe(2);
     // The press restarts the ladder: its first rung is due next, the old timer is gone.
     tab.advance(RETRY_RUNGS_MS[0]! - 1);
-    await flush();
     expect(calls).toBe(2);
     tab.advance(1);
-    await flush();
+    await waitForState(tab.driver, (state) => state.status === "unavailable");
     expect(calls).toBe(3);
     expect(tab.driver.state().status).toBe("unavailable");
   });
@@ -607,16 +629,15 @@ describe("makeZeropsSessionDriver", () => {
         awake: () => awake,
       });
       tab.driver.start();
-      await flush();
+      await waitForState(tab.driver, (state) => state.status === "unavailable");
       awake = false;
       tab.advance(60_000);
-      await flush();
       expect(calls).toBe(1);
       expect(tab.driver.state().status).toBe("unavailable");
 
       awake = true;
       tab.driver.send({ type: "WAKE", trigger: asleep === "hidden" ? "visible" : "online" });
-      await flush();
+      await waitForState(tab.driver, (state) => state.status === "signed-in");
       expect(calls).toBe(2);
       expect(tab.driver.state().status).toBe("signed-in");
     },
@@ -628,7 +649,14 @@ describe("makeZeropsSessionDriver", () => {
     const b = origin.tab();
     a.driver.start();
     b.driver.start();
-    await flush();
+    await Promise.all(
+      [a, b].map((tab) =>
+        waitForState(
+          tab.driver,
+          (state) => state.status === "signed-in" && state.generation === "g1",
+        ),
+      ),
+    );
 
     expect(origin.owner()).toEqual({ userId: "user-1", loginGeneration: "g1" });
     expect(a.driver.state()).toMatchObject({ status: "signed-in", generation: "g1" });
@@ -639,7 +667,7 @@ describe("makeZeropsSessionDriver", () => {
     const origin = makeOrigin({ session: null, owner: owner });
     const tab = origin.tab();
     tab.driver.start();
-    await flush();
+    await waitForState(tab.driver, (state) => state.status === "signed-out");
 
     tab.driver.signedIn(person);
 
@@ -649,19 +677,16 @@ describe("makeZeropsSessionDriver", () => {
 
   it("drops an answer that arrives after it stopped", async () => {
     const origin = makeOrigin({ session: stored, owner: null });
-    let answer!: (verdict: ZeropsPrincipalVerdict) => void;
+    const answer = deferred<ZeropsPrincipalVerdict>();
     const tab = origin.tab({
-      verify: () =>
-        new Promise((resolve) => {
-          answer = resolve;
-        }),
+      verify: () => answer.promise,
     });
     const stop = tab.driver.start();
-    await flush();
+    await waitForState(tab.driver, (state) => state.status === "verifying");
 
     stop();
-    answer(user(person));
-    await flush();
+    answer.resolve(user(person));
+    await answer.promise;
 
     expect(tab.driver.state().status).toBe("booting");
     expect(tab.events).toEqual([]);
@@ -671,7 +696,10 @@ describe("makeZeropsSessionDriver", () => {
     const signedInTab = async (origin: ReturnType<typeof makeOrigin>) => {
       const tab = origin.tab();
       tab.driver.start();
-      await flush();
+      await waitForState(
+        tab.driver,
+        (state) => state.status === "signed-in" && state.generation !== null,
+      );
       return tab;
     };
 
@@ -703,7 +731,7 @@ describe("makeZeropsSessionDriver", () => {
       const origin = makeOrigin({ session: stored, owner });
       const tab = origin.tab({ probe: async () => user(other) });
       tab.driver.start();
-      await flush();
+      await waitForState(tab.driver, (state) => state.status === "signed-in");
       origin.setSession(next);
 
       const error = await tab.driver
@@ -718,7 +746,7 @@ describe("makeZeropsSessionDriver", () => {
       const origin = makeOrigin({ session: null, owner: null });
       const tab = origin.tab({ owner: { read: () => null, write: () => undefined } });
       tab.driver.start();
-      await flush();
+      await waitForState(tab.driver, (state) => state.status === "signed-out");
       tab.driver.signedIn(person);
 
       const renewed = await tab.driver.renew(stored, async () => next);
@@ -730,7 +758,7 @@ describe("makeZeropsSessionDriver", () => {
       const origin = makeOrigin({ session: stored, owner });
       const tab = origin.tab({ probe: async () => unavailable });
       tab.driver.start();
-      await flush();
+      await waitForState(tab.driver, (state) => state.status === "signed-in");
       origin.setSession(next);
 
       const error = await tab.driver
@@ -769,17 +797,23 @@ describe("makeZeropsSessionDriver", () => {
       const a = await signedInTab(origin);
       const b = await signedInTab(origin);
       let refreshes = 0;
+      const refreshStarted = deferred<void>();
+      const releaseRefresh = deferred<void>();
       const refresh = async () => {
         refreshes += 1;
-        await flush();
+        refreshStarted.resolve();
+        await releaseRefresh.promise;
         origin.setSession(next);
         return next;
       };
 
-      const renewed = await Promise.all([
+      const renewing = Promise.all([
         a.driver.renew(stored, refresh),
         b.driver.renew(stored, refresh),
       ]);
+      await refreshStarted.promise;
+      releaseRefresh.resolve();
+      const renewed = await renewing;
 
       expect(renewed).toEqual([next, next]);
       expect(refreshes).toBe(1);
