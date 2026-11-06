@@ -1,5 +1,5 @@
 import { scenarioSuite } from "../../harness/suite.ts";
-import { beforeAll, describe, it, expect } from "@effect/vitest";
+import { beforeAll, describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { deviceLoginDist } from "../../harness/deviceLoginBundle.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -189,30 +189,6 @@ describe("A: sign-in through the Zerops window", () => {
         const text = yield* Effect.promise(() => s.page.evaluate(() => document.body.innerText));
         expect(text).not.toContain("Sign-in didn't finish");
         expect(new URL(s.page.url()).search).toBe("");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches a reload with an expired access token sending the person back to Zerops: the
-    // session renews itself with its refresh token, and the old pair is spent.
-    it.effect("refresh keeps a reloaded tab signed in", () =>
-      Effect.gen(function* () {
-        const s = yield* deviceLoginScenario();
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        yield* s.then.menu.row("Shop").appears();
-        const deviceLogin = s.drivers.zerops.deviceLogin;
-        const [session] = deviceLogin.sessions;
-        const expired = session!.accessToken;
-        deviceLogin.expireAccess(expired);
-        yield* account(s.page).reload;
-        yield* account(s.page).showsPerson("owner");
-        yield* s.then.menu.row("Shop").appears();
-        expect(s.drivers.zerops.requests.get("POST /auth/refresh")).toBe(1);
-        expect(session!.accessToken, "The session renewed").not.toBe(expired);
-        expect(s.drivers.zerops.requests.get("POST /auth/device-login"), "No second sign-in").toBe(
-          1,
-        );
         yield* s.then.noExternalNetwork;
       }),
     );

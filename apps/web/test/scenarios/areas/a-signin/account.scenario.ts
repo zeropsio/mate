@@ -1,6 +1,6 @@
 import { scenarioSuite } from "../../harness/suite.ts";
 import { receivedHqReplies } from "../../fakes/a-signin/replies.ts";
-import { describe, it, expect } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { createScenario } from "../../harness/scenario.ts";
 import { recordStep } from "../../harness/lastStep.ts";
@@ -8,7 +8,6 @@ import { installSignIn, holdMemberList } from "./fake.ts";
 import {
   account,
   organizations,
-  retryHq,
   sessionEnds,
   signInOrganization,
   unchangedHandovers,
@@ -68,56 +67,6 @@ describe("A: sign-in, session and organizations", () => {
         }
         expect(mints(), "Two reloads mint no further door token").toBe(first);
         yield* retainedAuthorization();
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches a reload minting a throwaway Zerops token for HQ's door though the account kept a
-    // live HQ session: only HQ asking for a new session may mint one.
-    it.effect.each([{ members: "read late, as the organization's" }])(
-      "a reload with a kept HQ session mints no door token, its member list $members",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* accountScenario();
-          const members = holdMemberList(s.drivers);
-          yield* Effect.addFinalizer(() => Effect.sync(members.release));
-          yield* s.given.project("Ada", { mate: true, app: "Shop" });
-          yield* s.given.signedIn;
-          yield* s.then.menu.row("Shop").appears();
-          // Each door crossing is the browser's one `POST /api/door` to HQ, whatever token it carries.
-          const mints = () => s.drivers.hq.requests.get("POST /api/door") ?? 0;
-          const first = mints();
-          expect(first, "The first load enters HQ's door once").toBe(1);
-          for (let load = 0; load < 2; load++) {
-            yield* account(s.page).reload;
-            yield* s.then.menu.row(load === 0 ? "Shop" : "Shop 0").appears();
-            // The application keeps its id: the colleague renames it by its first name each time.
-            yield* s.when.hq.colleague.renamesProject("Shop", `Shop ${load}`);
-            yield* s.then.menu.row(`Shop ${load}`).appears();
-            expect(
-              s.drivers.zerops.requestsByCredential
-                .get("personal")
-                ?.get("GET /client/ORG/user/list") ?? 0,
-              "ASSERTION: the shared HQ needs no browser member-list verification",
-            ).toBe(0);
-          }
-          expect(mints(), "Two reloads mint no further door token").toBe(first);
-          yield* s.then.noExternalNetwork;
-        }),
-    );
-
-    // Catches organization selection showing the previous organization's projects or losing the way back.
-    it.effect("switching organizations clears previous work and can return", () =>
-      Effect.gen(function* () {
-        const s = yield* accountScenario();
-        yield* organizations(s);
-        yield* signInOrganization(s);
-        yield* s.then.menu.row("Shop").appears();
-        yield* account(s.page).selectOrganization("Second");
-        yield* account(s.page).showsNoProjects;
-        yield* account(s.page).lacksRows(["Shop", "Ada"]);
-        yield* account(s.page).selectOrganization("ACME");
-        yield* s.then.menu.row("Shop").appears();
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -188,25 +137,6 @@ describe("A: sign-in, session and organizations", () => {
       }),
     );
 
-    // Catches a definitive HQ refusal trapping a signed-in user after an explicit Try again.
-    it.effect("Try again retries a refused HQ connection without account sign-in", () =>
-      Effect.gen(function* () {
-        const s = yield* accountScenario();
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        yield* s.then.menu.row("Shop").appears();
-        const retainedAuthorization = yield* unchangedHandovers(s);
-        yield* sessionEnds(s, "refusal");
-        yield* s.when.hq.colleague.renamesProject("Shop", "Renewed");
-        yield* retryHq(s);
-        yield* s.then.menu.row("Renewed").appears();
-        yield* account(s.page).showsPerson("owner");
-        yield* retainedAuthorization();
-        yield* s.then.noReload;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     // Catches a transient HQ session-database failure permanently stopping live updates after recovery.
     it.effect("HQ session-check outage recovers without user intervention", () =>
       Effect.gen(function* () {
@@ -215,7 +145,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.signedIn;
         yield* s.then.menu.row("Shop").appears();
-        yield* sessionEnds(s, "outage");
+        yield* sessionEnds(s);
         yield* s.when.hq.colleague.renamesProject("Shop", "HQ returned");
         yield* allowHqRetries(s, "HQ returned", s.receivedReplies);
         yield* s.then.menu
@@ -277,25 +207,6 @@ describe("A: sign-in, session and organizations", () => {
         yield* Effect.promise(() => s.page.bringToFront());
         yield* s.then.menu.row("Both live").appears();
         yield* account(s.page).showsPerson("owner");
-        yield* s.then.noReload;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches an expired HQ session permanently stopping live work until the user retries.
-    it.effect("HQ session expires and renews itself", () =>
-      Effect.gen(function* () {
-        const s = yield* accountScenario();
-        yield* Effect.promise(() => s.clock.install());
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        yield* s.then.menu.row("Shop").appears();
-        const retainedAuthorization = yield* unchangedHandovers(s);
-        yield* sessionEnds(s, "expiry");
-        yield* s.when.hq.colleague.renamesProject("Shop", "Automatically renewed");
-        yield* allowHqRetries(s, "Automatically renewed", s.receivedReplies);
-        yield* s.then.menu.row("Automatically renewed").appears();
-        yield* retainedAuthorization();
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
       }),

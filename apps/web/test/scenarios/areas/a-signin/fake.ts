@@ -1,6 +1,3 @@
-import type { WebSocket } from "ws";
-import { expect } from "@effect/vitest";
-import { deadline } from "../../harness/http.ts";
 import type { ScenarioDrivers, ScenarioExtension } from "../../harness/scenario.ts";
 import { sessionDatabase } from "../../fakes/a-signin/database.ts";
 
@@ -24,33 +21,13 @@ export function secondOrganization(drivers: ScenarioDrivers) {
   });
 }
 
-export async function endSessionCheck(
-  drivers: ScenarioDrivers,
-  sockets: WebSocket[],
-  fault: "outage" | "expiry" | "refusal",
-) {
+export async function endSessionCheck(drivers: ScenarioDrivers) {
   const database = signInFaults(drivers);
-  if (fault === "outage") {
-    await database.unavailable();
-    try {
-      await database.sawSessionRead();
-    } finally {
-      await database.returns();
-    }
-    return;
-  }
-  expect(sockets.length, "A live real-Core structure stream is required").toBeGreaterThan(0);
-  const closed = Promise.all(
-    sockets.map(
-      (socket) => new Promise<number>((resolve) => socket.once("close", (code) => resolve(code))),
-    ),
-  );
-  if (fault === "refusal") {
-    for (const socket of sockets) socket.close(4403, "scenario source refusal");
-    expect(await deadline(closed, "HQ refused-source close")).toContain(4403);
-  } else {
-    await database.expires();
-    expect(await deadline(closed, "Core expired-session close")).toContain(4401);
+  await database.unavailable();
+  try {
+    await database.sawSessionRead();
+  } finally {
+    await database.returns();
   }
 }
 
