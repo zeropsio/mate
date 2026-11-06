@@ -101,10 +101,10 @@ const relativeFile = (file: string) => NodePath.relative(root, file).split(NodeP
 function readProgress(output: string): SignalProgress[] {
   const path = `${output}.progress.jsonl`;
   if (!NodeFS.existsSync(path)) return [];
-  return NodeFS.readFileSync(path, "utf8")
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as SignalProgress);
+  const lines = NodeFS.readFileSync(path, "utf8").split("\n");
+  // A killed writer may leave an incomplete final record; completed lines are still evidence.
+  lines.pop();
+  return lines.filter(Boolean).map((line) => JSON.parse(line) as SignalProgress);
 }
 
 /**
@@ -114,11 +114,14 @@ function readProgress(output: string): SignalProgress[] {
 export function reportFromProgress(lines: ReadonlyArray<SignalProgress>): SignalReport {
   const cases = new Map<string, SignalReport["tests"][number]>();
   for (const line of lines) {
+    if (line.event === "phase") continue;
     const file = relativeFile(line.file);
     const base = { file, title: line.title, path: [line.title] };
+    const key = JSON.stringify([file, line.title]);
+    if (line.event === "casePhase" && cases.has(key)) continue;
     cases.set(
-      JSON.stringify([file, line.title]),
-      line.event === "start"
+      key,
+      line.event === "start" || line.event === "casePhase"
         ? {
             ...base,
             status: "failed",

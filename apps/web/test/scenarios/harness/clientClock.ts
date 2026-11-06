@@ -1,6 +1,9 @@
 import type { CDPSession, Page } from "puppeteer-core";
 import { completedHttp } from "./completedHttp.ts";
 
+/** Monotonic host time for reporting durations, never for scenario expectations. */
+export const scenarioMonotonicTime = () => performance.now();
+
 export interface SteppedAdvanceOptions {
   /** Override the default completed-HTTP condition, e.g. to release held replies and await receipts. */
   settle?: () => Promise<void>;

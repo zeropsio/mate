@@ -277,6 +277,7 @@ jobs:
         env: *verified_lockfile
         run: |
           vp install --frozen-lockfile
+          echo "MATE_HQ_REVISION=$(git -C .. rev-parse HEAD)" >> "$GITHUB_ENV"
           ../scripts/ci-install-object-store.sh
           ../scripts/ci-install-postgres.sh
 
@@ -312,7 +313,7 @@ jobs:
             signal-reports/${{ matrix.report }}.json.vitest.json
             signal-reports/${{ matrix.report }}.json.errors.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
   classify:
     name: Classify original failures

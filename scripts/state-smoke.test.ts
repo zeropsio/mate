@@ -50,6 +50,24 @@ beforeEach(() => {
   spawn.mockReturnValue({ pid: 1, output: [], stdout: "", stderr: "", status: 0, signal: null });
 });
 
+it("State Smoke records each executed stage in one shard evidence file", () => {
+  const previous = process.env.MATE_SIGNAL_REPORT;
+  const report = NodePath.join(NodeOS.tmpdir(), `state-smoke-evidence-${process.pid}.json`);
+  process.env.MATE_SIGNAL_REPORT = report;
+  try {
+    affected.mockReturnValue([scenario("affected")]);
+    expect(runStateSmoke(root, ["--base", base])).toBe(0);
+    expect(commands()).toHaveLength(3);
+    for (const args of commands())
+      expect(args).toContain("--reporter=../../scripts/signal-reporter.ts");
+    for (const [, , options] of spawn.mock.calls.filter(([command]) => command === "vp"))
+      expect(options!.env!.MATE_SIGNAL_REPORT).toBe(report);
+  } finally {
+    if (previous === undefined) delete process.env.MATE_SIGNAL_REPORT;
+    else process.env.MATE_SIGNAL_REPORT = previous;
+  }
+});
+
 it("State Smoke runs every affected scenario alongside sign-in and the fixed smoke", () => {
   const files = Array.from({ length: 12 }, (_, index) => scenario(`affected-${index}`));
   affected.mockReturnValue(files);
@@ -214,7 +232,9 @@ it("State Smoke CI compares the event base with full history and runs beyond cha
   );
   expect(plan.run).toContain('node scripts/state-smoke.ts --plan --base "$MATE_SCENARIO_BASE"');
   expect(prepare.outputs.state_smoke).toBe("${{ steps.state_smoke_plan.outputs.state_smoke }}");
-  const run = job.steps.at(-1);
+  const run = job.steps.find(
+    (step: { name: string }) => step.name === "Certify sign-in, fixed smoke and affected scenarios",
+  );
   expect(run.env.MATE_STATE_SMOKE_SELECTION).toBe(
     "${{ needs.prepare.outputs.state_smoke_selection }}",
   );

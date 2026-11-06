@@ -241,7 +241,12 @@ it("Decision: Signal never blocks merge, promotion or release; the blocking tier
   expect(JSON.stringify(ci)).not.toContain("signal.yml");
   expect(release).not.toContain("signal.yml");
   expect(release).not.toContain("chat_scenarios");
-  expect(ci.jobs.state_smoke.steps.at(-1).run).toContain("node scripts/state-smoke.ts");
+  expect(
+    ci.jobs.state_smoke.steps.find(
+      (step: { name: string }) =>
+        step.name === "Certify sign-in, fixed smoke and affected scenarios",
+    ).run,
+  ).toContain("node scripts/state-smoke.ts");
   const smoke = NodeFS.readFileSync(new URL("./state-smoke.ts", import.meta.url), "utf8");
   expect(smoke).toContain("stateOnlySmoke");
   expect(smoke).toContain("test/scenarios/areas/a-signin");
@@ -794,7 +799,9 @@ it("Decision: The scenario selection and verdict of State Smoke stay exactly as 
     matrix: "${{ fromJSON(needs.prepare.outputs.state_smoke) }}",
   });
   expect(consumer["timeout-minutes"]).toBe(14);
-  const certify = consumer.steps.at(-1);
+  const certify = consumer.steps.find(
+    (step: { name: string }) => step.name === "Certify sign-in, fixed smoke and affected scenarios",
+  );
   expect(certify.env).toEqual({
     MATE_SCENARIO_REQUIRE_BUNDLE: "1",
     MATE_STATE_SMOKE_SELECTION: "${{ needs.prepare.outputs.state_smoke_selection }}",
@@ -872,6 +879,38 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
       env: { MATE_SCENARIO_REQUIRE_BUNDLE: "1" },
     }),
   ]);
+});
+
+it("scenario shards retain incremental evidence after failure or cancellation for at least 30 days", () => {
+  const ci = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
+  );
+  const signal = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
+  );
+  for (const job of [ci.jobs.state_smoke, signal.jobs.chat_scenarios]) {
+    const upload = job.steps.find(
+      (step: { name: string }) => step.name === "Upload shard evidence",
+    );
+    expect(upload, "the shard must upload its evidence").toBeDefined();
+    if (!upload) continue;
+    expect(upload.if).toContain("always()");
+    expect(upload.uses).toBe("actions/upload-artifact@v4");
+    expect(upload.with["retention-days"]).toBeGreaterThanOrEqual(30);
+    expect(upload.with["if-no-files-found"]).toBe("error");
+    expect(
+      job.steps.find((step: { name: string }) => step.name === "Install mate-hq and its services")
+        .run,
+    ).toContain("git -C .. rev-parse HEAD");
+  }
+  expect(ci.jobs.state_smoke.env.MATE_SIGNAL_REPORT).toBe(
+    "state-smoke-reports/${{ matrix.shard }}.json",
+  );
+  expect(
+    signal.jobs.chat_scenarios.steps.find(
+      (step: { name: string }) => step.name === "Upload shard evidence",
+    ).with.path,
+  ).toContain(".progress.jsonl");
 });
 
 it("the Test verdict includes every scripts and HQ shard", () => {
