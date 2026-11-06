@@ -36,12 +36,18 @@ export type RouteDiscovery =
 /**
  * What the wait says while only HQ can name the environment and has not: HQ slow (`scopeSlow`),
  * HQ's answer still due past the route's deadline, or HQ's outage in the menu's own words and
- * with its *Try again* only where the menu offers it (`hqOutage`).
+ * with its *Try again* only where the menu offers it (`hqOutage`). Past the deadline the route
+ * always offers the way back to the projects, an outage too (`overdue`).
  */
 export type RouteHqWait =
   | { readonly kind: "slow" }
   | { readonly kind: "unconfirmed" }
-  | { readonly kind: "outage"; readonly line: string; readonly again: boolean };
+  | {
+      readonly kind: "outage";
+      readonly line: string;
+      readonly again: boolean;
+      readonly overdue: boolean;
+    };
 
 export type RouteTarget =
   | { readonly kind: "unresolved"; readonly discovery: RouteDiscovery }
@@ -136,7 +142,13 @@ export function routeGatePhrase(
             actions: ["go-to-projects"],
           };
         case "outage":
-          return { text: gate.hq.line, actions: gate.hq.again ? ["try-again"] : [] };
+          return {
+            text: gate.hq.line,
+            actions: [
+              ...(gate.hq.again ? (["try-again"] as const) : []),
+              ...(gate.hq.overdue ? (["go-to-projects"] as const) : []),
+            ],
+          };
       }
       return gate.reachability === null
         ? { text: "Opening this conversation…", actions: [] }

@@ -6,6 +6,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   makeMateAdapter,
+  shownCanonicalHqListNavigationAtom,
   type AccountStore,
   type MateAdapter,
   type MateLinkValue,
@@ -48,6 +49,7 @@ import { RouteGateView } from "./-routeGate";
 import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { InventoryContext, type Inventory } from "../zerops/inventoryContext";
 import { AccountDataContext } from "../zerops/accountData";
+import { hqOutage } from "../zerops/hqNavigation";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import type { ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
@@ -1171,14 +1173,26 @@ describe("routeTarget", () => {
       name: "HQ reconnecting, as the menu says it with nothing to press",
       hqIndex: "due",
       hqOutage: RECONNECTING,
+      gate: {
+        kind: "wait",
+        reachability: null,
+        hq: { kind: "outage", line: "Reconnecting…", again: false, overdue: false },
+      },
+      text: "Reconnecting…",
+      actions: [],
+    },
+    {
+      name: "HQ reconnecting past the route's deadline, in the menu's words with the way back to the projects",
+      hqIndex: "due",
+      hqOutage: RECONNECTING,
       overdue: true,
       gate: {
         kind: "wait",
         reachability: null,
-        hq: { kind: "outage", line: "Reconnecting…", again: false },
+        hq: { kind: "outage", line: "Reconnecting…", again: false, overdue: true },
       },
       text: "Reconnecting…",
-      actions: [],
+      actions: ["go-to-projects"],
     },
     {
       name: "HQ unavailable once its retries are capped, with the menu's Try again",
@@ -1187,7 +1201,7 @@ describe("routeTarget", () => {
       gate: {
         kind: "wait",
         reachability: null,
-        hq: { kind: "outage", line: "HQ unavailable.", again: true },
+        hq: { kind: "outage", line: "HQ unavailable.", again: true, overdue: false },
       },
       text: "HQ unavailable.",
       actions: ["try-again"],
@@ -1320,6 +1334,127 @@ describe("the route's wait on HQ", () => {
 
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
+
+  it("an open conversation does not re-render when HQ's navigation changes or the minute turns", async () => {
+    const one = mate(1);
+    const rig = descriptorRig([one]);
+    /** HQ names the route's Mate, beside the applications `apps` names, none with a project. */
+    const naming = (apps: ReadonlyArray<string>) => ({
+      structure: {
+        apps: apps.map((id) => ({ id, name: id, projects: [], births: [] })),
+        ungrouped: [{ projectId: one.projectId, name: "Mate", mate: { face: "" } }],
+      },
+      mates: {
+        [one.projectId]: {
+          presence: PRESENCE,
+          identity: { environmentId: ENV_A, serverVersion: "0.16.0", update: null },
+        },
+      },
+    });
+    mountHqNavigation(atoms, "org-1", naming([]), store);
+    await settle(rig.adapter);
+    const seen = { renders: 0 };
+    function Counted() {
+      const kind = useRouteGateInputs(ENV_A).target?.kind ?? null;
+      // Each commit of the route's inputs: a render that changed nothing commits all the same.
+      useEffect(() => {
+        seen.renders += 1;
+      });
+      return JSON.stringify(kind);
+    }
+    act(() =>
+      renderIn(
+        <AccountDataContext value={{ orgId: "org-1", data: store.data, retry: () => {} } as never}>
+          <InventoryContext value={inventory("ACTIVE")}>
+            <Counted />
+          </InventoryContext>
+        </AccountDataContext>,
+      ),
+    );
+    expect(container.textContent).toBe('"resolved"');
+    const settled = seen.renders;
+    // A new application in HQ: its navigation moves on, the route's Mate does not.
+    act(() => mountHqNavigation(atoms, "org-1", naming(["docs"]), store));
+    pass(60_000);
+    expect(seen.renders, "ASSERTION: nothing the open conversation reads changed").toBe(settled);
+    rig.adapter.dispose();
+  });
+
+  it("a conversation only HQ can name says HQ's outage as the menu says it, Try again where the menu offers it", () => {
+    stream(LINK, { kind: "demand", demanded: true });
+    stream(LINK, { kind: "attempt" });
+    stream(LINK, {
+      kind: "fault",
+      fault: { outcome: "definitive-refusal", message: "HQ refused" },
+      jitter: 0,
+    });
+    const menu = hqOutage(atoms.get(shownCanonicalHqListNavigationAtom), null, "locale", 0);
+    expect(menu?.again, "ASSERTION: the menu says HQ refused, with Try again").toBe(true);
+    expect(look(ENV_A)).toEqual({
+      kind: "wait",
+      reachability: null,
+      hq: { kind: "outage", line: menu?.line, again: true, overdue: false },
+    });
+    pass(20_000);
+    expect(look(ENV_A), "ASSERTION: past the deadline, the projects as well").toEqual({
+      kind: "wait",
+      reachability: null,
+      hq: { kind: "outage", line: menu?.line, again: true, overdue: true },
+    });
+  });
+
+  it("a conversation is said absent when the only other Mate HQ places has never connected", () => {
+    mountHqNavigation(
+      atoms,
+      "org-1",
+      {
+        structure: {
+          apps: [
+            {
+              id: "app",
+              name: "Shop",
+              projects: [
+                {
+                  projectId: "project-8",
+                  name: "Newborn",
+                  kind: "mate",
+                  mate: { face: "", birthId: "birth" },
+                },
+              ],
+              births: [{ id: "birth", face: "", projectId: "project-8" }],
+            },
+          ],
+          ungrouped: [],
+        },
+        attentionUnanswered: ["project-8"],
+      },
+      store,
+    );
+    expect(look(ENV_A)).toEqual(ABSENT);
+  });
+
+  it("a conversation a Mate from before the overview may serve says HQ hasn't confirmed it, never that it is absent", () => {
+    mountHqNavigation(
+      atoms,
+      "org-1",
+      {
+        structure: {
+          apps: [],
+          ungrouped: [{ projectId: "project-7", name: "Legacy", mate: { face: "" } }],
+        },
+        mates: {
+          "project-7": {
+            presence: { ...PRESENCE, overview: "none" },
+            identity: null,
+          } as never,
+        },
+      },
+      store,
+    );
+    expect(look(ENV_A)).toEqual(OPENING);
+    pass(20_000);
+    expect(look(ENV_A), "ASSERTION: past the deadline").toEqual(UNCONFIRMED);
+  });
 
   it("a conversation whose HQ link is still connecting never says HQ is slow", () => {
     hqConnecting();

@@ -396,15 +396,32 @@ describe("I9: the route gate over every machine and content", () => {
     },
     {
       title: "HQ reconnecting, the menu offering nothing to press",
-      hq: { kind: "outage", line: "Reconnecting…", again: false },
+      hq: { kind: "outage", line: "Reconnecting…", again: false, overdue: false },
       text: "Reconnecting…",
       actions: [],
     },
     {
       title: "HQ unavailable, the menu offering Try again",
-      hq: { kind: "outage", line: "HQ unavailable. Retrying every minute.", again: true },
+      hq: {
+        kind: "outage",
+        line: "HQ unavailable. Retrying every minute.",
+        again: true,
+        overdue: false,
+      },
       text: "HQ unavailable. Retrying every minute.",
       actions: ["try-again"],
+    },
+    {
+      title: "HQ reconnecting past the route's deadline, with the way back to the projects",
+      hq: { kind: "outage", line: "Reconnecting…", again: false, overdue: true },
+      text: "Reconnecting…",
+      actions: ["go-to-projects"],
+    },
+    {
+      title: "HQ unavailable past the route's deadline, with Try again and the projects",
+      hq: { kind: "outage", line: "HQ unavailable.", again: true, overdue: true },
+      text: "HQ unavailable.",
+      actions: ["try-again", "go-to-projects"],
     },
   ] as const)(
     "waits saying HQ's standing in the menu's words, never 'not in your projects', while only HQ can name the environment: $title",

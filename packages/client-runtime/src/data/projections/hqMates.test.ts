@@ -437,6 +437,36 @@ describe("hqIndexWord", () => {
       },
       word: "answered",
     },
+    ...[
+      { title: "a placed Mate HQ still holds the birth of, so it never connected", birth: {} },
+      {
+        title: "a placed Chief whose birth HQ holds until it is registered, past its link",
+        birth: { chief: true },
+      },
+      { title: "a placed Mate adopted, which may have connected before", birth: { adopted: true } },
+    ].map(({ title, birth }) => ({
+      title,
+      arrange: (store: Store) =>
+        seedHqNavigation(store, "org", {
+          structure: {
+            apps: [
+              {
+                id: "app",
+                name: "Shop",
+                projects: [
+                  { projectId: "a", name: "a", kind: "mate", mate: { face: "" } },
+                  { projectId: "b", name: "b", kind: "mate", mate: { face: "", birthId: "birth" } },
+                ],
+                births: [{ id: "birth", face: "", projectId: "b", ...birth }],
+              },
+            ],
+            ungrouped: [],
+          },
+          mates: { a: mate },
+          attentionUnanswered: ["b"],
+        }),
+      word: Object.keys(birth).length === 0 ? "answered" : "due",
+    })),
     {
       title: "its placements read and every placed Mate naming its environment",
       arrange: (store: Store) =>
@@ -447,7 +477,7 @@ describe("hqIndexWord", () => {
       word: "answered",
     },
   ])(
-    "an environment HQ's index does not name is absent from it only once every Mate HQ places named its environment or was refused: $title",
+    "an environment HQ's index does not name is absent from it only once every Mate HQ places named its environment, was refused or never connected: $title",
     ({ arrange, word }) => {
       const store = makeAccountStore(AtomRegistry.make());
       arrange(store);

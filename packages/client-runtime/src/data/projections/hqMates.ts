@@ -79,10 +79,10 @@ export const hqMatesAnswered: Projection<string, boolean> = {
  * Where HQ's index of the Mates the reader observes stands for the organization — whether it may
  * still name the project an environment's Mate serves:
  *
- * - `answered`: its placements are read whole and each placed Mate either relayed the
- *   environment it serves or had its scope refused (that Mate is not the reader's to open): an
- *   environment none of them names is none of its Mates. What it said so stands through a later
- *   outage.
+ * - `answered`: its placements are read whole and each placed Mate relayed the environment it
+ *   serves, had its scope refused (that Mate is not the reader's to open), or never connected
+ *   (`neverConnected`): an environment none of them names is none of its Mates. What it said so
+ *   stands through a later outage.
  * - `slow`: that answer is not whole, and a scope it waits on is slow (`scopeSlow`): HQ's
  *   connection is open and the scope still waits past a first answer's patience — the menu's own
  *   word for HQ slow.
@@ -105,7 +105,8 @@ export const hqIndexWord: Projection<string, HqIndexWord> = {
         waiting.push(placements);
         continue;
       }
-      if (placement.value.mate == null) continue;
+      if (placement.value.mate == null || neverConnected(read, projectId, placement.value.appId))
+        continue;
       const scope = hqMateScope(orgId, projectId);
       if (read.stream(scope).phase === "refused") continue;
       const mate = read.fact("hqMate", projectId);
@@ -117,6 +118,29 @@ export const hqIndexWord: Projection<string, HqIndexWord> = {
   },
   equals: Object.is,
 };
+
+/**
+ * Whether HQ says the project's Mate never connected: its application still holds the Mate's
+ * birth open. HQ ends a birth on the Mate's first admitted link (mate-hq `matelink/link.go`, the
+ * `hq_birth_intent SET ended_at` on link) and lists only open ones (`structure/read.go`,
+ * `ended_at IS NULL`), so an open birth bound to the project is a Mate that has never had the
+ * HQ link a conversation's ticket needs. A Chief's birth stays open past its link until it is
+ * registered, and an adopted one may name a Mate that linked before: neither says so.
+ */
+function neverConnected(
+  read: ProjectionReads,
+  projectId: string,
+  appId: string | null | undefined,
+): boolean {
+  if (appId == null) return false;
+  const app = read.fact("hqApp", appId);
+  return (
+    app.kind === "known" &&
+    (app.value.births ?? []).some(
+      (birth) => birth.projectId === projectId && birth.chief !== true && birth.adopted !== true,
+    )
+  );
+}
 
 function overviewOf(
   read: ProjectionReads,

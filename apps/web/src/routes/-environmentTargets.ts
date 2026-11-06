@@ -68,6 +68,16 @@ const NO_SHELL = Atom.make<EnvironmentShellState>({
 const NO_PROJECT = Atom.make<string | null>(null).pipe(Atom.withLabel("route-gate:no-project"));
 const ANSWERED = Atom.make(true).pipe(Atom.withLabel("route-gate:no-listing-read"));
 const HQ_DUE = Atom.make<HqIndexWord>("due").pipe(Atom.withLabel("route-gate:no-hq"));
+/** HQ as a route that does not wait on it reads it: answering, so nothing of it is said. */
+const HQ_ANSWERING = Atom.make<Parameters<typeof hqOutage>[0]>({
+  live: true,
+  refusal: null,
+  capped: false,
+  reconnecting: false,
+  slow: false,
+  structure: null,
+}).pipe(Atom.withLabel("route-gate:hq-answering"));
+const NOT_DOWN = Atom.make<number | null>(null).pipe(Atom.withLabel("route-gate:hq-not-down"));
 const NO_ROW = Atom.make<ProjectValue | null>(null).pipe(Atom.withLabel("route-gate:no-row"));
 const NO_PREVIEW = Atom.make<RoutePreview | null>(null).pipe(
   Atom.withLabel("route-gate:no-preview"),
@@ -97,10 +107,11 @@ export type NamedProject =
  * claimed only on that evidence: a listing that answered with the project but not yet its
  * services says nothing of its Mate. An environment nothing remembers is named by HQ alone — the
  * Zerops listing never carries environments — so it is absent only once every Mate HQ places
- * named its environment or was refused (`hqIndexWord`) and none names this one. Until then it
- * waits: HQ's outage in the menu's words (`hqOutage`), past the route's deadline that HQ has not
- * confirmed it, HQ slow in the menu's sense (`scopeSlow`), else the plain opening line — never
- * that the conversation is gone. An absence the route said is not taken back while HQ still
+ * named its environment, was refused or never connected (`hqIndexWord`) and none names this one.
+ * Until then it waits: HQ's outage in the menu's words (`hqOutage`) — with the way back to the
+ * projects once past the route's deadline — else past that deadline that HQ has not confirmed
+ * it, HQ slow in the menu's sense (`scopeSlow`), else the plain opening line — never that the
+ * conversation is gone. An absence the route said is not taken back while HQ still
  * names nothing: its index waiting again later is no evidence the conversation is there.
  */
 export function namedProject(input: {
@@ -124,8 +135,10 @@ export function namedProject(input: {
     // No organization shown: no HQ answers for one, and the organization's choice speaks.
     if (input.orgId === null || input.absenceSaid || input.hqIndex === "answered") return "none";
     const outage = input.hqOutage;
-    if (outage !== null && outage.kind !== "slow")
-      return { hq: { kind: "outage", line: outage.line, again: outage.again } };
+    if (outage !== null && outage.kind !== "slow") {
+      const { line, again } = outage;
+      return { hq: { kind: "outage", line, again, overdue: input.overdue } };
+    }
     if (input.overdue) return { hq: { kind: "unconfirmed" } };
     if (input.hqIndex === "slow" || outage?.kind === "slow") return { hq: { kind: "slow" } };
     return "reading";
@@ -270,18 +283,28 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   const listingAnswered = useProjection(rosterAnswered, orgId, ANSWERED);
   const row = useAtomValue(hqProject === null ? NO_ROW : listedProjectAtom(hqProject));
   const hqIndex = useProjection(hqIndexWord, orgId, HQ_DUE);
-  // What the menu says of HQ now, from the same reads the menu's header says it from.
-  const outage = hqOutage(
-    useAtomValue(shownCanonicalHqListNavigationAtom),
-    useAtomValue(hqDownSinceAtom),
-    useClientSettings((settings) => settings.timestampFormat),
-    useNowMs(),
-  );
   const preview = useAtomValue(hqProject === null ? NO_PREVIEW : routePreviewAtom(hqProject));
   const routeKey = `${orgId ?? ""}/${environmentId ?? ""}`;
   // An absence said for another environment, or organization, says nothing of this one.
   const [absenceSaidFor, setAbsenceSaidFor] = useState<string | null>(null);
   if (absenceSaidFor !== null && absenceSaidFor !== routeKey) setAbsenceSaidFor(null);
+  // Whether only HQ can still name the route's environment: then, and only then, the route reads
+  // what the menu says of HQ. A conversation already open follows none of HQ's deltas or the clock.
+  const onHq =
+    environmentId !== null &&
+    orgId !== null &&
+    hqProject === null &&
+    hqIndex !== "answered" &&
+    absenceSaidFor !== routeKey &&
+    hqNamed === undefined &&
+    resolveEnvironment(machines, index, environmentId) === undefined;
+  // What the menu says of HQ now, from the same reads and clock the menu's header says it from.
+  const outage = hqOutage(
+    useAtomValue(onHq ? shownCanonicalHqListNavigationAtom : HQ_ANSWERING),
+    useAtomValue(onHq ? hqDownSinceAtom : NOT_DOWN),
+    useClientSettings((settings) => settings.timestampFormat),
+    useNowMs(onHq),
+  );
   const targetOf = (overdue: boolean) =>
     environmentId === null
       ? null
