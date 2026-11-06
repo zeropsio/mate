@@ -134,7 +134,7 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
   }
   write(
     ".gitignore",
-    "node_modules/\nchecks.log\n.gate-receipt.json*\napps/web/src/components.json\n",
+    "node_modules/\n.local/\n.cache/\nchecks.log\n.gate-receipt.json*\napps/web/src/components.json\n",
   );
   write("README.md", "before\n");
   for (const path of Object.keys(stateOnlySmoke)) write(path, "export {};\n");
@@ -158,12 +158,10 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
           PATH: [NodePath.dirname(process.execPath), process.env.PATH ?? ""].join(
             NodePath.delimiter,
           ),
-          HOME: cacheHome ?? process.env.HOME,
+          HOME: cacheHome ?? root,
           // The repository vp wrapper sets NODE_PATH; these fake installs have their own modules.
           NODE_PATH: cacheHome ? "" : process.env.NODE_PATH,
-          XDG_CACHE_HOME: cacheHome
-            ? NodePath.join(cacheHome, ".cache")
-            : process.env.XDG_CACHE_HOME,
+          XDG_CACHE_HOME: NodePath.join(cacheHome ?? root, ".cache"),
           CI: "",
           GITHUB_ACTIONS: "",
           GATE_FIXTURE_ROOT: root,
@@ -232,6 +230,12 @@ describe("revision-bound witness receipts", () => {
     expect(Number.isFinite(receipt().selectionMs)).toBe(true);
     expect(receipt().selectedStages).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          name: "browser/scenario slot",
+          args: expect.arrayContaining([
+            NodePath.join(gate.root, ".local", "share", "mate-gate-slots"),
+          ]),
+        }),
         expect.objectContaining({
           name: "edited scenario files",
           args: expect.arrayContaining(["test/scenarios/areas/b-menu/edited.scenario.ts"]),
