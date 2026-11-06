@@ -94,6 +94,8 @@ describe("ZeropsDataTable", () => {
       onLoadMore,
       onSort: vi.fn(),
     });
+    expect(findByAttribute(tree, "data-zerops-data-table-sentinel")).toBeNull();
+    expect(onLoadMore).not.toHaveBeenCalled();
     const loadMore = findByAttribute(tree, "data-zerops-data-table-load-more")!;
     (loadMore.props.onClick as () => void)();
     expect(onLoadMore).toHaveBeenCalledTimes(1);
@@ -344,16 +346,6 @@ describe("ZeropsDataTable", () => {
         "Couldn't load rows",
       );
     });
-  });
-
-  it("requests the next bounded page only from an explicit click", () => {
-    const onLoadMore = vi.fn();
-    hooks.beginRender();
-    const tree = ZeropsDataTable({ model: { ...MODEL, nextCursor: "next" }, onLoadMore });
-    expect(findByAttribute(tree, "data-zerops-data-table-sentinel")).toBeNull();
-    expect(onLoadMore).not.toHaveBeenCalled();
-    (findByAttribute(tree, "data-zerops-data-table-load-more")!.props.onClick as () => void)();
-    expect(onLoadMore).toHaveBeenCalledTimes(1);
   });
 
   describe("status bar", () => {

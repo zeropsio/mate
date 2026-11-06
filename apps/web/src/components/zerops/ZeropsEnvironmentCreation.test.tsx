@@ -167,13 +167,10 @@ describe("ZeropsEnvironmentCreation", () => {
     expect(html).toContain("Creating Beviro CRM - production");
     expect(html).toContain("Adding its services");
     expect(html).toContain('data-zerops-creation-outcome="running"');
+    expect(html).not.toContain("Dismiss");
     // The steps done and to come are not listed: the row's words replace each other.
     const done = render({ progress: progress(["done", "done", "running"]) });
     expect(done).not.toContain("Adding its services");
-  });
-
-  it("offers no way out while it is running", () => {
-    expect(render()).not.toContain("Dismiss");
   });
 
   it("says the project exists when a later step failed", () => {

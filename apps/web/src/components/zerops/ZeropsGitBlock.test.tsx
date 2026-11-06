@@ -39,6 +39,8 @@ describe("ZeropsGitBlock", () => {
     expect(html).toContain("feature/invoices ↑3 · 2 files changed");
     expect(html).toContain("stage picks it up on merge");
     expect(html).toContain("Nothing is stopping it.");
+    // The facts line does not repeat the repository name above it.
+    expect(html.split("api").length - 1).toBe(2);
     // The order a person reads in: which repository, what about it, what now.
     expect(html.indexOf(">api<")).toBeLessThan(html.indexOf("feature/invoices ↑3"));
     expect(html.indexOf("feature/invoices ↑3")).toBeLessThan(html.indexOf("Nothing is stopping"));
@@ -50,12 +52,6 @@ describe("ZeropsGitBlock", () => {
     });
     expect(html).toContain(">webpool · feat-x<");
     expect(html).not.toContain(">webpool-3<");
-  });
-
-  it("spends the repository's name once, on the line that is the name", () => {
-    // `api · feature/invoices ↑0 ↓0` spent the first third of every row
-    // repeating the heading directly above it.
-    expect(render().split("api").length - 1).toBe(2); // the data attribute and the name
   });
 
   it.each([
