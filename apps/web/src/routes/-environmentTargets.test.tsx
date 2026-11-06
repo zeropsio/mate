@@ -1023,12 +1023,23 @@ const OWN_ROW = { clientId: ORG_1 };
 
 describe("routeTarget", () => {
   const NONE_INDEXED = { serving: new Map(), reported: new Map() };
-  const target = (named: Parameters<typeof namedProject>[0]) =>
+  type Named = Parameters<typeof namedProject>[0];
+  /** HQ answered for the organization unless a case says otherwise. */
+  const target = (
+    named: Omit<Named, "hqIndex" | "listingComplete"> & {
+      readonly hqIndex?: Named["hqIndex"] | undefined;
+      readonly listingComplete?: boolean | undefined;
+    },
+  ) =>
     routeTarget({
       machines: new Map(),
       index: NONE_INDEXED,
       environmentId: ENV_A,
-      named: namedProject(named),
+      named: namedProject({
+        ...named,
+        hqIndex: named.hqIndex ?? "answered",
+        listingComplete: named.listingComplete ?? false,
+      }),
       inventoryKnown: true,
       organization: "chosen",
       content: "empty",
@@ -1112,6 +1123,18 @@ describe("routeTarget", () => {
       name: "HQ naming nothing",
       named: { hqProject: null, listingAnswered: true, orgId: ORG_1, row: null, rows: null },
     },
+    {
+      name: "HQ silent past its patience, the listing read whole",
+      named: {
+        hqProject: null,
+        hqIndex: "silent" as const,
+        listingComplete: true,
+        listingAnswered: true,
+        orgId: ORG_1,
+        row: null,
+        rows: null,
+      },
+    },
   ])(
     "once the listing read after HQ named it still lacks the project, the conversation says it isn't in your Zerops projects: $name",
     ({ named }) => {
@@ -1120,6 +1143,31 @@ describe("routeTarget", () => {
       expect(routeGatePhrase(gate, { nowMs: 0, mateName: "Ada" }).text).toBe(
         "This conversation isn't in your Zerops projects.",
       );
+    },
+  );
+  it.each([
+    { name: "HQ's first answer still due", hqIndex: "due", listingComplete: true },
+    {
+      name: "HQ silent past its patience, the listing not read whole",
+      hqIndex: "silent",
+      listingComplete: false,
+    },
+  ] as const)(
+    "a conversation nothing remembered names waits for HQ's first answer instead of saying it isn't in your projects: $name",
+    ({ hqIndex, listingComplete }) => {
+      expect(
+        selectRouteGate(
+          target({
+            hqProject: null,
+            hqIndex,
+            listingComplete,
+            listingAnswered: true,
+            orgId: ORG_1,
+            row: null,
+            rows: null,
+          }),
+        ),
+      ).toEqual({ kind: "wait", reachability: null });
     },
   );
 });
@@ -1137,6 +1185,8 @@ it.each([
         environmentId: ENV_A,
         named: namedProject({
           hqProject: "project-1",
+          hqIndex: "answered",
+          listingComplete: false,
           listingAnswered,
           orgId: ORG_1,
           row: OWN_ROW,

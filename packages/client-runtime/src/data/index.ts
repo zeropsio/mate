@@ -45,6 +45,8 @@ export {
   hqMateReady,
   hqMates,
   hqMatesAnswered,
+  hqIndexWord,
+  type HqIndexWord,
   type HqMatesRead,
 } from "./projections/hqMates.ts";
 export {

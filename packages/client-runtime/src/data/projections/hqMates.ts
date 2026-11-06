@@ -15,7 +15,7 @@ import type { Projection, ProjectionReads } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
 import { sameValue } from "./equal.ts";
 import { placedMates } from "../placedRows.ts";
-import { liveOrHeld } from "../streamMachine.ts";
+import { liveOrHeld, streamTrouble } from "../streamMachine.ts";
 
 export interface HqMatesRead {
   readonly mates: Readonly<Record<string, MateLiveView>>;
@@ -91,6 +91,44 @@ export const hqMatesAnswered: Projection<string, boolean> = {
       if (placement.kind !== "known" || placement.value.mate == null) return true;
       return hqMateAnswered.derive(read, { orgId, projectId });
     }),
+  equals: Object.is,
+};
+
+/**
+ * Where HQ's index of the Mates the reader observes stands for the organization — whether it may
+ * still name the project an environment's Mate serves:
+ *
+ * - `due`: HQ is asked and its first answer is on its way — its navigation not read, or a Mate it
+ *   places not yet answered — inside the stream machine's patience; its silence proves nothing.
+ * - `answered`: its navigation is read and every Mate it places answered (or its own scope gave
+ *   up), so an environment it does not name is none of its Mates.
+ * - `silent`: HQ is not asked, refused, or failing past its grace: it says nothing now, and
+ *   what else is read decides.
+ */
+export type HqIndexWord = "due" | "answered" | "silent";
+
+export const hqIndexWord: Projection<string, HqIndexWord> = {
+  name: "hqIndexWord",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => {
+    const link = read.stream(linkKeys.hq(orgId));
+    if (!link.demanded) return "silent";
+    const placements = placementsScope(orgId);
+    if (read.coverage(placements) === "complete") {
+      const each = read.members(placements).ids.every((projectId) => {
+        const placement = read.fact("placement", projectId);
+        if (placement.kind !== "known" || placement.value.mate == null) return true;
+        return (
+          hqMateAnswered.derive(read, { orgId, projectId }) ||
+          streamTrouble(read.stream(hqMateScope(orgId, projectId))) !== null
+        );
+      });
+      if (each) return "answered";
+    }
+    return streamTrouble(link) !== null || streamTrouble(read.stream(placements)) !== null
+      ? "silent"
+      : "due";
+  },
   equals: Object.is,
 };
 

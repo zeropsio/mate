@@ -12,6 +12,7 @@ import type { Instant } from "@t3tools/client-runtime/zerops/environments";
 import {
   environmentLinkable,
   mateLink,
+  mateListingsAtom,
   resolveEnvironment,
   routePreviewAtom,
   selectConversation,
@@ -27,7 +28,14 @@ import {
   type RouteTarget,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
-import { listedProjectAtom, rosterAnswered, type ProjectValue } from "@t3tools/client-runtime/data";
+import {
+  hqIndexWord,
+  listedProjectAtom,
+  rosterAnswered,
+  type HqIndexWord,
+  type ProjectValue,
+} from "@t3tools/client-runtime/data";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentShellState } from "@t3tools/client-runtime/state/shell";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -55,6 +63,7 @@ const NO_SHELL = Atom.make<EnvironmentShellState>({
 }).pipe(Atom.withLabel("route-gate:no-environment"));
 const NO_PROJECT = Atom.make<string | null>(null).pipe(Atom.withLabel("route-gate:no-project"));
 const ANSWERED = Atom.make(true).pipe(Atom.withLabel("route-gate:no-listing-read"));
+const HQ_SILENT = Atom.make<HqIndexWord>("silent").pipe(Atom.withLabel("route-gate:no-hq"));
 const NO_ROW = Atom.make<ProjectValue | null>(null).pipe(Atom.withLabel("route-gate:no-row"));
 const NO_PREVIEW = Atom.make<RoutePreview | null>(null).pipe(
   Atom.withLabel("route-gate:no-preview"),
@@ -76,10 +85,15 @@ export type NamedProject = "none" | "reading" | "without-mate" | "with-mate";
  * `NamedProject` from the reads: the project HQ names, whether the Zerops listing's latest read
  * answered (`rosterAnswered`) and lists it, and its rows as read (`routePreviewAtom`). Absence is
  * claimed only on that evidence: a listing that answered with the project but not yet its
- * services says nothing of its Mate.
+ * services says nothing of its Mate, and HQ naming no project says nothing while its first
+ * answer is due — past its patience, only the whole listing says it.
  */
 export function namedProject(input: {
   readonly hqProject: string | null;
+  /** Where HQ's index of the reader's Mates stands for the organization (`hqIndexWord`). */
+  readonly hqIndex: HqIndexWord;
+  /** The organization's Mate listing is complete: every project's services read. */
+  readonly listingComplete: boolean;
   /** The organization the account shows: a project another one owns is not listed here. */
   readonly orgId: string | null;
   readonly listingAnswered: boolean;
@@ -87,7 +101,15 @@ export function namedProject(input: {
   readonly row: Pick<ProjectValue, "clientId"> | null;
   readonly rows: ReadonlyArray<Pick<ZeropsCandidate, "service">> | null;
 }): NamedProject {
-  if (input.hqProject === null) return "none";
+  if (input.hqProject === null) {
+    // No organization shown: no HQ answers for one, and the organization's choice speaks.
+    if (input.orgId === null) return "none";
+    // HQ not having named it yet is no word: its first answer is waited for, inside its patience.
+    if (input.hqIndex === "due") return "reading";
+    // HQ silent past that: only the listing, read whole, may say no project holds it.
+    if (input.hqIndex === "silent" && !input.listingComplete) return "reading";
+    return "none";
+  }
   if (input.rows !== null)
     return input.rows.some((row) => row.service !== undefined) ? "with-mate" : "without-mate";
   const listed = input.row !== null && input.row.clientId === input.orgId;
@@ -210,6 +232,12 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   const orgId = useAccountOrgId();
   const listingAnswered = useProjection(rosterAnswered, orgId, ANSWERED);
   const row = useAtomValue(hqProject === null ? NO_ROW : listedProjectAtom(hqProject));
+  const hqIndex = useProjection(hqIndexWord, orgId, HQ_SILENT);
+  const listingComplete = useAtomValue(mateListingsAtom, (listings) =>
+    listings.some(
+      (listed) => listed.organizationId === orgId && heldCandidates(listed.listing).complete,
+    ),
+  );
   const preview = useAtomValue(hqProject === null ? NO_PREVIEW : routePreviewAtom(hqProject));
   const target =
     environmentId === null
@@ -221,6 +249,8 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           hqNamed,
           named: namedProject({
             hqProject,
+            hqIndex,
+            listingComplete,
             orgId,
             listingAnswered,
             row,
