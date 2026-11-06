@@ -9,12 +9,15 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as TestClock from "effect/testing/TestClock";
 import {
   CommandId,
   ConversationId,
@@ -26,6 +29,8 @@ import {
 import { contentAssetsAt } from "../../assets/ContentAssets.ts";
 import { runMigrations } from "../../persistence/Migrations.ts";
 import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
+import { testFixturePool } from "../../testing/testFixture.ts";
+import { testTempDir } from "../../testing/testTempDir.ts";
 import { ProjectionThreadActivityRepositoryLive } from "../../persistence/Layers/ProjectionThreadActivities.ts";
 import { ProjectionThreadMessageRepositoryLive } from "../../persistence/Layers/ProjectionThreadMessages.ts";
 import { ProjectionThreadProposedPlanRepositoryLive } from "../../persistence/Layers/ProjectionThreadProposedPlans.ts";
@@ -37,6 +42,7 @@ import { ProjectionTurnRepository } from "../../persistence/Services/ProjectionT
 import { Conversations, type ConversationsShape } from "../Conversations.ts";
 import { askImport, importOrSayGap, makeHistoryImport } from "../effects/historyImport.ts";
 import { EffectHandlers, handlersOf, makeEffectWorker } from "../outbox/EffectWorker.ts";
+import { EffectOutbox } from "../outbox/EffectOutbox.ts";
 import { EngineStoreError, type CommitStage } from "../store/EngineStore.ts";
 import {
   LONG_NOTE,
@@ -50,7 +56,7 @@ import {
   proposedPlans,
   turns,
 } from "../testing/history/v1Thread.ts";
-import { audit, engineLayer, newBoot, tempDb, type Engine } from "../testing/world.ts";
+import { audit, engineLayer, newBoot, type Engine } from "../testing/world.ts";
 import { itemOfRow } from "../wire/records.ts";
 import { makeEngineWire } from "../wire/EngineWire.ts";
 import * as LiveBusModule from "../LiveBus.ts";
@@ -66,32 +72,53 @@ const BATCH = 7;
 
 // ── the file ────────────────────────────────────────────────────────────────────────────────
 
+const historyFixture = testFixturePool("history-import-fixtures-");
+const seedFile = NodePath.join(testTempDir("history-import-seed-"), "state.sqlite");
+let seeded = false;
+
 /** A database holding the recorded V1 thread, as V1 wrote it. */
-const seededDb = (label: string) =>
+const seededDb = () =>
   Effect.gen(function* () {
-    const file = tempDb(label);
-    yield* Effect.gen(function* () {
-      yield* runMigrations();
-      const turnRepository = yield* ProjectionTurnRepository;
-      const messageRepository = yield* ProjectionThreadMessageRepository;
-      const activityRepository = yield* ProjectionThreadActivityRepository;
-      const planRepository = yield* ProjectionThreadProposedPlanRepository;
-      for (const turn of turns) yield* turnRepository.upsertByTurnId(turn);
-      yield* turnRepository.replacePendingTurnStart(pendingTurn);
-      for (const message of messages) yield* messageRepository.upsert(message);
-      for (const activity of activities) yield* activityRepository.upsert(activity);
-      for (const plan of proposedPlans) yield* planRepository.upsert(plan);
-    }).pipe(
-      Effect.provide(
-        Layer.mergeAll(
-          ProjectionTurnRepositoryLive,
-          ProjectionThreadMessageRepositoryLive,
-          ProjectionThreadActivityRepositoryLive,
-          ProjectionThreadProposedPlanRepositoryLive,
-        ).pipe(Layer.provideMerge(NodeSqliteClient.layer({ filename: file }))),
-      ),
-    );
-    return file;
+    if (!seeded) {
+      yield* Effect.gen(function* () {
+        yield* runMigrations();
+        const turnRepository = yield* ProjectionTurnRepository;
+        const messageRepository = yield* ProjectionThreadMessageRepository;
+        const activityRepository = yield* ProjectionThreadActivityRepository;
+        const planRepository = yield* ProjectionThreadProposedPlanRepository;
+        for (const turn of turns) yield* turnRepository.upsertByTurnId(turn);
+        yield* turnRepository.replacePendingTurnStart(pendingTurn);
+        for (const message of messages) yield* messageRepository.upsert(message);
+        for (const activity of activities) yield* activityRepository.upsert(activity);
+        for (const plan of proposedPlans) yield* planRepository.upsert(plan);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            ProjectionTurnRepositoryLive,
+            ProjectionThreadMessageRepositoryLive,
+            ProjectionThreadActivityRepositoryLive,
+            ProjectionThreadProposedPlanRepositoryLive,
+          ).pipe(Layer.provideMerge(NodeSqliteClient.layer({ filename: seedFile }))),
+        ),
+      );
+      seeded = true;
+    }
+    return yield* Effect.sync(() => {
+      const dir = historyFixture("database-");
+      const file = NodePath.join(dir, "state.sqlite");
+      for (const suffix of ["-wal", "-shm"]) NodeFS.rmSync(file + suffix, { force: true });
+      NodeFS.copyFileSync(seedFile, file);
+      const clearFiles = (path: string) => {
+        for (const entry of NodeFS.readdirSync(path, { withFileTypes: true })) {
+          const child = NodePath.join(path, entry.name);
+          if (entry.isDirectory()) clearFiles(child);
+          else NodeFS.rmSync(child, { force: true });
+        }
+      };
+      const assets = NodePath.join(dir, "assets");
+      if (NodeFS.existsSync(assets)) clearFiles(assets);
+      return file;
+    });
   });
 
 /** V1's tables, row by row. */
@@ -148,14 +175,19 @@ const lifetime = <A, E>(
     return yield* body({ worker, conversations });
   }).pipe(
     Effect.provide(
-      engineLayer(file, new Map(), options.fault === undefined ? {} : { fault: options.fault }),
+      engineLayer(
+        file,
+        new Map(),
+        options.fault === undefined ? {} : { fault: options.fault },
+      ).pipe(Layer.provideMerge(TestClock.layer())),
     ),
   );
 
-/** Works the outbox until nothing waits in it: a retry's backoff is waited out. */
+/** Works the outbox until empty, advancing to the next retry instead of waiting in real time. */
 const drain = (worker: Worker) =>
   Effect.gen(function* () {
     const sql = yield* SqlClient.SqlClient;
+    const outbox = yield* EffectOutbox;
     let completed = 0;
     while (true) {
       if (yield* worker.runOnce) {
@@ -166,7 +198,13 @@ const drain = (worker: Worker) =>
         SELECT COUNT(*) AS n FROM engine_effect WHERE state IN ('pending', 'running', 'settling')
       `;
       if ((waiting?.n ?? 0) === 0) return completed;
-      yield* Effect.sleep(20);
+      const next = yield* outbox.nextAvailableAt();
+      const now = yield* Clock.currentTimeMillis;
+      if (Option.isNone(next) || next.value <= now)
+        return yield* Effect.die(
+          new Error("The import outbox has waiting work but no future retry"),
+        );
+      yield* TestClock.adjust(next.value - now);
     }
   }).pipe(Effect.orDie);
 
@@ -289,7 +327,7 @@ const withoutOccurrenceIds = (data: unknown): unknown =>
 
 /** The import once, start to end, on a fresh file. */
 const importedOnce = Effect.gen(function* () {
-  const file = yield* seededDb("history");
+  const file = yield* seededDb();
   return yield* lifetime(file, ({ worker }) =>
     Effect.gen(function* () {
       const reserved = yield* start;
@@ -671,7 +709,7 @@ describe("an import that cannot start", () => {
   // earlier record never came, with no word of it.
   it.live("is asked again while it fails, and copies the record once it can", () =>
     Effect.gen(function* () {
-      const file = yield* seededDb("again");
+      const file = yield* seededDb();
       const held = yield* lifetime(file, ({ worker, conversations }) =>
         Effect.gen(function* () {
           let refused = 2;
@@ -684,7 +722,7 @@ describe("an import that cannot start", () => {
                   )
                 : conversations.ask(envelope),
           };
-          const turns = yield* importOrSayGap(c, source, Schedule.spaced(10)).pipe(
+          const turns = yield* importOrSayGap(c, source, Schedule.recurs(2)).pipe(
             Effect.provideService(Conversations, door),
           );
           yield* drain(worker);
@@ -698,7 +736,7 @@ describe("an import that cannot start", () => {
 
   it.live("leaves its gap marker when the earlier record can never be read", () =>
     Effect.gen(function* () {
-      const file = yield* seededDb("never");
+      const file = yield* seededDb();
       yield* Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient;
         yield* sql`DROP TABLE projection_turns`;
@@ -736,7 +774,7 @@ describe("a client watching while the earlier record comes in", () => {
   // the whole thread derived again on each, where the window is what the client asked for.
   it.live("gets its window once the import is in, never the import record by record", () =>
     Effect.gen(function* () {
-      const file = yield* seededDb("watched");
+      const file = yield* seededDb();
       const frames = yield* lifetime(file, ({ worker }) =>
         Effect.scoped(
           Effect.gen(function* () {
@@ -787,7 +825,7 @@ describe("a client watching while the earlier record comes in", () => {
 describe("the import, once", () => {
   it.live("leaves V1's tables as they were, so flipping back finds the conversation", () =>
     Effect.gen(function* () {
-      const file = yield* seededDb("v1-unchanged");
+      const file = yield* seededDb();
       const before = yield* v1Tables.pipe(
         Effect.provide(NodeSqliteClient.layer({ filename: file })),
       );
@@ -801,7 +839,7 @@ describe("the import, once", () => {
 
   it.live("asked twice, in two lifetimes, copies the record once", () =>
     Effect.gen(function* () {
-      const file = yield* seededDb("twice");
+      const file = yield* seededDb();
       const first = yield* lifetime(file, ({ worker }) =>
         Effect.gen(function* () {
           yield* start;
@@ -826,7 +864,7 @@ describe("the import, once", () => {
     () =>
       Effect.gen(function* () {
         const reference = yield* cached;
-        const file = yield* seededDb("restart");
+        const file = yield* seededDb();
         yield* lifetime(file, ({ worker }) =>
           Effect.gen(function* () {
             yield* start;
@@ -851,7 +889,7 @@ describe("the import, once", () => {
 
   it.live("holds a message sent meanwhile until the earlier record is in, then runs it after", () =>
     Effect.gen(function* () {
-      const file = yield* seededDb("meanwhile");
+      const file = yield* seededDb();
       const { events } = yield* lifetime(file, ({ worker, conversations }) =>
         Effect.gen(function* () {
           yield* start;
@@ -908,14 +946,13 @@ describe("the import's crash table", () => {
       const reference = comparable((yield* cached).held);
       const broken: Array<string> = [];
       // Seeding closes SQLite before returning. Only copies are opened by the engine.
-      const seed = yield* seededDb("history-crash-seed");
-      const measured = tempDb("history-moves");
-      yield* Effect.sync(() => NodeFS.copyFileSync(seed, measured));
+      const seed = yield* seededDb();
+      const measured = yield* seededDb();
       const moves = yield* lifetime(measured, ({ worker }) =>
         start.pipe(Effect.andThen(drain(worker))),
       );
+      const file = yield* seededDb();
       for (const crash of crashes(moves)) {
-        const file = tempDb("history-crash");
         yield* Effect.sync(() => NodeFS.copyFileSync(seed, file));
         let armed = false;
         let commits = 0;

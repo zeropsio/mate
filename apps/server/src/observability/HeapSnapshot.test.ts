@@ -6,7 +6,9 @@ import * as NodeV8 from "node:v8";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import { vi } from "vite-plus/test";
+import { afterEach, vi } from "vite-plus/test";
+
+import { testTempDir } from "../testing/testTempDir.ts";
 
 import { writeHeapSnapshot } from "./HeapSnapshot.ts";
 
@@ -16,10 +18,13 @@ vi.mock("node:v8", async (importOriginal) => {
 });
 
 it.layer(NodeServices.layer)("writeHeapSnapshot", (it) => {
+  const logsDir = testTempDir("mate-heap-snapshot-");
+  afterEach(() => {
+    for (const file of NodeFS.readdirSync(logsDir)) NodeFS.rmSync(NodePath.join(logsDir, file));
+  });
   it.effect("writes a heap snapshot into the server logs directory", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const logsDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-heap-snapshot-" });
       vi.mocked(NodeV8.writeHeapSnapshot).mockImplementationOnce((path) => {
         if (!path) throw new Error("A snapshot needs a destination");
         NodeFS.writeFileSync(path, "heap snapshot");
@@ -41,7 +46,6 @@ it.layer(NodeServices.layer)("writeHeapSnapshot", (it) => {
   it.effect("removes the partial file when the write fails", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const logsDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-heap-snapshot-test-" });
       let partialPath: string | undefined;
       vi.mocked(NodeV8.writeHeapSnapshot).mockImplementationOnce((path) => {
         partialPath = path;
