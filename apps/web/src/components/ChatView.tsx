@@ -127,6 +127,8 @@ import {
   useEffectEvent,
   useRef,
   useState,
+  type Dispatch,
+  type SetStateAction,
 } from "react";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -767,6 +769,8 @@ type ChatViewProps =
       threadSyncPhase?: never;
       routeKind: "draft";
       draftId: DraftId;
+      optimisticMessages: ChatMessage[];
+      setOptimisticMessages: Dispatch<SetStateAction<ChatMessage[]>>;
     };
 
 interface TerminalLaunchContext {
@@ -1706,7 +1710,12 @@ function ConversationView(props: ChatViewProps) {
   const [isWorkspaceFileDragActive, setIsWorkspaceFileDragActive] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [expandedImage, setExpandedImage] = useState<ExpandedImagePreview | null>(null);
-  const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
+  // The draft route keeps these rows until its destination has their exact message IDs.
+  const [serverOptimisticMessages, setServerOptimisticMessages] = useState<ChatMessage[]>([]);
+  const optimisticUserMessages =
+    props.routeKind === "draft" ? props.optimisticMessages : serverOptimisticMessages;
+  const setOptimisticUserMessages =
+    props.routeKind === "draft" ? props.setOptimisticMessages : setServerOptimisticMessages;
   const [feedbackSubmissionsByThreadKey, setFeedbackSubmissionsByThreadKey] = useState<
     Record<string, ReadonlyArray<CodexFeedbackSubmission>>
   >({});
@@ -5218,7 +5227,13 @@ function ConversationView(props: ChatViewProps) {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [activeThread?.id, activeThread?.messages, handoffAttachmentPreviews, optimisticUserMessages]);
+  }, [
+    activeThread?.id,
+    activeThread?.messages,
+    handoffAttachmentPreviews,
+    optimisticUserMessages,
+    setOptimisticUserMessages,
+  ]);
 
   useEffect(() => {
     setOptimisticUserMessages((existing) => {
@@ -5229,7 +5244,7 @@ function ConversationView(props: ChatViewProps) {
     });
     resetLocalDispatch();
     setExpandedImage(null);
-  }, [draftId, resetLocalDispatch, threadId]);
+  }, [draftId, resetLocalDispatch, setOptimisticUserMessages, threadId]);
 
   const closeExpandedImage = useCallback(() => {
     setExpandedImage(null);
@@ -7861,6 +7876,7 @@ function ConversationView(props: ChatViewProps) {
       runtimeMode,
       scrollToEnd,
       setComposerDraftInteractionMode,
+      setOptimisticUserMessages,
       setThreadError,
       startThreadTurn,
       environmentId,
@@ -8616,7 +8632,10 @@ function ConversationView(props: ChatViewProps) {
                   runningTurnId: activeRunningTurnId,
                   activeThreadEnvironmentId: activeThread.environmentId,
                   routeThreadKey,
-                  arrivesFromItsDraft: draftArrival.fromItsDraft,
+                  keepsDraftMessage:
+                    draftArrival.fromItsDraft ||
+                    (routeKind === "draft" &&
+                      timelineMessages.some((message) => message.role === "user")),
                   provider:
                     activeThread.session?.providerName ??
                     conversationProviderStatus?.driver ??

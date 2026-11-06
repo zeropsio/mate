@@ -116,8 +116,38 @@ describe("draft hero submission transition", () => {
         serverThreadRef: { environmentId, threadId },
         serverThreadStarted: true,
         backgroundSubmissionPending: true,
+        serverThreadMessages: [{ id: MessageId.make("sent"), role: "user" }],
+        pendingMessageIds: [],
       }),
     ).toBeNull();
+  });
+
+  it("keeps a draft's sent message visible until its conversation contains that message", () => {
+    const promotion = {
+      serverThreadRef: { environmentId, threadId },
+      serverThreadStarted: true,
+      backgroundSubmissionPending: false,
+      serverThreadMessages: [{ id: MessageId.make("assistant"), role: "assistant" as const }],
+      pendingMessageIds: [MessageId.make("sent")],
+    };
+    const otherMessage = {
+      ...promotion,
+      serverThreadMessages: [{ id: MessageId.make("other"), role: "user" as const }],
+    };
+    const reflected = {
+      ...promotion,
+      serverThreadMessages: [{ id: MessageId.make("sent"), role: "user" as const }],
+    };
+    expect(resolveDraftPromotionNavigationTarget(promotion)).toBeNull();
+    expect(resolveDraftPromotionNavigationTarget(otherMessage)).toBeNull();
+    expect(resolveDraftPromotionNavigationTarget(reflected)).toEqual(promotion.serverThreadRef);
+    expect(
+      resolveDraftPromotionNavigationTarget({
+        ...promotion,
+        pendingMessageIds: [],
+        serverThreadMessages: [],
+      }),
+    ).toEqual(promotion.serverThreadRef);
   });
 });
 
