@@ -20,6 +20,7 @@ export default defineConfig({
           environment: "node",
           setupFiles: ["../../packages/shared/src/testing/longTempDir.ts"],
           globalSetup: [
+            "test/scenarios/harness/hqPreflight.ts",
             "test/scenarios/harness/build.ts",
             "test/scenarios/harness/browserProcess.ts",
           ],

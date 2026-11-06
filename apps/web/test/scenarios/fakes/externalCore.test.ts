@@ -12,6 +12,8 @@ import * as Exit from "effect/Exit";
 import { vi } from "vite-plus/test";
 import { emptyWorld } from "../harness/fakeWorld.ts";
 import { startExternalCore } from "../harness/externalCore.ts";
+import { startScenarioCore } from "../harness/hqCore.ts";
+import preflight from "../harness/hqPreflight.ts";
 import { serve } from "../harness/http.ts";
 
 /** The kernel's view of a PID: a process that only awaits reaping (state Z) is dead. */
@@ -23,6 +25,67 @@ const alive = (pid: number) => {
 };
 
 const quote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
+
+it("A scenario shard reuses only the preflight for its pinned HQ revision", async () => {
+  const ref = (
+    await NodeFSP.readFile(new URL("../../../../../.mate-hq-ref", import.meta.url), "utf8")
+  ).trim();
+  try {
+    vi.stubEnv("GITHUB_ACTIONS", "true");
+    vi.stubEnv("MATE_HQ_TEST_COMMAND", "");
+    vi.stubEnv("MATE_HQ_PREFLIGHT_SHA", ref);
+    await expect(preflight()).resolves.toBeUndefined();
+    vi.stubEnv("MATE_HQ_PREFLIGHT_SHA", "1111111111111111111111111111111111111111");
+    await expect(preflight()).rejects.toThrow("Scenarios run against mate-hq's test HQ");
+    vi.stubEnv("MATE_HQ_PREFLIGHT_SHA", ref);
+    vi.stubEnv("GITHUB_ACTIONS", "false");
+    await expect(preflight()).rejects.toThrow("Scenarios run against mate-hq's test HQ");
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+it.effect(
+  "Decision: the preflight before fan-out checks the built HQ is that SHA and answers the harness's contract; a mismatch fails once, first.",
+  () =>
+    Effect.gen(function* () {
+      const expected = (yield* Effect.promise(() =>
+        NodeFSP.readFile(new URL("../../../../../.mate-hq-ref", import.meta.url), "utf8"),
+      )).trim();
+      const actual = "1111111111111111111111111111111111111111";
+      const script = `
+      const http = require("node:http");
+      const server = http.createServer((req, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ commit: ${JSON.stringify(actual)} }));
+      });
+      server.listen(0, "127.0.0.1", () => process.stdout.write(JSON.stringify({
+        origin: "http://127.0.0.1:" + server.address().port,
+        database: "postgres://127.0.0.1/stub",
+        clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
+      }) + "\\n"));
+      process.stdin.resume();
+      process.stdin.once("end", () => server.close());
+    `;
+      yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          vi.stubEnv("MATE_HQ_TEST_COMMAND", `${quote(process.execPath)} -e ${quote(script)}`),
+        ),
+        () => Effect.sync(() => vi.unstubAllEnvs()),
+      );
+      const result = yield* Effect.exit(
+        startScenarioCore({ baseUrl: "http://127.0.0.1:1", world: emptyWorld() }).pipe(
+          Effect.scoped,
+        ),
+      );
+      expect(Exit.isFailure(result)).toBe(true);
+      if (Exit.isFailure(result)) {
+        const error = Cause.pretty(result.cause);
+        expect(error).toContain(expected);
+        expect(error).toContain(actual);
+      }
+    }).pipe(Effect.scoped),
+);
 
 it.effect.each(["EPERM", "ESRCH"])(
   "external Core shutdown accepts %s for its captured process group",

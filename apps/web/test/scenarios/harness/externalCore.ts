@@ -153,6 +153,7 @@ export const startExternalCore = (
     const clock = yield* heldWaitClock;
     const env = {
       ...globalThis.process.env,
+      HQ_BUILD_COMMIT: "1",
       HQ_ZEROPS_API: zeropsHttp.baseUrl,
       ...(zeropsHttp.github === undefined
         ? {}

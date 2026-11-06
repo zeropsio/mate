@@ -26,143 +26,12 @@ const parse = (source: string) => {
   }
   return parsed;
 };
-import { afterAll, beforeAll, expect, it } from "vite-plus/test";
+import { expect, it } from "vite-plus/test";
 import { chatGateStages } from "./chat-gate.ts";
 import { checkJobIds } from "./ci-blame.ts";
 import { checkSteps } from "./ci-local.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
-let hqRefFixture: string;
-beforeAll(() => {
-  hqRefFixture = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hq-ref-"));
-});
-afterAll(() => {
-  NodeFS.rmSync(hqRefFixture, { recursive: true, force: true });
-});
-
-// The absent-file default applies to every z3 branch.
-it.each(["main", "kh-next", "wt/keys", "kh-bisect/keys", "kh-bisect/org-switch", "feature"])(
-  "State Smoke tests every z3 ref against mate-hq main (%s)",
-  (branch) => {
-    const workflow = parse(
-      NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-    );
-    const step = workflow.jobs.state_smoke.steps.find(
-      (step: { name: string }) => step.name === "Resolve the mate-hq ref",
-    );
-    const output = NodePath.join(hqRefFixture, "output");
-    NodeFS.writeFileSync(output, "");
-    const result = NodeChildProcess.spawnSync("bash", ["-eu", "-c", step.run], {
-      cwd: hqRefFixture,
-      env: { ...process.env, BRANCH: branch, GITHUB_OUTPUT: output },
-    });
-    expect(result.status).toBe(0);
-    expect(
-      NodeFS.readFileSync(output, "utf8"),
-      "ASSERTION: every z3 ref consumes the maintained mate-hq main",
-    ).toBe("ref=main\n");
-  },
-);
-
-it("Decision: both scenario workflows checkout the mate-hq ref named by the z3 branch", () => {
-  const ci = parse(NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"));
-  const signal = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/signal.yml"), "utf8"),
-  );
-  const refFile = NodePath.join(hqRefFixture, ".mate-hq-ref");
-  const output = NodePath.join(hqRefFixture, "output");
-  try {
-    for (const steps of [
-      ci.jobs.state_smoke.steps,
-      signal.jobs.chat_scenarios.steps,
-      signal.jobs.classify.steps,
-    ]) {
-      const resolve = steps.find(
-        (step: { name: string }) => step.name === "Resolve the mate-hq ref",
-      );
-      for (const ref of [
-        undefined,
-        "main",
-        "perm-proto",
-        "feature/mate",
-        "0123456789abcdef0123456789abcdef01234567",
-      ]) {
-        if (ref === undefined) NodeFS.rmSync(refFile, { force: true });
-        else NodeFS.writeFileSync(refFile, `${ref}\n`);
-        NodeFS.writeFileSync(output, "");
-        const result = NodeChildProcess.spawnSync("bash", ["-eu", "-c", resolve?.run ?? ":"], {
-          cwd: hqRefFixture,
-          encoding: "utf8",
-          env: { ...process.env, BRANCH: "kh-next", GITHUB_OUTPUT: output },
-        });
-        expect(result.status, result.stderr).toBe(0);
-        expect(NodeFS.readFileSync(output, "utf8")).toBe(`ref=${ref ?? "main"}\n`);
-      }
-      expect(
-        steps.find((step: { name: string }) => step.name === "Checkout mate-hq").with.ref,
-      ).toBe("${{ steps.hq_ref.outputs.ref }}");
-    }
-  } finally {
-    NodeFS.rmSync(refFile, { force: true });
-  }
-});
-
-it("Decision: a main push rejects a pinned mate-hq ref even when kh-next verified the tree", () => {
-  const workflow = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-  );
-  const guard = workflow.jobs.check.steps.find(
-    (step: { name: string }) => step.name === "Require mate-hq main on main",
-  );
-  const refFile = NodePath.join(hqRefFixture, ".mate-hq-ref");
-  try {
-    for (const [ref, event, hq, status] of [
-      ["refs/heads/main", "push", "perm-proto", 1],
-      ["refs/heads/main", "push", "main", 0],
-      ["refs/heads/main", "push", undefined, 0],
-      ["refs/heads/kh-next", "push", "perm-proto", 0],
-      ["refs/heads/main", "pull_request", "perm-proto", 0],
-    ] as const) {
-      if (hq === undefined) NodeFS.rmSync(refFile, { force: true });
-      else NodeFS.writeFileSync(refFile, `${hq}\n`);
-      const result = NodeChildProcess.spawnSync("bash", ["-eu", "-c", guard?.run ?? ":"], {
-        cwd: hqRefFixture,
-        encoding: "utf8",
-        env: { ...process.env, GITHUB_REF: ref, GITHUB_EVENT_NAME: event },
-      });
-      expect(result.status, `${ref} ${event} ${hq}: ${result.stderr}`).toBe(status);
-    }
-    const verification = workflow.jobs.verification;
-    const earlyGuard = verification.steps.find(
-      (step: { name: string }) => step.name === "Check mate-hq ref for verified promotion",
-    );
-    expect(earlyGuard.run).toBe(guard.run);
-    expect(earlyGuard["continue-on-error"]).toBe(true);
-    expect(verification.steps[0].with["sparse-checkout"]).toContain("/.mate-hq-ref");
-    const verdict = verification.steps.find((step: { id: string }) => step.id === "verdict");
-    expect(verdict.env.HQ_REF_VALID).toBe("${{ steps.hq_ref_guard.outcome }}");
-    expect(workflow.jobs.prepare.outputs.skip).toBe("${{ needs.verification.outputs.skip }}");
-    expect(workflow.jobs.check.if).toContain("needs.prepare.outputs.skip != 'true'");
-    const output = NodePath.join(hqRefFixture, "output");
-    NodeFS.writeFileSync(output, "");
-    const result = NodeChildProcess.spawnSync("bash", ["-eu", "-c", verdict.run], {
-      cwd: root,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        GITHUB_REF: "refs/heads/main",
-        GITHUB_EVENT_NAME: "push",
-        GITHUB_OUTPUT: output,
-        HQ_REF_VALID: "failure",
-      },
-    });
-    expect(result.status, result.stderr).toBe(0);
-    expect(NodeFS.readFileSync(output, "utf8")).toBe("skip=false\n");
-  } finally {
-    NodeFS.rmSync(refFile, { force: true });
-  }
-});
-
 it("Signal's scenarios run against the mate-hq test HQ that State Smoke's run against", () => {
   const read = (file: string) =>
     parse(NodeFS.readFileSync(NodePath.join(root, ".github/workflows", file), "utf8"));
@@ -2767,6 +2636,7 @@ it("Decision: a step that waits on GitHub has its own timeout and leaves setup a
   expect(verification.outputs).toEqual({
     skip: "${{ steps.verdict.outputs.skip }}",
     failed: "${{ steps.verdict.outputs.failed }}",
+    hq_ref_valid: "${{ steps.hq_ref_guard.outcome }}",
   });
   expect(
     prepare.steps,

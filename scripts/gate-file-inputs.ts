@@ -143,6 +143,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/zerops/mcp/McpServers.test.ts": [],
   "apps/server/src/zerops/mcp/mcpAgents.load.test.ts": ["apps/server/src/zerops/mcp/**"],
   "apps/web/test/scenarios/fakes/buildCache.test.ts": [],
+  "apps/web/test/scenarios/fakes/externalCore.test.ts": [".mate-hq-ref"],
   "oxlint-plugin-t3code/rules/no-environment-as-project.test.ts": [
     "apps/web/src/routes/_chat.group.$groupId.$projectId.tsx",
     "apps/web/src/routes/_chat.mate.$projectId.tsx",
@@ -204,6 +205,12 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/gate-log.test.ts": [],
   "scripts/gate-slots.test.ts": [],
   "scripts/gate-timing-reporter.test.ts": [],
+  "scripts/hq-pin.test.ts": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/signal.yml",
+    "scripts/hq-ref.ts",
+  ],
+  "scripts/hq-ref.ts": [".mate-hq-ref"],
   "scripts/generate-theme-tokens.test.ts": [
     "apps/web/index.html",
     "apps/web/public/favicon.svg",

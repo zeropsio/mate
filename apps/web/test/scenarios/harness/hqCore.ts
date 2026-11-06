@@ -10,6 +10,11 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { WebSocket } from "ws";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+import * as NodeURL from "node:url";
+import { readHqRef } from "../../../../../scripts/hq-ref.ts";
 import type { FakeWorld } from "./fakeWorld.ts";
 import { deadline } from "./http.ts";
 import { startExternalCore, type GithubAddress } from "./externalCore.ts";
@@ -79,15 +84,62 @@ export function startScenarioCore(zeropsHttp: {
   world: FakeWorld;
   github?: GithubAddress;
 }) {
-  return Effect.suspend(() => {
+  return Effect.gen(function* () {
     const command = process.env.MATE_HQ_TEST_COMMAND;
     if (!command)
-      return Effect.die(
+      return yield* Effect.die(
         new Error(
           "Scenarios run against mate-hq's test HQ: set MATE_HQ_TEST_COMMAND to `node <mate-hq>/conformance/scripts/test-hq.ts`",
         ),
       );
-    return startExternalCore(command, zeropsHttp);
+    const root = NodeURL.fileURLToPath(new URL("../../../../../", import.meta.url));
+    const expected = readHqRef(root);
+    const core = yield* startExternalCore(command, zeropsHttp);
+    const health = yield* core.call("GET", "/health");
+    const actual =
+      typeof health.body === "object" &&
+      health.body !== null &&
+      "commit" in health.body &&
+      typeof health.body.commit === "string"
+        ? health.body.commit
+        : "unavailable";
+    if (health.status !== 200 || actual !== expected)
+      return yield* Effect.die(
+        new Error(
+          `mate-hq preflight: expected ${expected}, built HQ reports ${actual} (health ${health.status})`,
+        ),
+      );
+    // The health receipt names a commit; a clean standard launcher proves those are the sources built.
+    const launcher = /^node ([A-Za-z0-9_./-]+)$/u.exec(command)?.[1];
+    if (
+      !launcher ||
+      !NodePath.isAbsolute(launcher) ||
+      !launcher.endsWith("/conformance/scripts/test-hq.ts")
+    )
+      return yield* Effect.die(
+        new Error("mate-hq preflight requires the standard absolute test-hq.ts launcher"),
+      );
+    const checkout = NodePath.resolve(NodePath.dirname(launcher), "../..");
+    const git = (...args: string[]) =>
+      NodeChildProcess.spawnSync("git", ["-C", checkout, ...args], { encoding: "utf8" });
+    const head = git("rev-parse", "--verify", "HEAD^{commit}");
+    const top = git("rev-parse", "--show-toplevel");
+    const dirty = git("status", "--porcelain", "--untracked-files=normal");
+    if (
+      head.status !== 0 ||
+      head.stdout.trim() !== expected ||
+      top.status !== 0 ||
+      NodeFS.realpathSync(top.stdout.trim()) !== NodeFS.realpathSync(checkout) ||
+      dirty.status !== 0 ||
+      dirty.stdout.trim() !== "" ||
+      NodeFS.existsSync(NodePath.join(checkout, "COMMIT"))
+    )
+      return yield* Effect.die(
+        new Error(
+          `mate-hq preflight: expected clean checkout ${expected}, found ${head.stdout.trim() || "unavailable"} or uncommitted sources`,
+        ),
+      );
+    return core;
   });
 }
 
