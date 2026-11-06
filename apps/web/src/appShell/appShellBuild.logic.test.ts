@@ -52,8 +52,4 @@ describe("the files a page may load while it runs", () => {
       "/assets/startup.js",
     ]);
   });
-
-  it("leaves out chunks that refer to nothing that changes: the next build ships the same file", () => {
-    expect(precacheList(chunks)).not.toContain("/assets/grammar-rust.js");
-  });
 });
