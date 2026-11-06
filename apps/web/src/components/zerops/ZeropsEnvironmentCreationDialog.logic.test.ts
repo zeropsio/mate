@@ -59,21 +59,7 @@ describe("recipeOptions", () => {
     });
     expect(options.map((option) => option.id)).toEqual(["tier", "none"]);
     expect(options[0]?.label).toBe("Same services as the project");
-  });
-
-  /**
-   * Every service arrives empty whatever the tier said: the platform cannot
-   * clone a private repository, so the plan takes each build out
-   * (`recipeTier.ts`) and the first deploy is what fills them. Measured on the
-   * demo where a stage came up `READY_TO_DEPLOY` and nothing said so.
-   */
-  it("says the services arrive without code", () => {
-    const options = recipeOptions({
-      roleLabel: "stage",
-      tier: TIER,
-      services: ["app", "db"],
-      recipe: "present",
-    });
+    // The platform cannot clone a private repository; the first deploy fills the services.
     expect(options[0]?.detail).toBe("app, db · your code arrives with the first deploy");
   });
 
