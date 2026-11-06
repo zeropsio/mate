@@ -1,9 +1,20 @@
+import * as NodeEvents from "node:events";
 import * as NodeNet from "node:net";
 
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import { vi } from "vite-plus/test";
 
 import * as NetService from "./Net.ts";
+
+vi.mock("node:net", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:net")>();
+  return {
+    ...actual,
+    createConnection: vi.fn(actual.createConnection),
+    createServer: vi.fn(actual.createServer),
+  };
+});
 
 const closeServer = (server: NodeNet.Server) =>
   Effect.sync(() => {
@@ -72,13 +83,49 @@ it.layer(NetService.layer)("NetService", (it) => {
     );
 
     it.effect("findAvailablePort returns preferred when it is free", () =>
-      Effect.gen(function* () {
-        const net = yield* NetService.NetService;
-        const preferred = yield* net.reserveLoopbackPort();
+      Effect.scoped(
+        Effect.gen(function* () {
+          // Drive the socket boundary: a released ephemeral port can be claimed by another process.
+          const createConnection = vi.mocked(NodeNet.createConnection);
+          const createServer = vi.mocked(NodeNet.createServer);
+          createConnection.mockImplementation(() => {
+            const socket = new NodeEvents.EventEmitter();
+            Object.assign(socket, {
+              unref: () => socket,
+              setTimeout: () => socket,
+              destroy: () => socket,
+            });
+            queueMicrotask(() => socket.emit("error", new Error("connection refused")));
+            return socket as unknown as NodeNet.Socket;
+          });
+          createServer.mockImplementation(() => {
+            const server = new NodeEvents.EventEmitter();
+            Object.assign(server, {
+              unref: () => server,
+              listen: () => {
+                queueMicrotask(() => server.emit("listening"));
+                return server;
+              },
+              close: (callback?: () => void) => {
+                callback?.();
+                return server;
+              },
+            });
+            return server as unknown as NodeNet.Server;
+          });
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              createConnection.mockReset();
+              createServer.mockReset();
+            }),
+          );
 
-        const resolved = yield* net.findAvailablePort(preferred);
-        assert.equal(resolved, preferred);
-      }),
+          const net = yield* NetService.NetService;
+          const preferred = 12_345;
+          const resolved = yield* net.findAvailablePort(preferred);
+          assert.equal(resolved, preferred);
+        }),
+      ),
     );
 
     it.effect("findAvailablePort falls back when a wildcard listener occupies IPv4", () =>
