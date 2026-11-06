@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import {
   ACP_STDERR_TAIL_MAX_CHARS,
@@ -6,20 +8,29 @@ import {
   sanitizeAcpStderrExcerpt,
 } from "./AcpStderr.ts";
 
+const stderrChunk = (text: string) =>
+  Array.from(
+    Effect.runSync(
+      Stream.make(new TextEncoder().encode(text)).pipe(Stream.decodeText(), Stream.runCollect),
+    ),
+  ).join("");
+
 describe("AcpStderr", () => {
   it("keeps a bounded tail of stderr chunks", () => {
-    const prefix = "x".repeat(ACP_STDERR_TAIL_MAX_CHARS);
-    expect(appendAcpStderrTail(prefix, "abc")).toBe(`${prefix.slice(3)}abc`);
+    const prefix = stderrChunk("x".repeat(ACP_STDERR_TAIL_MAX_CHARS));
+    expect(appendAcpStderrTail(prefix, stderrChunk("abc"))).toBe(`${prefix.slice(3)}abc`);
   });
 
   it("redacts home paths, pairing URLs, and tokens from stderr excerpts", () => {
     const excerpt = sanitizeAcpStderrExcerpt(
-      [
-        "Invalid project config at /Users/ada/.cursor/cli.json",
-        "Authorization: Bearer secret-token-value",
-        "Visit http://localhost:5733/pair#token=ABCDEF for pairing",
-        "key=sk-abcdefghijklmnopqrstuv",
-      ].join("\n"),
+      stderrChunk(
+        [
+          "Invalid project config at /Users/ada/.cursor/cli.json",
+          "Authorization: Bearer secret-token-value",
+          "Visit http://localhost:5733/pair#token=ABCDEF for pairing",
+          "key=sk-abcdefghijklmnopqrstuv",
+        ].join("\n"),
+      ),
       { HOME: "/Users/ada" },
     );
 
@@ -34,13 +45,15 @@ describe("AcpStderr", () => {
 
   it("redacts hyphenated OpenAI project keys and header credentials", () => {
     const excerpt = sanitizeAcpStderrExcerpt(
-      [
-        "openai=sk-proj-abcdefghijklmnopqrstuvwxyz012345",
-        "svc=sk-svcacct-abcdefghijklmnopqrstuvwxyz012345",
-        "anthropic=sk-ant-api03-abcdefghijklmnopqrstuvwxyz012345",
-        "Authorization: Basic dXNlcjpwYXNz",
-        "x-api-key: ant-api-key-value",
-      ].join("\n"),
+      stderrChunk(
+        [
+          "openai=sk-proj-abcdefghijklmnopqrstuvwxyz012345",
+          "svc=sk-svcacct-abcdefghijklmnopqrstuvwxyz012345",
+          "anthropic=sk-ant-api03-abcdefghijklmnopqrstuvwxyz012345",
+          "Authorization: Basic dXNlcjpwYXNz",
+          "x-api-key: ant-api-key-value",
+        ].join("\n"),
+      ),
     );
 
     expect(excerpt).toContain("[redacted]");
