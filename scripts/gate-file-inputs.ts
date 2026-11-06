@@ -80,6 +80,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/cli/triagePrompt.test.ts": [".github/triage/PLAYBOOK.md"],
   "apps/server/src/engine/bridge/translate.test.ts": ["apps/server/src/spi/fixtures/**"],
   "apps/server/src/engine/history/historyImport.test.ts": ["apps/server/src/spi/fixtures/**"],
+  "apps/server/src/engine/wire/EngineWire.test.ts": [],
   "apps/server/src/environment/ServerEnvironment.test.ts": [],
   "apps/server/src/git/GitManager.test.ts": [],
   "apps/server/src/keybindings.test.ts": [],

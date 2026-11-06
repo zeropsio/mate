@@ -31,6 +31,7 @@ import {
 import { createPendingAttachmentId, resolveAttachmentPath } from "../../attachmentStore.ts";
 import * as ServerConfigModule from "../../config.ts";
 import { ServerConfig } from "../../config.ts";
+import { testFixturePool } from "../../testing/testFixture.ts";
 import { serverMessagePictures } from "../../zerops/engineAdapters.ts";
 import { MessagePictures } from "../ports.ts";
 import { PIXEL } from "../testing/bridge/callHeavy.ts";
@@ -2093,21 +2094,33 @@ describe("a client's calls to an engine conversation", () => {
   );
 });
 
-/** The server's claim of a call's pictures, on a fresh attachments directory. */
+const pictureFixture = testFixturePool("engine-pictures-");
+
+/** The server's claim of a call's pictures, on a clean attachments directory. */
 const serverPictures = Effect.gen(function* () {
-  const pictures = yield* MessagePictures;
-  const config = yield* ServerConfig;
-  return { pictures, attachmentsDir: config.attachmentsDir };
-}).pipe(
-  Effect.provide(
-    serverMessagePictures.pipe(
-      Layer.provideMerge(
-        ServerConfigModule.layerTest(process.cwd(), { prefix: "engine-pictures-" }),
+  const baseDir = pictureFixture("config-");
+  const result = yield* Effect.gen(function* () {
+    const pictures = yield* MessagePictures;
+    const config = yield* ServerConfig;
+    return { pictures, attachmentsDir: config.attachmentsDir };
+  }).pipe(
+    Effect.provide(
+      serverMessagePictures.pipe(
+        Layer.provideMerge(ServerConfigModule.layerTest(process.cwd(), baseDir)),
+        Layer.provide(NodeServices.layer),
       ),
-      Layer.provide(NodeServices.layer),
     ),
-  ),
-);
+  );
+  const clearFiles = (directory: string) => {
+    for (const entry of NodeFS.readdirSync(directory, { withFileTypes: true })) {
+      const path = NodePath.join(directory, entry.name);
+      if (entry.isDirectory()) clearFiles(path);
+      else NodeFS.rmSync(path, { force: true });
+    }
+  };
+  clearFiles(result.attachmentsDir);
+  return result;
+});
 
 /** A picture the client uploaded and has not sent yet. */
 const pendingPicture = (attachmentsDir: string, sizeBytes?: number): ChatImageAttachment => {
