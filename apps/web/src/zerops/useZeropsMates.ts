@@ -4,6 +4,7 @@ import {
   shownHqMateIdentitiesAtom,
   shownHqMenuNavigationAtom,
   shownHqMateDirectoryAtom,
+  shownHqMatesAtom,
   isListedMateProject,
 } from "@t3tools/client-runtime/data";
 import { mateArrivingUntil } from "@t3tools/client-runtime/zerops";
@@ -64,13 +65,15 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   const named = Object.values(get(shownHqMateIdentitiesAtom));
   const listRead = get(shownHqMenuNavigationAtom).read === "read";
   // The Mates HQ still lists, whether or not it can name them yet: a placement without a name,
-  // or in an application whose row is still on its way, keeps what the last visit knew.
-  const listed = new Set(
-    Object.entries(directory.mates)
-      .filter(([, placement]) => placement.kind === "mate" || placement.kind === "devstage")
-      .map(([projectId]) => projectId),
-  );
-  if (directory.myChief.kind === "present") listed.add(directory.myChief.projectId);
+  // or in an application whose row is still on its way, keeps what the last visit knew — but for
+  // the environment its overview names, if HQ relayed one.
+  const relayed = get(shownHqMatesAtom).mates;
+  const listed = new Map<string, EnvironmentId | undefined>();
+  const list = (projectId: string) =>
+    listed.set(projectId, relayed[projectId]?.identity?.environmentId);
+  for (const [projectId, placement] of Object.entries(directory.mates))
+    if (placement.kind === "mate" || placement.kind === "devstage") list(projectId);
+  if (directory.myChief.kind === "present") list(directory.myChief.projectId);
   // What the account's last visit had HQ name: the first frame paints it, HQ's answer replaces it.
   const memory = readMateMemory();
   const remembered = rememberMates(memory, named, listRead, listed);

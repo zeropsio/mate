@@ -39,10 +39,10 @@ describe("the Mates' names a reload remembers", () => {
   it("a reload paints the Mate's name from the last visit before HQ answers", () => {
     const browser = storage();
     // The last visit: HQ named Milo.
-    writeMateMemory(rememberMates({}, [identity("env-milo", "Milo")], true, new Set()), browser);
+    writeMateMemory(rememberMates({}, [identity("env-milo", "Milo")], true, new Map()), browser);
     // The reload: HQ has not answered yet.
     const remembered = readMateMemory(browser);
-    expect(namesOf(seededIdentities([], remembered, false, new Set()))).toEqual(["env-milo:Milo"]);
+    expect(namesOf(seededIdentities([], remembered, false, new Map()))).toEqual(["env-milo:Milo"]);
   });
 
   it.each<{
@@ -50,6 +50,8 @@ describe("the Mates' names a reload remembers", () => {
     readonly memory: MateMemory;
     readonly hq: ReadonlyArray<HqMateIdentity>;
     readonly read: boolean;
+    /** The Mates HQ lists, by project, with the environment its overview names, if any. */
+    readonly listed?: ReadonlyMap<string, EnvironmentId | undefined>;
     readonly shows: ReadonlyArray<string>;
     readonly remembers: ReadonlyArray<string>;
   }>([
@@ -109,9 +111,27 @@ describe("the Mates' names a reload remembers", () => {
       shows: ["env-milo:Milo"],
       remembers: ["env-milo:Milo"],
     },
-  ])("$name", ({ memory, hq, read, shows, remembers }) => {
-    expect(namesOf(seededIdentities(hq, memory, read, new Set()))).toEqual(shows);
-    expect(namesOf(Object.values(rememberMates(memory, hq, read, new Set())))).toEqual(remembers);
+    {
+      name: "a listed Mate HQ cannot name yet takes the environment its overview names over the remembered one",
+      memory: { "env-milo": identity("env-milo", "Milo") },
+      hq: [],
+      read: true,
+      listed: new Map([["project-env-milo", "env-new" as EnvironmentId]]),
+      shows: ["env-new:Milo"],
+      remembers: ["env-new:Milo"],
+    },
+    {
+      name: "a listed Mate HQ cannot name yet keeps its remembered environment while its overview names none",
+      memory: { "env-milo": identity("env-milo", "Milo") },
+      hq: [],
+      read: true,
+      listed: new Map([["project-env-milo", undefined]]),
+      shows: ["env-milo:Milo"],
+      remembers: ["env-milo:Milo"],
+    },
+  ])("$name", ({ memory, hq, read, listed = new Map(), shows, remembers }) => {
+    expect(namesOf(seededIdentities(hq, memory, read, listed))).toEqual(shows);
+    expect(namesOf(Object.values(rememberMates(memory, hq, read, listed)))).toEqual(remembers);
   });
 
   it.each([
@@ -127,12 +147,12 @@ describe("the Mates' names a reload remembers", () => {
     { name: "unreadable", browser: { getItem: () => "{not json" } },
     { name: "empty", browser: { getItem: () => null } },
   ])("remembers nothing when storage is $name", ({ browser }) => {
-    expect(seededIdentities([], readMateMemory(browser), false, new Set())).toEqual([]);
+    expect(seededIdentities([], readMateMemory(browser), false, new Map())).toEqual([]);
   });
 
   it("keeps the same memory when HQ says nothing new, so it is not written again", () => {
-    const memory = rememberMates({}, [identity("env-milo", "Milo")], true, new Set());
-    expect(rememberMates(memory, [identity("env-milo", "Milo")], true, new Set())).toBe(memory);
+    const memory = rememberMates({}, [identity("env-milo", "Milo")], true, new Map());
+    expect(rememberMates(memory, [identity("env-milo", "Milo")], true, new Map())).toBe(memory);
   });
 });
 
