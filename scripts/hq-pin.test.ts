@@ -152,7 +152,7 @@ it("Decision: on z3 `main` (and in promotion), the recorded SHA must be containe
       }
     }
   }
-  const reject = ci.jobs.prepare.steps.find(
+  const reject = ci.jobs.selection.steps.find(
     (step: { name: string }) => step.name === "Reject invalid mate-hq pin",
   );
   for (const [outcome, expected] of [
@@ -173,17 +173,20 @@ it("Scenario producers complete the HQ contract preflight before admitting their
   const signal = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/signal.yml"), "utf8"),
   );
-  expect(ci.jobs.state_smoke.needs).toContain("prepare");
+  expect(ci.jobs.state_smoke.needs).toContain("selection");
+  expect(ci.jobs.state_smoke.needs).toContain("scenario_bundle");
   expect(signal.jobs.chat_scenarios.needs).toContain("chat_bundle");
-  for (const producer of [ci.jobs.prepare, signal.jobs.chat_bundle]) {
+  for (const producer of [ci.jobs.scenario_bundle, signal.jobs.chat_bundle]) {
     expect(
       producer.steps.some(
         (step: { name: string }) => step.name === "Preflight the pinned mate-hq contract",
       ),
     ).toBe(true);
   }
-  expect(ci.jobs.prepare.outputs.hq_ref).toBe("${{ steps.hq_ref.outputs.ref }}");
-  expect(ci.jobs.state_smoke.env.MATE_HQ_PREFLIGHT_SHA).toBe("${{ needs.prepare.outputs.hq_ref }}");
+  expect(ci.jobs.scenario_bundle.outputs.hq_ref).toBe("${{ steps.hq_ref.outputs.ref }}");
+  expect(ci.jobs.state_smoke.env.MATE_HQ_PREFLIGHT_SHA).toBe(
+    "${{ needs.scenario_bundle.outputs.hq_ref }}",
+  );
   expect(signal.jobs.chat_bundle.outputs.hq_ref).toBe("${{ steps.hq_ref.outputs.ref }}");
   for (const job of [signal.jobs.chat_scenarios, signal.jobs.classify])
     expect(job.env.MATE_HQ_PREFLIGHT_SHA).toBe("${{ needs.chat_bundle.outputs.hq_ref }}");

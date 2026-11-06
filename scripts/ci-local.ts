@@ -57,7 +57,7 @@ export function checkSteps(workflowYaml: string, jobId?: string): ReadonlyArray<
     return job.steps.flatMap((step) => {
       if (
         step.run === undefined ||
-        (step.if !== undefined && step.if !== "needs.prepare.outputs.skip != 'true'") ||
+        (step.if !== undefined && step.if !== "needs.selection.outputs.skip != 'true'") ||
         usesContext(step.run) ||
         /\$\{?GITHUB_OUTPUT\b/u.test(step.run)
       )
