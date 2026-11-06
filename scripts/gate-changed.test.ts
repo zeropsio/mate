@@ -288,7 +288,7 @@ it.each([
     chatGate: false,
     includes: [
       "test/scenarios/areas/b-menu/usage.scenario.ts",
-      "test/scenarios/areas/b-menu/decode.scenario.ts",
+      "test/scenarios/areas/b-menu/environmentIdentity.scenario.ts",
       "test/scenarios/areas/b-menu/liveness.scenario.ts",
       "test/scenarios/areas/b-menu/drafts.scenario.ts",
       "test/scenarios/fakes/b-menu/overview.test.ts",
