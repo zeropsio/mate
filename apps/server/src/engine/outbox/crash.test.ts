@@ -1,4 +1,4 @@
-// @effect-diagnostics globalConsoleInEffect:off - the crash table prints when asked.
+// @effect-diagnostics globalConsoleInEffect:off nodeBuiltinImport:off - the crash table prints when asked and resets its SQLite file.
 /**
  * Crash injection: a conversation is played move by move in one process lifetime over a SQLite
  * file; the process "dies" at a chosen boundary — after a move, while a handler is mid-act, after
@@ -6,6 +6,8 @@
  * lifetime boots on the same file, reconciles, fires what is due and drains the outbox. Then the
  * invariants are checked against the file and the world.
  */
+import * as NodeFS from "node:fs";
+
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
@@ -26,7 +28,9 @@ import type { Command, Envelope, ProviderSignal } from "../domain/command.ts";
 import { signalsCommandId } from "../domain/ids.ts";
 import { makeEffectWorker } from "./EffectWorker.ts";
 import { EngineStore, EngineStoreError, type CommitStage } from "../store/EngineStore.ts";
+import { runEngineMigrations } from "../store/migrations.ts";
 import { World, audit, engineLayer, fireDue, newBoot, tempDb } from "../testing/world.ts";
+import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
 
 const c = ConversationId.make("mate");
 const ana: Principal = { kind: "person", subject: "ana" };
@@ -320,8 +324,11 @@ describe("crash injection at every step boundary", () => {
   it.effect("a restart at any boundary keeps every invariant", () =>
     Effect.gen(function* () {
       const table: Array<string> = [];
+      const seed = tempDb("crash-seed");
+      yield* runEngineMigrations().pipe(Effect.provide(NodeSqliteClient.layer({ filename: seed })));
+      const file = tempDb("crash");
       for (const crash of crashes) {
-        const file = tempDb("crash");
+        yield* Effect.sync(() => NodeFS.copyFileSync(seed, file));
         const world = new World();
         const played: Played = { accepted: [], session: null, modeSet: false };
         yield* playUntilCrash(file, world, crash, played);

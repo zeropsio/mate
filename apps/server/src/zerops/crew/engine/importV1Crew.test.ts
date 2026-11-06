@@ -29,6 +29,7 @@ import {
   type EffectHandler,
 } from "../../../engine/outbox/EffectWorker.ts";
 import { EngineStoreError, type CommitStage } from "../../../engine/store/EngineStore.ts";
+import { runEngineMigrations } from "../../../engine/store/migrations.ts";
 import { engineLayer, newBoot, tempDb, type Engine } from "../../../engine/testing/world.ts";
 import { itemOfRow } from "../../../engine/wire/records.ts";
 import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
@@ -652,10 +653,14 @@ describe("the crew import's crash table", () => {
             ? FLIP_COMMITS.map((commit) => ({ ...crash, commit }))
             : [{ ...crash, commit: 0 }],
         );
-        // Seeding closes SQLite before returning. Only row copies are opened by the engine.
+        // Seeding and migrations close SQLite before returning. Each crash starts on the same
+        // migrated V1 state; the other flip tests exercise migration as part of the first boot.
         const seed = yield* seeded("crew-crash-seed");
+        yield* runEngineMigrations().pipe(
+          Effect.provide(NodeSqliteClient.layer({ filename: seed })),
+        );
+        const file = tempDb("crew-crash");
         for (const crash of table) {
-          const file = tempDb("crew-crash");
           yield* Effect.sync(() => NodeFS.copyFileSync(seed, file));
           let armed = false;
           let commits = 0;

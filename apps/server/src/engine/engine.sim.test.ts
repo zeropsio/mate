@@ -580,14 +580,13 @@ const simulate = (seed: number, steps: number, faults: Faults) =>
     }
 
     // ── the end: liveness, delivery, re-sends, the store ──
-    const result = yield* audit(c).pipe(
-      Effect.provide(engineLayer(file, driver.handlers(), {}, domains)),
-    );
+    const { result, crew } = yield* Effect.gen(function* () {
+      const result = yield* audit(c);
+      const crew = yield* auditOwner(tallyDomain, tallyOwner, (state) => Object.keys(state.wakes));
+      return { result, crew };
+    }).pipe(Effect.provide(engineLayer(file, driver.handlers(), {}, domains)));
     broken.push(...result.problems);
     // The second owner: its record, every effect it asked settled once, every wake fired.
-    const crew = yield* auditOwner(tallyDomain, tallyOwner, (state) =>
-      Object.keys(state.wakes),
-    ).pipe(Effect.provide(engineLayer(file, driver.handlers(), {}, domains)));
     broken.push(...crew.problems.map((problem) => `crew ${problem}`));
     if (crew.recorded.size !== crewAsks)
       broken.push(`crew effects settle: ${crew.recorded.size} of ${crewAsks} recorded`);

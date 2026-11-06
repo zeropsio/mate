@@ -75,9 +75,13 @@ export const engineLayerWith = <E>(
       ),
     ),
     Layer.provideMerge(
-      Layer.effectDiscard(runEngineMigrations()).pipe(
-        Layer.provideMerge(NodeSqliteClient.layer({ filename })),
-      ),
+      Layer.effectDiscard(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          yield* sql`PRAGMA journal_mode = WAL`;
+          yield* runEngineMigrations();
+        }),
+      ).pipe(Layer.provideMerge(NodeSqliteClient.layer({ filename }))),
     ),
   );
 
