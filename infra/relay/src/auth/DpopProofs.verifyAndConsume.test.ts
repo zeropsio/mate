@@ -141,7 +141,7 @@ describe("DpopProofReplay.verifyAndConsume", () => {
 
     return Effect.gen(function* () {
       const replay = yield* DpopProofs.DpopProofReplay;
-      const result = yield* Effect.exit(
+      const result = yield* Effect.result(
         replay.verifyAndConsume({
           proof: proof.proof,
           method: "POST",
@@ -152,8 +152,8 @@ describe("DpopProofReplay.verifyAndConsume", () => {
         }),
       );
 
-      expect(result._tag).toBe("Failure");
-    }).pipe(Effect.provide(layer(() => Effect.die("unexpected DPoP replay persistence"))));
+      expect(result).toMatchObject({ _tag: "Failure", failure: { _tag: "Unauthorized" } });
+    }).pipe(Effect.provide(layer(() => Effect.fail({ _tag: "UnexpectedStorage" }))));
   });
 
   it.effect("preserves replay persistence failures", () => {
