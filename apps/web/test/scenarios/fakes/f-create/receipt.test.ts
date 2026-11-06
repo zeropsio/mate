@@ -23,6 +23,26 @@ it("an interrupted creation receipt is named in the test failure itself", async 
   expect(timeout.stack).toContain("Pending receipt: visible text Continue");
 });
 
+it("a withheld adoption history receipt reports the pending operation and last evidence", async () => {
+  const stop = new AbortController();
+  const timeout = new Error("Test timed out in 180000ms.");
+  const waiting = receipt(
+    new Promise(() => {}),
+    "adoption project history response",
+    stop.signal,
+    () => "history request seen; response held",
+  );
+  const rejected = expect(waiting).rejects.toThrow(
+    "Pending receipt: adoption project history response\nLast evidence: history request seen; response held",
+  );
+
+  stop.abort(timeout);
+
+  await rejected;
+  expect(timeout.message).toContain("Pending receipt: adoption project history response");
+  expect(timeout.message).toContain("Last evidence: history request seen; response held");
+});
+
 it("a delayed creation receipt remains pending until the expected text arrives", async () => {
   const stop = new AbortController();
   const arrived = Promise.withResolvers<string>();
