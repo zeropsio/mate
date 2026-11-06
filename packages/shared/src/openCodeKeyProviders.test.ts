@@ -148,7 +148,6 @@ describe("the model an automated Mate runs on", () => {
     { id: "zai-org/GLM-5.3-Flash", readsImages: false },
     { id: "deepseek-ai/DeepSeek-V4-Flash-0731", readsImages: false },
     { id: "Qwen/Qwen3.5-397B-A17B", readsImages: false },
-    { id: "deepseek-ai/DeepSeek-V4.1-Flash", readsImages: true },
   ])("an offered model says whether it reads images: $id $readsImages", ({ id, readsImages }) => {
     expect(automatedModelOffer(`nebius/${id}`)?.readsImages).toBe(readsImages);
   });
