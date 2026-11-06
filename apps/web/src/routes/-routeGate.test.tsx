@@ -357,20 +357,26 @@ it("project deletion is named and leaves no dead Open in Zerops link", () => {
 
 it.each([
   {
-    title: "HQ unavailable asks again",
-    hq: "unreachable",
+    title: "HQ unavailable once its retries are capped asks again, as the menu does",
+    hq: { kind: "outage", line: "HQ unavailable.", again: true },
     says: "HQ unavailable.",
     verbs: ["Try again"],
   },
   {
+    title: "HQ reconnecting offers nothing to press, as the menu does",
+    hq: { kind: "outage", line: "Reconnecting…", again: false },
+    says: "Reconnecting…",
+    verbs: [],
+  },
+  {
     title: "HQ slow offers nothing to press, since only HQ's answer can help",
-    hq: "slow",
+    hq: { kind: "slow" },
     says: "HQ is connected but slow to answer. Still waiting…",
     verbs: [],
   },
   {
     title: "HQ unconfirmed past the deadline leads back to the projects",
-    hq: "unconfirmed",
+    hq: { kind: "unconfirmed" },
     says: "HQ hasn't confirmed where this conversation is yet.",
     verbs: ["Go to projects"],
   },

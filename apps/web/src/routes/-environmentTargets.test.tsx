@@ -47,6 +47,7 @@ import {
 import { RouteGateView } from "./-routeGate";
 import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { InventoryContext, type Inventory } from "../zerops/inventoryContext";
+import { AccountDataContext } from "../zerops/accountData";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import type { ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
@@ -220,6 +221,11 @@ beforeEach(() => {
     HTMLIFrameElement: TestNode,
     addEventListener() {},
     removeEventListener() {},
+    // The app's shared clock ticks on the tab's timers, fake ones where a case moves time.
+    setTimeout: (...args: Parameters<typeof setTimeout>) => setTimeout(...args),
+    clearTimeout: (id: Parameters<typeof clearTimeout>[0]) => clearTimeout(id),
+    setInterval: (...args: Parameters<typeof setInterval>) => setInterval(...args),
+    clearInterval: (id: Parameters<typeof clearInterval>[0]) => clearInterval(id),
   });
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   container = document.createElement("div");
@@ -1025,9 +1031,10 @@ describe("routeTarget", () => {
   type Named = Parameters<typeof namedProject>[0];
   /** HQ answered for the organization unless a case says otherwise. */
   const target = (
-    named: Omit<Named, "hqIndex" | "waited" | "absenceSaid"> & {
+    named: Omit<Named, "hqIndex" | "hqOutage" | "overdue" | "absenceSaid"> & {
       readonly hqIndex?: Named["hqIndex"] | undefined;
-      readonly waited?: Named["waited"] | undefined;
+      readonly hqOutage?: Named["hqOutage"] | undefined;
+      readonly overdue?: boolean | undefined;
       readonly absenceSaid?: boolean | undefined;
     },
   ) =>
@@ -1038,7 +1045,8 @@ describe("routeTarget", () => {
       named: namedProject({
         ...named,
         hqIndex: named.hqIndex ?? "answered",
-        waited: named.waited ?? "patient",
+        hqOutage: named.hqOutage ?? null,
+        overdue: named.overdue ?? false,
         absenceSaid: named.absenceSaid ?? false,
       }),
       inventoryKnown: true,
@@ -1134,47 +1142,63 @@ describe("routeTarget", () => {
       );
     },
   );
+  const RECONNECTING = { kind: "syncing", line: "Reconnecting…", again: false } as const;
+  const UNAVAILABLE = { kind: "unavailable", line: "HQ unavailable.", again: true } as const;
   it.each([
     {
-      name: "HQ's first answer still due, inside its patience",
+      name: "HQ's answer due, nothing saying HQ is slow",
       hqIndex: "due",
-      waited: "patient",
       gate: { kind: "wait", reachability: null },
       text: "Opening this conversation…",
       actions: [],
     },
     {
-      name: "HQ's first answer due past its patience: slow, with nothing to try again",
-      hqIndex: "due",
-      waited: "slow",
-      gate: { kind: "wait", reachability: null, hq: "slow" },
+      name: "HQ slow in the menu's sense, with nothing to try again",
+      hqIndex: "slow",
+      gate: { kind: "wait", reachability: null, hq: { kind: "slow" } },
       text: "HQ is connected but slow to answer. Still waiting…",
       actions: [],
     },
     {
-      name: "HQ's first answer due past the route's deadline",
-      hqIndex: "due",
-      waited: "overdue",
-      gate: { kind: "wait", reachability: null, hq: "unconfirmed" },
+      name: "HQ's answer due past the route's deadline",
+      hqIndex: "slow",
+      overdue: true,
+      gate: { kind: "wait", reachability: null, hq: { kind: "unconfirmed" } },
       text: "HQ hasn't confirmed where this conversation is yet.",
       actions: ["go-to-projects"],
     },
     {
-      name: "HQ refused or failing, the listing never read whole",
-      hqIndex: "silent",
-      waited: "patient",
-      gate: { kind: "wait", reachability: null, hq: "unreachable" },
+      name: "HQ reconnecting, as the menu says it with nothing to press",
+      hqIndex: "due",
+      hqOutage: RECONNECTING,
+      overdue: true,
+      gate: {
+        kind: "wait",
+        reachability: null,
+        hq: { kind: "outage", line: "Reconnecting…", again: false },
+      },
+      text: "Reconnecting…",
+      actions: [],
+    },
+    {
+      name: "HQ unavailable once its retries are capped, with the menu's Try again",
+      hqIndex: "due",
+      hqOutage: UNAVAILABLE,
+      gate: {
+        kind: "wait",
+        reachability: null,
+        hq: { kind: "outage", line: "HQ unavailable.", again: true },
+      },
       text: "HQ unavailable.",
       actions: ["try-again"],
     },
   ] as const)(
-    "a conversation nothing remembers names never says it isn't in your projects before HQ answered every Mate it places: $name",
-    ({ hqIndex, waited, gate, text, actions }) => {
+    "a conversation nothing remembers names never says it isn't in your projects before every Mate HQ places named its environment: $name",
+    ({ gate, text, actions, ...hq }) => {
       const selected = selectRouteGate(
         target({
           hqProject: null,
-          hqIndex,
-          waited,
+          ...hq,
           listingAnswered: true,
           orgId: ORG_1,
           row: null,
@@ -1186,15 +1210,15 @@ describe("routeTarget", () => {
     },
   );
   it.each([
-    { name: "HQ's index due again for a Mate placed since", hqIndex: "due", waited: "slow" },
-    { name: "HQ's index silent again", hqIndex: "silent", waited: "patient" },
+    { name: "HQ's index waiting again for a Mate placed since", hqIndex: "slow", hqOutage: null },
+    { name: "HQ unavailable since", hqIndex: "due", hqOutage: UNAVAILABLE },
   ] as const)(
     "a conversation already said not to be in your projects on HQ's answer is not taken back while HQ still names nothing: $name",
-    ({ hqIndex, waited }) => {
+    ({ hqIndex, hqOutage }) => {
       const named = {
         hqProject: null,
         hqIndex,
-        waited,
+        hqOutage,
         absenceSaid: true,
         listingAnswered: true,
         orgId: ORG_1,
@@ -1223,7 +1247,8 @@ it.each([
         named: namedProject({
           hqProject: "project-1",
           hqIndex: "answered",
-          waited: "patient",
+          hqOutage: null,
+          overdue: false,
           absenceSaid: false,
           listingAnswered,
           orgId: ORG_1,
@@ -1238,6 +1263,117 @@ it.each([
     expect(gate).toEqual({ kind: "unavailable", reachability: null });
   },
 );
+
+describe("the route's wait on HQ", () => {
+  const ENV_C = EnvironmentId.make("env-c");
+  const LINK = "hq:org-1" as const;
+  const PLACEMENTS = "hq:org-1:hq-placements" as const;
+  const PRESENCE = { online: true, since: "2026-10-06T00:00:00Z", overview: "live" } as const;
+  /** HQ names one other Mate, serving `env-c`; `unanswered` are placed Mates it relayed nothing of. */
+  const hqNaming = (unanswered: ReadonlyArray<string> = []) => ({
+    structure: {
+      apps: [],
+      ungrouped: ["project-9", ...unanswered].map((projectId) => ({
+        projectId,
+        name: projectId,
+        mate: { face: "" },
+      })),
+    },
+    mates: {
+      "project-9": {
+        presence: PRESENCE,
+        identity: { environmentId: ENV_C, serverVersion: "0.16.0", update: null },
+      },
+    },
+    attentionUnanswered: [...unanswered],
+  });
+  const stream = (key: string, event: object) =>
+    act(() => store.dispatch({ kind: "stream", key, now: 0, event } as never));
+  /** HQ's connection asked for, its placements unanswered past a first answer's patience. */
+  const hqConnecting = () => {
+    stream(LINK, { kind: "demand", demanded: true });
+    stream(LINK, { kind: "attempt" });
+    stream(PLACEMENTS, { kind: "demand", demanded: true });
+    stream(PLACEMENTS, { kind: "attempt" });
+    stream(PLACEMENTS, { kind: "grace-over", since: 0 });
+  };
+  function Probe({ environmentId }: { readonly environmentId: EnvironmentId | null }) {
+    return JSON.stringify(selectRouteGate(useRouteGateInputs(environmentId).target));
+  }
+  /** The gate on a route to `environmentId` — the same mount throughout, as `__root` holds it. */
+  const look = (environmentId: EnvironmentId | null, value: Inventory = inventory("ACTIVE")) => {
+    act(() =>
+      renderIn(
+        <AccountDataContext value={{ orgId: "org-1", data: store.data, retry: () => {} } as never}>
+          <InventoryContext value={value}>
+            <Probe environmentId={environmentId} />
+          </InventoryContext>
+        </AccountDataContext>,
+      ),
+    );
+    return JSON.parse(container.textContent) as RouteGate;
+  };
+  const pass = (ms: number) => act(() => vi.advanceTimersByTime(ms));
+  const OPENING: RouteGate = { kind: "wait", reachability: null };
+  const UNCONFIRMED: RouteGate = { kind: "wait", reachability: null, hq: { kind: "unconfirmed" } };
+  const ABSENT: RouteGate = { kind: "unavailable", reachability: null };
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("a conversation whose HQ link is still connecting never says HQ is slow", () => {
+    hqConnecting();
+    expect(look(ENV_A)).toEqual(OPENING);
+    pass(6_000);
+    expect(look(ENV_A), "ASSERTION: past a first answer's patience, HQ still connecting").toEqual(
+      OPENING,
+    );
+    stream(LINK, { kind: "handshake" });
+    expect(look(ENV_A), "ASSERTION: HQ connected, its placements still unanswered").toEqual({
+      kind: "wait",
+      reachability: null,
+      hq: { kind: "slow" },
+    });
+  });
+
+  it("a conversation's wait on HQ that ended starts its deadline afresh when the route returns", () => {
+    hqConnecting();
+    look(ENV_A);
+    pass(20_000);
+    expect(look(ENV_A)).toEqual(UNCONFIRMED);
+    expect(look(null)).toEqual({ kind: "outlet", banner: null, composer: "enabled" });
+    expect(look(ENV_A), "ASSERTION: back on the route, its wait starts over").toEqual(OPENING);
+    pass(20_000);
+    expect(look(ENV_A)).toEqual(UNCONFIRMED);
+  });
+
+  it("a conversation's HQ deadline spent waiting on another conversation is its own to spend", () => {
+    hqConnecting();
+    look(ENV_A);
+    pass(20_000);
+    expect(look(ENV_A)).toEqual(UNCONFIRMED);
+    expect(
+      look(ENV_B),
+      "ASSERTION: another environment's wait starts at its own beginning",
+    ).toEqual(OPENING);
+  });
+
+  it("a conversation the route never said was absent is not held absent once HQ waits again", () => {
+    mountHqNavigation(atoms, "org-1", hqNaming(), store);
+    // HQ answered while the projects were still loading: nothing said the conversation is absent.
+    expect(look(ENV_A, { ...inventory("ACTIVE"), isLoading: true })).toEqual(OPENING);
+    mountHqNavigation(atoms, "org-1", hqNaming(["project-8"]), store);
+    expect(look(ENV_A), "ASSERTION: HQ waits on a Mate placed since").toEqual(OPENING);
+  });
+
+  it("a conversation said absent on HQ's answer stays absent while HQ waits on a Mate placed since, and only there", () => {
+    mountHqNavigation(atoms, "org-1", hqNaming(), store);
+    expect(look(ENV_A)).toEqual(ABSENT);
+    mountHqNavigation(atoms, "org-1", hqNaming(["project-8"]), store);
+    expect(look(ENV_A), "ASSERTION: said absent, and HQ names nothing still").toEqual(ABSENT);
+    expect(look(ENV_B), "ASSERTION: another conversation, HQ waiting").toEqual(OPENING);
+  });
+});
 
 describe("the descriptor index", () => {
   it("resolves a route's environment through HQ's index without a descriptor sweep", async () => {

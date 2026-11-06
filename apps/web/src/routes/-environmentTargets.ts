@@ -23,6 +23,7 @@ import {
   type MateLink,
   type Reachability,
   type RouteContent,
+  type RouteHqWait,
   type RoutePreview,
   type RouteTarget,
   type TargetKey,
@@ -31,7 +32,7 @@ import {
   hqIndexWord,
   listedProjectAtom,
   rosterAnswered,
-  STREAM_POLICY,
+  shownCanonicalHqListNavigationAtom,
   type HqIndexWord,
   type ProjectValue,
 } from "@t3tools/client-runtime/data";
@@ -43,7 +44,10 @@ import { useCallback, useContext, useEffect, useMemo, useReducer, useState } fro
 
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
-import { hqProjectAtom } from "../state/zerops";
+import { hqDownSinceAtom, hqProjectAtom } from "../state/zerops";
+import { useClientSettings } from "../hooks/useSettings";
+import { hqOutage, type HqOutage } from "../zerops/hqNavigation";
+import { useNowMs } from "../zerops/useNowMs";
 import { useZeropsMate } from "../zerops/useZeropsMates";
 import { STILL_READING_PATIENCE_MS } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -63,7 +67,7 @@ const NO_SHELL = Atom.make<EnvironmentShellState>({
 }).pipe(Atom.withLabel("route-gate:no-environment"));
 const NO_PROJECT = Atom.make<string | null>(null).pipe(Atom.withLabel("route-gate:no-project"));
 const ANSWERED = Atom.make(true).pipe(Atom.withLabel("route-gate:no-listing-read"));
-const HQ_SILENT = Atom.make<HqIndexWord>("silent").pipe(Atom.withLabel("route-gate:no-hq"));
+const HQ_DUE = Atom.make<HqIndexWord>("due").pipe(Atom.withLabel("route-gate:no-hq"));
 const NO_ROW = Atom.make<ProjectValue | null>(null).pipe(Atom.withLabel("route-gate:no-row"));
 const NO_PREVIEW = Atom.make<RoutePreview | null>(null).pipe(
   Atom.withLabel("route-gate:no-preview"),
@@ -84,35 +88,29 @@ export type NamedProject =
   | "reading"
   | "without-mate"
   | "with-mate"
-  /** Only HQ can name it, and HQ's answer is due past the first answer's patience. */
-  | "hq-slow"
-  /** Only HQ can name it, and HQ's answer is still due past the route's deadline for it. */
-  | "hq-unconfirmed"
-  /** Only HQ can name it, and HQ is refused or failing past its grace. */
-  | "hq-unreachable";
+  /** Only HQ can name it, and has not: what the wait says of HQ meanwhile. */
+  | { readonly hq: RouteHqWait };
 
 /**
  * `NamedProject` from the reads: the project HQ names, whether the Zerops listing's latest read
  * answered (`rosterAnswered`) and lists it, and its rows as read (`routePreviewAtom`). Absence is
  * claimed only on that evidence: a listing that answered with the project but not yet its
  * services says nothing of its Mate. An environment nothing remembers is named by HQ alone — the
- * Zerops listing never carries environments — so it is absent only once HQ answered every Mate
- * it places (`hqIndexWord`: an answer with no overview, or a refusal, is an answer) and none of
- * those answers names this one. Until then it waits: past the first answer's patience it says HQ
- * is slow, past the route's deadline that HQ has not confirmed it, and where HQ is refused or
- * failing that HQ is unavailable — never that the conversation is gone. An absence said on HQ's
- * answer is not taken back while HQ still names nothing: its index going due or silent again
- * later is no evidence the conversation is there.
+ * Zerops listing never carries environments — so it is absent only once every Mate HQ places
+ * named its environment or was refused (`hqIndexWord`) and none names this one. Until then it
+ * waits: HQ's outage in the menu's words (`hqOutage`), past the route's deadline that HQ has not
+ * confirmed it, HQ slow in the menu's sense (`scopeSlow`), else the plain opening line — never
+ * that the conversation is gone. An absence the route said is not taken back while HQ still
+ * names nothing: its index waiting again later is no evidence the conversation is there.
  */
 export function namedProject(input: {
   readonly hqProject: string | null;
   /** Where HQ's index of the reader's Mates stands for the organization (`hqIndexWord`). */
   readonly hqIndex: HqIndexWord;
-  /**
-   * How long HQ's answer has been due for the route: inside the first answer's patience, past
-   * it, or past the route's deadline for it.
-   */
-  readonly waited: "patient" | "slow" | "overdue";
+  /** What the menu says of HQ now (`hqOutage`), null while HQ answers. */
+  readonly hqOutage: Pick<HqOutage, "kind" | "line" | "again"> | null;
+  /** HQ's answer has been due for this route past the route's deadline for it. */
+  readonly overdue: boolean;
   /** The route already said, on HQ's answer, that the environment is absent. */
   readonly absenceSaid: boolean;
   /** The organization the account shows: a project another one owns is not listed here. */
@@ -124,19 +122,13 @@ export function namedProject(input: {
 }): NamedProject {
   if (input.hqProject === null) {
     // No organization shown: no HQ answers for one, and the organization's choice speaks.
-    if (input.orgId === null || input.absenceSaid) return "none";
-    switch (input.hqIndex) {
-      case "answered":
-        return "none";
-      case "due":
-        return input.waited === "patient"
-          ? "reading"
-          : input.waited === "slow"
-            ? "hq-slow"
-            : "hq-unconfirmed";
-      case "silent":
-        return "hq-unreachable";
-    }
+    if (input.orgId === null || input.absenceSaid || input.hqIndex === "answered") return "none";
+    const outage = input.hqOutage;
+    if (outage !== null && outage.kind !== "slow")
+      return { hq: { kind: "outage", line: outage.line, again: outage.again } };
+    if (input.overdue) return { hq: { kind: "unconfirmed" } };
+    if (input.hqIndex === "slow" || outage?.kind === "slow") return { hq: { kind: "slow" } };
+    return "reading";
   }
   if (input.rows !== null)
     return input.rows.some((row) => row.service !== undefined) ? "with-mate" : "without-mate";
@@ -188,25 +180,25 @@ export function routeTarget(input: {
     input.named === "reading" ||
     input.named === "with-mate";
   if (discovering) return { kind: "unresolved", discovery: "pending" };
-  if (
-    input.named === "hq-slow" ||
-    input.named === "hq-unconfirmed" ||
-    input.named === "hq-unreachable"
-  )
-    return { kind: "unresolved", discovery: input.named };
+  if (typeof input.named === "object")
+    return { kind: "unresolved", discovery: "hq", hq: input.named.hq };
   return {
     kind: "unresolved",
     discovery: input.organization === "not-chosen" ? "no-organization" : "settled",
   };
 }
 
-/** Whether `ms` has passed since `key` began to be waited on; a new key (or none) starts over. */
+/**
+ * Whether `ms` has passed since `key` began to be waited on. A wait that ends (no key) or moves
+ * to another key clears its spent window, so a later wait on the same key starts afresh.
+ */
 function usePatienceSpent(key: string | null, ms: number): boolean {
   const [spent, setSpent] = useState<string | null>(null);
+  if (spent !== null && spent !== key) setSpent(null);
   useEffect(() => {
     if (key === null) return;
-    const timer = window.setTimeout(() => setSpent(key), ms);
-    return () => window.clearTimeout(timer);
+    const timer = setTimeout(() => setSpent(key), ms);
+    return () => clearTimeout(timer);
   }, [key, ms]);
   return key !== null && spent === key;
 }
@@ -277,25 +269,20 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   const orgId = useAccountOrgId();
   const listingAnswered = useProjection(rosterAnswered, orgId, ANSWERED);
   const row = useAtomValue(hqProject === null ? NO_ROW : listedProjectAtom(hqProject));
-  const hqIndex = useProjection(hqIndexWord, orgId, HQ_SILENT);
-  // HQ's first answer gets the menu's patience before the wait for it says HQ is slow, and the
-  // listings' patience before it says HQ has not confirmed the conversation.
-  const awaitingHq =
-    environmentId !== null && hqProject === null && hqIndex === "due"
-      ? `${orgId ?? ""}/${environmentId}`
-      : null;
-  const slow = usePatienceSpent(awaitingHq, STREAM_POLICY.reconnectGraceMs);
-  const overdue = usePatienceSpent(awaitingHq, STILL_READING_PATIENCE_MS);
-  const waited = overdue ? "overdue" : slow ? "slow" : "patient";
-  // The environment HQ answered absent, held for as long as the route asks for it.
-  const absentKey =
-    environmentId !== null && hqProject === null && hqIndex === "answered"
-      ? `${orgId ?? ""}/${environmentId}`
-      : null;
-  const [absenceSaidFor, setAbsenceSaidFor] = useState<string | null>(null);
-  if (absentKey !== null && absentKey !== absenceSaidFor) setAbsenceSaidFor(absentKey);
+  const hqIndex = useProjection(hqIndexWord, orgId, HQ_DUE);
+  // What the menu says of HQ now, from the same reads the menu's header says it from.
+  const outage = hqOutage(
+    useAtomValue(shownCanonicalHqListNavigationAtom),
+    useAtomValue(hqDownSinceAtom),
+    useClientSettings((settings) => settings.timestampFormat),
+    useNowMs(),
+  );
   const preview = useAtomValue(hqProject === null ? NO_PREVIEW : routePreviewAtom(hqProject));
-  const target =
+  const routeKey = `${orgId ?? ""}/${environmentId ?? ""}`;
+  // An absence said for another environment, or organization, says nothing of this one.
+  const [absenceSaidFor, setAbsenceSaidFor] = useState<string | null>(null);
+  if (absenceSaidFor !== null && absenceSaidFor !== routeKey) setAbsenceSaidFor(null);
+  const targetOf = (overdue: boolean) =>
     environmentId === null
       ? null
       : routeTarget({
@@ -306,8 +293,9 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           named: namedProject({
             hqProject,
             hqIndex,
-            waited,
-            absenceSaid: hqProject === null && absenceSaidFor === `${orgId ?? ""}/${environmentId}`,
+            hqOutage: outage,
+            overdue,
+            absenceSaid: hqProject === null && absenceSaidFor === routeKey,
             orgId,
             listingAnswered,
             row,
@@ -317,6 +305,27 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           organization: ORGANIZATION[organizationStatus],
           content,
         });
+  // The route waits on HQ while, but for the deadline, it would wait unresolved with HQ naming
+  // nothing; the listings' patience is that deadline. Resolving, saying the conversation is
+  // absent, or leaving the route ends the wait and clears its window.
+  const waiting = targetOf(false);
+  const overdue = usePatienceSpent(
+    hqProject === null &&
+      waiting?.kind === "unresolved" &&
+      (waiting.discovery === "pending" || waiting.discovery === "hq")
+      ? routeKey
+      : null,
+    STILL_READING_PATIENCE_MS,
+  );
+  const target = overdue ? targetOf(true) : waiting;
+  // The absence the route says on HQ's answer, held while the route stays on this environment.
+  if (
+    hqProject === null &&
+    target?.kind === "unresolved" &&
+    target.discovery === "settled" &&
+    absenceSaidFor !== routeKey
+  )
+    setAbsenceSaidFor(routeKey);
   useEffect(() => {
     if (account === null) return;
     account.setRoute(environmentId);

@@ -341,25 +341,56 @@ describe("hqMatesAnswered", () => {
 });
 
 describe("hqIndexWord", () => {
+  type Store = ReturnType<typeof makeAccountStore>;
   const placedAB = {
     apps: [],
     ungrouped: ["a", "b"].map((projectId) => ({ projectId, name: projectId, mate: { face: "" } })),
   };
-  const linkEvent = (store: ReturnType<typeof makeAccountStore>, event: object) =>
-    store.dispatch({ kind: "stream", key: linkKeys.hq("org"), now: 0, event } as never);
+  const streamEvent = (store: Store, key: string, event: object) =>
+    store.dispatch({ kind: "stream", key, now: 0, event } as never);
+  /** HQ's connection asked for and, when `connected`, open. */
+  const link = (store: Store, connected: boolean) => {
+    streamEvent(store, linkKeys.hq("org"), { kind: "demand", demanded: true });
+    streamEvent(store, linkKeys.hq("org"), { kind: "attempt" });
+    if (connected) streamEvent(store, linkKeys.hq("org"), { kind: "handshake" });
+  };
+  /** A scope asked on HQ's connection, still unanswered past a first answer's patience. */
+  const waitedOn = (store: Store, scope: string) => {
+    streamEvent(store, scope, { kind: "demand", demanded: true });
+    streamEvent(store, scope, { kind: "attempt" });
+    streamEvent(store, scope, { kind: "grace-over", since: 0 });
+  };
+  const refuse = (store: Store, scope: string) =>
+    streamEvent(store, scope, {
+      kind: "fault",
+      fault: { outcome: "definitive-refusal", message: "no" },
+      jitter: 0,
+    });
+  const named = (environmentId: string) => ({
+    ...mate,
+    identity: { ...mate.identity, environmentId: EnvironmentId.make(environmentId) },
+  });
   it.each([
-    { title: "HQ not asked at all", arrange: () => undefined, word: "silent" },
+    { title: "HQ not asked at all", arrange: () => undefined, word: "due" },
     {
-      title: "HQ asked, its navigation not read yet",
-      arrange: (store: ReturnType<typeof makeAccountStore>) => {
-        linkEvent(store, { kind: "demand", demanded: true });
-        linkEvent(store, { kind: "handshake" });
+      title: "HQ's connection still connecting, its placements past a first answer's patience",
+      arrange: (store: Store) => {
+        link(store, false);
+        waitedOn(store, placementsScope("org"));
       },
       word: "due",
     },
     {
-      title: "its navigation read, a Mate it places not answered yet",
-      arrange: (store: ReturnType<typeof makeAccountStore>) =>
+      title: "HQ's connection open, its placements past a first answer's patience",
+      arrange: (store: Store) => {
+        link(store, true);
+        waitedOn(store, placementsScope("org"));
+      },
+      word: "slow",
+    },
+    {
+      title: "its placements read, a Mate it places not answered yet",
+      arrange: (store: Store) =>
         seedHqNavigation(store, "org", {
           structure: placedAB,
           mates: { a: mate },
@@ -368,64 +399,55 @@ describe("hqIndexWord", () => {
       word: "due",
     },
     {
-      title: "its navigation read, HQ answering a placed Mate with no overview",
-      arrange: (store: ReturnType<typeof makeAccountStore>) =>
+      title: "its placements read, a placed Mate's scope past a first answer's patience",
+      arrange: (store: Store) => {
+        seedHqNavigation(store, "org", {
+          structure: placedAB,
+          mates: { a: mate },
+          attentionUnanswered: ["b"],
+        });
+        waitedOn(store, hqMateScope("org", "b"));
+      },
+      word: "slow",
+    },
+    {
+      title: "its placements read, a placed Mate's overview naming no environment",
+      arrange: (store: Store) =>
         seedHqNavigation(store, "org", {
           structure: placedAB,
           mates: { a: mate, b: { ...mate, identity: null } as never },
         }),
-      word: "answered",
+      word: "due",
     },
     {
-      title: "its navigation read, HQ refusing a placed Mate's scope",
-      arrange: (store: ReturnType<typeof makeAccountStore>) => {
+      title: "its placements read, a placed Mate answered with no overview",
+      arrange: (store: Store) =>
+        seedHqNavigation(store, "org", { structure: placedAB, mates: { a: mate } }),
+      word: "due",
+    },
+    {
+      title: "its placements read, a placed Mate's scope refused",
+      arrange: (store: Store) => {
         seedHqNavigation(store, "org", {
           structure: placedAB,
           mates: { a: mate },
           attentionUnanswered: ["b"],
         });
-        store.dispatch({
-          kind: "stream",
-          key: hqMateScope("org", "b"),
-          now: 0,
-          event: {
-            kind: "fault",
-            fault: { outcome: "definitive-refusal", message: "no" },
-            jitter: 0,
-          },
-        } as never);
+        refuse(store, hqMateScope("org", "b"));
       },
       word: "answered",
     },
     {
-      title: "its navigation read and every Mate it places answered",
-      arrange: (store: ReturnType<typeof makeAccountStore>) =>
+      title: "its placements read and every placed Mate naming its environment",
+      arrange: (store: Store) =>
         seedHqNavigation(store, "org", {
           structure: placedAB,
-          mates: {
-            a: mate,
-            b: {
-              ...mate,
-              identity: { ...mate.identity, environmentId: EnvironmentId.make("env-b") },
-            },
-          },
+          mates: { a: mate, b: named("env-b") },
         }),
       word: "answered",
     },
-    {
-      title: "HQ refused before it answered",
-      arrange: (store: ReturnType<typeof makeAccountStore>) => {
-        linkEvent(store, { kind: "demand", demanded: true });
-        linkEvent(store, {
-          kind: "fault",
-          fault: { outcome: "definitive-refusal", message: "refused" },
-          jitter: 0,
-        });
-      },
-      word: "silent",
-    },
   ])(
-    "an environment HQ's index does not name is absent from it only once HQ answered every Mate it places, or can say nothing: $title",
+    "an environment HQ's index does not name is absent from it only once every Mate HQ places named its environment or was refused: $title",
     ({ arrange, word }) => {
       const store = makeAccountStore(AtomRegistry.make());
       arrange(store);

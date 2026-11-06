@@ -347,7 +347,7 @@ describe("C: the conversation opening follows readiness", () => {
     );
 
     it.effect(
-      "a conversation HQ answered for every Mate without naming its environment says it isn't in your Zerops projects",
+      "a conversation whose environment none of the Mates HQ places names says it isn't in your Zerops projects",
       () =>
         Effect.gen(function* () {
           const s = yield* createScenario([installArea]);

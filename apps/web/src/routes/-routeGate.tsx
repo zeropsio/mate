@@ -91,14 +91,14 @@ export function RouteGateView({
         return (
           <RouteGateWords phrase={recoveryPhrase} projectId={null} tone={recoveryPhrase.tone} />
         );
-      // Only HQ can name the conversation's Mate, and it is slow or cannot be reached: the wait
-      // says so in HQ's words, with its one verb — never that the conversation is gone.
+      // Only HQ can name the conversation's Mate, and has not: the wait says where HQ stands, as
+      // the menu says it, with a verb only where one can act — never that the conversation is gone.
       if (gate.hq !== undefined)
         return (
           <RouteGateWords
             phrase={phrase}
             projectId={null}
-            tone={gate.hq === "unreachable" ? "warning" : undefined}
+            tone={gate.hq.kind === "outage" && gate.hq.again ? "warning" : undefined}
           />
         );
       // The Mate's stage (`MateLinkStage`, drawn by the root): face asleep, name, the link's line.

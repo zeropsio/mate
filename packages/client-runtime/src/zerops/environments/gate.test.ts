@@ -1,3 +1,4 @@
+import { HQ_SLOW } from "../../data/projections/freshness.ts";
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -386,18 +387,32 @@ describe("I9: the route gate over every machine and content", () => {
   });
 
   it.each([
-    { discovery: "hq-slow", hq: "slow" },
-    { discovery: "hq-unconfirmed", hq: "unconfirmed" },
-    { discovery: "hq-unreachable", hq: "unreachable" },
+    { title: "HQ slow", hq: { kind: "slow" }, text: HQ_SLOW, actions: [] },
+    {
+      title: "HQ's answer due past the route's deadline",
+      hq: { kind: "unconfirmed" },
+      text: "HQ hasn't confirmed where this conversation is yet.",
+      actions: ["go-to-projects"],
+    },
+    {
+      title: "HQ reconnecting, the menu offering nothing to press",
+      hq: { kind: "outage", line: "Reconnecting…", again: false },
+      text: "Reconnecting…",
+      actions: [],
+    },
+    {
+      title: "HQ unavailable, the menu offering Try again",
+      hq: { kind: "outage", line: "HQ unavailable. Retrying every minute.", again: true },
+      text: "HQ unavailable. Retrying every minute.",
+      actions: ["try-again"],
+    },
   ] as const)(
-    "waits saying HQ's standing, never 'not in your projects', while only HQ can name the environment: $discovery",
-    ({ discovery, hq }) => {
-      const gate = selectRouteGate({ kind: "unresolved", discovery });
+    "waits saying HQ's standing in the menu's words, never 'not in your projects', while only HQ can name the environment: $title",
+    ({ hq, text, actions }) => {
+      const gate = selectRouteGate({ kind: "unresolved", discovery: "hq", hq });
 
       expect(gate).toEqual({ kind: "wait", reachability: null, hq });
-      expect(routeGatePhrase(gate, CONTEXT).text).not.toBe(
-        "This conversation isn't in your Zerops projects.",
-      );
+      expect(routeGatePhrase(gate, CONTEXT)).toEqual({ text, actions });
     },
   );
 });
