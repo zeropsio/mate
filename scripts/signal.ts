@@ -133,6 +133,34 @@ export function reportFromProgress(lines: ReadonlyArray<SignalProgress>): Signal
   return { tests: [...cases.values()], errors: [] };
 }
 
+/** The scenario files outside stage C, as repository paths: what the non-C shards run. */
+function nonChatScenarioFiles(): string[] {
+  const areas = "apps/web/test/scenarios/areas";
+  return NodeFS.readdirSync(NodePath.join(root, areas), { recursive: true })
+    .map((path) => `${areas}/${String(path).split(NodePath.sep).join("/")}`)
+    .filter((file) => file.endsWith(".scenario.ts") && !file.startsWith(`${areas}/c-mate/`));
+}
+
+/**
+ * Shard `index` of `count` of a Signal group, by each file's measured time, so its shards finish
+ * together inside their step budget: a file count or a path hash put one shard past it.
+ */
+export function signalShardFiles(
+  group: "c" | "non-c",
+  index: number,
+  count: number,
+  durations: Readonly<Record<string, number>> = scenarioDurations,
+): string[] {
+  const files =
+    group === "c"
+      ? chatGateTestFiles(
+          root,
+          chatGateStages.filter((stage) => stage.id === "C"),
+        )
+      : nonChatScenarioFiles();
+  return spreadShard(files, index, count, durations);
+}
+
 const shardReports = ["c-1", "c-2", "c-3", "c-4", "non-c-1", "non-c-2", "non-c-3"];
 
 export function readSignalReport(output: string): SignalReport {
@@ -212,25 +240,11 @@ if (import.meta.main) {
   if (mode === "shard" && ["c", "non-c"].includes(group ?? "") && /^\d+\/\d+$/u.test(shard ?? "")) {
     const [index, count] = shard!.split("/").map(Number) as [number, number];
     if (index < 1 || index > count) throw new Error("Invalid Signal shard");
-    const args =
-      group === "c"
-        ? spreadShard(
-            chatGateTestFiles(
-              root,
-              chatGateStages.filter((stage) => stage.id === "C"),
-            ),
-            index,
-            count,
-            scenarioDurations,
-          ).map((file) => NodePath.join(root, file))
-        : [
-            "test/scenarios/areas",
-            "--exclude",
-            "test/scenarios/areas/c-mate/**",
-            "--shard",
-            shard!,
-          ];
-    runScenarios(args, NodePath.join(directory, `${group}-${index}.json`));
+    const files = signalShardFiles(group as "c" | "non-c", index, count);
+    runScenarios(
+      files.map((file) => NodePath.join(root, file)),
+      NodePath.join(directory, `${group}-${index}.json`),
+    );
   } else if (mode === "classify") {
     const killed: string[] = [];
     const infrastructure: { shard: string; reason: string }[] = [];
