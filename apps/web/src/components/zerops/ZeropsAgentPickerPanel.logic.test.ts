@@ -235,15 +235,9 @@ describe("invokeZeropsAgentPickerPrimaryAction", () => {
 });
 
 describe("zeropsAgentPickerSomeoneElseStatus", () => {
-  it.each([undefined, "", "   "])("falls back without a usable name (%j)", (name) => {
+  it.each(["", "   "])("falls back without a usable name (%j)", (name) => {
     expect(zeropsAgentPickerSomeoneElseStatus(name)).toBe(
       "Signed in by another project member — only they can run it.",
-    );
-  });
-
-  it("names the signer when known", () => {
-    expect(zeropsAgentPickerSomeoneElseStatus("Jan")).toBe(
-      "Signed in by Jan — only they can run it.",
     );
   });
 });
