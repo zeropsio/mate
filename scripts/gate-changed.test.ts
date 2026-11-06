@@ -1568,7 +1568,6 @@ it.each(["changed", "deleted"])(
 
 const smokeTitles = [
   "cold direct conversation URL opens the named Mate and its history",
-  "reload restores history",
   "sending a message puts it in the durable visible conversation",
   "approve an agent command and see it resolve",
   "a secret the person gives never reaches the Mate's records or its agent",

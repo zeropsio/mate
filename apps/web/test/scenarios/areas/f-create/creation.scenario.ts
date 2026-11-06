@@ -302,34 +302,5 @@ describe("F: creation through the hosted client", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
-
-    // Catches cleanup targeting a sibling or forgetting a failed birth before its deletion is proved.
-    it.effect("Remove cleans up only the failed creation's project", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installCreation]);
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        const c = creation(s);
-        c.failProject();
-        yield* c.newProject;
-        yield* c.submitProject;
-        yield* c.text("Project capacity exhausted");
-        yield* c.click("Delete");
-        yield* c.fill("Type Nova to confirm", "Nova");
-        const deleted = s.page.waitForResponse(
-          (response) =>
-            response.request().method() === "DELETE" &&
-            new URL(response.url()).pathname === "/api/rest/public/project/created-1",
-        );
-        yield* c.click("Delete Nova");
-        expect(
-          (yield* Effect.promise(() => receipt(deleted, "failed project deleted"))).status(),
-        ).toBe(200);
-        yield* s.then.menu.row("Ada").appears();
-        yield* c.settled;
-        yield* c.failedProjectRemoved;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
   });
 });

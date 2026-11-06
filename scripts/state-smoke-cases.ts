@@ -2,7 +2,6 @@
 export const stateOnlySmoke = {
   "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts": [
     "cold direct conversation URL opens the named Mate and its history",
-    "reload restores history",
     "sending a message puts it in the durable visible conversation",
     "approve an agent command and see it resolve",
   ],

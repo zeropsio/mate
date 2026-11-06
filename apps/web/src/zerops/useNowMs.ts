@@ -17,8 +17,9 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useNowMinute } from "~/hooks/useNowMinute";
 import { secondSnapshot, subscribeSecond } from "~/lib/secondTicker";
 
-export function useNowMs(): number {
-  return Date.parse(`${useNowMinute()}:00Z`);
+/** `active: false` reads the clock without following it: nothing re-renders on its tick. */
+export function useNowMs(active = true): number {
+  return Date.parse(`${useNowMinute(active)}:00Z`);
 }
 
 /**

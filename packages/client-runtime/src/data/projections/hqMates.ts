@@ -10,11 +10,12 @@ import type { Reachability } from "../../zerops/environments/index.ts";
 
 import { hqMateScope } from "../families/hqMate.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
-import { linkKeys } from "../model.ts";
+import { linkKeys, type ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
 import { sameValue } from "./equal.ts";
 import { liveOrHeld } from "../streamMachine.ts";
+import { scopeSlow } from "./freshness.ts";
 
 export interface HqMatesRead {
   readonly mates: Readonly<Record<string, MateLiveView>>;
@@ -73,6 +74,73 @@ export const hqMatesAnswered: Projection<string, boolean> = {
     }),
   equals: Object.is,
 };
+
+/**
+ * Where HQ's index of the Mates the reader observes stands for the organization — whether it may
+ * still name the project an environment's Mate serves:
+ *
+ * - `answered`: its placements are read whole and each placed Mate relayed the environment it
+ *   serves, had its scope refused (that Mate is not the reader's to open), or never connected
+ *   (`neverConnected`): an environment none of them names is none of its Mates. What it said so
+ *   stands through a later outage.
+ * - `slow`: that answer is not whole, and a scope it waits on is slow (`scopeSlow`): HQ's
+ *   connection is open and the scope still waits past a first answer's patience — the menu's own
+ *   word for HQ slow.
+ * - `due`: that answer is not whole — placements unread or a row of them unknown, or a placed
+ *   Mate relayed no environment (an overview without one, or none) — and nothing says HQ is slow.
+ *   Its silence proves nothing; an outage is the menu's to say (`hqOutage`).
+ */
+export type HqIndexWord = "answered" | "slow" | "due";
+
+export const hqIndexWord: Projection<string, HqIndexWord> = {
+  name: "hqIndexWord",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => {
+    const placements = placementsScope(orgId);
+    const waiting: ScopeKey[] = [];
+    if (read.coverage(placements) !== "complete") waiting.push(placements);
+    for (const projectId of read.members(placements).ids) {
+      const placement = read.fact("placement", projectId);
+      if (placement.kind !== "known") {
+        waiting.push(placements);
+        continue;
+      }
+      if (placement.value.mate == null || neverConnected(read, projectId, placement.value.appId))
+        continue;
+      const scope = hqMateScope(orgId, projectId);
+      if (read.stream(scope).phase === "refused") continue;
+      const mate = read.fact("hqMate", projectId);
+      if (mate.kind === "known" && mate.value.overview?.identity?.environmentId != null) continue;
+      waiting.push(scope);
+    }
+    if (waiting.length === 0) return "answered";
+    return waiting.some((scope) => scopeSlow(read, scope)) ? "slow" : "due";
+  },
+  equals: Object.is,
+};
+
+/**
+ * Whether HQ says the project's Mate never connected: its application still holds the Mate's
+ * birth open. HQ ends a birth on the Mate's first admitted link (mate-hq `matelink/link.go`, the
+ * `hq_birth_intent SET ended_at` on link) and lists only open ones (`structure/read.go`,
+ * `ended_at IS NULL`), so an open birth bound to the project is a Mate that has never had the
+ * HQ link a conversation's ticket needs. A Chief's birth stays open past its link until it is
+ * registered, and an adopted one may name a Mate that linked before: neither says so.
+ */
+function neverConnected(
+  read: ProjectionReads,
+  projectId: string,
+  appId: string | null | undefined,
+): boolean {
+  if (appId == null) return false;
+  const app = read.fact("hqApp", appId);
+  return (
+    app.kind === "known" &&
+    (app.value.births ?? []).some(
+      (birth) => birth.projectId === projectId && birth.chief !== true && birth.adopted !== true,
+    )
+  );
+}
 
 function overviewOf(
   read: ProjectionReads,

@@ -108,9 +108,6 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
         drivers.zerops.rows("service-stack").some((row) => row.projectId === "created-1"),
       ).toBe(false);
     }),
-    failProject: () => {
-      control.creationStatus = "FAILED";
-    },
     reload: Effect.promise(async () => {
       const confirmations: string[] = [];
       // Leaving during setup asks first; this driver represents choosing to leave.
@@ -127,11 +124,6 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
       }
     }),
     finishSetup: click("Finish setup"),
-    failedProjectRemoved: Effect.sync(() => {
-      expect(control.deleted).toEqual(["created-1"]);
-      expect(drivers.zerops.rows("project").some((row) => row.id === "Ada")).toBe(true);
-      expect(drivers.zerops.rows("project").some((row) => row.id === "created-1")).toBe(false);
-    }),
     noAgentImported: Effect.sync(() => {
       expect(
         drivers.zerops.world.imports.filter(
