@@ -278,7 +278,9 @@ it.each([
     expect(account.seen.at(-1)).toMatchObject({ standing: { kind: "listed" }, status: "STOPPED" });
     if (expected.length > 0) {
       await act(async () => account.roster(true, true));
+      expect(account.seen.at(-1)?.standing.kind).toBe("listed");
       expect(account.held, "A listing grant ends the own-row read").toEqual([]);
+      expect(account.asked).toEqual(["p-cy"]);
     }
   },
 );
@@ -379,14 +381,3 @@ it.each(["OWNER", "READ_ONLY"])(
     expect(account.asked).toEqual(["p-cy"]);
   },
 );
-
-it("a NO_ACCESS recovery releases its own-row read when the listing supplies a grant", async () => {
-  const account = recoveryAccount("NO_ACCESS");
-  account.roster(true);
-  await account.mount();
-  expect(account.held).toEqual(["p-cy"]);
-  await act(async () => account.roster(true, true));
-  expect(account.seen.at(-1)?.standing.kind).toBe("listed");
-  expect(account.held).toEqual([]);
-  expect(account.asked).toEqual(["p-cy"]);
-});
