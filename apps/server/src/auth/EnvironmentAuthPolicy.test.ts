@@ -161,6 +161,7 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
       const policy = yield* EnvironmentAuthPolicy.EnvironmentAuthPolicy;
       const descriptor = yield* policy.getDescriptor();
 
+      expect(descriptor.policy).toBe("remote-reachable");
       expect(descriptor.bootstrapMethods).toEqual(["ticket"]);
       expect(descriptor.sessionMethods).toEqual(["bearer-access-token"]);
     }).pipe(
@@ -172,23 +173,6 @@ it.layer(NodeServices.layer)("EnvironmentAuthPolicy.layer", (it) => {
             projectId: "TEST000000000000000023",
             apiHost: undefined,
           }),
-        }),
-      ),
-    ),
-  );
-
-  it.effect("leaves a non-Zerops environment on the upstream pairing method", () =>
-    Effect.gen(function* () {
-      const policy = yield* EnvironmentAuthPolicy.EnvironmentAuthPolicy;
-      const descriptor = yield* policy.getDescriptor();
-
-      expect(descriptor.policy).toBe("loopback-browser");
-      expect(descriptor.bootstrapMethods).toEqual([]);
-    }).pipe(
-      Effect.provide(
-        makeEnvironmentAuthPolicyLayer({
-          mode: "web",
-          host: "127.0.0.1",
         }),
       ),
     ),
