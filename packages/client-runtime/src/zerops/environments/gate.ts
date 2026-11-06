@@ -1,4 +1,5 @@
 import { conversationAccess } from "../../data/projections/conversationAccess.ts";
+import { HQ_SLOW } from "../../data/projections/freshness.ts";
 /**
  * The route gate for `/$environmentId/$threadId` (DESIGN §4.8): what the route renders, from the
  * route target's reachability and whether its shell has content. A pure projection.
@@ -32,8 +33,26 @@ export type RouteDiscovery =
   /** Every source answered or failed without naming it, and no organization is chosen (A5). */
   | "no-organization";
 
+/**
+ * What the wait says while only HQ can name the environment and has not: HQ slow (`scopeSlow`),
+ * HQ's answer still due past the route's deadline, or HQ's outage in the menu's own words and
+ * with its *Try again* only where the menu offers it (`hqOutage`). Past the deadline the route
+ * always offers the way back to the projects, an outage too (`overdue`).
+ */
+export type RouteHqWait =
+  | { readonly kind: "slow" }
+  | { readonly kind: "unconfirmed" }
+  | {
+      readonly kind: "outage";
+      readonly line: string;
+      readonly again: boolean;
+      readonly overdue: boolean;
+    };
+
 export type RouteTarget =
   | { readonly kind: "unresolved"; readonly discovery: RouteDiscovery }
+  /** Only HQ can name the environment, and what the wait says of HQ meanwhile. */
+  | { readonly kind: "unresolved"; readonly discovery: "hq"; readonly hq: RouteHqWait }
   | {
       readonly kind: "resolved";
       readonly reachability: Reachability;
@@ -47,8 +66,15 @@ export type RouteGate =
       readonly banner: Reachability | null;
       readonly composer: "enabled" | "disabled";
     }
-  /** RG2 while the environment is still being looked for (null), RG8 with its verdict. */
-  | { readonly kind: "wait"; readonly reachability: Reachability | null }
+  /**
+   * RG2 while the environment is still being looked for (null), RG8 with its verdict; `hq` when
+   * only HQ can name it, saying where HQ stands.
+   */
+  | {
+      readonly kind: "wait";
+      readonly reachability: Reachability | null;
+      readonly hq?: RouteHqWait;
+    }
   /** A5: nothing named the environment, and no organization is chosen yet. */
   | { readonly kind: "choose-organization" }
   /** RG3 when no project holds the environment (null), RG4–RG6 with the terminal verdict. */
@@ -67,6 +93,8 @@ export function selectRouteGate(target: RouteTarget | null): RouteGate {
         return { kind: "unavailable", reachability: null };
       case "no-organization":
         return { kind: "choose-organization" };
+      case "hq":
+        return { kind: "wait", reachability: null, hq: target.hq };
     }
   }
   const { reachability, content } = target;
@@ -103,6 +131,25 @@ export function routeGatePhrase(
     case "outlet":
       return gate.banner === null ? SILENT : reachabilityPhrase(gate.banner, context);
     case "wait":
+      // Slow has nothing to try again: HQ's connection holds and it is working. An outage says
+      // what the menu says at that moment, with *Try again* only where the menu offers it.
+      switch (gate.hq?.kind) {
+        case "slow":
+          return { text: HQ_SLOW, actions: [] };
+        case "unconfirmed":
+          return {
+            text: "HQ hasn't confirmed where this conversation is yet.",
+            actions: ["go-to-projects"],
+          };
+        case "outage":
+          return {
+            text: gate.hq.line,
+            actions: [
+              ...(gate.hq.again ? (["try-again"] as const) : []),
+              ...(gate.hq.overdue ? (["go-to-projects"] as const) : []),
+            ],
+          };
+      }
       return gate.reachability === null
         ? { text: "Opening this conversation…", actions: [] }
         : reachabilityPhrase(gate.reachability, context);

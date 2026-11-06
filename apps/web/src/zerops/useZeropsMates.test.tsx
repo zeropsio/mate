@@ -1,5 +1,10 @@
 import { seedHqNavigation } from "@t3tools/client-runtime/data/fixtures";
-import { projectsScope, shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
+import {
+  hqMateScope,
+  projectsScope,
+  readsOfState,
+  shownHqMateIdentitiesAtom,
+} from "@t3tools/client-runtime/data";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
@@ -277,6 +282,107 @@ describe("who lives in each environment, derived", () => {
       removals: [{ family: "placement", id: PROJECT.id, reason: "deleted" }],
     });
     expect(appAtomRegistry.get(zeropsMatesAtom).has(FEN)).toBe(false);
+  });
+
+  it("a still-listed Mate keeps its remembered environment while HQ names its new application", () => {
+    openAccount("identity-moved");
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+    });
+    const store = publishAccount(appAtomRegistry);
+    expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.name).toBe(PROJECT.name);
+    // HQ moves the Mate into an application whose own row is still on its way: the Mate is still
+    // listed, but HQ cannot name it until that row lands.
+    const placement = readsOfState(store.state()).fact("placement", PROJECT.id);
+    if (placement.kind !== "known") throw new Error("the Mate's placement is read");
+    const scope = `hq:${organization.organizationId}:hq-placements` as const;
+    store.dispatch({
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: [{ scope, generation: store.state().streams.get(scope)?.generation ?? 0 }],
+      reset: false,
+      rows: [
+        {
+          family: "placement",
+          id: PROJECT.id,
+          revision: { kind: "hq", incarnation: "seed", revision: 1_000 },
+          value: { ...(placement.value as object), appId: "app-on-its-way", kind: "mate" },
+        },
+      ],
+      removals: [],
+    });
+    expect(
+      appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.projectId,
+      "ASSERTION: the Mate HQ still places keeps its conversation's environment",
+    ).toBe(PROJECT.id);
+    // The next visit paints it from memory as well.
+    expect(
+      Object.keys(JSON.parse([...storage.values()].find((v) => v.includes(FEN)) ?? "{}")),
+    ).toEqual([FEN]);
+  });
+
+  it("a still-listed Mate HQ cannot name yet moves to the environment its overview names now", () => {
+    openAccount("identity-relayed");
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+    });
+    const store = publishAccount(appAtomRegistry);
+    expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.name).toBe(PROJECT.name);
+    const reads = () => readsOfState(store.state());
+    const placement = reads().fact("placement", PROJECT.id);
+    const mate = reads().fact("hqMate", PROJECT.id);
+    if (placement.kind !== "known" || mate.kind !== "known" || mate.value.overview === null)
+      throw new Error("the Mate and its overview are read");
+    const overview = mate.value.overview;
+    const deliver = (scope: string, family: string, value: object) =>
+      store.dispatch({
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: [
+          {
+            scope: scope as never,
+            generation: store.state().streams.get(scope as never)?.generation ?? 0,
+          },
+        ],
+        reset: false,
+        rows: [
+          {
+            family: family as never,
+            id: PROJECT.id,
+            revision: { kind: "hq", incarnation: "seed", revision: (revision += 1) },
+            value: value as never,
+          },
+        ],
+        removals: [],
+      });
+    let revision = 1_000;
+    // HQ cannot name the Mate while its new application's row is on its way.
+    deliver(`hq:${organization.organizationId}:hq-placements`, "placement", {
+      ...placement.value,
+      appId: "app-on-its-way",
+      kind: "mate",
+    });
+    expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.projectId).toBe(PROJECT.id);
+    // Its overview now names the environment of its re-created container.
+    deliver(hqMateScope(organization.organizationId, PROJECT.id), "hqMate", {
+      ...mate.value,
+      overview: { ...overview, identity: { ...overview.identity, environmentId: ELSEWHERE } },
+    });
+    const directory = appAtomRegistry.get(zeropsMatesAtom);
+    expect(
+      [directory.get(ELSEWHERE)?.projectId, directory.has(FEN)],
+      "ASSERTION: the overview's environment wins over the remembered one",
+    ).toEqual([PROJECT.id, false]);
   });
 
   it("an environment the list has not reached is unknown, never nobody", () => {
