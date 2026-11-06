@@ -80,6 +80,6 @@ export default defineConfig({
     testTimeout: 15_000,
     // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
     taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
-    setupFiles: ["../../packages/shared/src/testing/longTempDir.ts"],
+    globalSetup: ["../../packages/shared/src/testing/longTempDir.ts"],
   },
 });
