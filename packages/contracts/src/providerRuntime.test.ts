@@ -194,6 +194,7 @@ describe("ProviderRuntimeEvent", () => {
         provider: "codex",
         sessionId: "runtime-session-3",
         createdAt: "2026-02-28T00:00:03.000Z",
+        threadId: "thread-3",
         payload: { delta: "legacy" },
       }),
     ).toThrow();

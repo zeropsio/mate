@@ -62,8 +62,8 @@ describe("delete-service", () => {
 });
 
 const ROOT = NodePath.resolve(import.meta.dirname, "../../../../..");
-/** Each source file under `dir`, tests and fixtures aside, whose text matches `pattern`. */
-const sourcesMatching = (dir: string, pattern: RegExp) =>
+/** Each source file under `dir`, tests and fixtures aside. */
+const sourcesUnder = (dir: string) =>
   NodeFS.readdirSync(NodePath.join(ROOT, dir), { recursive: true, encoding: "utf8" })
     .filter(
       (file) =>
@@ -72,17 +72,21 @@ const sourcesMatching = (dir: string, pattern: RegExp) =>
         !file.includes("__fixtures__") &&
         !file.includes("node_modules"),
     )
-    .filter((file) => pattern.test(NodeFS.readFileSync(NodePath.join(ROOT, dir, file), "utf8")))
-    .map((file) => `${dir}/${file}`)
-    .sort();
+    .map((file) => ({
+      path: `${dir}/${file}`,
+      text: NodeFS.readFileSync(NodePath.join(ROOT, dir, file), "utf8"),
+    }));
 
 describe("HQ deletes a service only from a person's Delete action", () => {
   it("the only caller of a service's deletion is the Delete a person confirms", () => {
-    const where = (pattern: RegExp) => [
-      ...sourcesMatching("packages/client-runtime/src", pattern),
-      ...sourcesMatching("apps/web/src", pattern),
-      ...sourcesMatching("apps/mobile/src", pattern),
-    ];
+    const sources = ["packages/client-runtime/src", "apps/web/src", "apps/mobile/src"].flatMap(
+      sourcesUnder,
+    );
+    const where = (pattern: RegExp) =>
+      sources
+        .filter(({ text }) => pattern.test(text))
+        .map(({ path }) => path)
+        .sort();
     // Zerops' delete: called by the executor and the wiring that hands it the client alone.
     expect(where(/\.deleteService\(/u)).toEqual([
       "packages/client-runtime/src/data/operations/executors/serviceWrites.ts",

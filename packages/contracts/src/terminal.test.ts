@@ -200,12 +200,11 @@ describe("TerminalClearInput", () => {
 
 describe("TerminalCloseInput", () => {
   it("accepts optional deleteHistory", () => {
-    expect(
-      decodes(TerminalCloseInput, {
-        threadId: "thread-1",
-        deleteHistory: true,
-      }),
-    ).toBe(true);
+    const parsed = decodeSync(TerminalCloseInput, {
+      threadId: "thread-1",
+      deleteHistory: true,
+    });
+    expect(parsed.deleteHistory).toBe(true);
   });
 });
 
@@ -280,25 +279,25 @@ describe("TerminalEvent", () => {
   });
 
   it("accepts started events with snapshot worktree metadata", () => {
-    expect(
-      decodes(TerminalEvent, {
-        type: "started",
+    const parsed = decodeSync(TerminalEvent, {
+      type: "started",
+      threadId: "thread-1",
+      terminalId: DEFAULT_TERMINAL_ID,
+      snapshot: {
         threadId: "thread-1",
         terminalId: DEFAULT_TERMINAL_ID,
-        snapshot: {
-          threadId: "thread-1",
-          terminalId: DEFAULT_TERMINAL_ID,
-          cwd: "/tmp/project/.t3/worktrees/feature-a",
-          worktreePath: "/tmp/project/.t3/worktrees/feature-a",
-          status: "running",
-          pid: 1234,
-          history: "",
-          exitCode: null,
-          exitSignal: null,
-          label: "Primary",
-          updatedAt: isoTimestamp,
-        },
-      }),
-    ).toBe(true);
+        cwd: "/tmp/project/.t3/worktrees/feature-a",
+        worktreePath: "/tmp/project/.t3/worktrees/feature-a",
+        status: "running",
+        pid: 1234,
+        history: "",
+        exitCode: null,
+        exitSignal: null,
+        label: "Primary",
+        updatedAt: isoTimestamp,
+      },
+    });
+    if (parsed.type !== "started") throw new Error(`Expected started, got ${parsed.type}`);
+    expect(parsed.snapshot.worktreePath).toBe("/tmp/project/.t3/worktrees/feature-a");
   });
 });

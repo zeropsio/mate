@@ -233,10 +233,11 @@ function initRepo(
     const fs = yield* FileSystem.FileSystem;
     yield* runGit(cwd, ["init", "--initial-branch=main"]);
     // Await maintenance before the scoped fixture removes its repository.
-    yield* runGit(cwd, ["config", "maintenance.autoDetach", "false"]);
-    yield* runGit(cwd, ["config", "gc.autoDetach", "false"]);
-    yield* runGit(cwd, ["config", "user.email", "test@example.com"]);
-    yield* runGit(cwd, ["config", "user.name", "Test User"]);
+    yield* fs.writeFileString(
+      NodePath.join(cwd, ".git", "config"),
+      "\n[maintenance]\n\tautoDetach = false\n[gc]\n\tautoDetach = false\n[user]\n\temail = test@example.com\n\tname = Test User\n",
+      { flag: "a" },
+    );
     yield* fs.writeFileString(NodePath.join(cwd, "README.md"), "hello\n");
     yield* runGit(cwd, ["add", "README.md"]);
     yield* runGit(cwd, ["commit", "-m", "Initial commit"]);
@@ -251,8 +252,12 @@ function createBareRemote(): Effect.Effect<
   return Effect.gen(function* () {
     const remoteDir = yield* makeTempDir("t3code-git-remote-");
     yield* runGit(remoteDir, ["init", "--bare"]);
-    yield* runGit(remoteDir, ["config", "maintenance.autoDetach", "false"]);
-    yield* runGit(remoteDir, ["config", "gc.autoDetach", "false"]);
+    const fs = yield* FileSystem.FileSystem;
+    yield* fs.writeFileString(
+      NodePath.join(remoteDir, "config"),
+      "\n[maintenance]\n\tautoDetach = false\n[gc]\n\tautoDetach = false\n",
+      { flag: "a" },
+    );
     return remoteDir;
   });
 }

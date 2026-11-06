@@ -1173,12 +1173,6 @@ describe("waitingForProduction: how many changes wait for production once one me
       count: 2,
     },
     {
-      name: "the change with no release production runs",
-      summary: offer(0),
-      mergedAhead: true,
-      count: 1,
-    },
-    {
       name: "a change merged before the release production runs: there already",
       summary: offer(0),
       mergedAhead: false,

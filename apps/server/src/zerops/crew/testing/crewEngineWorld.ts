@@ -244,23 +244,40 @@ const enginePort = (input: {
       return provider.sessions.get(thread)?.open != null;
     });
 
+  const waitForTurn = (chat: CrewChat) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events = yield* provider.subscribeEvents;
+        yield* Stream.concat(Stream.succeed(undefined), Stream.fromSubscription(events)).pipe(
+          Stream.mapEffect(() => turnRunning(chat)),
+          Stream.filter(Boolean),
+          Stream.runHead,
+        );
+      }),
+    );
+
   /** The first current frame that satisfies `check`. */
   const snapshotWhere = (check: (snapshot: CrewSnapshot) => boolean) =>
     Effect.flatMap(crew, (service) =>
-      Effect.gen(function* () {
-        const head = (yield* crewState).headSeq;
-        yield* eventually(
-          Effect.map(
-            Stream.runHead(service.snapshot),
-            (frame) => Option.isSome(frame) && (frame.value.revision?.seq ?? head) >= head,
-          ),
-        );
-        return yield* service.snapshot.pipe(
-          Stream.filter(check),
-          Stream.runHead,
-          Effect.map(Option.getOrThrow),
-        );
-      }),
+      Effect.scoped(
+        Effect.gen(function* () {
+          if (service.subscribeUpdateChanges === undefined)
+            return yield* Effect.die("Crew fixture has no update receipt subscription");
+          const updates = yield* service.subscribeUpdateChanges;
+          const head = (yield* crewState).headSeq;
+          return yield* Stream.concat(Stream.succeed(undefined), updates.changes).pipe(
+            Stream.mapEffect(() => Stream.runHead(service.snapshot)),
+            Stream.filter(
+              (frame) =>
+                Option.isSome(frame) &&
+                (frame.value.revision?.seq ?? head) >= head &&
+                check(frame.value),
+            ),
+            Stream.runHead,
+            Effect.map((frame) => Option.getOrThrow(Option.getOrThrow(frame))),
+          );
+        }),
+      ),
     );
 
   /** The crew's first state `holds` for, read again on each of its durable receipts. */
@@ -277,6 +294,20 @@ const enginePort = (input: {
       ).pipe(
         Stream.mapEffect(() => crewState),
         Stream.filter(holds),
+        Stream.runHead,
+        Effect.orDie,
+      );
+    });
+
+  /** Recheck a conversation condition after each durable event, including events already committed. */
+  const conversationWhere = (chat: CrewChat, holds: Effect.Effect<boolean>) =>
+    Effect.gen(function* () {
+      const conversations = yield* run(Conversations);
+      const id = ConversationId.make(chat);
+      const head = (yield* conversations.state(id).pipe(Effect.orDie)).headSeq;
+      yield* Stream.concat(Stream.succeed(undefined), conversations.subscribe(id, head)).pipe(
+        Stream.mapEffect(() => holds),
+        Stream.filter(Boolean),
         Stream.runHead,
         Effect.orDie,
       );
@@ -650,11 +681,12 @@ const enginePort = (input: {
         if (yield* idle) {
           yield* provider.agent.selfTurn(thread);
         }
-        yield* eventually(turnRunning(chat));
+        yield* waitForTurn(chat);
         // The engine holds the turn as a run of the conversation, bound to it, and a message
         // steered into it has reached the agent: the turn's end is then that run's, not one the
         // message opened after it.
-        yield* eventually(
+        yield* conversationWhere(
+          chat,
           Effect.map(
             run(
               Effect.flatMap(Conversations, (conversations) =>
@@ -698,7 +730,10 @@ const enginePort = (input: {
           return active?.stopAsked != null;
         });
         if (end.state === "interrupted" && (yield* stopAsked)) {
-          yield* eventually(Effect.map(stoppedRun, (found) => found !== undefined));
+          yield* conversationWhere(
+            chat,
+            Effect.map(stoppedRun, (found) => found !== undefined),
+          );
         }
         const stopped = end.state === "interrupted" ? yield* stoppedRun : undefined;
         let ending: string | null;
@@ -706,7 +741,7 @@ const enginePort = (input: {
           stopsTaken.add(stopped.run_id);
           ending = stopped.run_id;
         } else {
-          yield* eventually(turnRunning(chat));
+          yield* waitForTurn(chat);
           ending = (yield* conversation).activeRunId;
           const thread = yield* threadOf(chat);
           const payload = {
@@ -720,7 +755,10 @@ const enginePort = (input: {
         const member = yield* handleOf(chat);
         // The engine recorded that run's end (another may follow at once: a nudge, a carry-on),
         // and the crew read its record past it.
-        yield* eventually(Effect.map(conversation, (state) => state.activeRunId !== ending));
+        yield* conversationWhere(
+          chat,
+          Effect.map(conversation, (state) => state.activeRunId !== ending),
+        );
         const ended = yield* Effect.flatMap(sql, (client) =>
           client<{ readonly seq: number | null }>`
             SELECT MAX(seq) AS seq FROM engine_event
@@ -731,23 +769,17 @@ const enginePort = (input: {
             Effect.orDie,
           ),
         );
-        yield* eventually(
-          Effect.map(
-            crewState,
-            (state) =>
-              (state.cursors[chat] ?? 0) >= ended &&
-              state.members[member?.handle ?? ""]?.active?.runId !== ending,
-          ),
+        yield* crewWhere(
+          (state) =>
+            (state.cursors[chat] ?? 0) >= ended &&
+            state.members[member?.handle ?? ""]?.active?.runId !== ending,
         );
         // As V1's turn end returned once the turn's work was saved in its copy.
-        yield* eventually(
-          Effect.map(
-            crewState,
-            (state) =>
-              !Object.values(state.effects).some(
-                (effect) => effect.kind === "crew.checkpoint" && effect.handle === member?.handle,
-              ),
-          ),
+        yield* crewWhere(
+          (state) =>
+            !Object.values(state.effects).some(
+              (effect) => effect.kind === "crew.checkpoint" && effect.handle === member?.handle,
+            ),
         );
         yield* settled;
       }),

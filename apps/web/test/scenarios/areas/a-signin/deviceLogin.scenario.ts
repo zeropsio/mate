@@ -3,6 +3,7 @@ import { beforeAll, describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { deviceLoginDist } from "../../harness/deviceLoginBundle.ts";
 import { createScenario } from "../../harness/scenario.ts";
+import { recordStep } from "../../harness/lastStep.ts";
 import { installSignIn, sensitiveSharedValue } from "./fake.ts";
 import { account, historyAddresses, vault, zeropsWindow } from "./dsl.ts";
 
@@ -20,6 +21,17 @@ describe("A: sign-in through the Zerops window", () => {
     it.effect("sign-in through Zerops opens the account", () =>
       Effect.gen(function* () {
         const s = yield* deviceLoginScenario();
+        // A refresh revokes the old access token, so watch the first door, reads and websocket
+        // for refusals before they can be retried.
+        recordStep("a sign-in and a load of the app renew no session and meet no refusal");
+        const refused: string[] = [];
+        const doors: number[] = [];
+        s.page.on("response", (response) => {
+          const { pathname } = new URL(response.url());
+          if (response.status() === 401) refused.push(pathname);
+          if (pathname === "/api/door" && response.request().method() === "POST")
+            doors.push(response.status());
+        });
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         const consent = yield* zeropsWindow(s).lastConsentPage;
@@ -28,6 +40,13 @@ describe("A: sign-in through the Zerops window", () => {
         yield* account(s.page).showsPerson("owner");
         yield* s.then.menu.row("Shop").appears();
         yield* s.then.menu.row("Ada").appears();
+        yield* account(s.page).reload;
+        yield* account(s.page).showsPerson("owner");
+        yield* s.then.menu.row("Shop").appears();
+        expect(s.drivers.zerops.requests.get("POST /auth/refresh") ?? 0).toBe(0);
+        expect(refused).toEqual([]);
+        expect(doors[0], "The first door answered").toBe(200);
+        expect(s.drivers.zerops.sockets.size, "The Zerops websocket opened").toBeGreaterThan(0);
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -170,34 +189,6 @@ describe("A: sign-in through the Zerops window", () => {
         const text = yield* Effect.promise(() => s.page.evaluate(() => document.body.innerText));
         expect(text).not.toContain("Sign-in didn't finish");
         expect(new URL(s.page.url()).search).toBe("");
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches a sign-in or a load renewing a session with hours left: the platform revokes the old
-    // access token on every refresh, so the first door, the Zerops reads and the websocket login
-    // went out with a revoked token and were refused before they were repeated.
-    it.effect("a sign-in and a load of the app renew no session and meet no refusal", () =>
-      Effect.gen(function* () {
-        const s = yield* deviceLoginScenario();
-        const refused: string[] = [];
-        const doors: number[] = [];
-        s.page.on("response", (response) => {
-          const { pathname } = new URL(response.url());
-          if (response.status() === 401) refused.push(pathname);
-          if (pathname === "/api/door" && response.request().method() === "POST")
-            doors.push(response.status());
-        });
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
-        yield* s.then.menu.row("Shop").appears();
-        yield* account(s.page).reload;
-        yield* account(s.page).showsPerson("owner");
-        yield* s.then.menu.row("Shop").appears();
-        expect(s.drivers.zerops.requests.get("POST /auth/refresh") ?? 0).toBe(0);
-        expect(refused).toEqual([]);
-        expect(doors[0], "The first door answered").toBe(200);
-        expect(s.drivers.zerops.sockets.size, "The Zerops websocket opened").toBeGreaterThan(0);
         yield* s.then.noExternalNetwork;
       }),
     );

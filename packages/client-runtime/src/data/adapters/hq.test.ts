@@ -2431,7 +2431,6 @@ describe("outage scenarios at the HQ input", () => {
       yield* Fiber.interrupt(fiber);
     });
   it.effect("a corrupt HQ Mate record keeps unrelated tasks and menu rows", corruptRecord);
-  it.effect("Ada's task is kept after a corrupt update", corruptRecord);
   it.effect("HQ down retains the last known pending question", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

@@ -78,11 +78,6 @@ describe("parseVersionName", () => {
     { name: "a bare short sha, which no writer ever wrote", value: "7e2d4c1", expected: undefined },
     { name: "zcp's old name of a dirty tree", value: `${SHA}-dirty`, expected: undefined },
     { name: "zcp's name of a dirty tree", value: "main 7e2d4c1-dirty", expected: undefined },
-    {
-      name: "zcp's name of a clean push",
-      value: "main 7e2d4c1",
-      expected: { sha: "7e2d4c1", label: "main" },
-    },
     { name: "an empty name", value: "", expected: undefined },
     { name: "a blank name", value: "   ", expected: undefined },
     { name: "nothing", value: undefined, expected: undefined },

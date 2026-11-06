@@ -9,6 +9,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -401,21 +402,17 @@ describe("cached VCS refs", () => {
           credentialRotated: Effect.void,
           reportStreamDefect: () => Effect.void,
         } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
-        const refs = yield* Stream.unwrap(
-          makeCachedVcsRefsChanges(
-            { cwd: "/repo", limit: 100 },
-            state.revision,
-            registry,
-            state.persistedCacheReadable,
-          ).pipe(
-            Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
-            Effect.provideService(Persistence.EnvironmentCacheStore, cache),
-          ),
-        ).pipe(Stream.runHead, Effect.forkChild({ startImmediately: true }));
-
-        yield* Effect.yieldNow;
+        yield* makeCachedVcsRefsChanges(
+          { cwd: "/repo", limit: 100 },
+          state.revision,
+          registry,
+          state.persistedCacheReadable,
+        ).pipe(
+          Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+          Effect.provideService(Persistence.EnvironmentCacheStore, cache),
+          Effect.asVoid,
+        );
         expect(yield* Ref.get(loads)).toBe(0);
-        yield* Fiber.interrupt(refs);
         expect(registry.get(vcsRefsCacheStateAtom(TARGET))).toEqual(state);
 
         expect(
@@ -486,10 +483,12 @@ describe("cached VCS refs", () => {
       Effect.gen(function* () {
         const expectedError = new Error("Could not list Git refs.");
         const calls = yield* Ref.make(0);
+        const requested = yield* Queue.unbounded<void>();
         const connectionState = yield* SubscriptionRef.make(CONNECTED_CONNECTION_STATE);
         const client = {
           [WS_METHODS.vcsListRefs]: () =>
             Ref.updateAndGet(calls, (count) => count + 1).pipe(
+              Effect.tap(() => Queue.offer(requested, undefined)),
               Effect.flatMap((count) =>
                 count === 1 ? Effect.fail(expectedError) : Effect.succeed(LIVE_REFS),
               ),
@@ -515,9 +514,7 @@ describe("cached VCS refs", () => {
         ).pipe(Stream.runHead);
         const fiber = yield* Effect.forkChild(result);
 
-        for (let attempt = 0; attempt < 100 && (yield* Ref.get(calls)) < 1; attempt += 1) {
-          yield* Effect.yieldNow;
-        }
+        yield* Queue.take(requested);
         expect(yield* Ref.get(calls)).toBe(1);
 
         yield* TestClock.adjust("1 second");
@@ -532,15 +529,21 @@ describe("cached VCS refs", () => {
       Effect.gen(function* () {
         const calls = yield* Ref.make(0);
         const interruptions = yield* Ref.make(0);
+        const requested = yield* Queue.unbounded<void>();
+        const interrupted = yield* Queue.unbounded<void>();
         const connectionState = yield* SubscriptionRef.make(CONNECTED_CONNECTION_STATE);
         const client = {
           [WS_METHODS.vcsListRefs]: () =>
             Ref.updateAndGet(calls, (count) => count + 1).pipe(
+              Effect.tap(() => Queue.offer(requested, undefined)),
               Effect.flatMap((count) =>
                 count === 1
                   ? Effect.never.pipe(
                       Effect.onInterrupt(() =>
-                        Ref.update(interruptions, (interruptions) => interruptions + 1),
+                        Ref.update(interruptions, (interruptions) => interruptions + 1).pipe(
+                          Effect.andThen(Queue.offer(interrupted, undefined)),
+                          Effect.asVoid,
+                        ),
                       ),
                     )
                   : Effect.succeed(LIVE_REFS),
@@ -567,13 +570,9 @@ describe("cached VCS refs", () => {
         ).pipe(Stream.runHead);
         const fiber = yield* Effect.forkChild(result);
 
-        for (let attempt = 0; attempt < 100 && (yield* Ref.get(calls)) < 1; attempt += 1) {
-          yield* Effect.yieldNow;
-        }
+        yield* Queue.take(requested);
         yield* SubscriptionRef.set(connectionState, AVAILABLE_CONNECTION_STATE);
-        for (let attempt = 0; attempt < 100 && (yield* Ref.get(interruptions)) < 1; attempt += 1) {
-          yield* Effect.yieldNow;
-        }
+        yield* Queue.take(interrupted);
         expect(yield* Ref.get(interruptions)).toBe(1);
 
         yield* SubscriptionRef.set(connectionState, {
@@ -590,6 +589,7 @@ describe("cached VCS refs", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const calls = yield* Ref.make(0);
+        const emitted = yield* Queue.unbounded<void>();
         const client = {
           [WS_METHODS.vcsListRefs]: () =>
             Ref.update(calls, (count) => count + 1).pipe(Effect.as(CACHED_REFS)),
@@ -610,16 +610,16 @@ describe("cached VCS refs", () => {
             Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
             Effect.provideService(Persistence.EnvironmentCacheStore, cacheWithRefs(Option.none())),
           ),
-        ).pipe(Stream.runDrain);
+        ).pipe(
+          Stream.tap(() => Queue.offer(emitted, undefined)),
+          Stream.runDrain,
+        );
         const fiber = yield* Effect.forkChild(stream);
 
-        for (let attempt = 0; attempt < 100 && (yield* Ref.get(calls)) < 1; attempt += 1) {
-          yield* Effect.yieldNow;
-        }
+        yield* Queue.take(emitted);
         expect(yield* Ref.get(calls)).toBe(1);
 
         yield* TestClock.adjust("1 minute");
-        yield* Effect.yieldNow;
         expect(yield* Ref.get(calls)).toBe(1);
         yield* Fiber.interrupt(fiber);
       }).pipe(Effect.provide(TestClock.layer())),

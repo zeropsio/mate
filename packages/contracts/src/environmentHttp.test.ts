@@ -88,12 +88,18 @@ describe("a refused credential's 401", () => {
       reason: Schema.Literals(["missing_credential", "invalid_credential"]),
       traceId: Schema.String,
     });
-    expect(
-      Schema.decodeUnknownSync(olderClient)({
-        ...body,
+    const encoded = Schema.encodeSync(EnvironmentAuthInvalidError)(
+      new EnvironmentAuthInvalidError({
+        code: "auth_invalid",
         reason: "invalid_credential",
+        traceId,
         expired: true,
       }),
-    ).toEqual({ ...body, reason: "invalid_credential" });
+    );
+    expect(encoded).toEqual({ ...body, reason: "invalid_credential", expired: true });
+    expect(Schema.decodeUnknownSync(olderClient)(encoded)).toEqual({
+      ...body,
+      reason: "invalid_credential",
+    });
   });
 });

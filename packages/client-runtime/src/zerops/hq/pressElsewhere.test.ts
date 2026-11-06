@@ -20,6 +20,8 @@ describe("pressElsewhere", () => {
     readonly said: ReturnType<typeof pressElsewhere>;
   }>([
     { case: "HQ said nothing of presses yet: unknown", presses: null, said: "unknown" },
+    // Run 2 (2026-10-16): a press that went through leaves no record at HQ, and its Mate read as
+    // half made until its container was listed. One that stops keeps its record.
     { case: "no press holds it: awaiting evidence", presses: {}, said: "unknown" },
     {
       case: "its press is gone but its recorded import runs: pressing",
@@ -38,13 +40,6 @@ describe("pressElsewhere", () => {
       presses: {},
       importStatus: "CANCELED",
       said: "stopped",
-    },
-    // Run 2 (2026-10-16): a press that went through leaves no record at HQ, and its Mate read as
-    // half made until its container was listed. One that stops keeps its record.
-    {
-      case: "its press went through, HQ let its hold go: never said stopped",
-      presses: {},
-      said: "unknown",
     },
     { case: "a slow press, its hold renewed: pressing", presses: held(true), said: "pressing" },
     { case: "its hold ran out: awaiting evidence", presses: held(false), said: "unknown" },

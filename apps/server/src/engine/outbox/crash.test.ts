@@ -1,4 +1,4 @@
-// @effect-diagnostics globalConsoleInEffect:off - the crash table prints when asked.
+// @effect-diagnostics globalConsoleInEffect:off nodeBuiltinImport:off - the crash table prints when asked and resets its SQLite file.
 /**
  * Crash injection: a conversation is played move by move in one process lifetime over a SQLite
  * file; the process "dies" at a chosen boundary — after a move, while a handler is mid-act, after
@@ -6,11 +6,14 @@
  * lifetime boots on the same file, reconciles, fires what is due and drains the outbox. Then the
  * invariants are checked against the file and the world.
  */
+import * as NodeFS from "node:fs";
+
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import {
   CommandId,
   ConversationId,
@@ -26,7 +29,9 @@ import type { Command, Envelope, ProviderSignal } from "../domain/command.ts";
 import { signalsCommandId } from "../domain/ids.ts";
 import { makeEffectWorker } from "./EffectWorker.ts";
 import { EngineStore, EngineStoreError, type CommitStage } from "../store/EngineStore.ts";
+import { runEngineMigrations } from "../store/migrations.ts";
 import { World, audit, engineLayer, fireDue, newBoot, tempDb } from "../testing/world.ts";
+import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
 
 const c = ConversationId.make("mate");
 const ana: Principal = { kind: "person", subject: "ana" };
@@ -177,21 +182,18 @@ const playUntilCrash = (file: string, world: World, crash: Crash, played: Played
       if (armed && crash.how === "mid-effect") {
         // The handler acts, then the process dies before it returns.
         const acted = yield* Deferred.make<void>();
-        const before = [...world.acts.values()].reduce((a, b) => a + b, 0);
         for (const kind of [
           "run.prepare",
           "session.open",
+          "session.close",
           "provider.send",
           "provider.respond",
           "provider.interrupt",
         ])
           world.hangAfterAct.add(kind);
-        yield* Effect.forkDetach(worker.runOnce);
-        for (let spin = 0; spin < 1000; spin++) {
-          if ([...world.acts.values()].reduce((a, b) => a + b, 0) > before) break;
-          yield* Effect.yieldNow;
-        }
-        yield* Deferred.succeed(acted, undefined);
+        world.afterAct = Deferred.succeed(acted, undefined).pipe(Effect.asVoid);
+        const running = yield* Effect.forkDetach(worker.runOnce);
+        yield* Effect.raceFirst(Deferred.await(acted), Fiber.await(running));
         return;
       }
       const exit = yield* Effect.exit<unknown, unknown, never>(
@@ -320,8 +322,11 @@ describe("crash injection at every step boundary", () => {
   it.effect("a restart at any boundary keeps every invariant", () =>
     Effect.gen(function* () {
       const table: Array<string> = [];
+      const seed = tempDb("crash-seed");
+      yield* runEngineMigrations().pipe(Effect.provide(NodeSqliteClient.layer({ filename: seed })));
+      const file = tempDb("crash");
       for (const crash of crashes) {
-        const file = tempDb("crash");
+        yield* Effect.sync(() => NodeFS.copyFileSync(seed, file));
         const world = new World();
         const played: Played = { accepted: [], session: null, modeSet: false };
         yield* playUntilCrash(file, world, crash, played);
@@ -381,8 +386,10 @@ describe("crash injection: what holds", () => {
             now: 0,
           });
           const worker = yield* makeEffectWorker(newBoot());
-          yield* Effect.forkDetach(worker.runOnce); // acts, then the process dies
-          for (let i = 0; i < 100 && world.acts.size === 0; i++) yield* Effect.yieldNow;
+          const acted = yield* Deferred.make<void>();
+          world.afterAct = Deferred.succeed(acted, undefined).pipe(Effect.asVoid);
+          const running = yield* Effect.forkDetach(worker.runOnce);
+          yield* Effect.raceFirst(Deferred.await(acted), Fiber.await(running));
         }).pipe(Effect.provide(engineLayer(file, world.handlers())));
         world.crash();
         const result = yield* Effect.gen(function* () {
