@@ -1407,7 +1407,21 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     );
     expect((await run(["--scenarios", scenario])).stdout).toContain("reused receipt");
     const commandLog = NodePath.join(root, "node_modules/hq-command.log");
-    for (const hqCommand of ["node /fixtures/hq-a.ts", "node /fixtures/hq-b.ts", undefined]) {
+    const hqCheckouts = ["hq-a", "hq-b"].map((name) => {
+      const dir = NodePath.join(root, "node_modules", name);
+      const launcher = NodePath.join(dir, "conformance/scripts/test-hq.ts");
+      NodeFS.mkdirSync(NodePath.dirname(launcher), { recursive: true });
+      const git = (...args: string[]) =>
+        NodeChildProcess.execFileSync("git", ["-C", dir, ...args], { encoding: "utf8" });
+      git("init", "-q");
+      git("config", "user.name", "HQ fixture");
+      git("config", "user.email", "hq@example.test");
+      NodeFS.writeFileSync(launcher, "// first HQ revision\n");
+      git("add", ".");
+      git("commit", "-qm", "first HQ revision");
+      return { git, launcher, command: `node ${launcher}` };
+    });
+    for (const hqCommand of [...hqCheckouts.map((hq) => hq.command), undefined]) {
       NodeFS.rmSync(commandLog);
       const changedHq = await run(["--scenarios", scenario], false, hqCommand);
       expect(changedHq.status, changedHq.stderr).toBe(0);
@@ -1420,6 +1434,37 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
         "reused receipt",
       );
     }
+    // An arbitrary launcher cannot prove which HQ revision it builds.
+    const unknownCommand = "node /fixtures/unknown-hq.ts";
+    await run(["--scenarios", scenario], false, unknownCommand);
+    expect(
+      (await run(["--scenarios", scenario], false, unknownCommand)).stdout,
+      "ASSERTION: an unknown HQ revision cannot reuse a scenario verdict",
+    ).toContain("ok edited scenario files");
+    // The same launcher path can build a different HQ revision without changing the z3 diff.
+    const hq = hqCheckouts[0]!;
+    expect((await run(["--scenarios", scenario], false, hq.command)).stdout).toContain(
+      "ok edited scenario files",
+    );
+    expect((await run(["--scenarios", scenario], false, hq.command)).stdout).toContain(
+      "reused receipt",
+    );
+    NodeFS.writeFileSync(hq.launcher, "// second HQ revision\n");
+    hq.git("add", ".");
+    hq.git("commit", "-qm", "second HQ revision");
+    expect(
+      (await run(["--scenarios", scenario], false, hq.command)).stdout,
+      "ASSERTION: an HQ revision change reruns scenarios even when its launcher path is unchanged",
+    ).toContain("ok edited scenario files");
+    expect((await run(["--scenarios", scenario], false, hq.command)).stdout).toContain(
+      "reused receipt",
+    );
+    NodeFS.writeFileSync(hq.launcher, "// uncommitted HQ source\n");
+    await run(["--scenarios", scenario], false, hq.command);
+    expect(
+      (await run(["--scenarios", scenario], false, hq.command)).stdout,
+      "ASSERTION: a dirty HQ checkout cannot reuse a scenario verdict",
+    ).toContain("ok edited scenario files");
     expect((await run()).stdout).not.toContain("reused receipt");
   } finally {
     vi.unstubAllEnvs();
