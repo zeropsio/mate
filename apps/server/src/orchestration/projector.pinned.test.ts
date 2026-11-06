@@ -30,52 +30,6 @@ function makeEvent(input: {
   } as OrchestrationEvent;
 }
 
-it.effect("projects pin lifecycle events", () =>
-  Effect.gen(function* () {
-    const now = "2026-01-01T00:00:00.000Z";
-    const created = yield* projectEvent(
-      createEmptyReadModel(now),
-      makeEvent({
-        sequence: 1,
-        type: "thread.created",
-        payload: {
-          threadId: ThreadId.make("thread-1"),
-          projectId: ProjectId.make("project-1"),
-          title: "Thread",
-          modelSelection: { provider: "codex", model: "gpt-5.4" },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          branch: null,
-          worktreePath: null,
-          createdAt: now,
-          updatedAt: now,
-        },
-      }),
-    );
-    expect(created.threads[0]?.pinnedAt ?? null).toBeNull();
-
-    const pinned = yield* projectEvent(
-      created,
-      makeEvent({
-        sequence: 2,
-        type: "thread.pinned",
-        payload: { threadId: ThreadId.make("thread-1"), pinnedAt: now, updatedAt: now },
-      }),
-    );
-    expect(pinned.threads[0]?.pinnedAt).toBe(now);
-
-    const unpinned = yield* projectEvent(
-      pinned,
-      makeEvent({
-        sequence: 3,
-        type: "thread.unpinned",
-        payload: { threadId: ThreadId.make("thread-1"), updatedAt: now },
-      }),
-    );
-    expect(unpinned.threads[0]?.pinnedAt).toBeNull();
-  }),
-);
-
 it.effect("projects pin order key lifecycle", () =>
   Effect.gen(function* () {
     const now = "2026-01-01T00:00:00.000Z";
@@ -99,6 +53,26 @@ it.effect("projects pin order key lifecycle", () =>
       }),
     );
     expect(created.threads[0]?.pinOrderKey ?? null).toBeNull();
+    expect(created.threads[0]?.pinnedAt ?? null).toBeNull();
+
+    const pinnedWithoutOrder = yield* projectEvent(
+      created,
+      makeEvent({
+        sequence: 2,
+        type: "thread.pinned",
+        payload: { threadId: ThreadId.make("thread-1"), pinnedAt: now, updatedAt: now },
+      }),
+    );
+    expect(pinnedWithoutOrder.threads[0]?.pinnedAt).toBe(now);
+    const unpinnedWithoutOrder = yield* projectEvent(
+      pinnedWithoutOrder,
+      makeEvent({
+        sequence: 3,
+        type: "thread.unpinned",
+        payload: { threadId: ThreadId.make("thread-1"), updatedAt: now },
+      }),
+    );
+    expect(unpinnedWithoutOrder.threads[0]?.pinnedAt).toBeNull();
 
     // Fresh pin carries the client's slot in the arranged order.
     const pinned = yield* projectEvent(
