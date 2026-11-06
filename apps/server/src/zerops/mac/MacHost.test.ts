@@ -1,10 +1,10 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off
+// @effect-diagnostics nodeBuiltinImport:off
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { describe, expect, it } from "vite-plus/test";
+import { afterAll, describe, expect, it } from "vite-plus/test";
 
 import {
   acceptMacRegistration,
@@ -41,6 +41,20 @@ const record: MacHostRecord = {
   macos: "26.1",
 };
 const paths = macHostPaths("/home/zerops/.t3");
+const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-host-"));
+afterAll(() => NodeFS.rmSync(scratch, { recursive: true, force: true }));
+
+const fixture = (name: string) => {
+  const directory = NodePath.join(scratch, name);
+  NodeFS.mkdirSync(directory, { recursive: true });
+  return directory;
+};
+
+const reset = (directory: string) => {
+  for (const entry of NodeFS.readdirSync(directory)) {
+    NodeFS.rmSync(NodePath.join(directory, entry), { recursive: true, force: true });
+  }
+};
 
 describe("parseMacCommand", () => {
   it.each([
@@ -283,7 +297,7 @@ describe("macStatusReport", () => {
 describe("a Mac the user is working on", () => {
   // Runs the remote command as the Mac would, with ioreg and agent-device stubbed.
   const onMac = (command: (paired: MacHostRecord) => string, idleSeconds: number) => {
-    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-busy-"));
+    const home = fixture("busy");
     try {
       const bin = NodePath.join(home, "bin");
       NodeFS.mkdirSync(bin);
@@ -310,7 +324,7 @@ describe("a Mac the user is working on", () => {
         : "";
       return { code: result.status, stderr: result.stderr, drove };
     } finally {
-      NodeFS.rmSync(home, { recursive: true, force: true });
+      reset(home);
     }
   };
 
@@ -378,7 +392,7 @@ describe("the app the live view follows", () => {
   });
 
   it("asks the Mac's view helper for that app's window over the one ssh connection", () => {
-    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-view-"));
+    const home = fixture("view");
     try {
       const bin = NodePath.join(home, "bin");
       NodeFS.mkdirSync(bin);
@@ -399,7 +413,7 @@ describe("the app the live view follows", () => {
         ]),
       );
     } finally {
-      NodeFS.rmSync(home, { recursive: true, force: true });
+      reset(home);
     }
   });
 });
@@ -416,7 +430,7 @@ describe("opening an app for the person to watch", () => {
     prepare: (copy: string) => void = () => undefined,
     options: { readonly stealsFront?: boolean } = {},
   ) => {
-    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-open-"));
+    const home = fixture("open");
     try {
       const bin = NodePath.join(home, "bin");
       const copy = NodePath.join(home, "ZeropsMate", "app");
@@ -459,14 +473,18 @@ describe("opening an app for the person to watch", () => {
         : "";
       return { code: result.status, stdout: result.stdout, stderr: result.stderr, opened, copy };
     } finally {
-      NodeFS.rmSync(home, { recursive: true, force: true });
+      reset(home);
     }
   };
   const buildApp = (copy: string, name: string) => {
     const macos = NodePath.join(copy, "build", `${name}.app`, "Contents", "MacOS");
     NodeFS.mkdirSync(macos, { recursive: true });
     const executable = NodePath.join(macos, name);
-    NodeFS.writeFileSync(executable, "#!/bin/sh\nwhile :; do sleep 1; done\n", { mode: 0o755 });
+    NodeFS.writeFileSync(
+      executable,
+      '#!/bin/sh\n[ -z "${MATE_TEST_READY:-}" ] || printf "ready\\n" > "$MATE_TEST_READY"\n[ -z "${MATE_TEST_HOLD:-}" ] || read -r _ < "$MATE_TEST_HOLD"\n',
+      { mode: 0o755 },
+    );
     return { app: NodeFS.realpathSync(NodePath.join(copy, "build", `${name}.app`)), executable };
   };
 
@@ -492,11 +510,27 @@ describe("opening an app for the person to watch", () => {
     let other: NodeChildProcess.ChildProcess | undefined;
     try {
       const { code } = onMac("build/Counter+ Pro.app", (copy) => {
+        const ready = [NodePath.join(copy, "counter-ready"), NodePath.join(copy, "notes-ready")];
+        const hold = [NodePath.join(copy, "counter-hold"), NodePath.join(copy, "notes-hold")];
+        NodeChildProcess.execFileSync("mkfifo", [...ready, ...hold]);
         running = NodeChildProcess.spawn(buildApp(copy, "Counter+ Pro").executable, [], {
           stdio: "ignore",
+          env: { ...process.env, MATE_TEST_READY: ready[0], MATE_TEST_HOLD: hold[0] },
         });
-        other = NodeChildProcess.spawn(buildApp(copy, "Notes").executable, [], { stdio: "ignore" });
-        NodeChildProcess.spawnSync("sleep", ["0.3"]);
+        other = NodeChildProcess.spawn(buildApp(copy, "Notes").executable, [], {
+          stdio: "ignore",
+          env: { ...process.env, MATE_TEST_READY: ready[1], MATE_TEST_HOLD: hold[1] },
+        });
+        for (const receipt of ready) {
+          const received = NodeChildProcess.spawnSync(
+            "/bin/sh",
+            ["-c", 'read -r _ < "$1"', "sh", receipt],
+            {
+              timeout: 10_000,
+            },
+          );
+          expect(received.status).toBe(0);
+        }
       });
       expect(code).toBe(0);
       expect(runsApp(running?.pid)).toBe(false);
@@ -624,7 +658,7 @@ describe("the Mate's own clicks", () => {
   const session = (
     steps: ReadonlyArray<{ readonly idle: number; readonly drovePast?: number }>,
   ) => {
-    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mac-own-"));
+    const home = fixture("own");
     try {
       const bin = NodePath.join(home, "bin");
       NodeFS.mkdirSync(bin);
@@ -633,6 +667,8 @@ describe("the Mate's own clicks", () => {
         `#!/bin/sh\necho "$@" >> "${home}/drove"\n`,
         { mode: 0o755 },
       );
+      const now = 2_000_000_000;
+      NodeFS.writeFileSync(NodePath.join(bin, "date"), `#!/bin/sh\necho ${now}\n`, { mode: 0o755 });
       return steps.map((step) => {
         NodeFS.writeFileSync(
           NodePath.join(bin, "ioreg"),
@@ -640,10 +676,7 @@ describe("the Mate's own clicks", () => {
           { mode: 0o755 },
         );
         if (step.drovePast !== undefined) {
-          NodeFS.writeFileSync(
-            NodePath.join(home, "last-drive"),
-            String(Math.floor(Date.now() / 1000) - step.drovePast),
-          );
+          NodeFS.writeFileSync(NodePath.join(home, "last-drive"), String(now - step.drovePast));
         }
         return NodeChildProcess.spawnSync(
           "/bin/sh",
@@ -652,7 +685,7 @@ describe("the Mate's own clicks", () => {
         ).status;
       });
     } finally {
-      NodeFS.rmSync(home, { recursive: true, force: true });
+      reset(home);
     }
   };
 
