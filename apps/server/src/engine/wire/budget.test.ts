@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { ConversationId, ENGINE_WIRE_BUDGETS, itemId, runId, type Item } from "@t3tools/contracts";
 
-import { bytesOf, changesFrames, cutUtf8, fitItem, frameSizer, liveFrames } from "./budget.ts";
+import { bytesOf, changesFrames, cutUtf8, fitItem, liveFrames } from "./budget.ts";
 
 const conversation = ConversationId.make("mate");
 const run = runId(conversation, 1);
@@ -117,32 +117,5 @@ describe("the wire's encoder holds records to their budget", () => {
       rebuilt += frame.text;
     }
     expect(rebuilt).toBe(text);
-  });
-});
-
-describe("a frame tried at several sizes", () => {
-  const frame = (items: ReadonlyArray<Item>) => ({
-    type: "snapshot" as const,
-    head: 9,
-    runs: [],
-    items,
-    requests: [],
-    window: { oldestOrdinal: 1, earlier: true },
-  });
-  it.each([
-    ["no records", []],
-    ["one record", [note(1, "Done.")]],
-    ["several records", [note(1, "Done."), note(2, "Shipped."), note(3, "Green.")]],
-    ["words past ASCII", [note(1, "Žluťoučký kůň 🐎"), note(2, "日本語")]],
-    ["a record cut to its budget", [fitItem(note(1, "x".repeat(40_000)))]],
-  ] as const)("is counted in the bytes it is written in, with %s", (_, items) => {
-    const sizer = frameSizer();
-    expect(sizer.bytesOf(frame(items))).toBe(bytesOf(frame(items)));
-    // A record left out takes its bytes and its comma with it.
-    if (items.length === 0) return;
-    const [first, ...rest] = items;
-    expect(sizer.bytesOf(frame(items)) - sizer.listed(first!, items.length)).toBe(
-      bytesOf(frame(rest)),
-    );
   });
 });

@@ -14,9 +14,7 @@ import {
   NOT_READ_PROCESSES,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
-  holdRoutePreview,
   readMateFlag,
-  readMateFlagOnceLive,
   projectProcessesAtom,
   projectUsageAtom,
   projectServicesAtom,
@@ -581,75 +579,7 @@ describe("readMateFlag", () => {
     expect(await settled(readMateFlag(registry, "zcp"))).toBe("unknown");
   });
 
-  it.each([
-    { title: "it comes back", back: true, flag: true },
-    { title: "it is refused", back: false, flag: "unknown" },
-  ])(
-    "a container's flag that could not be said while the organization's link was down is read again once the link is live: $title",
-    async ({ back, flag }) => {
-      const { registry, store, answer } = mounted();
-      const link = (event: object) =>
-        store.dispatch({ kind: "stream", key: linkKeys.zerops(ORG), now: 0, event } as never);
-      link({ kind: "fault", fault: { outcome: "transient", message: "socket closed" }, jitter: 0 });
-      const read = readMateFlagOnceLive(registry, "zcp");
-      expect(await settled(read)).toBe("pending");
-
-      if (back) {
-        link({ kind: "retry-due" });
-        link({ kind: "handshake" });
-        link({ kind: "baseline-committed" });
-        await Promise.resolve();
-        answer("1");
-      } else {
-        link({
-          kind: "fault",
-          fault: { outcome: "definitive-refusal", message: "refused" },
-          jitter: 0,
-        });
-      }
-
-      expect(await read).toBe(flag);
-    },
-  );
-
   it("without a mounted account, unknown", async () => {
     expect(await readMateFlag(AtomRegistry.make(), "zcp")).toBe("unknown");
-  });
-});
-
-describe("holdRoutePreview", () => {
-  it("the route's project read ahead goes on through the account's reads published again, and moves to another account's", () => {
-    const registry = AtomRegistry.make();
-    const store = makeAccountStore(registry);
-    const events: Array<string> = [];
-    const demandOf = (account: string) => (demand: { readonly listing?: string }) => {
-      events.push(`${account} hold ${demand.listing}`);
-      return () => events.push(`${account} release ${demand.listing}`);
-    };
-    const first = demandOf("a");
-    const reads = (demandDetail: ReturnType<typeof demandOf>) => ({
-      data: store.data,
-      orgId: ORG,
-      demandDetail,
-      renewHeld: () => {},
-    });
-    registry.set(accountReadsAtom, reads(first));
-    const release = holdRoutePreview(registry, "p1");
-    registry.set(accountReadsAtom, reads(first));
-    expect(events).toEqual(["a hold route-project", "a hold route-services"]);
-
-    registry.set(accountReadsAtom, reads(demandOf("b")));
-    release();
-
-    expect(events).toEqual([
-      "a hold route-project",
-      "a hold route-services",
-      "b hold route-project",
-      "b hold route-services",
-      "a release route-project",
-      "a release route-services",
-      "b release route-project",
-      "b release route-services",
-    ]);
   });
 });

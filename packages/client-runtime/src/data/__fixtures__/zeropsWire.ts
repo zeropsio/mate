@@ -13,8 +13,6 @@ export interface WireRequest {
   readonly method: "POST" | "GET";
   readonly path: string;
   readonly body?: Readonly<Record<string, unknown>>;
-  /** Sent over the session's REST client, with no receiver open (`ZeropsWire.rest`, `ZeropsWire.read`). */
-  readonly rest?: true;
 }
 
 /** Lets every forked fiber run until it waits on something outside the test. */
@@ -36,12 +34,6 @@ export interface FixtureWire {
 
 export function fixtureWire(
   answer: (request: WireRequest) => Effect.Effect<unknown, StreamFault>,
-  options: Pick<ZeropsWire, "held"> & {
-    /** Offers the session's REST reads beside the receiver. */
-    readonly rest?: boolean;
-    /** The receiver's opening — its web-socket login, its greeting — before it is open. */
-    readonly opening?: Effect.Effect<void>;
-  } = {},
 ): FixtureWire {
   const requests: WireRequest[] = [];
   let frames: Queue.Queue<unknown, StreamFault> | null = null;
@@ -69,30 +61,7 @@ export function fixtureWire(
         frames === null ? Effect.void : Effect.asVoid(Queue.fail(frames, fault)),
       ),
     wire: {
-      ...(options.held === undefined ? {} : { held: options.held }),
-      ...(options.rest === true
-        ? {
-            rest: {
-              post: (path, body) =>
-                Effect.suspend(() => {
-                  const request: WireRequest = { method: "POST", path, body, rest: true };
-                  requests.push(request);
-                  return answer(request);
-                }),
-            },
-          }
-        : {}),
-      read: (path) =>
-        Effect.suspend(() => {
-          const request: WireRequest = { method: "GET", path, rest: true };
-          requests.push(request);
-          return answer(request) as Effect.Effect<
-            { readonly status: number; readonly body: unknown },
-            StreamFault
-          >;
-        }),
       open: Effect.gen(function* () {
-        if (options.opening !== undefined) yield* options.opening;
         opens += 1;
         const queue = yield* Queue.unbounded<unknown, StreamFault>();
         frames = queue;

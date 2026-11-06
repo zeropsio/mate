@@ -164,18 +164,7 @@ function engineReadsOfRecords(key: EngineConversationKey, records: EngineRecords
       revision: { kind: "mate-link", sequence: n + 1 },
     })),
   ];
-  // A view holds the conversation: its scopes are demanded, so its records are observed.
-  const held = Object.values(engineConversationScopes(key)).reduce(
-    (account, scope) =>
-      reduceAccount(account, {
-        kind: "stream",
-        key: scope,
-        now: 0,
-        event: { kind: "demand", demanded: true },
-      }).state,
-    emptyAccount,
-  );
-  const { state } = reduceAccount(held, {
+  const { state } = reduceAccount(emptyAccount, {
     kind: "delivery",
     via: "mate-direct",
     scopes: [

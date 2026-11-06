@@ -1,4 +1,4 @@
-import { ConversationOpeningAvatar, ConversationOpeningYields } from "./ConversationOpeningStage";
+import { ConversationOpeningAvatar } from "./ConversationOpeningStage";
 import { useAtomValue } from "@effect/atom-react";
 import { environmentActivitiesAtom } from "../../zerops/mateActivityAtoms";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -314,8 +314,7 @@ function MatePill({
       type="button"
     >
       <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
-      {/* The opening stage says the Mate while it waits: its name here holds its place unsaid. */}
-      <ConversationOpeningYields>{name}</ConversationOpeningYields>
+      {name}
     </button>
   );
   // The name's hover is the subject only where no subject stands on the line.
@@ -354,9 +353,7 @@ function MatePill({
           {persona}
         </span>
       )}
-      {subjectLine === null ? null : (
-        <ConversationOpeningYields>{subjectLine}</ConversationOpeningYields>
-      )}
+      {subjectLine}
     </div>
   );
 }

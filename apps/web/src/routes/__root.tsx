@@ -15,14 +15,12 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
-  MATE_VOICE_SLOW_MS,
   type Reachability,
   reachabilityCountsDown,
   routeGatePhrase,
   selectRouteGate,
   type MateVoice,
 } from "@t3tools/client-runtime/zerops/environments";
-import { useHeldFor } from "~/zerops/useHeldFor";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Link,
@@ -235,13 +233,6 @@ function SignedInRootRouteView() {
       : `${gateInputs.projectId}:${gateInputs.serviceId}`,
   );
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
-  const conversationShown = gate.kind === "outlet" && conversation.kind === "shown";
-  // One stretch however the lost link alternates between reconnecting and retrying.
-  const linkSlow = useHeldFor(
-    conversationShown &&
-      (linkReachability?.kind === "reconnecting" || linkReachability?.kind === "retrying"),
-    MATE_VOICE_SLOW_MS,
-  );
   const voice =
     speaksFor !== null &&
     (gate.kind === "outlet" ||
@@ -253,8 +244,7 @@ function SignedInRootRouteView() {
           lastKnown,
           offlineSince,
           timestampFormat,
-          conversationShown,
-          linkSlow,
+          conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
           nowMs,
           mateName: speakingName,
         })

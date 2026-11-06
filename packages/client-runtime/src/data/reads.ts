@@ -23,13 +23,11 @@ import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { ZeropsOrganization } from "../zerops/api.ts";
 import type { DetailDemand } from "./demand.ts";
-import type { StreamState } from "./streamMachine.ts";
 import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
 import { mateVariables } from "./projections/mateVariables.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
-import { ROUTE_PROJECT, type ProjectValue } from "./families/project.ts";
-import { ROUTE_SERVICES } from "./families/service.ts";
+import type { ProjectValue } from "./families/project.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
 import { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
@@ -503,56 +501,6 @@ export function holdServiceRead(
   };
 }
 
-/**
- * Holds the route's project read ahead of the organization's listing, from outside React: its own
- * row and its services, each over plain REST (`DetailListing.ahead`), through whichever account is
- * mounted in `registry`; let go on release. What it reads is the store's like any other answer.
- */
-export function holdRoutePreview(
-  registry: AtomRegistry.AtomRegistry,
-  projectId: string,
-): () => void {
-  let held: {
-    readonly demandDetail: AccountReads["demandDetail"];
-    readonly release: () => void;
-  } | null = null;
-  const hold = (account: AccountReads | null) => {
-    // The account's reads are published again as they change; the same account's demand is the
-    // same hold, so a read under way goes on through it.
-    if (account?.demandDetail === held?.demandDetail) return;
-    const before = held;
-    held =
-      account === null
-        ? null
-        : {
-            demandDetail: account.demandDetail,
-            release: (() => {
-              const project = account.demandDetail({
-                family: "project",
-                listing: ROUTE_PROJECT,
-                ownerId: projectId,
-              });
-              const services = account.demandDetail({
-                family: "service",
-                listing: ROUTE_SERVICES,
-                ownerId: projectId,
-              });
-              return () => {
-                project();
-                services();
-              };
-            })(),
-          };
-    before?.release();
-  };
-  const unsubscribe = registry.subscribe(accountReadsAtom, hold, { immediate: true });
-  return () => {
-    unsubscribe();
-    held?.release();
-    held = null;
-  };
-}
-
 const NO_CHANGES: Readonly<Record<string, HqAppValue["changes"]>> = {};
 
 /** Each application's open changes in the organization shown, as HQ's navigation says them. */
@@ -635,41 +583,6 @@ export function readMateFlag(
     });
     if (settled) unsubscribe();
   });
-}
-
-/** The organization's Zerops link as the mounted account holds it; null without one. */
-const zeropsLinkPhase = Atom.make((get): StreamState["phase"] | null => {
-  const account = get(accountReadsAtom);
-  if (account === null || account.orgId === null) return null;
-  return get(account.data.stream(linkKeys.zerops(account.orgId))).phase;
-}).pipe(Atom.withLabel("data:zerops-link-phase"));
-
-/**
- * `readMateFlag` for a container machine, which reads its flag once: a flag that could not be
- * said while the organization's link was not live yet — still logging in, or catching up — is
- * read again once the link is live, so a Mate found before the listing (`holdRoutePreview`) is
- * not left "unknown" for its life. A link refused, or the account gone, leaves it unknown.
- */
-export async function readMateFlagOnceLive(
-  registry: AtomRegistry.AtomRegistry,
-  serviceId: string,
-): Promise<boolean | "unknown"> {
-  const before = registry.get(zeropsLinkPhase);
-  const flag = await readMateFlag(registry, serviceId);
-  if (flag !== "unknown" || before === null || before === "live") return flag;
-  const live = await new Promise<boolean>((resolve) => {
-    let unsubscribe: (() => void) | null = null;
-    let settled = false;
-    const heard = (phase: StreamState["phase"] | null) => {
-      if (settled || (phase !== null && phase !== "live" && phase !== "refused")) return;
-      settled = true;
-      unsubscribe?.();
-      resolve(phase === "live");
-    };
-    unsubscribe = registry.subscribe(zeropsLinkPhase, heard, { immediate: true });
-    if (settled) unsubscribe();
-  });
-  return live ? readMateFlag(registry, serviceId) : flag;
 }
 
 /** Account/org switching replaces dependencies; every surface shares the same project reader. */

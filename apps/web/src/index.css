@@ -13095,13 +13095,6 @@ a.message-file:focus-visible {
   pointer-events: none;
 }
 
-/* The header's name and subject, while the stage says the Mate: their place held, unseen. */
-[data-opening-header="yields"] > * {
-  opacity: 0;
-  pointer-events: none;
-}
-
-:root:has([data-conversation-opening="hand-off"]) [data-opening-header="says"] > *,
 :root:has([data-conversation-opening="hand-off"]) [data-opening-waits] > * {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
     calc(var(--duration-conversation-exit) / 2) backwards;

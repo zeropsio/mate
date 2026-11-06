@@ -552,10 +552,7 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
   const signal = parse(
     NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
   );
-  // No selection: the shards run whenever the bundle they need was built.
-  expect(signal.jobs.chat_scenarios.if).toBe(
-    "${{ !cancelled() && needs.chat_bundle.result == 'success' }}",
-  );
+  expect(signal.jobs.chat_scenarios.if).toBeUndefined();
   expect(signal.jobs.chat_scenarios.name).toMatch(/^Test Web /u);
   const commands = signal.jobs.chat_scenarios.strategy.matrix.include.map(
     (row: { command: string }) => row.command,

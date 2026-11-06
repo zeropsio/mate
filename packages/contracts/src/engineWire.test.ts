@@ -10,7 +10,6 @@ import {
   EngineCallResult,
   EngineConversationFrame,
   EngineDismissInput,
-  EngineReadRunInput,
   EngineRowsFrame,
   EngineSendInput,
   EngineSetRuntimeModeInput,
@@ -147,32 +146,6 @@ describe("an older client reads a newer engine's wire", () => {
     expect(Schema.decodeUnknownSync(EngineAnswer)({ kind: "vault", said: "put" })).toEqual({
       kind: "unknown",
       type: "vault",
-    });
-  });
-});
-
-const { tools: _named, ...readRunBeforeTools } = EngineReadRunInput.fields;
-/** A run's read as a server before `tools` decodes it. */
-const decodeReadRunBeforeTools = Schema.decodeUnknownSync(Schema.Struct(readRunBeforeTools));
-
-describe("an older server reads a newer client's request", () => {
-  // The hosted client names the tools its closed cards draw from; a Mate's server released before
-  // `tools` decodes the request as the RPC does, by the struct it knows, and reads every result.
-  it("reads a closed card's outcome request naming its tools as the whole outcome", () => {
-    const request = {
-      protocol: 1,
-      conversationId: "mate",
-      runId: run,
-      afterSeq: 0,
-      only: "outcome",
-      tools: ["zerops_deploy", "zerops_org_*"],
-    };
-    expect(decodeReadRunBeforeTools(request)).toEqual({
-      protocol: 1,
-      conversationId: "mate",
-      runId: run,
-      afterSeq: 0,
-      only: "outcome",
     });
   });
 });

@@ -4,7 +4,6 @@ import {
   EnvironmentRegistry,
   connectionAdmission,
 } from "@t3tools/client-runtime/connection";
-import { MATE_SERVER_CONFIG_SUBSCRIPTION } from "@t3tools/client-runtime/data";
 import { RecentEnvironmentDescriptorsRef } from "@t3tools/client-runtime/environment";
 import { shellSnapshotLoaderLayer } from "@t3tools/client-runtime/state/shell";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
@@ -42,8 +41,8 @@ const pageHidden = () => typeof document !== "undefined" && document.visibilityS
 
 const providedClientConnectionLayer = Layer.merge(
   Connection.layerWithOptions({
-    // The account's config feed asks with these flags, so it shares the connection's subscription.
-    ...MATE_SERVER_CONFIG_SUBSCRIPTION,
+    usageLimitSources: true,
+    usageLimitsCommand: true,
     pingTimeoutPaused: pageHidden,
   }),
   snapshotLoaderLayer,

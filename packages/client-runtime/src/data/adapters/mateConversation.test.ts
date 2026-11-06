@@ -4,7 +4,7 @@ import { AtomRegistry } from "effect/reactivity";
 import type { OrchestrationShellSnapshot } from "@t3tools/contracts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { mateShell, conversationScope } from "../projections/mateConversation.ts";
-import { conversationsListed, publishConversation } from "./mateConversation.ts";
+import { publishConversation } from "./mateConversation.ts";
 const snapshot: OrchestrationShellSnapshot = {
   snapshotSequence: 1,
   projects: [],
@@ -84,46 +84,4 @@ describe("account conversation retention", () => {
     store.close();
     registry.dispose();
   });
-});
-
-describe("conversationsListed", () => {
-  const ENGINE = { kind: "engine", protocol: 1 } as const;
-  it.each([
-    {
-      title: "its door has not said where they are read",
-      route: { kind: "unknown" } as const,
-      rows: null,
-      listed: false,
-    },
-    {
-      title: "a Mate serving no engine: its shell lists them",
-      route: { kind: "older" } as const,
-      rows: null,
-      listed: true,
-    },
-    { title: "an engine Mate before its rows are held", route: ENGINE, rows: null, listed: false },
-    {
-      title: "an engine Mate whose rows still read their first baseline",
-      route: ENGINE,
-      rows: { phase: "baselining" } as const,
-      listed: false,
-    },
-    {
-      title: "an engine Mate whose rows answered",
-      route: ENGINE,
-      rows: { phase: "live" } as const,
-      listed: true,
-    },
-    {
-      title: "an engine Mate whose rows answered and now reconnect",
-      route: ENGINE,
-      rows: { phase: "recovering", lostAt: 5 } as const,
-      listed: true,
-    },
-  ])(
-    "a conversation's absence is read off the list that names a Mate's conversations only once it answered whole: $title",
-    ({ route, rows, listed }) => {
-      expect(conversationsListed(route, rows)).toBe(listed);
-    },
-  );
 });

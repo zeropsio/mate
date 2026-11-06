@@ -40,7 +40,6 @@ import {
 import { engineCardPaging, engineRows, engineThread } from "../projections/mateEngine.ts";
 import {
   ENGINE_FORGET_AFTER_MS,
-  ENGINE_KEPT_RELEASED,
   engineProtocol,
   makeMateEngineConversations,
 } from "./mateEngine.ts";
@@ -94,8 +93,6 @@ type Pager = (request: {
   readonly before: number | null;
   readonly after?: number;
   readonly only?: "outcome";
-  /** The tools whose results it reads, where it names them. */
-  readonly tools?: ReadonlyArray<string>;
 }) => Effect.Effect<EnginePage, StreamFault>;
 
 const page = (patch: Partial<Extract<EnginePage, { _tag: "Page" }>> = {}): EnginePage =>
@@ -177,7 +174,7 @@ function rig(
           ...(at.only === undefined ? {} : { only: at.only }),
         };
         pages.push(request);
-        return pager({ ...request, ...(at.tools === undefined ? {} : { tools: at.tools }) });
+        return pager(request);
       },
       readDetail: (_key, itemId, part) => {
         details.push(`${itemId} ${part}`);
@@ -396,7 +393,7 @@ describe("an engine conversation's subscription", () => {
     }),
   );
 
-  it.live("forgets a conversation thirty minutes after its last release", () =>
+  it.live("forgets a conversation five minutes after its last release", () =>
     Effect.gen(function* () {
       const r = rig();
       const release = r.conversations.hold(ada);
@@ -414,66 +411,6 @@ describe("an engine conversation's subscription", () => {
       r.conversations.hold(ada);
       yield* settle;
       expect(r.opens.at(-1)!.after).toBeNull();
-      r.close();
-    }),
-  );
-
-  it.live(
-    "keeps the six conversations left most recently; leaving a seventh forgets the one left longest ago",
-    () =>
-      Effect.gen(function* () {
-        const r = rig();
-        const keys = Array.from(
-          { length: ENGINE_KEPT_RELEASED + 1 },
-          (_, index): EngineConversationKey => ({
-            environmentId: ENV,
-            conversationId: `thread-${index}`,
-          }),
-        );
-        for (const key of keys) {
-          const release = r.conversations.hold(key);
-          yield* settle;
-          yield* r.send(snapshot({ header: engineHeader(key.conversationId) }), synchronized(12));
-          release();
-          yield* settle;
-        }
-        expect(r.conversations.cursor(keys[0]!)).toBeNull();
-        for (const key of keys.slice(1))
-          expect(r.conversations.cursor(key)).toEqual({ epoch: 4, origin: "origin-a", seq: 12 });
-        // Held again, a kept one is no longer among those left: it never counts against the rest.
-        r.conversations.hold(keys[1]!);
-        yield* settle;
-        expect(r.opens.at(-1)!.after).toEqual({ epoch: 4, origin: "origin-a", seq: 12 });
-        expect(r.conversations.cursor(keys[2]!)).not.toBeNull();
-        r.close();
-      }),
-  );
-
-  it.live("a conversation held again after it was left takes a reset whole", () =>
-    Effect.gen(function* () {
-      const r = rig();
-      const release = r.conversations.hold(ada);
-      yield* settle;
-      yield* r.send(snapshot(), synchronized(12));
-      release();
-      yield* settle;
-      r.conversations.hold(ada);
-      yield* settle;
-      expect(r.opens.at(-1)!.after).toEqual({ epoch: 4, origin: "origin-a", seq: 12 });
-      // Painted from what it held while the Mate answers.
-      expect(r.item(`${run1}/i/2`).kind).toBe("known");
-      yield* r.send(
-        { type: "reset", reason: "gap" },
-        snapshot({
-          head: 4_000,
-          runs: [engineRun("thread-ada", 2, { rev: 4_000 })],
-          items: [personItem(run2, 1, "Much later", { rev: 4_000 })],
-        }),
-        synchronized(4_000),
-      );
-      expect(r.item(`${run1}/i/2`).kind).toBe("unknown");
-      expect(r.item(`${run2}/i/1`)).toMatchObject({ value: { text: "Much later" } });
-      expect(r.conversations.cursor(ada)).toEqual({ epoch: 4, origin: "origin-a", seq: 4_000 });
       r.close();
     }),
   );
@@ -661,69 +598,6 @@ describe("an engine conversation's older pages", () => {
       ]);
       r.close();
     }),
-  );
-
-  // A zcp Mate's reload read every Zerops result before a closed card drew (434 KB a page); its
-  // looks around and its logs are drawn only as its card opens, and read then, whole.
-  it.live(
-    "reads a closed card's results of the tools it draws alone, the rest whole as its card opens",
-    () =>
-      Effect.gen(function* () {
-        const zerops = (ordinal: number, tool: string, resultText: string) =>
-          callItem(run1, ordinal, {
-            step: "mcp",
-            tool: { name: `mcp__zerops__${tool}`, server: "zerops" },
-            shows: { toolName: `mcp__zerops__${tool}`, input: {} },
-            result: { toolName: tool, resultText },
-          } as never);
-        const items = [
-          personItem(run1, 1, "Deploy the api"),
-          zerops(2, "zerops_discover", JSON.stringify({ services: ["api", "db"] })),
-          zerops(3, "zerops_deploy", JSON.stringify({ status: "DEPLOYED" })),
-          zerops(4, "zerops_logs", JSON.stringify({ lines: ["listening on 3000"] })),
-          noteItem(run1, 5, "Deployed."),
-        ];
-        // The server's answer: with `tools`, a call's result only of the tools they name.
-        const r = rig(({ after, only, tools }) =>
-          Effect.succeed(
-            page({
-              items: items.filter(
-                (item) =>
-                  item.seq > (after ?? 0) &&
-                  (only === undefined ||
-                    (item.kind === "call" &&
-                      item.result !== undefined &&
-                      (tools === undefined || tools.includes(item.result.toolName)))),
-              ),
-            }),
-          ),
-        );
-        r.conversations.hold(ada);
-        yield* settle;
-        yield* r.send(
-          snapshot({
-            runs: [run(1, 5, {}, { mcp: 3 })],
-            items: [items[0]!, items[4]!],
-          }),
-          synchronized(12),
-        );
-        const held = () =>
-          [...r.read().index("engineItemsOfRun", engineFactId(ENV, run1))].flatMap((id) => {
-            const fact = r.read().fact("mateEngineItem", id);
-            return fact.kind === "known" && fact.value.kind === "call"
-              ? [[fact.value.result?.toolName, fact.value.result?.resultText]]
-              : [];
-          });
-        expect(held()).toEqual([["zerops_deploy", '{"status":"DEPLOYED"}']]);
-        expect(r.conversations.readRunPage(ada, run1, "later")).toBe(true);
-        yield* settle;
-        expect(held().toSorted()).toEqual([
-          ["zerops_deploy", '{"status":"DEPLOYED"}'],
-          ["zerops_discover", '{"services":["api","db"]}'],
-          ["zerops_logs", '{"lines":["listening on 3000"]}'],
-        ]);
-        r.close();
-      }),
   );
 
   it.live("reads a run longer than a page back page by page", () =>

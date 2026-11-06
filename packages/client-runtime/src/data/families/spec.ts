@@ -132,17 +132,10 @@ export interface DetailListing {
    * member reads it again while a screen holds it (`holdStandingDemands`).
    */
   readonly member?: true;
-  /**
-   * A preview of what the family's own scope will say of one owner — the route's project, before
-   * the organization's listing lands: read once per hold over plain REST (`ZeropsWire.read`),
-   * outside the receiver, so neither its socket's login nor its family's registration holds it
-   * back. Its rows carry no revision, so any row the family's own scope reads replaces them.
-   */
-  readonly ahead?: true;
   /** Zerops: the `GET` whose answer is the listing's baseline, and the rows in that answer. */
   readonly zerops: {
     readonly path: (owner: ScopeOwner) => string;
-    readonly items: (answer: unknown, owner?: ScopeOwner) => ReadonlyArray<unknown> | undefined;
+    readonly items: (answer: unknown) => ReadonlyArray<unknown> | undefined;
     /** Try a project-filtered list/update pair before falling back to the GET. */
     readonly subscription?: (owner: ScopeOwner) => SearchTerms;
     /** Owner evidence that refreshes a GET fallback after its subscription was refused. */

@@ -59,11 +59,6 @@ export interface RpcSessionOptions {
   /** This client answers /usage-limits itself, so the server may advertise it. */
   readonly usageLimitsCommand?: boolean;
   /**
-   * This client decodes `mateUpdate` config events. The connection's one config subscription
-   * then carries them, so the account's config feed shares it instead of opening a second.
-   */
-  readonly mateUpdate?: boolean;
-  /**
    * True while this client's own throttling may hold pongs back (a hidden browser tab runs its
    * timers once a minute), so missed pongs then never close the socket. The person's return is
    * checked by the next pings and the connection's visible-wake probe.
@@ -153,7 +148,6 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
   const serverConfigInput: ServerConfigSubscriptionInput = {
     ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
     ...(options.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
-    ...(options.mateUpdate === true ? { mateUpdate: true } : {}),
   };
 
   const connect = Effect.fnUntraced(function* (connection: PreparedConnection) {

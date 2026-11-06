@@ -156,9 +156,6 @@ const organization = (orgId: string) => [{ name: "clientId", operator: "eq", val
 const ClientRow = Schema.Struct({ clientId: Schema.optionalKey(Schema.NullOr(Schema.String)) });
 const decodeClient = Schema.decodeUnknownOption(ClientRow);
 
-/** The route's project's services read ahead of the organization's listing. */
-export const ROUTE_SERVICES = "route-services";
-
 export const serviceFamily: FamilySpec<"service"> = {
   family: "service",
   authority: "zerops",
@@ -190,32 +187,6 @@ export const serviceFamily: FamilySpec<"service"> = {
           typeof answer === "object" && answer !== null && "id" in answer ? [answer] : undefined,
       },
     },
-    {
-      // The route's project's services, read ahead of the organization's listing
-      // (`DetailListing.ahead`): where the route's Mate is served, while the platform's socket
-      // logs in and the organization's whole search is under way.
-      suffix: ROUTE_SERVICES,
-      leaving: "absent-unverified",
-      ahead: true,
-      zerops: {
-        path: ({ ownerId }) =>
-          `/project/${encodeURIComponent(ownerId ?? "")}/service-stack?limit=500`,
-        // Answered under `list`, not the search's `items` (measured 2026-09-18,
-        // `listProjectServices`); each row is the project's, named or not.
-        items: (answer, owner) => {
-          if (typeof answer !== "object" || answer === null) return undefined;
-          const list =
-            "list" in answer && Array.isArray(answer.list)
-              ? answer.list
-              : "items" in answer && Array.isArray(answer.items)
-                ? answer.items
-                : undefined;
-          return list?.map((row: unknown) =>
-            typeof row === "object" && row !== null ? { projectId: owner?.ownerId, ...row } : row,
-          );
-        },
-      },
-    },
   ],
   zerops: {
     entity: "service-stack",
@@ -240,7 +211,3 @@ export const serviceFamily: FamilySpec<"service"> = {
 };
 
 export const servicesScope = (orgId: string): ScopeKey => scopeOf(serviceFamily, orgId);
-
-/** The route's project's services, read ahead of the organization's listing. */
-export const routeServicesScope = (orgId: string, projectId: string): ScopeKey =>
-  `zerops:${orgId}:${ROUTE_SERVICES}:${projectId}`;

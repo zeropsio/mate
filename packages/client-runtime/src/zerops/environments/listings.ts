@@ -24,13 +24,7 @@ import type { ProjectValue } from "../../data/families/project.ts";
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
 import type { OrganizationProjects } from "../../data/projections/projects.ts";
 import type { ProjectServices } from "../../data/projections/services.ts";
-import { listedProject } from "../../data/projections/projects.ts";
-import {
-  accountReadsAtom,
-  projectProcessesAtom,
-  projectServicesAtom,
-  shownProjectsAtom,
-} from "../../data/reads.ts";
+import { projectProcessesAtom, projectServicesAtom, shownProjectsAtom } from "../../data/reads.ts";
 import type { ZeropsService } from "../api.ts";
 
 import type { Freshness, Known } from "../knowledge/known.ts";
@@ -38,7 +32,6 @@ import {
   addressFactsOf,
   arrivalEnd,
   candidateListing,
-  heldCandidates,
   NO_ADDRESS_MEMORY,
   projectCandidates,
   rememberAddresses,
@@ -291,71 +284,3 @@ export const mateListingsAtom = (() => {
   });
   return atom;
 })();
-
-/** The route's project as its reads ahead of the listing have it: its rows, in its organization. */
-export interface RoutePreview {
-  readonly organizationId: string;
-  readonly rows: ReadonlyArray<CandidateRow>;
-}
-
-/**
- * The route's project as the store holds it from its reads ahead of the organization's listing
- * (`holdRoutePreview`), or as the listing holds it, whichever came: its rows, by
- * `projectCandidates`' rules, once its own row is known in the organization shown and — for an
- * active project — its services are; null before. A project another organization owns is none.
- */
-export const routePreviewAtom = Atom.family((projectId: string) =>
-  Atom.make((get): RoutePreview | null => {
-    const account = get(accountReadsAtom);
-    if (account === null || account.orgId === null) return null;
-    const orgId = account.orgId;
-    const project = get(account.data.project(listedProject, { orgId, projectId }));
-    if (project === null || project.clientId !== orgId) return null;
-    const services = get(projectServicesAtom(projectId));
-    if (project.status === "ACTIVE" && services.services === undefined) return null;
-    const nowMs = systemExchangeClock.now().wall;
-    return {
-      organizationId: orgId,
-      rows: projectCandidates(project, () => knownServices(services, nowMs)),
-    };
-  }).pipe(Atom.withLabel(`zerops:route-preview:${projectId}`)),
-);
-
-/** Whether a listing holds the project's rows as read: its services, not a placeholder. */
-export const listsProjectRows = (
-  listings: ReadonlyArray<OrganizationListing>,
-  projectId: string,
-): boolean =>
-  listings.some(({ listing }) =>
-    heldCandidates(listing).rows.some(
-      (row) => row.project.id === projectId && row.presence === "known",
-    ),
-  );
-
-/**
- * The listings with the route's project read ahead of them (`routePreviewAtom`), until a listing
- * holds that project's rows itself: one more listing, of that project alone, partial — it
- * settles no absence — whose rows carry the same keys the organization's listing will give them,
- * so the Mate's target is the same one before and after.
- */
-export function withRoutePreview(
-  listings: ReadonlyArray<OrganizationListing>,
-  preview: RoutePreview | null,
-): ReadonlyArray<OrganizationListing> {
-  const projectId = preview?.rows[0]?.project.id;
-  if (preview === null || projectId === undefined || listsProjectRows(listings, projectId))
-    return listings;
-  return [
-    ...listings,
-    {
-      organizationId: preview.organizationId,
-      listing: {
-        state: "known",
-        value: preview.rows,
-        asOf: { ordinal: 0, atMs: 0 },
-        coverage: "partial",
-        freshness: { kind: "revalidating", sinceMs: 0 },
-      },
-    },
-  ];
-}

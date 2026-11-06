@@ -16,7 +16,6 @@ import {
 import { resolveThreadSyncPhase } from "../threadSync";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
-import { Atom } from "effect/reactivity";
 
 import { SidebarInset } from "~/components/ui/sidebar";
 import { MateOpeningView } from "~/components/zerops/MateLinkStage";
@@ -62,9 +61,6 @@ function ChatThreadRouteView() {
     serverThreadDetailExists: serverThreadDetail !== null,
     serverThreadDetailDeleted: serverThreadStatus === "deleted",
     draftThreadExists,
-    threadsListed: useAtomValue(
-      threadRef === null ? NOT_LISTED : environmentShell.threadsListedAtom(threadRef.environmentId),
-    ),
   });
   const threadSyncPhase = resolveThreadSyncPhase({
     detailExists: serverThreadDetail !== null,
@@ -163,7 +159,6 @@ function ChatThreadRouteView() {
 }
 
 const NO_ENVIRONMENT = EnvironmentId.make("none");
-const NOT_LISTED = Atom.make(false).pipe(Atom.withLabel("thread-route:not-listed"));
 
 /** Whether `ms` has passed since `key` began to be waited on; a new key (or none) starts over. */
 function usePatienceSpent(key: string | null, ms: number): boolean {

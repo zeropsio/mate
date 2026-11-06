@@ -28,8 +28,7 @@ const PONG_DEADLINE_MS = 8_000;
 export type ZeropsWireClient = Pick<
   ZeropsApiClient,
   "baseUrl" | "exchangeWebSocketToken" | "requestData" | "renewHeldSession"
-> &
-  Partial<Pick<ZeropsApiClient, "verifiedUser">>;
+>;
 
 const transient = (message: string): StreamFault => ({ outcome: "transient", message });
 
@@ -141,35 +140,7 @@ export function makeZeropsWire(options: {
       }),
     });
 
-  /** The owner's answer to "gone or not yours?" is a status, not a failure. */
-  const get = (path: string) =>
-    request(path, { method: "GET" }).pipe(
-      Effect.map((body) => ({ status: 200, body })),
-      Effect.catch(({ status, fault }) =>
-        status === 404 || status === 403
-          ? Effect.succeed({ status, body: null })
-          : Effect.fail(fault),
-      ),
-    );
-
-  /** The verified answer already handed out: it answers one first read, never a later one. */
-  let heldTaken: unknown = null;
   return {
-    // Verifying the session read `/user/info`; that answer is the account's, for this session only,
-    // and for its first reader only: a later read may follow our own write.
-    held: (path) => {
-      if (path !== "/user/info") return undefined;
-      const verified = client.verifiedUser?.();
-      if (verified == null || verified.user === heldTaken) return undefined;
-      heldTaken = verified.user;
-      return { body: verified.user, atMs: verified.atMs };
-    },
-    rest: {
-      post: (path, body) =>
-        request(path, { method: "POST", body }).pipe(Effect.mapError(({ fault }) => fault)),
-    },
-    // The session's REST client alone: no web-socket login, no receiver.
-    read: get,
     open: Effect.gen(function* () {
       const id = yield* receiverId;
       const { webSocketToken } = yield* Effect.tryPromise({
@@ -224,7 +195,16 @@ export function makeZeropsWire(options: {
         frames: Stream.fromQueue(frames),
         post: (path, body) =>
           request(path, { method: "POST", body }).pipe(Effect.mapError(({ fault }) => fault)),
-        get,
+        // The owner's answer to "gone or not yours?" is a status, not a failure.
+        get: (path) =>
+          request(path, { method: "GET" }).pipe(
+            Effect.map((body) => ({ status: 200, body })),
+            Effect.catch(({ status, fault }) =>
+              status === 404 || status === 403
+                ? Effect.succeed({ status, body: null })
+                : Effect.fail(fault),
+            ),
+          ),
       };
     }),
   };

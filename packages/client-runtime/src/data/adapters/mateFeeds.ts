@@ -20,7 +20,6 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { Atom } from "effect/reactivity";
 import * as HttpClient from "effect/http/HttpClient";
-import { RpcClientError } from "effect/rpc";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
 import { EnvironmentRegistry } from "../../connection/registry.ts";
@@ -46,34 +45,6 @@ const isHttpDenied = Schema.is(
 );
 const isAuthorization = Schema.is(EnvironmentAuthorizationError);
 const isUndecodable = Schema.is(CrewFrameUndecodable);
-const isRpcClientError = Schema.is(RpcClientError.RpcClientError);
-
-/**
- * The config feed's input. The hosted client opens its connections with the same flags, so the
- * feed reads the connection's own subscription (`RpcSession.subscribeServerConfig`).
- */
-export const MATE_SERVER_CONFIG_SUBSCRIPTION = {
-  usageLimitSources: true,
-  usageLimitsCommand: true,
-  mateUpdate: true,
-} as const;
-
-/**
- * The shared config subscription says every end as a lost transport, so its other readers wait
- * for the next session; the refusal under it stays a refusal for this feed.
- */
-function refusalBehindShared(cause: Cause.Cause<unknown>): Cause.Cause<unknown> {
-  const error = Cause.findErrorOption(cause);
-  if (
-    Option.isNone(error) ||
-    !isRpcClientError(error.value) ||
-    error.value.reason._tag !== "RpcClientDefect" ||
-    !Cause.isCause(error.value.reason.cause)
-  )
-    return cause;
-  const origin = Cause.findErrorOption(error.value.reason.cause);
-  return Option.isSome(origin) && isAuthorization(origin.value) ? Cause.fail(origin.value) : cause;
-}
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 /**
@@ -199,26 +170,29 @@ export function makeMateFeedWire(
                   let values: Stream.Stream<MateFeedValues[keyof MateFeedValues], unknown>;
                   switch (key.family) {
                     case "mateServerConfig":
-                      // The connection's own config subscription, replayed from its current
-                      // snapshot: a runtime opened with this input sends one subscription per
-                      // socket, not one for the connection and another for this feed.
-                      values = session.value
-                        .subscribeServerConfig(MATE_SERVER_CONFIG_SUBSCRIPTION)
-                        .pipe(
-                          Stream.catchCause((cause) =>
-                            Stream.failCause(refusalBehindShared(cause)),
+                      values = Stream.concat(
+                        Stream.fromEffect(session.value.initialConfig).pipe(
+                          Stream.map(
+                            (config) => ({ version: 1, type: "snapshot", config }) as const,
                           ),
-                          Stream.mapAccum(
-                            () =>
-                              Option.none<
-                                import("../../state/serverConfigProjection.ts").ServerConfigProjection
-                              >(),
-                            (current, event) => {
-                              const next = applyServerConfigProjection(current, event);
-                              return [next, Option.toArray(next)] as const;
-                            },
-                          ),
-                        );
+                        ),
+                        client[WS_METHODS.subscribeServerConfig]({
+                          usageLimitSources: true,
+                          usageLimitsCommand: true,
+                          mateUpdate: true,
+                        }),
+                      ).pipe(
+                        Stream.mapAccum(
+                          () =>
+                            Option.none<
+                              import("../../state/serverConfigProjection.ts").ServerConfigProjection
+                            >(),
+                          (current, event) => {
+                            const next = applyServerConfigProjection(current, event);
+                            return [next, Option.toArray(next)] as const;
+                          },
+                        ),
+                      );
                       break;
                     case "mateWelcome":
                       values = client[WS_METHODS.subscribeServerLifecycle]({}).pipe(

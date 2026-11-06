@@ -23,11 +23,9 @@ export type ThreadRouteRenderState = "loading" | "ready" | "missing";
 
 /**
  * The thread gate (DESIGN §4.8): the thread is missing only when its environment's shell is
- * `live` and lacks it while the list that would name it has answered whole, or when the server
- * deleted its detail. A shell that is empty, cached or still synchronizing proves nothing absent,
- * nor does a live shell before an engine Mate's conversation rows first answer — the rows, not
- * the shell, list its conversations — so the route waits on its environment's reachability,
- * which the route gate above it shows.
+ * `live` and lacks it, or when the server deleted its detail. A shell that is empty, cached or
+ * still synchronizing proves nothing absent, so the route waits on its environment's
+ * reachability, which the route gate above it shows.
  */
 export function resolveThreadRouteRenderState(input: {
   shell: EnvironmentShellStatus;
@@ -35,8 +33,6 @@ export function resolveThreadRouteRenderState(input: {
   serverThreadDetailExists: boolean;
   serverThreadDetailDeleted: boolean;
   draftThreadExists: boolean;
-  /** The list naming the environment's conversations has answered whole (`threadsListedAtom`). */
-  threadsListed: boolean;
 }): ThreadRouteRenderState {
   if (input.serverThreadDetailExists || input.draftThreadExists) {
     return "ready";
@@ -44,9 +40,7 @@ export function resolveThreadRouteRenderState(input: {
   if (input.serverThreadDetailDeleted) {
     return "missing";
   }
-  return input.shell === "live" && input.threadsListed && !input.serverThreadShellExists
-    ? "missing"
-    : "loading";
+  return input.shell === "live" && !input.serverThreadShellExists ? "missing" : "loading";
 }
 
 /**

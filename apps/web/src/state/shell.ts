@@ -21,8 +21,6 @@ export const shellEnvironment = createShellEnvironmentAtoms(connectionAtomRuntim
 const conversation = createAccountConversationAtoms(connectionAtomRuntime);
 export const environmentShell = {
   stateAtom: conversation.shellStateAtom,
-  /** Whether the list naming the environment's conversations has answered whole. */
-  threadsListedAtom: conversation.threadsListedAtom,
   stateValueAtom: Atom.family((environmentId: EnvironmentId) =>
     Atom.make((get) =>
       Option.getOrElse(AsyncResult.value(get(conversation.shellStateAtom(environmentId))), () => ({

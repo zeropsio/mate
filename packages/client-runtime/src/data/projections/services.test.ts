@@ -9,7 +9,7 @@ import {
   pastGrace,
 } from "../__fixtures__/account.ts";
 import { projectsScope } from "../families/project.ts";
-import { routeServicesScope, servicesScope } from "../families/service.ts";
+import { servicesScope } from "../families/service.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
@@ -182,60 +182,4 @@ describe("projectsServices", () => {
       ),
     ).toEqual({ p1: ["db", "zcp"], p2: ["web"], p3: undefined });
   });
-});
-
-describe("the route's project's services read ahead of the listing", () => {
-  const AHEAD = routeServicesScope(ORG, "p1");
-  const readAhead = (ids: ReadonlyArray<string>): ReadonlyArray<AccountInput> => [
-    { kind: "baseline-begin", scope: AHEAD, generation: 0 },
-    {
-      kind: "baseline-commit",
-      scope: AHEAD,
-      generation: 0,
-      via: "zerops-read",
-      members: ids,
-      rows: ids.map((id) => ({
-        family: "service",
-        id,
-        value: serviceValue({ id, projectId: "p1" }),
-        revision: { kind: "zerops", version: null },
-      })),
-    },
-  ];
-  const roster = (): ReadonlyArray<AccountInput> =>
-    liveZerops({ running: [], projects: [{ id: "p1" }] }).filter(
-      (input) => !("scope" in input) || input.scope !== SCOPE,
-    );
-  const ids = (state: AccountState) =>
-    projectServices
-      .derive(readsOfState(state), { orgId: ORG, projectId: "p1" })
-      .services?.map(({ id }) => id);
-
-  it("answer for the project until the organization's listing reads it", () => {
-    expect(ids(apply(emptyAccount, [...roster(), ...readAhead(["s1", "s2"])]))).toEqual([
-      "s1",
-      "s2",
-    ]);
-  });
-
-  it.each([
-    { title: "still held", released: false },
-    { title: "let go before", released: true },
-  ])(
-    "a service read ahead that the organization's whole listing lacks is no longer the project's: $title",
-    ({ released }) => {
-      const state = apply(emptyAccount, [
-        ...roster(),
-        ...readAhead(["s1", "s2"]),
-        ...(released ? [{ kind: "release", scopes: [AHEAD], now: 0 } as const] : []),
-        ...liveZerops({
-          running: [],
-          projects: [{ id: "p1" }],
-          services: [{ id: "s1", projectId: "p1" }],
-        }),
-      ]);
-
-      expect(ids(state)).toEqual(["s1"]);
-    },
-  );
 });
