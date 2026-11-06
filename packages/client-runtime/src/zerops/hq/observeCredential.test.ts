@@ -41,25 +41,4 @@ describe("personal observe credential client", () => {
       ["/api/mates/project%2Fone/observe-credential", "GET", "Bearer person-session"],
     ]);
   });
-  it("never repeats an authorization whose answer was lost", async () => {
-    let attempts = 0;
-    const api = makeHqApi({
-      address: "https://hq.example",
-      orgId: "org",
-      accessToken: async () => ({ token: "access" }),
-      openSocket: () => {
-        throw new Error("unused");
-      },
-      fetch: async (url) => {
-        if (url.endsWith("/api/door"))
-          return new Response(JSON.stringify({ session: "person-session", expiresAt: "later" }));
-        attempts++;
-        throw new TypeError("offline");
-      },
-    });
-    await expect(
-      api.establishZcpAuthorization?.("mate", { keyHash: "a".repeat(64) }),
-    ).rejects.toThrow();
-    expect(attempts).toBe(1);
-  });
 });

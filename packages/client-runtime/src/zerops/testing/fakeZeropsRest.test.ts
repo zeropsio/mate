@@ -1,5 +1,4 @@
 import { describe, expect, it } from "@effect/vitest";
-import { vi } from "vite-plus/test";
 
 import { ZeropsApiClient, ZeropsApiError, type ZeropsUser } from "../api.ts";
 import { makeHarnessBrowser } from "./browserTabs.ts";
@@ -186,12 +185,26 @@ describe("FakeZeropsRest", () => {
 
   it("holds a round's requests until the test settles them", async () => {
     const rest = platform();
-    const client = clientOf(rest);
+    const bothStarted = Promise.withResolvers<void>();
+    const failureStarted = Promise.withResolvers<void>();
+    let requests = 0;
+    const observed = {
+      ...rest,
+      fetch: (...args: Parameters<typeof rest.fetch>) => {
+        const response = rest.fetch(...args);
+        requests += 1;
+        if (requests === 2) bothStarted.resolve();
+        if (requests === 3) failureStarted.resolve();
+        return response;
+      },
+    };
+    const client = clientOf(observed);
     const round = rest.hold("GET /user/info");
 
     const first = client.fetchUser();
-    const second = failureOf(clientOf(rest).fetchUser());
-    await vi.waitFor(() => expect(round.waiting()).toBe(2));
+    const second = failureOf(clientOf(observed).fetchUser());
+    await bothStarted.promise;
+    expect(round.waiting()).toBe(2);
 
     round.release();
     await expect(first).resolves.toEqual(person);
@@ -199,7 +212,8 @@ describe("FakeZeropsRest", () => {
 
     const failing = rest.hold("GET /user/info");
     const failed = failureOf(client.fetchUser());
-    await vi.waitFor(() => expect(failing.waiting()).toBe(1));
+    await failureStarted.promise;
+    expect(failing.waiting()).toBe(1);
     failing.fail(503);
     await expect(failed).resolves.toBe("server");
     await expect(client.fetchUser()).resolves.toEqual(person);
@@ -207,14 +221,22 @@ describe("FakeZeropsRest", () => {
 
   it("hangs a request until its caller aborts it", async () => {
     const rest = platform();
-    const client = clientOf(rest);
+    const started = Promise.withResolvers<void>();
+    const observed = {
+      ...rest,
+      fetch: (...args: Parameters<typeof rest.fetch>) => {
+        const response = rest.fetch(...args);
+        started.resolve();
+        return response;
+      },
+    };
+    const client = clientOf(observed);
     rest.hang("GET /project/p1");
     const abort = new AbortController();
 
     const pending = failureOf(client.fetchProject("p1", abort.signal));
-    await vi.waitFor(() =>
-      expect(rest.requests().some((request) => request.route === "GET /project/p1")).toBe(true),
-    );
+    await started.promise;
+    expect(rest.requests().some((request) => request.route === "GET /project/p1")).toBe(true);
     abort.abort();
 
     await expect(pending).resolves.toBe("network");
