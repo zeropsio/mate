@@ -18,11 +18,14 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useResizeDrag } from "~/hooks/useResizeDrag";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { getLocalStorageItem, setLocalStorageItem } from "~/hooks/useLocalStorage";
-import { resolveSidebarState, type ResponsiveSidebarState } from "./sidebarState";
+import { writeBrowserStorage } from "~/lib/storage";
+import {
+  resolveSidebarState,
+  type ResponsiveSidebarState,
+  SIDEBAR_STATE_STORAGE_KEY,
+} from "./sidebarState";
 import * as Schema from "effect/Schema";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "calc(100vw - var(--spacing(3)))";
 const SIDEBAR_WIDTH_ICON = "3rem";
@@ -100,16 +103,17 @@ function useSidebarVisibility() {
 }
 
 /**
- * Whether the menu was left open, as the cookie its toggle writes says (`setOpen`): open where it
- * says nothing. The first frame reads it too (index.html), so a menu left closed comes back as the
+ * Whether the menu was left open, as its toggle stored it (`setOpen`): open where nothing says
+ * otherwise. The first frame reads it too (index.html), so a menu left closed comes back as the
  * rail, not open.
  */
 export function readSidebarOpen(): boolean {
-  if (typeof document === "undefined") return true;
-  const entry = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith(`${SIDEBAR_COOKIE_NAME}=`));
-  return entry?.slice(SIDEBAR_COOKIE_NAME.length + 1) !== "false";
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY) !== "false";
+  } catch {
+    return true;
+  }
 }
 
 function SidebarProvider({
@@ -133,7 +137,7 @@ function SidebarProvider({
   const [_open, _setOpen] = React.useState(defaultOpen);
   const open = openProp ?? _open;
   const setOpen = React.useCallback(
-    async (value: boolean | ((value: boolean) => boolean)) => {
+    (value: boolean | ((value: boolean) => boolean)) => {
       const openState = typeof value === "function" ? value(open) : value;
       if (setOpenProp) {
         setOpenProp(openState);
@@ -141,13 +145,11 @@ function SidebarProvider({
         _setOpen(openState);
       }
 
-      // This sets the cookie to keep the sidebar state.
-      await cookieStore.set({
-        expires: Date.now() + SIDEBAR_COOKIE_MAX_AGE * 1000,
-        name: SIDEBAR_COOKIE_NAME,
-        path: "/",
-        value: String(openState),
-      });
+      try {
+        writeBrowserStorage(window.localStorage, SIDEBAR_STATE_STORAGE_KEY, String(openState));
+      } catch {
+        // Storage refused: the menu stays as set until the page goes.
+      }
     },
     [setOpenProp, open],
   );
