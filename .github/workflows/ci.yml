@@ -186,7 +186,6 @@ jobs:
       test_server: ${{ steps.blame.outputs.test_server }}
       state_smoke: ${{ steps.state_smoke_plan.outputs.state_smoke }}
       state_smoke_selection: ${{ steps.state_smoke_plan.outputs.state_smoke_selection }}
-      selection_manifest: ${{ steps.state_smoke_plan.outputs.selection_manifest || steps.blame.outputs.selection_manifest }}
       node_version: ${{ steps.node.outputs.version }}
     steps:
       - name: Reject invalid mate-hq pin
@@ -286,7 +285,6 @@ jobs:
         env:
           MATE_SCENARIO_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
           MATE_STATE_SMOKE_SHARDS: ${{ steps.blame.outputs.state_smoke_shards }}
-          MATE_CI_SELECTION: ${{ steps.blame.outputs.selection_manifest }}
         run: node scripts/state-smoke.ts --plan --base "$MATE_SCENARIO_BASE" --shards "$MATE_STATE_SMOKE_SHARDS"
 
   scenario_bundle:
@@ -861,7 +859,6 @@ jobs:
       MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/conformance/scripts/test-hq.ts
       MATE_HQ_PREFLIGHT_SHA: ${{ needs.scenario_bundle.outputs.hq_ref }}
       MATE_SIGNAL_REPORT: state-smoke-reports/${{ matrix.shard }}.json
-      MATE_CI_SELECTION: ${{ needs.selection.outputs.selection_manifest }}
     steps:
       - name: Require the scenario bundle producer to succeed
         env:
@@ -1320,7 +1317,6 @@ jobs:
             /apps/mobile/package.json
             /apps/desktop/package.json
             /packages/*/package.json
-            /scripts/ci-blame.ts
           sparse-checkout-cone-mode: false
 
       - name: Setup Node
@@ -1334,7 +1330,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BEFORE_SHA: ${{ github.event.before }}
-          MATE_CI_SELECTION: ${{ needs.selection.outputs.selection_manifest }}
         run: |
           set -uo pipefail
 
@@ -1380,8 +1375,48 @@ jobs:
           fi
 
           paths=$(tr '\t' '\n' <<< "$rows")
-          printf '%s\n' "$paths" | node scripts/ci-blame.ts --areas \
-            || fail_open "Could not resolve CI selection or native client dependencies."
+
+          gate() {
+            local area="$1" pattern="$2"
+            if grep -qE "$pattern" <<< "$paths"; then
+              echo "${area}: changed"
+              grep -m 20 -E "$pattern" <<< "$paths" | sed 's/^/  /'
+              echo "${area}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "${area}: unchanged"
+              echo "${area}=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          # What every client builds on: the workspace manifests and toolchain
+          # config, this workflow, and the packages the clients import. The
+          # clients never import apps/server; they meet it over the contracts.
+          shared='^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|vite\.config\.ts|\.github/workflows/ci\.yml)$|^packages/(contracts|shared|client-runtime)/'
+
+          # Derive imported workspace paths from the apps' manifests. Renamed
+          # paths participate above, so removing an input also selects the jobs.
+          native_packages=$(node --input-type=module <<'NODE'
+          import { readFileSync, globSync } from 'node:fs';
+          const manifest = (path) => JSON.parse(readFileSync(`${path}/package.json`, 'utf8'));
+          const imports = new Set(['apps/mobile', 'apps/desktop'].flatMap((path) => {
+            const pkg = manifest(path);
+            return Object.keys({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.optionalDependencies });
+          }));
+          const paths = globSync('packages/*/package.json').map((path) => path.slice(0, -'/package.json'.length));
+          process.stdout.write(paths.filter((path) => imports.has(manifest(path).name)).map((path) => `^${path}/`).join('|'));
+          NODE
+          ) || fail_open "Could not resolve native client dependencies."
+          gate native_clients "^apps/(mobile|desktop)/${native_packages:+|${native_packages}}"
+
+          # The bundle feeds every scenario area, all of which run real HQ Core.
+          gate chat "${shared}|^apps/(server|web)/|^packages/(effect-codex-app-server|effect-acp)/|^scripts/(chat-gate|gate-changed|test-postgres|test-ports)"
+
+          if [[ -n "${PR_NUMBER}" ]]; then
+            gate resource_monitor '^native/resource-monitor/|^\.github/workflows/ci\.yml$'
+          else
+            echo "Push: resource monitor runs in full."
+            echo "resource_monitor=true" >> "$GITHUB_OUTPUT"
+          fi
 
   # Keep the required Release Smoke context; its commands run in Check Build's installed workspace.
   release_smoke:

@@ -9,7 +9,6 @@ import { stateOnlySmoke } from "./state-smoke-cases.ts";
 
 const gateRunnerFiles = [
   "gate-changed.ts",
-  "ci-blame.ts",
   "state-smoke-cases.ts",
   "gate-file-inputs.ts",
   "gate-input-scopes.ts",
@@ -55,30 +54,10 @@ function createFixture(cacheHome?: string) {
       NodePath.join(import.meta.dirname, file),
       NodePath.join(root, "scripts", file),
     );
-  if (cacheHome) {
-    for (const name of ["@t3tools", "oxc-parser", "lightningcss", "parse5"]) {
-      NodeFS.mkdirSync(NodePath.dirname(NodePath.join(root, "scripts/node_modules", name)), {
-        recursive: true,
-      });
-      NodeFS.symlinkSync(
-        NodePath.join(import.meta.dirname, "node_modules", name),
-        NodePath.join(root, "scripts/node_modules", name),
-      );
-    }
-    for (const name of ["vite-plus", "madge", "effect", "@effect/platform-node"]) {
-      write(`scripts/node_modules/${name}/package.json`, JSON.stringify({ name }));
-    }
-    NodeFS.mkdirSync(NodePath.join(root, "scripts/lib"), { recursive: true });
-    NodeFS.symlinkSync(
-      NodePath.join(import.meta.dirname, "node_modules"),
-      NodePath.join(root, "scripts/lib/node_modules"),
-    );
-  } else {
-    NodeFS.symlinkSync(
-      NodePath.join(import.meta.dirname, "node_modules"),
-      NodePath.join(root, "scripts/node_modules"),
-    );
-  }
+  NodeFS.symlinkSync(
+    NodePath.join(import.meta.dirname, "node_modules"),
+    NodePath.join(root, "scripts/node_modules"),
+  );
   const stub = `#!${process.execPath}
 const fs = require("node:fs");
 const path = require("node:path");
@@ -202,7 +181,6 @@ describe("revision-bound witness receipts", () => {
     JSON.parse(NodeFS.readFileSync(NodePath.join(gate.root, ".gate-receipt.json"), "utf8")) as {
       headSha: string;
       baseSha: string;
-      selectionMs: number;
       completed: boolean;
       selectedStages: { name: string; args: string[] }[];
       omittedWitnesses: { file: string; kind: string; reason: string; cases?: string[] }[];
@@ -222,14 +200,6 @@ describe("revision-bound witness receipts", () => {
     gate.write(edited, "export {}; // updated comment\n");
     const result = gate.run();
     expect(result.status, result.stderr).toBe(0);
-    expect(receipt()).toMatchObject({
-      version: 1,
-      context: "gate",
-      headSha: gate.git("rev-parse", "HEAD"),
-      baseSha: gate.git("rev-parse", "base"),
-      paths: [edited],
-    });
-    expect(Number.isFinite(receipt().selectionMs)).toBe(true);
     expect(receipt().selectedStages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -241,19 +211,6 @@ describe("revision-bound witness receipts", () => {
     expect(
       gate.checks().some((check) => check.args.includes(NodePath.join(gate.root, edited))),
     ).toBe(true);
-  });
-
-  it("an unknown selection manifest version cannot reuse a gate receipt or its stages", () => {
-    gate.write(edited, "export {}; // unknown version\n");
-    expect(gate.run(["--force"]).status).toBe(0);
-    const receiptPath = NodePath.join(gate.root, ".gate-receipt.json");
-    NodeFS.writeFileSync(receiptPath, JSON.stringify({ ...receipt(), version: 2 }));
-    gate.clearChecks();
-    const result = gate.run();
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).not.toContain("reused receipt");
-    expect(result.stdout).not.toContain("reused stage:");
-    expect(gate.checks().length).toBeGreaterThan(0);
   });
 
   it("a different HEAD creates a new verdict while unchanged stages are reused", () => {

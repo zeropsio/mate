@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off -- CI selection reports its committed decisions.
+// @effect-diagnostics nodeBuiltinImport:off -- CI selection reads its committed probe manifest.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
@@ -105,174 +105,19 @@ export function blameSelection(ref: string, manifest: string | undefined) {
   return { narrowed, selected: [...selected], matrices, stateSmokeShards };
 }
 
-/** The CI decisions travel together; later selection steps add their own input and decisions. */
-export function ciSelectionManifest(
-  ref: string,
-  candidate: string | undefined,
-  manifest: string | undefined,
-) {
-  const selection = blameSelection(ref, manifest);
-  return {
-    version: 1 as const,
-    context: "ci" as const,
-    candidate: candidate || null,
-    ref,
-    jobs: selection.selected,
-    blame: selection.narrowed,
-    matrices: selection.matrices,
-    stateSmokeShards: selection.stateSmokeShards,
-  };
-}
-
-export type CiSelectionManifest = ReturnType<typeof ciSelectionManifest>;
-
-// The local gate caps related scenarios; blocking CI selects the complete affected set.
-export const relatedScenarioLimit = 8;
-export const browserPath = (path: string) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path);
-
-export function scenarioSelectionManifest(
-  context: "gate" | "state-smoke",
-  graph: {
-    scenarios: ReadonlyArray<string>;
-    related?:
-      | { rank(paths: ReadonlyArray<string>): { file: string; distance: number }[] }
-      | undefined;
-  },
-  paths: ReadonlyArray<string>,
-  existing: ReadonlyArray<string>,
-  namedScenarios: ReadonlyArray<string>,
-) {
-  const scenarioPaths = paths.filter(browserPath);
-  const explicit = new Set([
-    ...namedScenarios,
-    ...scenarioPaths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
-  ]);
-  const ranked =
-    graph.related
-      ?.rank(scenarioPaths)
-      .filter(({ file }) => graph.scenarios.includes(file) && !explicit.has(file)) ?? [];
-  const limit = context === "gate" ? relatedScenarioLimit : Infinity;
-  const selectedScenarios = ranked.slice(0, limit);
-  return {
-    version: 1 as const,
-    context,
-    selectedScenarios,
-    overflowScenarios: ranked.slice(limit),
-    inventory: [...new Set([...explicit, ...selectedScenarios.map(({ file }) => file)])].sort(),
-  };
-}
-
-export function parseCiSelectionManifest(value: string, candidate?: string): CiSelectionManifest {
-  const manifest: unknown = JSON.parse(value);
-  if (
-    !manifest ||
-    typeof manifest !== "object" ||
-    !("version" in manifest && manifest.version === 1) ||
-    !("context" in manifest && manifest.context === "ci") ||
-    !("ref" in manifest && typeof manifest.ref === "string") ||
-    !(
-      "candidate" in manifest &&
-      (typeof manifest.candidate === "string" || manifest.candidate === null)
-    ) ||
-    (candidate !== undefined && manifest.candidate !== candidate) ||
-    !(
-      "jobs" in manifest &&
-      Array.isArray(manifest.jobs) &&
-      manifest.jobs.every((job) => typeof job === "string")
-    ) ||
-    !("blame" in manifest && typeof manifest.blame === "boolean") ||
-    !(
-      "matrices" in manifest &&
-      typeof manifest.matrices === "object" &&
-      manifest.matrices !== null
-    ) ||
-    !(
-      "stateSmokeShards" in manifest &&
-      (manifest.stateSmokeShards === "all" ||
-        (Array.isArray(manifest.stateSmokeShards) &&
-          manifest.stateSmokeShards.every((shard) => Number.isInteger(shard) && shard > 0)))
-    )
-  )
-    throw new Error("Invalid or mismatched CI selection manifest");
-  return manifest as CiSelectionManifest;
-}
-
-/** CI's native jobs follow the apps' actual workspace dependencies, including renamed paths. */
-export function ciChangedAreas(root: string, paths: ReadonlyArray<string>, pullRequest: boolean) {
-  const readPackage = (path: string) =>
-    JSON.parse(NodeFS.readFileSync(NodePath.join(root, path, "package.json"), "utf8")) as {
-      name?: string;
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-      optionalDependencies?: Record<string, string>;
-    };
-  const imports = new Set(
-    ["apps/mobile", "apps/desktop"].flatMap((path) => {
-      const pkg = readPackage(path);
-      return Object.keys({
-        ...pkg.dependencies,
-        ...pkg.devDependencies,
-        ...pkg.optionalDependencies,
-      });
-    }),
-  );
-  const nativePackages = NodeFS.globSync("packages/*/package.json", { cwd: root })
-    .map((path) => path.slice(0, -"/package.json".length))
-    .filter((path) => imports.has(readPackage(path).name ?? ""));
-  const shared =
-    /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|vite\.config\.ts|\.github\/workflows\/ci\.yml)$|^packages\/(?:contracts|shared|client-runtime)\//u;
-  return {
-    chat: paths.some(
-      (path) =>
-        shared.test(path) ||
-        /^apps\/(?:server|web)\//u.test(path) ||
-        /^packages\/(?:effect-codex-app-server|effect-acp)\//u.test(path) ||
-        /^scripts\/(?:chat-gate|gate-changed|test-postgres|test-ports)/u.test(path),
-    ),
-    resource_monitor:
-      !pullRequest ||
-      paths.some((path) =>
-        /^native\/resource-monitor\/|^\.github\/workflows\/ci\.yml$/u.test(path),
-      ),
-    native_clients: paths.some(
-      (path) =>
-        /^apps\/(?:mobile|desktop)\//u.test(path) ||
-        nativePackages.some((pkg) => path.startsWith(`${pkg}/`)),
-    ),
-  };
-}
-
 if (
   process.argv[1] &&
   NodePath.resolve(process.argv[1]) === NodeURL.fileURLToPath(import.meta.url)
 ) {
-  if (process.argv[2] === "--areas") {
-    const selection = parseCiSelectionManifest(
-      process.env.MATE_CI_SELECTION ?? "",
-      process.env.GITHUB_SHA,
-    );
-    const paths = NodeFS.readFileSync(0, "utf8").split("\n").filter(Boolean);
-    const changes = ciChangedAreas(process.cwd(), paths, Boolean(process.env.PR_NUMBER));
-    const manifest = { ...selection, paths, changes };
-    const outputs = Object.entries(changes).map(([area, selected]) => `${area}=${selected}`);
-    console.log(`CI selection: ${JSON.stringify(manifest)}`);
-    NodeFS.appendFileSync(process.env.GITHUB_OUTPUT!, outputs.join("\n") + "\n");
-  } else {
-    const path = ".ci-blame-jobs";
-    const manifest = NodeFS.existsSync(path) ? NodeFS.readFileSync(path, "utf8") : undefined;
-    const selection = ciSelectionManifest(
-      process.env.GITHUB_REF ?? "",
-      process.env.GITHUB_SHA,
-      manifest,
-    );
-    const outputs = [
-      `selection_manifest=${JSON.stringify(selection)}`,
-      `jobs=${JSON.stringify(selection.jobs)}`,
-      `blame=${selection.blame}`,
-      `state_smoke_shards=${JSON.stringify(selection.stateSmokeShards)}`,
-    ];
-    for (const [job, matrix] of Object.entries(selection.matrices))
-      outputs.push(`${job}=${JSON.stringify(matrix)}`);
-    NodeFS.appendFileSync(process.env.GITHUB_OUTPUT!, outputs.join("\n") + "\n");
-  }
+  const path = ".ci-blame-jobs";
+  const manifest = NodeFS.existsSync(path) ? NodeFS.readFileSync(path, "utf8") : undefined;
+  const selection = blameSelection(process.env.GITHUB_REF ?? "", manifest);
+  const outputs = [
+    `jobs=${JSON.stringify(selection.selected)}`,
+    `blame=${selection.narrowed}`,
+    `state_smoke_shards=${JSON.stringify(selection.stateSmokeShards)}`,
+  ];
+  for (const [job, matrix] of Object.entries(selection.matrices))
+    outputs.push(`${job}=${JSON.stringify(matrix)}`);
+  NodeFS.appendFileSync(process.env.GITHUB_OUTPUT!, outputs.join("\n") + "\n");
 }

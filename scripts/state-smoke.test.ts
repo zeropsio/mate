@@ -4,8 +4,7 @@ import * as NodePath from "node:path";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import { parse } from "yaml";
-import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
-import { ciSelectionManifest } from "./ci-blame.ts";
+import { beforeEach, expect, it, vi } from "vite-plus/test";
 import { affectedScenarioFiles } from "./gate-changed.ts";
 import { runStateSmoke, stateSmokePlan } from "./state-smoke.ts";
 import { stateOnlySmoke } from "./state-smoke-cases.ts";
@@ -21,19 +20,11 @@ const scenario = (name: string) => `apps/web/test/scenarios/areas/c-mate/${name}
 const commands = () =>
   spawn.mock.calls.filter(([command]) => command === "vp").map(([, args]) => args!);
 
-// CI's selection job: the plan's published matrix and selection, as the shards receive them.
+// CI's prepare job: the plan's published matrix and selection, as the shards receive them.
 const planOutputs = (args: ReadonlyArray<string>) => {
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-state-smoke-plan-"));
   const previous = process.env.GITHUB_OUTPUT;
-  const previousManifest = process.env.MATE_CI_SELECTION;
   process.env.GITHUB_OUTPUT = NodePath.join(dir, "output");
-  process.env.MATE_CI_SELECTION = JSON.stringify(
-    ciSelectionManifest(
-      "refs/heads/kh-next",
-      "0123456789012345678901234567890123456789",
-      undefined,
-    ),
-  );
   try {
     expect(runStateSmoke(root, ["--plan", ...args])).toBe(0);
     const outputs = Object.fromEntries(
@@ -45,26 +36,19 @@ const planOutputs = (args: ReadonlyArray<string>) => {
     return {
       matrix: JSON.parse(outputs.state_smoke!) as { include: { shard: number; total: number }[] },
       selection: outputs.state_smoke_selection!,
-      manifest: JSON.parse(outputs.selection_manifest ?? "null") as unknown,
     };
   } finally {
     if (previous === undefined) delete process.env.GITHUB_OUTPUT;
     else process.env.GITHUB_OUTPUT = previous;
-    if (previousManifest === undefined) delete process.env.MATE_CI_SELECTION;
-    else process.env.MATE_CI_SELECTION = previousManifest;
     NodeFS.rmSync(dir, { recursive: true, force: true });
   }
 };
 
 beforeEach(() => {
-  vi.stubEnv("GITHUB_ACTIONS", "");
-  vi.stubEnv("GITHUB_SHA", "0123456789012345678901234567890123456789");
   vi.resetAllMocks();
   affected.mockReturnValue([]);
   spawn.mockReturnValue({ pid: 1, output: [], stdout: "", stderr: "", status: 0, signal: null });
 });
-
-afterEach(() => vi.unstubAllEnvs());
 
 it("State Smoke records each executed stage in one shard evidence file", () => {
   const previous = process.env.MATE_SIGNAL_REPORT;
@@ -135,26 +119,12 @@ it("State Smoke shards affected files once while retaining sign-in and fixed smo
 it("State Smoke CI gives sign-in its own job and spreads a full selection across bounded partitions without losing cases", () => {
   const files = Array.from({ length: 58 }, (_, index) => scenario(`full-${index}`));
   affected.mockReturnValue(files);
-  const { matrix, selection, manifest } = planOutputs(["--base", base]);
-  expect(manifest).toMatchObject({
-    version: 1,
-    context: "ci",
-    candidate: "0123456789012345678901234567890123456789",
-    stateSmoke: { base, affected: files, matrix },
+  const { matrix, selection } = planOutputs(["--base", base]);
+  const partitions = matrix.include.map(({ shard, total }) => {
+    spawn.mockClear();
+    runStateSmoke(root, ["--selection", selection, "--shard", `${shard}/${total}`]);
+    return commands();
   });
-  const previousManifest = process.env.MATE_CI_SELECTION;
-  process.env.MATE_CI_SELECTION = JSON.stringify(manifest);
-  let partitions: (readonly string[])[][];
-  try {
-    partitions = matrix.include.map(({ shard, total }) => {
-      spawn.mockClear();
-      runStateSmoke(root, ["--selection", selection, "--shard", `${shard}/${total}`]);
-      return commands();
-    });
-  } finally {
-    if (previousManifest === undefined) delete process.env.MATE_CI_SELECTION;
-    else process.env.MATE_CI_SELECTION = previousManifest;
-  }
   expect(partitions, "ASSERTION: the full suite has eight independent 14-minute jobs").toHaveLength(
     8,
   );
@@ -177,55 +147,6 @@ it("State Smoke CI gives sign-in its own job and spreads a full selection across
         .filter((argument) => files.some((file) => NodePath.join(root, file) === argument)).length,
       "ASSERTION: no partition holds more than its share of the full selection rounded up",
     ).toBeLessThanOrEqual(Math.ceil(files.length / (partitions.length - 1)));
-  }
-});
-
-it.each(["candidate", "plan", "base"])(
-  "State Smoke rejects a %s mismatch in the CI manifest before running any shard",
-  (missing) => {
-    affected.mockReturnValue([scenario("affected")]);
-    const { selection, manifest, matrix } = planOutputs(["--base", base]);
-    const input = manifest as Record<string, unknown>;
-    const previousManifest = process.env.MATE_CI_SELECTION;
-    const previousSha = process.env.GITHUB_SHA;
-    process.env.GITHUB_SHA = "0123456789012345678901234567890123456789";
-    process.env.MATE_CI_SELECTION = JSON.stringify(
-      missing === "candidate"
-        ? { ...input, candidate: "wrong-candidate" }
-        : missing === "plan"
-          ? { ...input, stateSmoke: undefined }
-          : { ...input, stateSmoke: { ...(input.stateSmoke as object), base: undefined } },
-    );
-    try {
-      expect(() =>
-        runStateSmoke(root, ["--selection", selection, "--shard", `1/${matrix.include[0]!.total}`]),
-      ).toThrow(/CI selection manifest/u);
-      expect(commands()).toEqual([]);
-    } finally {
-      if (previousManifest === undefined) delete process.env.MATE_CI_SELECTION;
-      else process.env.MATE_CI_SELECTION = previousManifest;
-      if (previousSha === undefined) delete process.env.GITHUB_SHA;
-      else process.env.GITHUB_SHA = previousSha;
-    }
-  },
-);
-
-it.each([
-  ["planning", ["--plan", "--base", base]],
-  ["a shard", ["--selection", "[]", "--shard", "1/1"]],
-])("State Smoke refuses %s when CI did not publish its selection manifest", (_name, args) => {
-  const previousManifest = process.env.MATE_CI_SELECTION;
-  const previousActions = process.env.GITHUB_ACTIONS;
-  delete process.env.MATE_CI_SELECTION;
-  process.env.GITHUB_ACTIONS = "true";
-  try {
-    expect(() => runStateSmoke(root, args)).toThrow(/CI selection manifest/u);
-    expect(commands()).toEqual([]);
-  } finally {
-    if (previousManifest === undefined) delete process.env.MATE_CI_SELECTION;
-    else process.env.MATE_CI_SELECTION = previousManifest;
-    if (previousActions === undefined) delete process.env.GITHUB_ACTIONS;
-    else process.env.GITHUB_ACTIONS = previousActions;
   }
 });
 
