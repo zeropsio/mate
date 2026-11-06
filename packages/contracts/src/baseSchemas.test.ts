@@ -197,24 +197,22 @@ describe("trimmed non-empty strings", () => {
         const made = make(input);
         if (made._tag === "None") {
           expect(input.trim()).toBe("");
+        } else {
+          const encoded = encode(made.value);
+          expect(encoded).toStrictEqual(Exit.succeed(input.trim()));
+          expect(decode(input.trim())).toStrictEqual(Exit.succeed(input.trim()));
+        }
+
+        const decoded = decode(input);
+        if (Exit.isFailure(decoded)) {
+          expect(input.trim()).toBe("");
+          expect(Exit.isFailure(encode(input))).toBe(true);
           return;
         }
-        const encoded = encode(made.value);
-        expect(encoded).toStrictEqual(Exit.succeed(input.trim()));
-        expect(decode(input.trim())).toStrictEqual(Exit.succeed(input.trim()));
+        expect(decoded.value).toBe(input.trim());
+        expect(encode(decoded.value)).toStrictEqual(Exit.succeed(decoded.value));
       },
     );
-
-    it.each(inputs)(`${name}: decoding then encoding %j is stable`, (input) => {
-      const decoded = decode(input);
-      if (Exit.isFailure(decoded)) {
-        expect(input.trim()).toBe("");
-        expect(Exit.isFailure(encode(input))).toBe(true);
-        return;
-      }
-      expect(decoded.value).toBe(input.trim());
-      expect(encode(decoded.value)).toStrictEqual(Exit.succeed(decoded.value));
-    });
   }
 
   const isThreadId = Schema.is(BaseSchemas.ThreadId);
