@@ -16,6 +16,7 @@ import {
   membershipInputs,
 } from "@t3tools/client-runtime/data/fixtures";
 import { markupDom } from "../../../test/markupDom";
+import { olderNavigation } from "~/zerops/__fixtures__/olderNavigation";
 import {
   buildZeropsGroupTree,
   groupFlow,
@@ -5724,6 +5725,208 @@ describe("A: sign-in, session and organizations", () => {
           }),
         );
         expect(text(surface(tree, "sidebar-environments"))).toContain("Shop");
+        expect(fetch).not.toHaveBeenCalled();
+      } finally {
+        observation.stop();
+        registry.dispose();
+      }
+    }),
+  );
+});
+
+describe("B: navigation protocol", () => {
+  it.live("an older HQ keeps Mates grouped and visibly asks for an update", () =>
+    Effect.gen(function* () {
+      const fetch = vi.fn(() => Promise.reject(new Error("Unexpected network request")));
+      vi.stubGlobal("fetch", fetch);
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const observation = observeAccount({
+        store,
+        wire: { open: Effect.never },
+        repairSession: Effect.void,
+      });
+      const oldMessages = yield* Queue.unbounded<string, Cause.Done>();
+      const newMessages = yield* Queue.unbounded<string, Cause.Done>();
+      const orgId = "org";
+      const wire = (messages: typeof oldMessages, older: boolean): HqWire => ({
+        withAccess: (request) => Effect.succeed({ ...request, accessToken: "access" }),
+        open: () =>
+          Effect.succeed({
+            messages: Stream.fromQueue(messages),
+            send: (request) =>
+              Effect.gen(function* () {
+                if (request.type !== "subscribe") return;
+                for (const entry of request.scopes) {
+                  const scope = "scope" in entry ? entry.scope : entry;
+                  if (scope.kind !== "navigation") continue;
+                  if (older) {
+                    const mate = (projectId: string) => ({
+                      projectId,
+                      appId: "shop",
+                      name: projectId,
+                      kind: "mate",
+                      mate: { face: "", madeBy: null, standupRequestedBy: null },
+                      person: {
+                        mine: false,
+                        ownerUserId: null,
+                        waitsOnViewer: false,
+                        unseen: null,
+                      },
+                      signedInNow: {},
+                      everSignedIn: {},
+                    });
+                    yield* Queue.offer(
+                      messages,
+                      olderNavigation(
+                        JSON.stringify({
+                          type: "scope-reset",
+                          scope,
+                          incarnation: "hq",
+                          revision: 1,
+                          values: [
+                            {
+                              key: "app:shop",
+                              value: {
+                                id: "shop",
+                                name: "Shop",
+                                can: {},
+                                contents: { empty: false, deletingProjectIds: [] },
+                                projectIds: ["Ada", "Bea"],
+                                births: [],
+                                environments: [],
+                                changes: [],
+                                releaseOffer: null,
+                              },
+                            },
+                            { key: "project:Ada", value: mate("Ada") },
+                            { key: "project:Bea", value: mate("Bea") },
+                          ],
+                          removals: [],
+                        }),
+                      ),
+                    );
+                  }
+                  const ready = JSON.stringify({
+                    type: "scope-ready",
+                    scope,
+                    incarnation: "hq",
+                    revision: 1,
+                    core: { protocol: 1, build: "current" },
+                  });
+                  yield* Queue.offer(messages, older ? olderNavigation(ready) : ready);
+                }
+              }),
+          }),
+      });
+      const oldWire = wire(oldMessages, true);
+      const newWire = wire(newMessages, false);
+      const activeOrganization = {
+        ...organization,
+        organizationId: ZeropsOrganizationId.make(orgId),
+      };
+      registry.set(zeropsSessionAtom, {
+        status: "signed-in",
+        organizationStatus: "selected",
+        activeOrganization,
+      });
+      observation.show(orgId);
+      mountRoster(
+        registry,
+        orgId,
+        ["Ada", "Bea"].map((id) => ({
+          id,
+          clientId: orgId,
+          name: id,
+          status: "ACTIVE",
+          tagList: ["mate"],
+          publicZone: "example.test",
+          zeropsSubdomainHost: id.toLowerCase(),
+        })),
+        {
+          into: store,
+          services: ["Ada", "Bea"].map((id) => ({
+            id: `zcp-${id}`,
+            projectId: id,
+            name: "zcp",
+            status: "ACTIVE",
+            subdomainAccess: true,
+            ports: [{ port: 8080, httpSupport: true }],
+            serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+          })),
+        },
+      );
+      registry.set(accountReadsAtom, {
+        data: store.data,
+        orgId,
+        viewer: { id: orgId, name: "Organization", membershipId: "member", roleCode: "ADMIN" },
+        demandDetail: observation.demandDetail,
+        renewHeld: observation.renewHeld,
+      });
+      session.viewer = "owner";
+      session.role = "OWNER";
+      stored.opened = new Set(["shop"]);
+      function Menu() {
+        const rows = heldCandidates(useAtomValue(allCandidateListingAtom));
+        return (
+          <SidebarZeropsTree
+            candidates={rows.rows}
+            complete={rows.complete}
+            onBrowseProjects={() => {}}
+            onSelect={() => {}}
+          />
+        );
+      }
+      const ready = (current: boolean) =>
+        new Promise<void>((resolve) => {
+          const check = () => {
+            const view = hqNavigation.derive(readsOfState(store.state()), orgId);
+            if (
+              view.structure?.apps[0]?.name === "Shop" &&
+              view.live &&
+              (!current || view.coreBuild === "current")
+            ) {
+              stop();
+              resolve();
+            }
+          };
+          const stop = store.subscribe(check);
+          check();
+        });
+      try {
+        const olderReady = ready(false);
+        observation.showHq({ orgId, wire: oldWire });
+        const tree = mount(
+          <RegistryContext.Provider value={registry}>
+            <Menu />
+          </RegistryContext.Provider>,
+        );
+        const reload = vi.fn();
+        Object.assign(window, { location: { reload } });
+        yield* Effect.promise(() =>
+          act(async () => {
+            await olderReady;
+          }),
+        );
+        const group = tree.root.find(
+          (node) => typeof node.type === "string" && node.props["data-zerops-group"] === "shop",
+        );
+        expect(text(group)).toContain("Shop");
+        expect(text(group)).toContain("Ada");
+        expect(text(group)).toContain("Bea");
+        expect(text(tree.root)).toContain("HQ needs an update to show all navigation facts.");
+        expect(tree.root.findAllByType("button").map(text)).not.toContain("Update HQ");
+
+        const currentReady = ready(true);
+        observation.showHq({ orgId, wire: newWire });
+        yield* Queue.end(oldMessages);
+        yield* Effect.promise(() =>
+          act(async () => {
+            await currentReady;
+          }),
+        );
+        expect(text(tree.root)).not.toContain("HQ needs an update to show all navigation facts.");
+        expect(reload).not.toHaveBeenCalled();
         expect(fetch).not.toHaveBeenCalled();
       } finally {
         observation.stop();

@@ -1,11 +1,17 @@
 import { makeAccountHarness } from "@t3tools/client-runtime/zerops/testing";
+import { STREAM_POLICY } from "@t3tools/client-runtime/data";
 import { ZEROPS_SESSION_STORAGE_KEY, type ZeropsUser } from "@t3tools/client-runtime/zerops";
 import type { ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
-import { act } from "react";
+import { Window } from "happy-dom";
+import { act, useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { mountTab, settle, unmountTabs } from "./__fixtures__/harnessTabs";
 
-const rendered = vi.hoisted(() => ({ tree: null as ReactTestRenderer | null }));
+const rendered = vi.hoisted(() => ({
+  tree: null as ReactTestRenderer | null,
+  routes: [] as unknown[],
+  navigate: (_target: unknown) => {},
+}));
 vi.mock("react-dom/client", async () => {
   const { create } = await import("react-test-renderer");
   return {
@@ -51,12 +57,18 @@ const person: ZeropsUser = {
 vi.mock("@tanstack/react-router", async (original) => ({
   ...(await original<typeof import("@tanstack/react-router")>()),
   Link: "a",
-  useNavigate: () => () => undefined,
+  useNavigate: () => (target: unknown) => {
+    rendered.routes.push(target);
+    rendered.navigate(target);
+  },
   useRouter: () => ({ state: { location: { pathname: "/" } } }),
   useLocation: ({ select }: { select: (value: { pathname: string }) => unknown }) =>
     select({ pathname: "/" }),
   useParams: ({ select }: { select?: (value: object) => unknown }) => select?.({}) ?? {},
   useMatch: () => undefined,
+  useRouteContext: () => ({ status: "hosted-static" }),
+  useRouterState: ({ select }: { select: (state: { location: { hash: string } }) => unknown }) =>
+    select({ location: { hash: "" } }),
 }));
 
 vi.mock("../components/zerops/landing/ZeropsLandingShell", () => ({
@@ -69,6 +81,8 @@ afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+  rendered.routes = [];
+  rendered.navigate = () => {};
 });
 
 async function mountMenu(
@@ -76,6 +90,9 @@ async function mountMenu(
   fakeClock = false,
   deviceLogin = false,
   fullSidebar = false,
+  flowPage = false,
+  wire?: "legacy" | "modern",
+  addressCase = false,
 ) {
   vi.stubEnv("VITE_HQ_ORIGIN", "https://hq.example.test");
   vi.stubEnv("VITE_ZEROPS_API_URL", "https://zerops.example.test");
@@ -84,18 +101,29 @@ async function mountMenu(
     ["Node", "Element", "HTMLElement", "ShadowRoot"].map((key) => [key, function none() {}]),
   );
   for (const [key, type] of Object.entries(noDom)) vi.stubGlobal(key, type);
+  if (addressCase) vi.stubGlobal("CSS", { escape: (value: string) => value });
+  if (flowPage) vi.stubGlobal("customElements", { get: () => undefined, define: () => {} });
+  const mateId = addressCase ? "Bea" : "Ada";
   const base = makeAccountHarness({
     people: [{ user: person, password: "secret" }],
     projects: [
       {
-        id: "Ada",
+        id: mateId,
         clientId: "ORG",
-        name: "Ada",
+        name: mateId,
         status: "ACTIVE",
         tagList: ["mate"],
-        publicZone: "example.test",
-        zeropsSubdomainHost: "ada",
+        publicZone: addressCase ? "fte2334ab.prg1-zerops.zone" : "example.test",
+        zeropsSubdomainHost: addressCase ? "24cb" : "ada",
       },
+      ...(wire === undefined
+        ? []
+        : ["Shop-production", "Shop-stage"].map((id) => ({
+            id,
+            clientId: "ORG",
+            name: id,
+            status: "ACTIVE",
+          }))),
     ],
   });
   const heldMembers = holdMembers ? base.rest.hold("GET /client/ORG/user/list") : undefined;
@@ -103,6 +131,41 @@ async function mountMenu(
   let name = "Shop";
   let doors = 0;
   let socket: Socket | undefined;
+  let zeropsSocket: Socket | undefined;
+  let stage = wire !== undefined;
+  let partialStage = false;
+  let jobFinished = false;
+  let addressEnabled = false;
+  let selected: unknown;
+  let selectedEnvironment: string | null = null;
+  let hqOffline = false;
+  let hqSockets = 0;
+  const socketWaiters: Array<() => void> = [];
+  const sha = "a".repeat(40);
+  const version =
+    wire === undefined
+      ? { id: "version-preview", serviceId: "app-preview", name: "stage-existing" }
+      : { id: "version-1", serviceId: "web-stage", name: `main ${sha.slice(0, 7)}` };
+  const versions = new Map([[version.id, version]]);
+  const stageService = {
+    id: version.serviceId,
+    projectId: wire === undefined ? "preview" : "Shop-stage",
+    clientId: "ORG",
+    name: wire === undefined ? "app" : "web",
+    activeAppVersion: { id: version.id, name: version.name },
+    userData: [
+      { key: "appVersionId", content: version.id },
+      { key: "appVersionName", content: version.name },
+    ],
+    status: "ACTIVE",
+    isSystem: false,
+    ports: [{ port: 3000, scheme: "http" }],
+    serviceStackTypeInfo: {
+      serviceStackTypeName: "nodejs",
+      serviceStackTypeVersionName: "nodejs@22",
+      serviceStackTypeCategory: "USER",
+    },
+  };
   let revision = 0;
   let currentSession: string | undefined;
   const ticketSessions: string[] = [];
@@ -116,7 +179,55 @@ async function mountMenu(
     throw new Error("account not mounted");
   };
   let hqPhase: () => string = () => "unmounted";
+  let whenStage: () => Promise<void> = async () => {
+    throw new Error("account not mounted");
+  };
+  let whenJob: () => Promise<void> = async () => {
+    throw new Error("account not mounted");
+  };
+  let readJob: () => unknown = () => {
+    throw new Error("account not mounted");
+  };
+  let whenAddress: () => Promise<void> = async () => {
+    throw new Error("account not mounted");
+  };
+  let whenRunning: () => Promise<void> = async () => {
+    throw new Error("account not mounted");
+  };
+  let whenProcess: () => Promise<void> = async () => {
+    throw new Error("account not mounted");
+  };
   let handover: typeof import("./handover");
+  const job = {
+    id: "job-1",
+    kind: "deploy",
+    service: "web",
+    sha,
+    state: "live",
+    cause: "merge",
+    ref: "main",
+    reason: null,
+    appVersionId: version.id,
+    processId: null,
+    requestedBy: null,
+    at: "2026-10-06T12:00:00Z",
+    endedAt: "2026-10-06T12:01:00Z",
+    supersededBy: null,
+  };
+  const identity = (id: string) =>
+    wire === "legacy" ? { projectId: id } : { id, target: { kind: "zerops", projectId: id } };
+  const environment = (id: string, tier: "stage" | "production") => ({
+    ...identity(id),
+    tier,
+    name: id,
+    sources: ["main"],
+    order: tier === "production" ? 0 : 1,
+    keyHeld: false,
+    keyInvalid: false,
+    jobs: tier === "stage" && jobFinished ? [job] : [],
+    release: null,
+    birth: null,
+  });
   const frames = () => [
     {
       key: "app:shop",
@@ -125,19 +236,45 @@ async function mountMenu(
         name,
         can: {},
         contents: { empty: false, deletingProjectIds: [] },
-        projectIds: ["Ada"],
+        projectIds:
+          wire !== undefined
+            ? [mateId, "Shop-production", "Shop-stage"]
+            : stage
+              ? [mateId, "preview"]
+              : [mateId],
         births: [],
-        environments: [],
+        environments:
+          wire !== undefined
+            ? [environment("Shop-production", "production"), environment("Shop-stage", "stage")]
+            : stage
+              ? [
+                  {
+                    id: "preview",
+                    ...(partialStage
+                      ? { projectId: "preview" }
+                      : { target: { kind: "zerops", projectId: "preview" } }),
+                    tier: "stage",
+                    name: "stage",
+                    sources: ["main"],
+                    order: 1,
+                    keyHeld: false,
+                    keyInvalid: false,
+                    jobs: [],
+                    release: null,
+                    birth: null,
+                  },
+                ]
+              : [],
         changes: [],
         releaseOffer: null,
       },
     },
     {
-      key: "project:Ada",
+      key: `project:${mateId}`,
       value: {
-        projectId: "Ada",
+        projectId: mateId,
         appId: "shop",
-        name: "Ada",
+        name: mateId,
         kind: "mate",
         mate: { face: "", madeBy: null, standupRequestedBy: null },
         person: { mine: false, ownerUserId: null, waitsOnViewer: false, unseen: null },
@@ -145,7 +282,45 @@ async function mountMenu(
         everSignedIn: {},
       },
     },
+    ...(wire !== undefined
+      ? ["Shop-production", "Shop-stage"].map((projectId) => ({
+          key: `project:${projectId}`,
+          value: {
+            projectId,
+            appId: "shop",
+            name: projectId,
+            kind: projectId === "Shop-production" ? "production" : "stage",
+            mate: null,
+            person: { mine: false, ownerUserId: null, waitsOnViewer: false, unseen: null },
+            signedInNow: {},
+            everSignedIn: {},
+          },
+        }))
+      : stage
+        ? [
+            {
+              key: "project:preview",
+              value: {
+                projectId: "preview",
+                appId: "shop",
+                name: "preview",
+                kind: "stage",
+                mate: null,
+                person: { mine: false, ownerUserId: null, waitsOnViewer: false, unseen: null },
+                signedInNow: {},
+                everSignedIn: {},
+              },
+            },
+          ]
+        : []),
   ];
+  const registerSocket = (instance: Socket, isHq: boolean) => {
+    if (isHq) {
+      socket = instance;
+      hqSockets += 1;
+      for (const notify of socketWaiters.splice(0)) notify();
+    } else zeropsSocket = instance;
+  };
   class Socket {
     static readonly OPEN = 1;
     readonly readyState = 1;
@@ -172,10 +347,11 @@ async function mountMenu(
         unexpected.push(
           `socket ${target.origin}${target.pathname.split("/").slice(0, 5).join("/")}`,
         );
-      if (this.hq) socket = this;
+      registerSocket(this, this.hq);
       queueMicrotask(() => {
-        if (this.hq) this.emit("open", "");
-        else this.onmessage?.({ data: JSON.stringify({ type: "SocketSuccess" }) });
+        if (this.hq) {
+          if (!hqOffline) this.emit("open", "");
+        } else this.onmessage?.({ data: JSON.stringify({ type: "SocketSuccess" }) });
       });
     }
     addEventListener(type: string, listener: (event: { data: string; code: number }) => void) {
@@ -184,12 +360,12 @@ async function mountMenu(
     emit(type: string, data: string, code = 1000) {
       for (const listener of this.listeners.get(type) ?? []) listener({ data, code });
     }
-    publish() {
+    publish(type: "scope-reset" | "scope-values" = "scope-reset") {
       const scope = { kind: "navigation" };
       this.emit(
         "message",
         JSON.stringify({
-          type: "scope-reset",
+          type,
           scope,
           incarnation: "hq",
           revision: ++revision,
@@ -197,16 +373,17 @@ async function mountMenu(
           removals: [],
         }),
       );
-      this.emit(
-        "message",
-        JSON.stringify({
-          type: "scope-ready",
-          scope,
-          incarnation: "hq",
-          revision,
-          core: { protocol: 1, build: "current" },
-        }),
-      );
+      if (type === "scope-reset")
+        this.emit(
+          "message",
+          JSON.stringify({
+            type: "scope-ready",
+            scope,
+            incarnation: "hq",
+            revision,
+            core: { protocol: 1, build: "current" },
+          }),
+        );
     }
     send(raw: string) {
       if (!this.hq) return;
@@ -221,7 +398,12 @@ async function mountMenu(
         queueMicrotask(() => this.publish());
       for (const item of request.scopes ?? []) {
         const scope = item.scope ?? item;
-        if (request.type !== "subscribe" || scope.kind !== "attention") continue;
+        if (
+          request.type !== "subscribe" ||
+          scope.kind === undefined ||
+          !["attention", "app-detail"].includes(scope.kind)
+        )
+          continue;
         queueMicrotask(() => {
           this.emit(
             "message",
@@ -277,21 +459,56 @@ async function mountMenu(
               });
             if (
               url.pathname.endsWith("/public-port-routing/search") ||
-              url.pathname.endsWith("/client-user/search")
+              url.pathname.endsWith("/client-user/search") ||
+              (addressCase && url.pathname.endsWith("/process/search"))
             )
               return Response.json({ items: [], totalHits: 0 });
+            const mateService = {
+              id: `service-${mateId}`,
+              clientId: "ORG",
+              projectId: mateId,
+              name: "zcp",
+              status: "ACTIVE",
+              subdomainAccess: !addressCase,
+              ...(addressCase ? { lastUpdate: "2026-10-06T12:00:00.000Z" } : {}),
+              ports: [{ port: 8080, httpSupport: true }],
+              serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+              _version: 1,
+            };
+            if (addressCase && url.pathname.endsWith(`/project/${mateId}/process`))
+              return Response.json({ list: [] });
+            if (addressCase && url.pathname.endsWith(`/service-stack/service-${mateId}`))
+              return Response.json({
+                ...mateService,
+                subdomainAccess: addressEnabled,
+                lastUpdate: "2026-10-06T12:01:50.000Z",
+                _version: undefined,
+              });
             if (url.pathname.endsWith("/service-stack/search"))
               return Response.json({
                 items: [
+                  ...(stage
+                    ? [
+                        wire !== undefined && !jobFinished
+                          ? { ...stageService, activeAppVersion: null, userData: [] }
+                          : stageService,
+                      ]
+                    : []),
+                  mateService,
+                ],
+                totalHits: stage ? 2 : 1,
+              });
+            if (stage && url.pathname.endsWith(`/project/${stageService.projectId}/service-stack`))
+              return Response.json({ list: [stageService] });
+            if (stage && url.pathname.endsWith(`/app-version/${version.id}`))
+              return Response.json(versions.get(version.id));
+            if (stage && url.pathname.endsWith("/app-version/search"))
+              return Response.json({
+                items: [
                   {
-                    id: "service-Ada",
-                    projectId: "Ada",
-                    name: "zcp",
-                    status: "ACTIVE",
-                    subdomainAccess: true,
-                    ports: [{ port: 8080, httpSupport: true }],
-                    serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
-                    _version: 1,
+                    ...version,
+                    serviceStackId: version.serviceId,
+                    projectId: stageService.projectId,
                   },
                 ],
                 totalHits: 1,
@@ -360,6 +577,18 @@ async function mountMenu(
         import("../components/ui/sidebar"),
       ]);
       const FullSidebar = fullSidebar ? (await import("../components/Sidebar")).default : null;
+      const browserDom = flowPage ? new Window() : null;
+      Object.assign(document, {
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        ...(browserDom === null
+          ? {}
+          : {
+              documentElement: browserDom.document.documentElement,
+              head: browserDom.document.head,
+            }),
+      });
+      const FlowPages = flowPage ? await import("../components/zerops/ZeropsGroupDetail") : null;
       Object.assign(window, {
         matchMedia: () => ({
           matches: false,
@@ -389,6 +618,123 @@ async function mountMenu(
           stop = held.subscribe(stream, check);
           check();
         });
+      whenAddress = () =>
+        new Promise<void>((resolve) => {
+          const held = registry.appAtomRegistry;
+          let stop = () => {};
+          const check = () => {
+            const listing = held.get(candidates.allCandidateListingAtom);
+            if (
+              listing.state !== "known" ||
+              !listing.value.some(
+                (row) =>
+                  row.project.id === mateId &&
+                  row.containerOrigin === "https://zcp-24cb-8080.prg1.zerops.app",
+              )
+            )
+              return;
+            stop();
+            resolve();
+          };
+          stop = held.subscribe(candidates.allCandidateListingAtom, check);
+          check();
+        });
+      whenRunning = () =>
+        new Promise<void>((resolve) => {
+          const held = registry.appAtomRegistry;
+          const reads = held.get(runtimeData.accountReadsAtom);
+          if (reads === null) throw new Error("account not mounted");
+          const stream = reads.data.stream("zerops:ORG:running");
+          let stop = () => {};
+          const check = () => {
+            if (held.get(stream).phase !== "live") return;
+            stop();
+            resolve();
+          };
+          stop = held.subscribe(stream, check);
+          check();
+        });
+      whenProcess = () =>
+        new Promise<void>((resolve) => {
+          const held = registry.appAtomRegistry;
+          const atom = runtimeData.projectProcessesAtom(mateId);
+          let stop = () => {};
+          const check = () => {
+            if (!held.get(atom).processes?.some((row) => row.id === "enable-bea")) return;
+            stop();
+            resolve();
+          };
+          stop = held.subscribe(atom, check);
+          check();
+        });
+      whenStage = () =>
+        new Promise<void>((resolve) => {
+          const held = registry.appAtomRegistry;
+          const reads = held.get(runtimeData.accountReadsAtom);
+          if (reads === null) throw new Error("account not mounted");
+          const environments = state.hqNavigationAtom;
+          const service = reads.data.project(runtimeData.serviceRuns, {
+            orgId: "ORG",
+            serviceId: "app-preview",
+          });
+          let stopEnvironments = () => {};
+          let stopService = () => {};
+          const check = () => {
+            const run = held.get(service);
+            if (
+              !held
+                .get(environments)
+                .structure?.apps.find((app) => app.id === "shop")
+                ?.environments?.some((row) => row.id === "preview") ||
+              typeof run === "string" ||
+              run.activeId !== "version-preview"
+            )
+              return;
+            stopEnvironments();
+            stopService();
+            resolve();
+          };
+          stopEnvironments = held.subscribe(environments, check);
+          stopService = held.subscribe(service, check);
+          check();
+        });
+      whenJob = () =>
+        new Promise<void>((resolve) => {
+          const held = registry.appAtomRegistry;
+          const atom = state.hqNavigationAtom;
+          const reads = held.get(runtimeData.accountReadsAtom);
+          if (reads === null) throw new Error("account not mounted");
+          const service = reads.data.project(runtimeData.serviceRuns, {
+            orgId: "ORG",
+            serviceId: "web-stage",
+          });
+          let stopJob = () => {};
+          let stopService = () => {};
+          const check = () => {
+            const jobs = held
+              .get(atom)
+              .structure?.apps.find((app) => app.id === "shop")
+              ?.environments?.find((row) => row.id === "Shop-stage")?.jobs;
+            const run = held.get(service);
+            if (
+              !jobs?.some((row) => row.sha === sha && row.state === "live") ||
+              typeof run === "string" ||
+              run.activeId !== "version-1"
+            )
+              return;
+            stopJob();
+            stopService();
+            resolve();
+          };
+          stopJob = held.subscribe(atom, check);
+          stopService = held.subscribe(service, check);
+          check();
+        });
+      readJob = () =>
+        registry.appAtomRegistry
+          .get(state.hqNavigationAtom)
+          .structure?.apps.find((app) => app.id === "shop")
+          ?.environments?.find((row) => row.id === "Shop-stage")?.jobs[0];
       whenRecovering = () =>
         new Promise<number>((resolve) => {
           const held = registry.appAtomRegistry;
@@ -416,7 +762,7 @@ async function mountMenu(
             const navigation = held.get(state.hqNavigationAtom);
             if (
               listing.state !== "known" ||
-              !listing.value.some((row) => row.project.id === "Ada") ||
+              !listing.value.some((row) => row.project.id === mateId) ||
               !navigation.structure?.apps.some((app) => app.name === expected) ||
               (fullSidebar && !held.get(runtimeData.shownHqMatesAnsweredAtom))
             )
@@ -440,13 +786,34 @@ async function mountMenu(
           <sidebar.SidebarZeropsTree
             candidates={rows.rows}
             complete={rows.complete}
-            onSelect={() => {}}
+            onSelect={(candidate) => {
+              selected = candidate;
+            }}
             onBrowseProjects={() => {}}
           />
         );
       }
       function Page() {
         const { status } = session.useZeropsSession();
+        const [environmentId, setEnvironmentId] = useState<string | null>(selectedEnvironment);
+        useEffect(() => {
+          rendered.navigate = (target) => {
+            if (typeof target !== "object" || target === null || !("params" in target)) return;
+            const params = target.params;
+            if (
+              typeof params === "object" &&
+              params !== null &&
+              "projectId" in params &&
+              (typeof params.projectId === "string" || params.projectId === null)
+            ) {
+              selectedEnvironment = params.projectId;
+              setEnvironmentId(params.projectId);
+            }
+          };
+          return () => {
+            rendered.navigate = () => {};
+          };
+        }, []);
         return status === "signed-in" ? (
           <registry.AppAtomRegistryProvider>
             <data.ZeropsAccountData>
@@ -455,6 +822,15 @@ async function mountMenu(
                 <inventory.ZeropsInventoryProvider>
                   <sidebarUi.SidebarProvider>
                     {FullSidebar === null ? <Menu /> : <FullSidebar />}
+                    {FlowPages !== null &&
+                      (environmentId === null ? (
+                        <FlowPages.ZeropsGroupDetailPage groupId="shop" />
+                      ) : (
+                        <FlowPages.ZeropsStopDetailPage
+                          groupId="shop"
+                          environmentId={environmentId}
+                        />
+                      ))}
                     {deviceLogin && (
                       <accountRow.SidebarZeropsAccountRow
                         destinationIcon={() => null}
@@ -532,6 +908,13 @@ async function mountMenu(
     whenReady: (value: string) => whenReady(value),
     whenRecovering: () => whenRecovering(),
     whenRefused: () => whenRefused(),
+    whenStage: () => whenStage(),
+    whenJob: () => whenJob(),
+    readJob: () => readJob(),
+    whenAddress: () => whenAddress(),
+    whenRunning: () => whenRunning(),
+    whenProcess: () => whenProcess(),
+    selected: () => selected,
     hqPhase: () => hqPhase(),
     whenTickets: (count: number) =>
       new Promise<void>((resolve) => {
@@ -545,6 +928,130 @@ async function mountMenu(
       name = value;
     },
     publish: () => socket!.publish(),
+    partial: (value: boolean, nextName: string) => {
+      partialStage = value;
+      name = nextName;
+      socket!.publish("scope-values");
+    },
+    disconnect: () => {
+      hqOffline = true;
+      socket!.emit("close", "", 1006);
+    },
+    reconnect: () => {
+      hqOffline = false;
+      socket!.emit("open", "");
+    },
+    whenSockets: (count: number) =>
+      new Promise<void>((resolve) => {
+        const check = () => {
+          if (hqSockets >= count) resolve();
+          else socketWaiters.push(check);
+        };
+        check();
+      }),
+    versions,
+    stageService,
+    finishJob: () => {
+      jobFinished = true;
+      const search = base.rest
+        .requests()
+        .toReversed()
+        .find((request) => {
+          const body = request.body;
+          return (
+            request.route === "POST /service-stack/search" &&
+            typeof body === "object" &&
+            body !== null &&
+            "wsOutputType" in body &&
+            body.wsOutputType === "updateStream"
+          );
+        });
+      const body = search?.body;
+      if (typeof body !== "object" || body === null || !("subscriptionName" in body))
+        throw new Error("service update subscription not ready");
+      zeropsSocket!.onmessage?.({
+        data: JSON.stringify({
+          type: "search",
+          subscriptionName: body.subscriptionName,
+          data: { update: [stageService] },
+        }),
+      });
+      socket!.publish("scope-values");
+    },
+    finishEnable: () => {
+      addressEnabled = true;
+      const search = base.rest
+        .requests()
+        .toReversed()
+        .find((request) => {
+          const body = request.body;
+          return (
+            request.route === "POST /process/search" &&
+            typeof body === "object" &&
+            body !== null &&
+            "wsOutputType" in body &&
+            body.wsOutputType === "updateStream"
+          );
+        });
+      const body = search?.body;
+      if (typeof body !== "object" || body === null || !("subscriptionName" in body))
+        throw new Error("process update subscription not ready");
+      zeropsSocket!.onmessage?.({
+        data: JSON.stringify({
+          type: "search",
+          subscriptionName: body.subscriptionName,
+          data: {
+            update: [
+              {
+                id: "enable-bea",
+                clientId: "ORG",
+                projectId: "Bea",
+                actionName: "stack.enableSubdomainAccess",
+                status: "FINISHED",
+                created: "2026-10-06T12:01:40.000Z",
+                started: "2026-10-06T12:01:40.000Z",
+                finished: "2026-10-06T12:01:45.000Z",
+                lastUpdate: "2026-10-06T12:01:45.000Z",
+                executorTag: "USER",
+                serviceStackId: "service-Bea",
+                serviceStacks: [{ id: "service-Bea" }],
+                error: null,
+                appVersion: null,
+                _version: 2,
+              },
+            ],
+          },
+        }),
+      });
+    },
+    addStage: () => {
+      base.rest.addProject({ id: "preview", name: "preview", clientId: "ORG", status: "ACTIVE" });
+      stage = true;
+      const projectSearch = base.rest
+        .requests()
+        .toReversed()
+        .find((request) => {
+          const body = request.body;
+          return (
+            request.route === "POST /project/search" &&
+            typeof body === "object" &&
+            body !== null &&
+            "wsOutputType" in body &&
+            body.wsOutputType === "listStream"
+          );
+        });
+      const body = projectSearch?.body;
+      if (typeof body !== "object" || body === null || !("subscriptionName" in body))
+        throw new Error("project listing subscription not ready");
+      zeropsSocket!.onmessage?.({
+        data: JSON.stringify({
+          type: "search",
+          subscriptionName: body.subscriptionName,
+          data: { add: ["preview"], delete: [] },
+        }),
+      });
+      socket!.publish();
+    },
     expire: () => {
       currentSession = undefined;
       socket!.emit("close", "", 4401);
@@ -660,5 +1167,184 @@ describe("A: sign-in, session and organizations", () => {
     expect(fixture.handovers()).toBe(1);
     expect(fixture.tab.tab.reloads).toBe(0);
     expect(fixture.unexpected).toEqual([]);
+  });
+});
+
+describe("B: environment identity compatibility", () => {
+  async function compatibility(wire: "legacy" | "modern") {
+    const fixture = await mountMenu(false, false, false, false, true, wire);
+    const rows = () =>
+      rendered.tree!.root.findAll(
+        (node) => node.type === "button" && node.props["data-zerops-environment-id"] !== undefined,
+      );
+    const names = () => rows().map((row) => text(row.findAllByType("span")[0]!));
+    expect(names()).toEqual(["Production", "Shop-stage"]);
+    await fixture.tab.run(() => rows()[0]!.props.onClick());
+    expect(rendered.routes.at(-1)).toEqual({
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "Shop-production" },
+    });
+    await fixture.tab.run(() => rendered.navigate({ params: { projectId: null } }));
+    expect(names()).toEqual(["Production", "Shop-stage"]);
+    const job = fixture.whenJob();
+    await fixture.tab.run(() => fixture.finishJob());
+    await job;
+    await fixture.tab.run(() => {});
+    expect(names()).toEqual(["Production", "Shop-stage"]);
+    await fixture.tab.run(() => rows()[1]!.props.onClick());
+    expect(rendered.routes.at(-1)).toEqual({
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "Shop-stage" },
+    });
+    const main = () => text(rendered.tree!.root.findAllByType("main")[0]!);
+    expect(main()).toContain("aaaaaaa");
+    expect(main()).toContain("web");
+    await fixture.tab.run(() => window.location.reload());
+    await fixture.whenReady("Shop");
+    await fixture.tab.run(() => {});
+    expect(main()).toContain("aaaaaaa");
+    expect(rendered.routes.at(-1)).toEqual({
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "Shop-stage" },
+    });
+    expect(
+      fixture.base.rest.requests().filter(({ route }) => route === "GET /project/Shop-stage")
+        .length,
+    ).toBeGreaterThan(0);
+    expect(fixture.versions.get(fixture.stageService.activeAppVersion.id)).toMatchObject({
+      serviceId: "web-stage",
+      name: "main aaaaaaa",
+    });
+    expect(fixture.readJob()).toMatchObject({ sha: "a".repeat(40), service: "web", state: "live" });
+    expect(fixture.unexpected.filter((entry) => !entry.startsWith("unmapped "))).toEqual([]);
+  }
+
+  it("Old HQ and new hosted web keep sign-in and environment navigation working.", () =>
+    compatibility("legacy"));
+  it("Old clients keep their Zerops environments after HQ gains environment identities.", () =>
+    compatibility("modern"));
+
+  it("A partial modern environment is refused without erasing known environments.", async () => {
+    const fixture = await mountMenu(false, true, false, true, true);
+    const rows = () =>
+      rendered.tree!.root.findAll(
+        (node) => node.type === "button" && node.props["data-zerops-environment-id"] !== undefined,
+      );
+    const names = () => rows().map((row) => text(row.findAllByType("span")[0]!));
+    const heading = () => rendered.tree!.root.findAllByType("h1").map(text);
+    const ready = fixture.whenStage();
+    await fixture.tab.run(() => fixture.addStage());
+    await ready;
+    await fixture.tab.run(() => {});
+    expect(names()).toEqual(["Preview"]);
+    const partial = fixture.whenReady("Shop partial");
+    await fixture.tab.run(() => fixture.partial(true, "Shop partial"));
+    await partial;
+    await fixture.tab.run(() => {});
+    expect(heading()[0]).toBe("Shop partial");
+    expect(names()).toEqual(["Preview"]);
+    const restored = fixture.whenReady("Shop");
+    await fixture.tab.run(() => fixture.partial(false, "Shop"));
+    await restored;
+    await fixture.tab.run(() => {});
+    expect(heading()[0]).toBe("Shop");
+    const retry = fixture.whenRecovering();
+    const socket = fixture.whenSockets(2);
+    await fixture.tab.run(() => fixture.disconnect());
+    const retryAt = await retry;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(Math.max(0, retryAt - Date.now()));
+    });
+    await socket;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(STREAM_POLICY.reconnectGraceMs);
+    });
+    await fixture.tab.run(() => {});
+    const outage = () =>
+      rendered.tree!.root.findAll(
+        (node) =>
+          typeof node.type === "string" &&
+          node.props["data-zerops-surface"] === "sidebar-hq-outage",
+      );
+    expect(outage()).toHaveLength(1);
+    const again = fixture.whenReady("Shop");
+    await fixture.tab.run(() => fixture.reconnect());
+    await again;
+    await fixture.tab.run(() => {});
+    expect(outage()).toHaveLength(0);
+    expect(names()).toEqual(["Preview"]);
+    await fixture.tab.run(() => rows()[0]!.props.onClick());
+    expect(rendered.routes.at(-1)).toEqual({
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "preview" },
+    });
+    expect(
+      rendered
+        .tree!.root.findAllByType("main")
+        .some((node) => text(node).includes("stage-existing")),
+    ).toBe(true);
+    expect(fixture.unexpected.filter((entry) => !entry.startsWith("unmapped "))).toEqual([]);
+  });
+
+  it("An environment arriving after first paint appears once with its target's service version.", async () => {
+    const fixture = await mountMenu(false, false, false, false, true);
+    const rows = () =>
+      rendered.tree!.root.findAll(
+        (node) => node.type === "button" && node.props["data-zerops-environment-id"] !== undefined,
+      );
+    expect(rows()).toHaveLength(0);
+    const ready = fixture.whenStage();
+    await fixture.tab.run(() => fixture.addStage());
+    await ready;
+    await fixture.tab.run(() => {});
+    expect(rows().map((row) => text(row.findAllByType("span")[0]!))).toEqual(["Preview"]);
+    await fixture.tab.run(() => rows()[0]!.props.onClick());
+    expect(rendered.routes.at(-1)).toEqual({
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "preview" },
+    });
+    expect(
+      rendered
+        .tree!.root.findAllByType("main")
+        .some((node) => text(node).includes("stage-existing")),
+    ).toBe(true);
+    expect(fixture.versions.get(fixture.stageService.activeAppVersion.id)).toMatchObject({
+      serviceId: "app-preview",
+      name: "stage-existing",
+    });
+    // The browser scenario bars external traffic; unrelated same-origin endpoints may answer 404.
+    expect(fixture.unexpected.filter((entry) => !entry.startsWith("unmapped "))).toEqual([]);
+  });
+});
+
+describe("B: menu liveness", () => {
+  it("a Mate opens once its address is turned on, its record never pushed", async () => {
+    const fixture = await mountMenu(false, false, false, false, false, undefined, true);
+    expect(menuText()).toContain("Bea");
+    await fixture.whenRunning();
+    const process = fixture.whenProcess();
+    const address = fixture.whenAddress();
+    await fixture.tab.run(() => fixture.finishEnable());
+    await process;
+    await fixture.tab.run(() => {});
+    expect(
+      fixture.base.rest.requests().filter(({ route }) => route === "GET /service-stack/service-Bea")
+        .length,
+    ).toBeGreaterThan(0);
+    await address;
+    await fixture.tab.run(() => {});
+    const row = rendered.tree!.root.find(
+      (node) =>
+        node.type === "button" &&
+        node.props["data-zerops-surface"] === "sidebar-mate" &&
+        text(node).includes("Bea"),
+    );
+    await fixture.tab.run(() => row.props.onClick());
+    expect(fixture.selected()).toMatchObject({
+      project: { id: "Bea" },
+      containerOrigin: "https://zcp-24cb-8080.prg1.zerops.app",
+    });
+    expect(fixture.tab.tab.reloads).toBe(0);
+    expect(fixture.unexpected.filter((entry) => !entry.startsWith("unmapped "))).toEqual([]);
   });
 });
