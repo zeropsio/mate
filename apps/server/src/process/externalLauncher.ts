@@ -28,6 +28,7 @@ import {
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Base64 from "effect/encoding/Base64";
 import * as FileSystem from "effect/FileSystem";
@@ -457,22 +458,28 @@ const resolveFileManagerRevealKind = Effect.fn("externalLauncher.resolveFileMana
   },
 );
 
-// Editor discovery walks PATH for every known editor and runs for every
-// client connect (the server config embeds the available editors). Memoize
-// the discovered set for a bounded window so repeat connects skip even the
-// per-command cache lookups in @t3tools/shared/shell.
+// Editor discovery walks PATH for every known editor (and on Linux may spawn
+// `xdg-mime` to vet the file manager), and every client connect embeds its
+// answer in the server config, which a client waits on before it opens a
+// conversation. So it never runs on a connect's critical path once anything is
+// known: the first connect's scan is kept, a connect inside the cache
+// window reuses what it found, and a connect after it is answered from the
+// last scan while a fresh one runs behind it (the next connect hears what that
+// one found). Only a connect before the first scan ever finished waits on it.
+// It is not scanned at boot: a server nobody connected to reads nothing of its
+// host's PATH (a scenario Mate reads nothing from the developer's home).
 //
-// This deliberately does not use `Effect.cachedWithTTL`: that memoizes the
-// first caller's Exit whatever it is, including an interrupt. Callers run this
-// on the connection fiber under a timeout (`resolveAvailableEditorsForConfig`),
-// so one client disconnecting mid-scan would cache the interrupt and replay it
-// to every later connect for the whole TTL, breaking `server.getConfig`
-// permanently. Storing only on success means an interrupted scan leaves the
-// cache untouched and the next connect simply rescans.
+// The scan runs on the launcher's own scope, never on a connection fiber: a
+// client disconnecting mid-scan only stops waiting, and the scan is kept, so no
+// interrupt is ever cached. A scan that has not finished within
+// EDITOR_DISCOVERY_SCAN_TIMEOUT is let go uncached (its waiters hear no
+// editors, as `server.getConfig`'s own timeout would say) and the next connect
+// starts another.
 // Expiry uses the monotonic clock (Clock.monotonicTimeNanos), matching the
 // command-resolution cache in @t3tools/shared/shell, so a backward wall-clock
 // adjustment cannot keep an expired entry alive.
 const EDITOR_DISCOVERY_CACHE_TTL_NANOS = 60_000_000_000n;
+const EDITOR_DISCOVERY_SCAN_TIMEOUT = "10 seconds";
 
 interface EditorDiscoveryCacheEntry {
   readonly editors: ReadonlyArray<EditorId>;
@@ -755,23 +762,43 @@ export const make = Effect.gen(function* () {
   const editorDiscoveryCache = yield* Ref.make<Option.Option<EditorDiscoveryCacheEntry>>(
     Option.none(),
   );
+  const editorScan = yield* Ref.make<Option.Option<Deferred.Deferred<ReadonlyArray<EditorId>>>>(
+    Option.none(),
+  );
+  const scope = yield* Effect.scope;
+  /** The scan under way, or a new one on the launcher's scope. */
+  const scanEditors = Effect.gen(function* () {
+    const fresh = yield* Deferred.make<ReadonlyArray<EditorId>>();
+    const running = yield* Ref.modify(editorScan, (current) =>
+      Option.isSome(current) ? [current.value, current] : [fresh, Option.some(fresh)],
+    );
+    if (running !== fresh) return running;
+    yield* provideCommandResolutionServices(resolveAvailableEditors()).pipe(
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      Effect.tap((editors) =>
+        Effect.flatMap(Clock.monotonicTimeNanos, (nowNanos) =>
+          Ref.set(
+            editorDiscoveryCache,
+            Option.some({ editors, expiresAtNanos: nowNanos + EDITOR_DISCOVERY_CACHE_TTL_NANOS }),
+          ),
+        ),
+      ),
+      Effect.timeoutOption(EDITOR_DISCOVERY_SCAN_TIMEOUT),
+      Effect.map(Option.getOrElse((): ReadonlyArray<EditorId> => [])),
+      Effect.exit,
+      Effect.flatMap((exit) =>
+        Ref.set(editorScan, Option.none()).pipe(Effect.andThen(Deferred.done(fresh, exit))),
+      ),
+      Effect.forkIn(scope, { startImmediately: true }),
+    );
+    return fresh;
+  });
   const cachedAvailableEditors = Effect.gen(function* () {
     const nowNanos = yield* Clock.monotonicTimeNanos;
     const entry = yield* Ref.get(editorDiscoveryCache);
-    if (Option.isSome(entry) && entry.value.expiresAtNanos > nowNanos) {
-      return entry.value.editors;
-    }
-    const editors = yield* provideCommandResolutionServices(resolveAvailableEditors()).pipe(
-      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-    );
-    yield* Ref.set(
-      editorDiscoveryCache,
-      Option.some({
-        editors,
-        expiresAtNanos: nowNanos + EDITOR_DISCOVERY_CACHE_TTL_NANOS,
-      }),
-    );
-    return editors;
+    if (Option.isNone(entry)) return yield* Deferred.await(yield* scanEditors);
+    if (entry.value.expiresAtNanos <= nowNanos) yield* scanEditors;
+    return entry.value.editors;
   });
 
   return ExternalLauncher.of({
