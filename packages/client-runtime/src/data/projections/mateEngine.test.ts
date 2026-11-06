@@ -112,6 +112,13 @@ function held(
     })),
   ];
   return apply(emptyAccount, [
+    // Held: a view demands it, so its records are observed.
+    ...scopes.map((scope): AccountInput => ({
+      kind: "stream",
+      key: scope,
+      now: 0,
+      event: { kind: "demand", demanded: true },
+    })),
     {
       kind: "delivery",
       via: "mate-direct",
@@ -1802,6 +1809,70 @@ describe("an engine conversation's row in the menu", () => {
       expect(overlaid?.session?.runtimeMode).toBe(reads);
     },
   );
+
+  it("a conversation left while its run was working shows done in the menu once its rows say the run ended", () => {
+    const working = held({
+      runs: [engineRun("thread-ada", 1, { state: "running", end: null, endedAt: null })],
+      header: { archived: false },
+    });
+    const left = apply(working, [
+      {
+        kind: "release",
+        scopes: Object.values(engineConversationScopes(key)),
+        now: 0,
+      },
+      {
+        kind: "delivery",
+        via: "mate-direct",
+        scopes: [{ scope: engineRowsScope(ENV), generation: 0 }],
+        reset: true,
+        rows: [
+          {
+            family: "mateEngineRow",
+            id: engineFactId(ENV, "thread-ada"),
+            value: {
+              ...engineRow(ENV, "thread-ada", {
+                archived: true,
+                latestRun: {
+                  id: run1,
+                  end: { kind: "completed" },
+                  endedAt: 5,
+                  turnState: "completed",
+                } as ConversationRow["latestRun"],
+              }),
+              environmentId: ENV,
+            },
+            revision: revision(100),
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    const shellState = {
+      snapshot: Option.some({
+        snapshotSequence: 1,
+        projects: [],
+        threads: [shellThread],
+        updatedAt: "2026-10-01T00:00:00.000Z",
+      }),
+      status: "live",
+      error: Option.none(),
+    } as unknown as Parameters<typeof overlayEngineShell>[0];
+    const read = readsOfState(left);
+    // Kept for a return, its records are no longer observed: the rows are.
+    expect(read.fact("mateEngineConversation", engineConversationId(key)).kind).toBe("known");
+    const overlaid = Option.getOrNull(
+      overlayEngineShell(
+        shellState,
+        engineRows.derive(read, ENV),
+        engineHeldTurns.derive(read, ENV),
+      ).snapshot,
+    )?.threads[0];
+    expect(overlaid?.session?.status).not.toBe("running");
+    expect(overlaid?.session?.activeTurnId).toBeNull();
+    expect(overlaid?.latestTurn).toMatchObject({ turnId: run1, state: "completed" });
+    expect(overlaid?.archivedAt).not.toBeNull();
+  });
 
   it("gives a thread shell the access its row says while its conversation is not held", () => {
     const shellState = {

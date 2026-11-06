@@ -3,7 +3,9 @@
  * carries the organization's navigation registrations (`demand.ts`). An attempt opens the
  * receiver, starts reading frames before it registers anything, then registers each scope —
  * updates first — and commits the membership answer as that scope's baseline. Frames that arrive
- * while a baseline is read are staged by the reducer and replayed after it. After an outage
+ * while a baseline is read are staged by the reducer and replayed after it. A receiver slow to open
+ * does not hold the first menu: past {@link SLOW_RECEIVER_MS} each scope never read yet is read
+ * once over REST, and the receiver's registration replaces that answer. After an outage
  * nothing is replayed by Zerops: the next attempt registers again and its answers are the truth;
  * what went missing meanwhile is not invented.
  *
@@ -77,7 +79,34 @@ export interface ZeropsLink {
 /** Today's receiver (socket, web-socket login, REST client) behind the adapter, or a fixture. */
 export interface ZeropsWire {
   readonly open: Effect.Effect<ZeropsLink, StreamFault, Scope.Scope>;
+  /**
+   * The answer this session itself read for a GET moments ago, and when (wall ms): `/user/info`,
+   * which verifying the session read. A sampled detail's first read within its freshness takes it
+   * rather than asking the platform the same question again.
+   */
+  readonly held?: (path: string) => { readonly body: unknown; readonly atMs: number } | undefined;
+  /**
+   * The session's REST reads, which need no receiver: a first baseline is read here while a slow
+   * receiver still opens ({@link SLOW_RECEIVER_MS}).
+   */
+  readonly rest?: Pick<ZeropsLink, "post">;
+  /**
+   * A plain REST `GET` on the session's own client, with no receiver opened: what a detail read
+   * ahead (`DetailListing.ahead`) is sent over, so the socket's login never holds it back. A 403 or
+   * 404 is a status, as `ZeropsLink.get` answers it. Absent, those details are read on the link.
+   */
+  readonly read?: (
+    path: string,
+  ) => Effect.Effect<{ readonly status: number; readonly body: unknown }, StreamFault>;
 }
+
+/**
+ * How long an attempt waits for its receiver before it reads the organization's first baselines
+ * over REST. A healthy web-socket login and greeting take a few hundred ms; a stalled one has
+ * taken 7–10 s, and every listing waited behind it. Past this, reading a listing twice (once now,
+ * once as the receiver's registration answer) costs less than an empty menu.
+ */
+export const SLOW_RECEIVER_MS = 1_000;
 
 /**
  * How an HTTP answer classifies, by its status alone; the wire applies it to every failed request.
@@ -224,8 +253,13 @@ export function zeropsNavigationLink(options: {
   readonly reread: () => void;
 } {
   const { orgId, store } = options;
+  /** Each detail read ahead over plain REST, by scope, while its read is under way. */
+  const readingAhead = new Map<
+    ScopeKey,
+    { readonly token: object; fiber: Fiber.Fiber<void> | null }
+  >();
   const demands = makeDetailDemands({
-    demanded: (scope, demanded) =>
+    demanded: (scope, demanded) => {
       Effect.runSync(
         Effect.map(Clock.currentTimeMillis, (now) =>
           store.dispatch(
@@ -234,8 +268,85 @@ export function zeropsNavigationLink(options: {
               : { kind: "release", scopes: [scope], now },
           ),
         ),
-      ),
+      );
+      if (demanded) {
+        const token = {};
+        const read = readAhead(scope, token);
+        if (read === null) return;
+        const reading: { readonly token: object; fiber: Fiber.Fiber<void> | null } = {
+          token,
+          fiber: null,
+        };
+        readingAhead.set(scope, reading);
+        const fiber = Effect.runFork(read);
+        // A read that answered at once has already let its handle go.
+        if (readingAhead.get(scope) === reading) reading.fiber = fiber;
+      } else {
+        const reading = readingAhead.get(scope);
+        readingAhead.delete(scope);
+        if (reading?.fiber != null) Effect.runFork(Fiber.interrupt(reading.fiber));
+      }
+    },
   });
+  /**
+   * A detail read ahead (`DetailListing.ahead`), once per hold, over the wire's plain REST read:
+   * no receiver, no registration and no attempt waits before it, and none fences it. Its rows
+   * carry no revision: whatever the family's own scope reads replaces them, and that scope's whole
+   * read forgets the rest (`reducer.ts`). An answer that lands once that scope is read whole says
+   * nothing it does not. The owner's 404 proves the project gone and its 403 withholds it, purging
+   * what the read ahead wrote; any other failure leaves the scope unread, for the listing to say.
+   */
+  const readAhead = (scope: ScopeKey, token: object): Effect.Effect<void> | null => {
+    const read = options.wire.read;
+    const { spec, detail } = scopeListing(scope);
+    if (read === undefined || detail?.ahead !== true) return null;
+    const owner = { orgId, ownerId: scope.split(":").slice(3).join(":") };
+    const coveredWhole = () =>
+      store.state().memberships.get(scopeOf(spec, orgId))?.coverage === "complete";
+    return Effect.gen(function* () {
+      const generation = streamOf(store.state(), scope).generation;
+      const answer = yield* read(detail.zerops.path(owner));
+      if (answer.status === 403 || answer.status === 404) {
+        store.dispatch({ kind: "forget", scopes: [scope] });
+        store.dispatch(
+          answer.status === 404
+            ? {
+                kind: "proven-deletion",
+                family: "project",
+                id: owner.ownerId,
+                scope,
+                evidence: `GET ${detail.zerops.path(owner)} answered 404`,
+              }
+            : { kind: "access", family: "project", id: owner.ownerId, scope, access: "denied" },
+        );
+        return;
+      }
+      if (answer.status !== 200 || coveredWhole()) return;
+      const items = detail.zerops.items(answer.body, owner);
+      if (items === undefined) return;
+      const rows = rowsOf(spec.family, items).map(
+        (row): Row => ({ ...row, revision: { kind: "zerops", version: null } }) as Row,
+      );
+      store.dispatch({ kind: "baseline-begin", scope, generation });
+      store.dispatch({
+        kind: "baseline-commit",
+        scope,
+        generation,
+        via: "zerops-read",
+        members: membersOf(items),
+        rows,
+        partial: partialAnswer(items, rows, undefined),
+      });
+    }).pipe(
+      Effect.catch(() => Effect.void),
+      // Only this read's own handle: a later hold's read is never let go by this one's end.
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (readingAhead.get(scope)?.token === token) readingAhead.delete(scope);
+        }),
+      ),
+    );
+  };
   const key: LinkKey = linkKeys.zerops(orgId);
   const registrations = zeropsNavigation(orgId);
   const scopes = [...new Set(registrations.map((registration) => registration.scope))];
@@ -254,6 +365,11 @@ export function zeropsNavigationLink(options: {
    * predate the write, so each is read once more after it.
    */
   const written = new Set<ScopeKey>();
+  /**
+   * Sampled details our own write or the person's try again asked to read afresh: an answer the
+   * session read before is not theirs.
+   */
+  const askedAfresh = new Set<ScopeKey>();
   const tellScope = (scope: ScopeKey, event: StreamEvent) => {
     Effect.runSync(
       Effect.map(Clock.currentTimeMillis, (now) =>
@@ -269,6 +385,7 @@ export function zeropsNavigationLink(options: {
    */
   const revalidateScope = (scope: ScopeKey) => {
     sampledAt.delete(scope);
+    askedAfresh.add(scope);
     const { phase, mode } = streamOf(store.state(), scope);
     if (
       phase === "connecting" ||
@@ -285,10 +402,77 @@ export function zeropsNavigationLink(options: {
   // changed generation of its navigation scope (manual retry / changed input) permits it again.
   const refusedPairs = new Map<ScopeKey, number>();
 
+  /**
+   * A navigation scope never read in this account's lifetime, read once over REST while the
+   * receiver is slow to open. Its answer commits as the scope's first baseline under the
+   * generation it had before the receiver registered anything: the receiver's own registration
+   * moves the scope to a new generation first, so this answer, arriving after it, is fenced out,
+   * and the registration's answer replaces it as a fresh baseline would. It never makes a scope
+   * live, and a failure says nothing: the registration is the scope's authority.
+   */
+  const readFirstBaseline = (
+    rest: Pick<ZeropsLink, "post">,
+    scope: ScopeKey,
+  ): Effect.Effect<void> => {
+    const registration = registrations.find(
+      (entry) => entry.scope === scope && entry.role === "membership",
+    );
+    const { phase, generation } = streamOf(store.state(), scope);
+    if (
+      registration === undefined ||
+      phase === "refused" ||
+      (store.state().memberships.get(scope)?.coverage ?? "unknown") !== "unknown"
+    )
+      return Effect.void;
+    return rest
+      .post(registration.path, {
+        search: registration.search,
+        sort: [],
+        limit: ORGANIZATION_SEARCH_LIMIT,
+      })
+      .pipe(
+        Effect.map((answer) => {
+          const list = Option.getOrUndefined(decodeList(answer));
+          if (list === undefined) return;
+          const rows = rowsOf(registration.family, list.items);
+          // Its directives wait for the registration's own baseline, which has a receiver.
+          store.dispatch({
+            kind: "baseline-commit",
+            scope,
+            generation,
+            via: "zerops-read",
+            members: membersOf(list.items),
+            rows,
+            partial: partialAnswer(list.items, rows, list.totalHits),
+          });
+        }),
+        Effect.ignore,
+      );
+  };
+
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
     Effect.gen(function* () {
-      const link = yield* options.wire.open;
       const attemptScope = yield* Effect.scope;
+      let opened = false;
+      const rest = options.wire.rest;
+      if (rest !== undefined)
+        yield* Effect.sleep(SLOW_RECEIVER_MS).pipe(
+          // Each read takes its scope's generation as it is built, in the same step as this
+          // check: once the receiver opened, its registrations own every scope.
+          Effect.andThen(
+            Effect.suspend(() =>
+              opened
+                ? Effect.void
+                : Effect.all(
+                    scopes.map((scope) => readFirstBaseline(rest, scope)),
+                    { concurrency: "unbounded", discard: true },
+                  ),
+            ),
+          ),
+          Effect.forkIn(attemptScope),
+        );
+      const link = yield* options.wire.open;
+      opened = true;
       const signal = (target: LinkKey | ScopeKey, event: StreamEvent) =>
         Effect.map(Clock.currentTimeMillis, (now) =>
           store.dispatch({ kind: "stream", key: target, now, event }),
@@ -893,10 +1077,30 @@ export function zeropsNavigationLink(options: {
             sampled !== undefined ? sampled.path(owner) : (detail?.zerops.path(owner) ?? "");
           const sampledSearch = sampled?.search?.(owner);
           // A search is a POST of it: its answer is the rows asked for, never a whole set.
+          // The session's own read of the same GET, moments ago, answers a first read: the
+          // account holds no value of it yet, and nobody asked for the platform's word since.
+          const kept =
+            sampled !== undefined &&
+            sampledSearch === undefined &&
+            readAt === undefined &&
+            held === undefined &&
+            !askedAfresh.has(scope)
+              ? options.wire.held?.(path)
+              : undefined;
+          const heldAnswer =
+            kept !== undefined &&
+            sampled !== undefined &&
+            (sampled.freshMs === null || now - kept.atMs < sampled.freshMs)
+              ? kept
+              : undefined;
           const read =
-            sampledSearch === undefined
-              ? link.get(path)
-              : link.post(path, sampledSearch).pipe(Effect.map((body) => ({ status: 200, body })));
+            heldAnswer !== undefined
+              ? Effect.succeed({ status: 200, body: heldAnswer.body })
+              : sampledSearch === undefined
+                ? link.get(path)
+                : link
+                    .post(path, sampledSearch)
+                    .pipe(Effect.map((body) => ({ status: 200, body })));
           const answer = yield* read.pipe(
             Effect.map((read) => {
               if (detail?.member === true && ownerId !== null) {
@@ -955,15 +1159,17 @@ export function zeropsNavigationLink(options: {
               members: [ownerId],
               rows: [row],
             });
-            const answeredAt = yield* Clock.currentTimeMillis;
+            const answeredAt = heldAnswer?.atMs ?? (yield* Clock.currentTimeMillis);
             sampledAt.set(scope, answeredAt);
+            // Only the platform's own answer settles a request to read it afresh.
+            if (heldAnswer === undefined) askedAfresh.delete(scope);
             return yield* signal(scope, {
               kind: "baseline-committed",
               ages: agesNow(sampled, value),
               freshUntil: freshUntil(sampled, answeredAt, value),
             });
           }
-          const items = detail?.zerops.items(answer.body);
+          const items = detail?.zerops.items(answer.body, owner);
           if (items === undefined) return yield* malformed;
           const rows = rowsOf(spec.family, items);
           yield* carryOut(
@@ -1013,9 +1219,13 @@ export function zeropsNavigationLink(options: {
         let wakeAt = Number.POSITIVE_INFINITY;
         for (const scope of demanded) {
           const renewed = demands.takeRenewal(scope);
+          const ahead = scopeListing(scope).detail?.ahead === true;
+          // A detail read ahead over plain REST is read outside every attempt (`readAhead`).
+          if (ahead && options.wire.read !== undefined) continue;
           const navigation = scopeOf(scopeListing(scope).spec, orgId);
           const navigationPhase = streamOf(store.state(), navigation).phase;
           if (
+            !ahead &&
             scopes.includes(navigation) &&
             navigationPhase !== "live" &&
             navigationPhase !== "refused"
@@ -1079,7 +1289,11 @@ export function zeropsNavigationLink(options: {
       });
       /**
        * Each navigation family opens independently: updates first, then its membership baseline.
-       * A slow family cannot hold back another family or its demanded details.
+       * A slow family cannot hold back another family or its demanded details. The pair stays in
+       * order: the platform answers a registration once it holds it, so a membership read sent
+       * after the updates registration answered snapshots rows whose later changes that
+       * registration delivers. Sent together, the platform may snapshot first, and a row changed
+       * between the two would keep its old value until it changes again.
        */
       const registerNavigation = Effect.forEach(
         scopes,
@@ -1203,7 +1417,11 @@ export function zeropsNavigationLink(options: {
     childMoved: () => wakeAttempt?.(),
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
     revalidate: (demand) => revalidateScope(detailScopeOf(orgId, demand)),
-    retryDetail: (demand) => tellScope(detailScopeOf(orgId, demand), { kind: "manual-retry" }),
+    retryDetail: (demand) => {
+      const scope = detailScopeOf(orgId, demand);
+      askedAfresh.add(scope);
+      tellScope(scope, { kind: "manual-retry" });
+    },
     renew: (demand) => demands.renew(detailScopeOf(orgId, demand)),
     reread: () => endAttempt?.(),
   };

@@ -38,6 +38,7 @@ import { AsyncResult, type AtomRegistry } from "effect/reactivity";
 
 import { appBasePath } from "~/basePath";
 import { environmentCatalog } from "~/connection/catalog";
+import { primeMateTicket } from "~/connection/platform";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 import { serverEnvironment } from "~/state/server";
@@ -248,6 +249,10 @@ export function webEnvironmentPorts(registry: AtomRegistry.AtomRegistry): Accoun
     clock: systemExchangeClock,
     door: {
       exchange: async (request) => {
+        // The connection the person asked for — its route, its Connect — presents a ticket HQ is
+        // asked for now, while the descriptor is read: one-use, so one never presented ends unused.
+        if (request.asked)
+          primeMateTicket({ orgId: request.organizationId, projectId: request.projectId });
         const answer = await exchangeAtMate(
           {
             readDescriptor: (httpBaseUrl) =>

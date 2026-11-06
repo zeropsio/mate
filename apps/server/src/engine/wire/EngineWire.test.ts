@@ -7,6 +7,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -34,6 +35,7 @@ import { serverMessagePictures } from "../../zerops/engineAdapters.ts";
 import { MessagePictures } from "../ports.ts";
 import { PIXEL } from "../testing/bridge/callHeavy.ts";
 import { makeEngineWorld, mate, type EngineWorld } from "../testing/pump/engineWorld.ts";
+import type { ScriptedProvider } from "../testing/pump/scriptedProvider.ts";
 import { makeEngineWire, type EngineWireOptions, type WireCaller } from "./EngineWire.ts";
 
 /** A send as the RPC decodes it. */
@@ -96,6 +98,29 @@ const cursorOf = (frames: ReadonlyArray<EngineConversationFrame>): EngineCursor 
     seq: Math.max(synced.head, changes?.type === "changes" ? changes.to : 0),
   };
 };
+
+/** The agent reads the events and the read fails (Claude's shape of a Zerops call that failed). */
+const failedEvents = (agent: ScriptedProvider["agent"], thread: string) =>
+  Effect.gen(function* () {
+    const toolName = "mcp__zerops__zerops_events";
+    const payload = { itemType: "mcp_tool_call", title: "MCP tool call" };
+    yield* agent.emit("item.started", thread, {
+      itemId: "toolu_events",
+      payload: { ...payload, status: "inProgress", data: { toolName, input: {} } },
+    });
+    yield* agent.emit("item.completed", thread, {
+      itemId: "toolu_events",
+      payload: {
+        ...payload,
+        status: "failed",
+        data: {
+          toolName,
+          input: {},
+          result: { type: "tool_result", content: [{ type: "text", text: "timed out" }] },
+        },
+      },
+    });
+  });
 
 const send = (
   wire: Effect.Success<ReturnType<typeof wireOf>>,
@@ -401,6 +426,88 @@ describe("a client subscribed to an engine conversation", () => {
     ),
   );
 
+  it.effect("a long answer's whole, kept beside its record, reopens at its new length", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const answerOf = Effect.map(Effect.scoped(watch(w, wire)), ([snapshot]) =>
+          snapshot?.type === "snapshot"
+            ? snapshot.items.find((item) => item.kind === "note")
+            : undefined,
+        );
+        yield* w.tell({ _tag: "Send", text: "Write the report" });
+        yield* w.agent((agent, thread) => agent.say(thread, "line of the report\n".repeat(1_200)));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const before = yield* answerOf;
+        assert.strictEqual(before?.cut?.total, "line of the report\n".length * 1_200);
+        // A step that closes the answer again with a longer end writes its whole and no event.
+        yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) => sql`
+              UPDATE engine_item_detail SET body = body || 'and its last line'
+              WHERE item_id = ${before!.id}
+            `,
+          ),
+        );
+        assert.strictEqual(
+          (yield* answerOf)?.cut?.total,
+          "line of the report\n".length * 1_200 + "and its last line".length,
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a window over its budget is read again on every reload, never kept", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w, { snapshotBytes: 512 });
+        const asked = Effect.map(Effect.scoped(watch(w, wire)), ([snapshot]) =>
+          snapshot?.type === "snapshot"
+            ? snapshot.items.flatMap((item) => (item.kind === "person" ? [item.text] : []))
+            : [],
+        );
+        yield* w.tell({ _tag: "Send", text: "Ship it" });
+        assert.deepStrictEqual(yield* asked, ["Ship it"]);
+        yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) => sql`
+              UPDATE engine_item SET body_json = json_set(body_json, '$.text', 'Ship it now')
+              WHERE kind = 'person'
+            `,
+          ),
+        );
+        assert.deepStrictEqual(yield* asked, ["Ship it now"]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a reload after the conversation changed opens on the change", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const reload = Effect.map(Effect.scoped(watch(w, wire)), ([snapshot]) =>
+          snapshot?.type === "snapshot"
+            ? snapshot.items.flatMap((item) => ("text" in item ? [item.text] : []))
+            : [],
+        );
+        yield* w.tell({ _tag: "Send", text: "Check the build" });
+        yield* w.agent((agent, thread) => agent.say(thread, "Looking."));
+        assert.deepStrictEqual(yield* reload, ["Check the build", "Looking."]);
+        assert.deepStrictEqual(yield* reload, ["Check the build", "Looking."]);
+        yield* w.agent((agent, thread) => agent.say(thread, "It is green."));
+        assert.deepStrictEqual(yield* reload, ["Check the build", "Looking.", "It is green."]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("opens with the text streamed so far when it subscribes mid-stream", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -592,6 +699,121 @@ describe("a client reading more of an engine conversation", () => {
           ["zerops_deploy"],
         );
         assert.isFalse(page.more);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  // A zcp Mate's reload read every Zerops result its runs held (434 KB a page, two thirds of it
+  // results), its looks around and its logs among them, before a closed card drew any of them.
+  it.effect.each([
+    {
+      asked: "names the tools it draws",
+      tools: ["zerops_deploy", "zerops_org_*"],
+      read: ["zerops_deploy", "zerops_events", "zerops_events", "zerops_org_restart", "Read"],
+    },
+    {
+      asked: "names none (a client before the names)",
+      tools: undefined,
+      read: [
+        "zerops_discover",
+        "zerops_deploy",
+        "zerops_logs",
+        "zerops_events",
+        "zerops_events",
+        "zerops_org_restart",
+        "Read",
+      ],
+    },
+  ])(
+    "reads a closed card's results only of the tools a client $asked and those that failed, its looks and work always",
+    ({ tools, read }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          yield* w.tell({ _tag: "Send", text: "Deploy" });
+          for (const [tool, text] of [
+            ["zerops_discover", '{"services":[]}'],
+            ["zerops_deploy", '{"ok":true}'],
+            ["zerops_logs", '{"lines":["started"]}'],
+          ] as const)
+            yield* w.agent((agent, thread) => agent.zerops(thread, tool, {}, "{}", text));
+          // A read that failed, then the same read again: the card's face says whether it recovered.
+          yield* w.agent(failedEvents);
+          for (const [tool, text] of [
+            ["zerops_events", '{"events":[]}'],
+            ["zerops_org_restart", '{"proposal":{}}'],
+          ] as const)
+            yield* w.agent((agent, thread) => agent.zerops(thread, tool, {}, "{}", text));
+          yield* w.agent((agent, thread) =>
+            Effect.gen(function* () {
+              const payload = {
+                itemType: "image_view",
+                title: "Read",
+                data: { toolName: "Read", input: { file_path: "/tmp/shot.png" } },
+              };
+              yield* agent.emit("item.started", thread, {
+                itemId: "toolu_look",
+                payload: { ...payload, status: "inProgress" },
+              });
+              yield* agent.emit("item.completed", thread, {
+                itemId: "toolu_look",
+                payload: { ...payload, status: "completed" },
+              });
+            }),
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const page = yield* wire.readRun({
+            protocol,
+            conversationId: mate,
+            runId: runId(mate, 1),
+            afterSeq: 0,
+            only: "outcome",
+            ...(tools === undefined ? {} : { tools }),
+          });
+          if (page._tag !== "Page") throw new Error(page._tag);
+          assert.deepStrictEqual(
+            page.items.map((item) =>
+              item.kind === "call" ? (item.result?.toolName ?? item.tool.name) : item.kind,
+            ),
+            read,
+          );
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  // A restart cut a run whose log read failed; its continuation read the log again on the same
+  // card. Read run by run, the continuation's read was left out, and the card's face said failed.
+  it.effect("reads a run's results of every tool a call failed with on the card it goes on", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "Send", text: "Read the events" });
+        yield* w.agent(failedEvents);
+        yield* w.crash;
+        yield* w.boot;
+        const continued = yield* w.run(runId(mate, 2));
+        assert.deepStrictEqual(continued?.joins, runId(mate, 1));
+        yield* w.agent((agent, thread) =>
+          agent.zerops(thread, "zerops_events", {}, "{}", '{"events":[]}'),
+        );
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const wire = yield* wireOf(w);
+        const page = yield* wire.readRun({
+          protocol,
+          conversationId: mate,
+          runId: runId(mate, 2),
+          afterSeq: 0,
+          only: "outcome",
+          tools: ["zerops_deploy"],
+        });
+        if (page._tag !== "Page") throw new Error(page._tag);
+        assert.deepStrictEqual(
+          page.items.map((item) => (item.kind === "call" ? item.result?.toolName : item.kind)),
+          ["zerops_events"],
+        );
         yield* w.shutdown;
       }),
     ),
@@ -895,6 +1117,44 @@ const publishedWorld = Effect.gen(function* () {
 });
 
 describe("a page the Mate publishes", () => {
+  it.effect("a height that could not be kept leaves every view as the record holds it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { w, wire, reload, call } = yield* publishedWorld;
+        const record = (width: number) =>
+          wire.recordPageHeight({
+            protocol,
+            conversationId: mate,
+            itemId: call.id,
+            width,
+            height: 900,
+          });
+        for (let width = 400; width < 400 + 12 * 10; width += 10) yield* record(width);
+        const heightsOf = (snapshot: Effect.Success<typeof reload>) => {
+          const held = snapshot.items.find((item) => item.kind === "call");
+          return held?.kind === "call" ? held.result?.page?.heights : undefined;
+        };
+        assert.strictEqual(heightsOf(yield* reload)?.length, 12);
+        // The thirteenth width is written, then trimming the oldest one fails.
+        yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) => sql`
+              CREATE TRIGGER keep_widths BEFORE DELETE ON engine_page_height
+              BEGIN SELECT RAISE(ABORT, 'disk full'); END
+            `,
+          ),
+        );
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(record(900))));
+        const fresh = yield* wireOf(w);
+        const [held] = yield* Effect.scoped(watch(w, fresh));
+        if (held?.type !== "snapshot") throw new Error("no snapshot");
+        assert.deepStrictEqual(heightsOf(yield* reload), heightsOf(held));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a page measured once paints at its height on every later view", () =>
     Effect.scoped(
       Effect.gen(function* () {
