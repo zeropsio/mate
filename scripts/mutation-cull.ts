@@ -701,13 +701,16 @@ export function mutationCull(options: CullOptions): {
   const out = NodePath.resolve(
     options.out ?? NodePath.join(root, ".plans/mutation-cull", dir.replace(/[/\\]/g, "-")),
   );
+  // Stryker restores a file mutated in place by renaming its backup back, which fails across volumes and leaves
+  // the mutated file behind: the backup stays inside the worktree whatever volume `out` is on.
+  const backup = NodePath.join(root, "node_modules/.mutation-cull/stryker-tmp");
   const concurrency =
     options.concurrency ??
     testWorkerBudget(process.env.HEAVY_SLOTS ?? "7", NodeOS.availableParallelism())!;
   if (run("git", ["status", "--porcelain", "--", dir], root).trim() !== "")
     throw new Error(
       `${dir} has uncommitted changes; Stryker mutates it in place. After an interrupted run, restore it with ` +
-        `\`git checkout -- ${dir}\` (Stryker's backup: ${out}/stryker-tmp).`,
+        `\`git checkout -- ${dir}\` (Stryker's backup: ${backup}).`,
     );
   for (const sub of ["reports", "logs", "configs"])
     NodeFS.mkdirSync(NodePath.join(out, sub), { recursive: true });
@@ -807,7 +810,7 @@ export function mutationCull(options: CullOptions): {
             ignorePatterns: onlyDirectoryPatterns(NodePath.relative(base, dir)),
             reporters: ["json"],
             jsonReporter: { fileName: reportPath },
-            tempDirName: NodePath.relative(cwd, NodePath.join(out, "stryker-tmp")),
+            tempDirName: NodePath.relative(cwd, backup),
             cleanTempDir: true,
             ...(job.rerun ? { concurrency: 1, timeoutMS: RERUN_TIMEOUT_MS } : { concurrency }),
           }),
@@ -890,7 +893,7 @@ export function mutationCull(options: CullOptions): {
     reported.push(...reportTests(report));
   }
   if (run("git", ["status", "--porcelain", "--", dir], root).trim() !== "")
-    throw new Error(`${dir} changed during the run; Stryker's backup is under ${out}/stryker-tmp`);
+    throw new Error(`${dir} changed during the run; Stryker's backup is under ${backup}`);
   // A table without a file's mutants would call its tests KILLS-NONE; rerun to retry only these files.
   if (failed.length > 0)
     throw new Error(`no table: ${failed.length} file(s) failed\n${failed.join("\n")}`);
