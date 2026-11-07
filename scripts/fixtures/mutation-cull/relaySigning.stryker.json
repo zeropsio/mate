@@ -1,0 +1,484 @@
+{
+  "$provenance": {
+    "producer": "StrykerJS 10.1.1 via scripts/mutation-cull.ts",
+    "revision": "a91a2ebf9724a71c49261bbcb936b539ab088eef",
+    "source": "packages/shared/src/relaySigning.ts",
+    "schema": "mutation-testing-report-schema 1.0"
+  },
+  "schemaVersion": "1.0",
+  "files": {
+    "packages/shared/src/relaySigning.ts": {
+      "language": "typescript",
+      "mutants": [
+        {
+          "id": "33",
+          "mutatorName": "StringLiteral",
+          "replacement": "\"\"",
+          "status": "NoCoverage",
+          "static": false,
+          "coveredBy": [],
+          "location": { "end": { "column": 41, "line": 16 }, "start": { "column": 35, "line": 16 } }
+        },
+        {
+          "id": "1",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Hit limit reached (7804/7800)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 245,
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "0",
+          "mutatorName": "BlockStatement",
+          "replacement": "{}",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 28.185541999999984,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 2, "line": 3 }, "start": { "column": 69, "line": 1 } }
+        },
+        {
+          "id": "2",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 33.35671000000001,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "3",
+          "mutatorName": "LogicalOperator",
+          "replacement": "typeof value === \"object\" && value !== null || !Array.isArray(value)",
+          "statusReason": "Hit limit reached (7804/7800)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 238,
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "4",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Hit limit reached (7804/7800)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 241,
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "5",
+          "mutatorName": "LogicalOperator",
+          "replacement": "typeof value === \"object\" || value !== null",
+          "statusReason": "Hit limit reached (7804/7800)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 243,
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "6",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Hit limit reached (9559/7800)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 242,
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 35, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "7",
+          "mutatorName": "EqualityOperator",
+          "replacement": "typeof value !== \"object\"",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 33.18866600000001,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 35, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "8",
+          "mutatorName": "StringLiteral",
+          "replacement": "\"\"",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 34.53241700000005,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 35, "line": 2 }, "start": { "column": 27, "line": 2 } }
+        },
+        {
+          "id": "9",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Cannot convert undefined or null to object",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 41.52646000000003,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 39, "line": 2 } }
+        },
+        {
+          "id": "10",
+          "mutatorName": "EqualityOperator",
+          "replacement": "value === null",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 37.538459,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 39, "line": 2 } }
+        },
+        {
+          "id": "11",
+          "mutatorName": "BooleanLiteral",
+          "replacement": "Array.isArray(value)",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 36.20554299999999,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 57, "line": 2 } }
+        },
+        {
+          "id": "12",
+          "mutatorName": "BlockStatement",
+          "replacement": "{}",
+          "statusReason": "expected undefined to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 34.43916800000005,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 2, "line": 17 }, "start": { "column": 57, "line": 5 } }
+        },
+        {
+          "id": "13",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "value.map is not a function",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 2.7348329999999805,
+          "killedBy": ["6", "0", "2", "3", "4", "5"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 27, "line": 6 }, "start": { "column": 7, "line": 6 } }
+        },
+        {
+          "id": "15",
+          "mutatorName": "BlockStatement",
+          "replacement": "{}",
+          "statusReason": "expected '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"c\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 5.881083000000004,
+          "killedBy": ["6"],
+          "coveredBy": ["6"],
+          "location": { "end": { "column": 4, "line": 8 }, "start": { "column": 29, "line": 6 } }
+        },
+        {
+          "id": "14",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "statusReason": "expected '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"c\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 40.67704099999999,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 27, "line": 6 }, "start": { "column": 7, "line": 6 } }
+        },
+        {
+          "id": "16",
+          "mutatorName": "StringLiteral",
+          "replacement": "``",
+          "statusReason": "expected '{\"a\":{\"b\":null,\"y\":true},\"list\":,\"z\":…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 6.166541999999993,
+          "killedBy": ["6"],
+          "coveredBy": ["6"],
+          "location": { "end": { "column": 55, "line": 7 }, "start": { "column": 12, "line": 7 } }
+        },
+        {
+          "id": "17",
+          "mutatorName": "StringLiteral",
+          "replacement": "\"\"",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 4.651124999999993,
+          "coveredBy": ["6"],
+          "location": { "end": { "column": 51, "line": 7 }, "start": { "column": 48, "line": 7 } }
+        },
+        {
+          "id": "18",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Hit limit reached (7804/7800)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 237,
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 22, "line": 9 }, "start": { "column": 7, "line": 9 } }
+        },
+        {
+          "id": "19",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 32.991333,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 22, "line": 9 }, "start": { "column": 7, "line": 9 } }
+        },
+        {
+          "id": "20",
+          "mutatorName": "BlockStatement",
+          "replacement": "{}",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 34.133042,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 4, "line": 15 }, "start": { "column": 24, "line": 9 } }
+        },
+        {
+          "id": "21",
+          "mutatorName": "StringLiteral",
+          "replacement": "``",
+          "statusReason": "expected '' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 32.87008399999999,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 20, "line": 14 }, "start": { "column": 12, "line": 10 } }
+        },
+        {
+          "id": "22",
+          "mutatorName": "MethodExpression",
+          "replacement": "Object.entries(value).filter(([, entryValue]) => entryValue !== undefined)",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 34.265583999999976,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 60, "line": 12 }, "start": { "column": 16, "line": 10 } }
+        },
+        {
+          "id": "23",
+          "mutatorName": "MethodExpression",
+          "replacement": "Object.entries(value)",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 40.458664999999996,
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 60, "line": 11 }, "start": { "column": 16, "line": 10 } }
+        },
+        {
+          "id": "24",
+          "mutatorName": "ArrowFunction",
+          "replacement": "() => undefined",
+          "statusReason": "expected '{}' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 34.59541499999999,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 59, "line": 11 }, "start": { "column": 15, "line": 11 } }
+        },
+        {
+          "id": "25",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 40.58837499999996,
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 59, "line": 11 }, "start": { "column": 35, "line": 11 } }
+        },
+        {
+          "id": "26",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "statusReason": "expected '{}' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 33.403499,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 59, "line": 11 }, "start": { "column": 35, "line": 11 } }
+        },
+        {
+          "id": "27",
+          "mutatorName": "EqualityOperator",
+          "replacement": "entryValue === undefined",
+          "statusReason": "expected '{}' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 33.38245799999996,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 59, "line": 11 }, "start": { "column": 35, "line": 11 } }
+        },
+        {
+          "id": "28",
+          "mutatorName": "ArrowFunction",
+          "replacement": "() => undefined",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 33.96570899999999,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 59, "line": 12 }, "start": { "column": 13, "line": 12 } }
+        },
+        {
+          "id": "29",
+          "mutatorName": "ArrowFunction",
+          "replacement": "() => undefined",
+          "statusReason": "expected '{,,}' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 40.635958,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 90, "line": 13 }, "start": { "column": 12, "line": 13 } }
+        },
+        {
+          "id": "30",
+          "mutatorName": "StringLiteral",
+          "replacement": "``",
+          "statusReason": "expected '{,,}' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 44.377418000000006,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 90, "line": 13 }, "start": { "column": 35, "line": 13 } }
+        },
+        {
+          "id": "31",
+          "mutatorName": "StringLiteral",
+          "replacement": "\"\"",
+          "statusReason": "expected '{\"a\":{\"b\":null\"y\":true}\"list\":[{\"a\":\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 42.04474899999997,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 16, "line": 14 }, "start": { "column": 13, "line": 14 } }
+        },
+        {
+          "id": "32",
+          "mutatorName": "LogicalOperator",
+          "replacement": "JSON.stringify(value) && \"null\"",
+          "statusReason": "expected '{\"a\":{\"b\":null,\"y\":null},\"list\":[{\"a\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 6,
+          "duration": 40.310497999999995,
+          "killedBy": ["6"],
+          "coveredBy": ["0", "2", "3", "4", "5", "6"],
+          "location": { "end": { "column": 41, "line": 16 }, "start": { "column": 10, "line": 16 } }
+        }
+      ],
+      "source": "function isRecord(value: unknown): value is Record<string, unknown> {\n  return typeof value === \"object\" && value !== null && !Array.isArray(value);\n}\n\nexport function stableStringify(value: unknown): string {\n  if (Array.isArray(value)) {\n    return `[${value.map(stableStringify).join(\",\")}]`;\n  }\n  if (isRecord(value)) {\n    return `{${Object.entries(value)\n      .filter(([, entryValue]) => entryValue !== undefined)\n      .sort(([left], [right]) => left.localeCompare(right))\n      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)\n      .join(\",\")}}`;\n  }\n  return JSON.stringify(value) ?? \"null\";\n}\n"
+    }
+  },
+  "testFiles": {
+    "packages/shared/src/dpop.test.ts": {
+      "tests": [
+        {
+          "id": "0",
+          "name": "verifyDpopProof > verifies an ES256 DPoP proof and returns the RFC 7638 thumbprint",
+          "location": { "start": { "column": 3, "line": 58 } }
+        },
+        {
+          "id": "1",
+          "name": "verifyDpopProof > rejects malformed DPoP header and payload JSON",
+          "location": { "start": { "column": 3, "line": 75 } }
+        },
+        {
+          "id": "2",
+          "name": "verifyDpopProof > rejects method, URL, thumbprint, and time-window mismatches",
+          "location": { "start": { "column": 3, "line": 105 } }
+        },
+        {
+          "id": "3",
+          "name": "verifyDpopProof > requires the RFC 9449 access token hash when an access token is expected",
+          "location": { "start": { "column": 3, "line": 149 } }
+        },
+        {
+          "id": "4",
+          "name": "verifyDpopProof > normalizes htu by excluding query and fragment components per RFC 9449",
+          "location": { "start": { "column": 3, "line": 199 } }
+        },
+        {
+          "id": "5",
+          "name": "verifyDpopProof > rejects DPoP public JWK headers that expose private key material",
+          "location": { "start": { "column": 3, "line": 226 } }
+        }
+      ],
+      "source": "// @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no KeyObject, generateKeyPairSync, or sign.\nimport * as NodeCrypto from \"node:crypto\";\n\nimport { assert, describe, it } from \"@effect/vitest\";\n\nimport {\n  computeDpopAccessTokenHash,\n  computeDpopJwkThumbprint,\n  normalizeDpopHtu,\n  type DpopPublicJwk,\n  verifyDpopProof,\n} from \"./dpop.ts\";\n\nfunction signDpopProof(input: {\n  readonly method: string;\n  readonly url: string;\n  readonly iat: number;\n  readonly privateKey: NodeCrypto.KeyObject;\n  readonly publicJwk: DpopPublicJwk | (DpopPublicJwk & { readonly d: string });\n  readonly accessToken?: string;\n}) {\n  const header = Buffer.from(\n    JSON.stringify({\n      typ: \"dpop+jwt\",\n      alg: \"ES256\",\n      jwk: input.publicJwk,\n    }),\n  ).toString(\"base64url\");\n  const payload = Buffer.from(\n    JSON.stringify({\n      htm: input.method,\n      htu: input.url,\n      jti: \"proof-1\",\n      iat: input.iat,\n      ...(input.accessToken ? { ath: computeDpopAccessTokenHash(input.accessToken) } : {}),\n    }),\n  ).toString(\"base64url\");\n  const signature = NodeCrypto.sign(\"sha256\", Buffer.from(`${header}.${payload}`), {\n    key: input.privateKey,\n    dsaEncoding: \"ieee-p1363\",\n  }).toString(\"base64url\");\n  return `${header}.${payload}.${signature}`;\n}\n\ndescribe(\"verifyDpopProof\", () => {\n  const { privateKey, publicKey } = NodeCrypto.generateKeyPairSync(\"ec\", {\n    namedCurve: \"P-256\",\n  });\n  const publicJwk = publicKey.export({ format: \"jwk\" }) as DpopPublicJwk;\n  const proof = signDpopProof({\n    method: \"POST\",\n    url: \"https://example.com/oauth/token\",\n    iat: 100,\n    privateKey,\n    publicJwk,\n  });\n\n  it(\"verifies an ES256 DPoP proof and returns the RFC 7638 thumbprint\", () => {\n    const thumbprint = computeDpopJwkThumbprint(publicJwk);\n    const result = verifyDpopProof({\n      proof,\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      nowEpochSeconds: 101,\n      expectedThumbprint: thumbprint,\n    });\n\n    if (!result.ok) {\n      assert.fail(result.reason);\n    }\n    assert.equal(result.thumbprint, thumbprint);\n    assert.equal(result.jti, \"proof-1\");\n  });\n\n  it(\"rejects malformed DPoP header and payload JSON\", () => {\n    const [header, payload, signature] = proof.split(\".\");\n    if (!header || !payload || !signature) {\n      assert.fail(\"Expected the test DPoP proof to use compact JWT format.\");\n    }\n    const malformedJson = Buffer.from(\"{\").toString(\"base64url\");\n\n    const malformedHeader = verifyDpopProof({\n      proof: `${malformedJson}.${payload}.${signature}`,\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      nowEpochSeconds: 101,\n    });\n    if (malformedHeader.ok) {\n      assert.fail(\"Expected malformed DPoP header JSON to fail.\");\n    }\n    assert.equal(malformedHeader.reason, \"Invalid DPoP JWT header.\");\n\n    const malformedPayload = verifyDpopProof({\n      proof: `${header}.${malformedJson}.${signature}`,\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      nowEpochSeconds: 101,\n    });\n    if (malformedPayload.ok) {\n      assert.fail(\"Expected malformed DPoP payload JSON to fail.\");\n    }\n    assert.equal(malformedPayload.reason, \"Invalid DPoP JWT payload.\");\n  });\n\n  it(\"rejects method, URL, thumbprint, and time-window mismatches\", () => {\n    const thumbprint = computeDpopJwkThumbprint(publicJwk);\n    assert.equal(\n      verifyDpopProof({\n        proof,\n        method: \"GET\",\n        url: \"https://example.com/oauth/token\",\n        nowEpochSeconds: 101,\n        expectedThumbprint: thumbprint,\n      }).ok,\n      false,\n    );\n    assert.equal(\n      verifyDpopProof({\n        proof,\n        method: \"POST\",\n        url: \"https://example.com/other\",\n        nowEpochSeconds: 101,\n        expectedThumbprint: thumbprint,\n      }).ok,\n      false,\n    );\n    assert.equal(\n      verifyDpopProof({\n        proof,\n        method: \"POST\",\n        url: \"https://example.com/oauth/token\",\n        nowEpochSeconds: 101,\n        expectedThumbprint: \"other-thumbprint\",\n      }).ok,\n      false,\n    );\n    assert.equal(\n      verifyDpopProof({\n        proof,\n        method: \"POST\",\n        url: \"https://example.com/oauth/token\",\n        nowEpochSeconds: 1_000,\n        expectedThumbprint: thumbprint,\n      }).ok,\n      false,\n    );\n  });\n\n  it(\"requires the RFC 9449 access token hash when an access token is expected\", () => {\n    const thumbprint = computeDpopJwkThumbprint(publicJwk);\n    const accessTokenProof = signDpopProof({\n      method: \"POST\",\n      url: \"https://example.com/v1/environments/env/connect\",\n      iat: 100,\n      privateKey,\n      publicJwk,\n      accessToken: \"clerk-access-token\",\n    });\n\n    assert.equal(\n      verifyDpopProof({\n        proof: accessTokenProof,\n        method: \"POST\",\n        url: \"https://example.com/v1/environments/env/connect\",\n        nowEpochSeconds: 101,\n        expectedThumbprint: thumbprint,\n        expectedAccessToken: \"clerk-access-token\",\n      }).ok,\n      true,\n    );\n\n    const missingHash = verifyDpopProof({\n      proof,\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      nowEpochSeconds: 101,\n      expectedThumbprint: thumbprint,\n      expectedAccessToken: \"clerk-access-token\",\n    });\n    if (missingHash.ok) {\n      assert.fail(\"Expected DPoP proof without an access token hash to fail.\");\n    }\n    assert.equal(missingHash.reason, \"DPoP access token hash mismatch.\");\n\n    const mismatchedHash = verifyDpopProof({\n      proof: accessTokenProof,\n      method: \"POST\",\n      url: \"https://example.com/v1/environments/env/connect\",\n      nowEpochSeconds: 101,\n      expectedThumbprint: thumbprint,\n      expectedAccessToken: \"other-access-token\",\n    });\n    if (mismatchedHash.ok) {\n      assert.fail(\"Expected DPoP proof with a mismatched access token hash to fail.\");\n    }\n    assert.equal(mismatchedHash.reason, \"DPoP access token hash mismatch.\");\n  });\n\n  it(\"normalizes htu by excluding query and fragment components per RFC 9449\", () => {\n    assert.equal(\n      normalizeDpopHtu(\"https://example.com/v1/environments/env/connect?foo=bar#frag\"),\n      \"https://example.com/v1/environments/env/connect\",\n    );\n\n    const thumbprint = computeDpopJwkThumbprint(publicJwk);\n    const queryProof = signDpopProof({\n      method: \"POST\",\n      url: \"https://example.com/v1/environments/env/connect\",\n      iat: 100,\n      privateKey,\n      publicJwk,\n    });\n\n    assert.equal(\n      verifyDpopProof({\n        proof: queryProof,\n        method: \"POST\",\n        url: \"https://example.com/v1/environments/env/connect?foo=bar#frag\",\n        nowEpochSeconds: 101,\n        expectedThumbprint: thumbprint,\n      }).ok,\n      true,\n    );\n  });\n\n  it(\"rejects DPoP public JWK headers that expose private key material\", () => {\n    const thumbprint = computeDpopJwkThumbprint(publicJwk);\n    const privateJwk = privateKey.export({ format: \"jwk\" }) as DpopPublicJwk & {\n      readonly d: string;\n    };\n    const proofWithPrivateJwk = signDpopProof({\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      iat: 100,\n      privateKey,\n      publicJwk: privateJwk,\n    });\n\n    const result = verifyDpopProof({\n      proof: proofWithPrivateJwk,\n      method: \"POST\",\n      url: \"https://example.com/oauth/token\",\n      nowEpochSeconds: 101,\n      expectedThumbprint: thumbprint,\n    });\n\n    if (result.ok) {\n      assert.fail(\"Expected DPoP proof with private JWK material to fail.\");\n    }\n    assert.equal(result.reason, \"Invalid DPoP JWT header.\");\n  });\n});\n"
+    },
+    "packages/shared/src/relaySigning.test.ts": {
+      "tests": [
+        {
+          "id": "6",
+          "name": "relaySigning > canonicalizes object keys recursively",
+          "location": { "start": { "column": 3, "line": 6 } }
+        }
+      ],
+      "source": "import { describe, expect, it } from \"@effect/vitest\";\n\nimport { stableStringify } from \"./relaySigning.ts\";\n\ndescribe(\"relaySigning\", () => {\n  it(\"canonicalizes object keys recursively\", () => {\n    expect(\n      stableStringify({\n        z: 1,\n        a: {\n          y: true,\n          b: null,\n        },\n        list: [{ c: \"three\", a: \"one\" }],\n      }),\n    ).toBe('{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\":\"one\",\"c\":\"three\"}],\"z\":1}');\n  });\n});\n"
+    }
+  }
+}

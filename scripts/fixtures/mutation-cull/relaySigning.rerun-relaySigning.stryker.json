@@ -1,0 +1,196 @@
+{
+  "$provenance": {
+    "producer": "StrykerJS 10.1.1 via scripts/mutation-cull.ts",
+    "revision": "a91a2ebf9724a71c49261bbcb936b539ab088eef",
+    "source": "packages/shared/src/relaySigning.ts with packages/shared/src/relaySigning.test.ts",
+    "schema": "mutation-testing-report-schema 1.0"
+  },
+  "schemaVersion": "1.0",
+  "files": {
+    "packages/shared/src/relaySigning.ts": {
+      "language": "typescript",
+      "mutants": [
+        {
+          "id": "0",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Cannot convert undefined or null to object",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 5.277583000000007,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "1",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 2.710791999999998,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "2",
+          "mutatorName": "LogicalOperator",
+          "replacement": "typeof value === \"object\" && value !== null || !Array.isArray(value)",
+          "statusReason": "Cannot convert undefined or null to object",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 5.1052919999999915,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "3",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Cannot convert undefined or null to object",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 5.477667000000011,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "4",
+          "mutatorName": "LogicalOperator",
+          "replacement": "typeof value === \"object\" || value !== null",
+          "statusReason": "Cannot convert undefined or null to object",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 5.186540999999991,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "5",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Hit limit reached (801/800)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 118,
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 35, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "6",
+          "mutatorName": "EqualityOperator",
+          "replacement": "typeof value !== \"object\"",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 2.563208000000003,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 35, "line": 2 }, "start": { "column": 10, "line": 2 } }
+        },
+        {
+          "id": "7",
+          "mutatorName": "StringLiteral",
+          "replacement": "\"\"",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 2.3341250000000002,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 35, "line": 2 }, "start": { "column": 27, "line": 2 } }
+        },
+        {
+          "id": "8",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Cannot convert undefined or null to object",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 5.666334000000006,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 39, "line": 2 } }
+        },
+        {
+          "id": "9",
+          "mutatorName": "EqualityOperator",
+          "replacement": "value === null",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 2.9984579999999994,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 53, "line": 2 }, "start": { "column": 39, "line": 2 } }
+        },
+        {
+          "id": "10",
+          "mutatorName": "BooleanLiteral",
+          "replacement": "Array.isArray(value)",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 2.809375000000003,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 78, "line": 2 }, "start": { "column": 57, "line": 2 } }
+        },
+        {
+          "id": "11",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "Cannot convert undefined or null to object",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 5.224333999999999,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 22, "line": 9 }, "start": { "column": 7, "line": 9 } }
+        },
+        {
+          "id": "12",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "statusReason": "expected '{\"z\":1,\"a\":{\"y\":true,\"b\":null},\"list\"…' to be '{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\"…' // Object.is equality",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 2.368124999999992,
+          "killedBy": ["0"],
+          "coveredBy": ["0"],
+          "location": { "end": { "column": 22, "line": 9 }, "start": { "column": 7, "line": 9 } }
+        }
+      ],
+      "source": "function isRecord(value: unknown): value is Record<string, unknown> {\n  return typeof value === \"object\" && value !== null && !Array.isArray(value);\n}\n\nexport function stableStringify(value: unknown): string {\n  if (Array.isArray(value)) {\n    return `[${value.map(stableStringify).join(\",\")}]`;\n  }\n  if (isRecord(value)) {\n    return `{${Object.entries(value)\n      .filter(([, entryValue]) => entryValue !== undefined)\n      .sort(([left], [right]) => left.localeCompare(right))\n      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)\n      .join(\",\")}}`;\n  }\n  return JSON.stringify(value) ?? \"null\";\n}\n"
+    }
+  },
+  "testFiles": {
+    "packages/shared/src/relaySigning.test.ts": {
+      "tests": [
+        {
+          "id": "0",
+          "name": "relaySigning > canonicalizes object keys recursively",
+          "location": { "start": { "column": 3, "line": 6 } }
+        }
+      ],
+      "source": "import { describe, expect, it } from \"@effect/vitest\";\n\nimport { stableStringify } from \"./relaySigning.ts\";\n\ndescribe(\"relaySigning\", () => {\n  it(\"canonicalizes object keys recursively\", () => {\n    expect(\n      stableStringify({\n        z: 1,\n        a: {\n          y: true,\n          b: null,\n        },\n        list: [{ c: \"three\", a: \"one\" }],\n      }),\n    ).toBe('{\"a\":{\"b\":null,\"y\":true},\"list\":[{\"a\":\"one\",\"c\":\"three\"}],\"z\":1}');\n  });\n});\n"
+    }
+  }
+}
