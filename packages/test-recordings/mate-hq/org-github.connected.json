@@ -1,0 +1,39 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "revision": "d9eadf39372c17286a6df55e5ee5e12df558ac70",
+    "via": "s10a-github-app.test.ts",
+    "schema": "GET /api/org/github"
+  },
+  "value": {
+    "state": "connected",
+    "slug": "s10a-mate-31",
+    "appId": 1006,
+    "botLogin": "s10a-mate-31[bot]",
+    "owner": "acme",
+    "ownerType": "Organization",
+    "appUrl": "https://github.com/apps/s10a-mate-31",
+    "installUrl": "https://github.com/apps/s10a-mate-31/installations/new",
+    "public": true,
+    "installations": [
+      {
+        "id": 10032,
+        "account": "acme",
+        "accountType": "Organization",
+        "repositorySelection": "selected",
+        "repositories": [
+          {
+            "fullName": "acme/shop",
+            "private": true,
+            "defaultBranch": "main"
+          }
+        ],
+        "suspended": false,
+        "state": "accepted",
+        "manageUrl": "https://github.com/organizations/acme/settings/installations/10032"
+      }
+    ],
+    "sealedBy": "s10a-person-28",
+    "sealedAt": "2026-01-01T00:00:01Z"
+  }
+}
