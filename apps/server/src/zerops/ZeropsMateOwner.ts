@@ -7,7 +7,8 @@
  * in each `state` frame (`ownerUserId`, absent when HQ knows none); the link hands it here
  * (`named`), and everything else in the Mate that asks whose it is reads `owner`: the access
  * list's Chief filter (`ZeropsMateAccessList`) and the hand-over sign-out (`ZeropsOffboarding`).
- * The link's own read-along rule reads the same frame it hands on (`readsAlongOnly`).
+ * The act gate (`ZeropsHqLink.actingIn`) reads it too, so the owner it names holds across link
+ * loss and a refused key.
  *
  * HQ's last word holds while the link is down; a restart knows nobody until HQ's first state.
  *

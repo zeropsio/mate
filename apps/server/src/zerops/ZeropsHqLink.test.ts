@@ -50,7 +50,8 @@ import {
   HQ_AUTO_UPDATE_VERIFY_BUDGET,
   mateOverviewFeed,
   lookupIpv6,
-  readsAlongOnly,
+  actingIn,
+  type HqStanding,
   type OverviewSources,
   type ZeropsHqLinkOptions,
 } from "./ZeropsHqLink.ts";
@@ -1473,7 +1474,13 @@ describe("ZeropsHqLink", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const { link, sockets, until } = yield* rig({ everyMs: 10 });
-        assert.isFalse(readsAlongOnly(yield* link.standing, "zerops-user:colleague"));
+        const actingOf = (standing: HqStanding, subject: string) =>
+          actingIn(
+            standing.kind === "linked" ? (standing.mate.ownerUserId ?? null) : undefined,
+            standing,
+            subject,
+          );
+        assert.strictEqual(actingOf(yield* link.standing, "zerops-user:colleague"), "acts");
         const socket = yield* until(() => sockets[0]);
         socket.emit("open");
         const ownerNamed = (ownerUserId: string | undefined) =>
@@ -1489,13 +1496,13 @@ describe("ZeropsHqLink", () => {
         const named = yield* ownerNamed("owner-1");
         assert.deepStrictEqual(
           ["zerops-user:colleague", "zerops-user:owner-1", "local-owner"].map((subject) =>
-            readsAlongOnly(named, subject),
+            actingOf(named, subject),
           ),
-          [true, false, false],
+          ["reads-along", "acts", "acts"],
         );
         // HQ that knows no owner names none.
         socket.hear({ type: "state", mate: STATE });
-        assert.isFalse(readsAlongOnly(yield* ownerNamed(undefined), "zerops-user:colleague"));
+        assert.strictEqual(actingOf(yield* ownerNamed(undefined), "zerops-user:colleague"), "acts");
       }),
     ),
   );

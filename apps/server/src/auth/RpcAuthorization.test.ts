@@ -82,7 +82,7 @@ describe("RPC scope middleware", () => {
             group.toLayerHandler(WS_METHODS.serverRetryResourceTelemetry, () =>
               Effect.sync(() => handled.push("retry")).pipe(Effect.andThen(Effect.never)),
             ),
-            rpcScopeAuthorizationLayer([AuthOrchestrationReadScope], Effect.succeed(false)),
+            rpcScopeAuthorizationLayer([AuthOrchestrationReadScope], Effect.succeed("acts")),
             rpcInstrumentationLayer,
           ),
         ),
@@ -147,7 +147,7 @@ describe("someone else's Mate", () => {
           ),
           rpcScopeAuthorizationLayer(
             [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
-            Effect.succeed(readsAlong),
+            Effect.succeed(readsAlong ? "reads-along" : "acts"),
             Effect.succeed(administers),
           ),
           rpcInstrumentationLayer,
@@ -209,7 +209,7 @@ describe("someone else's Mate", () => {
               ),
               rpcScopeAuthorizationLayer(
                 [AuthExecOperateScope],
-                Effect.succeed(along),
+                Effect.succeed(along ? "reads-along" : "acts"),
                 Effect.succeed(admin),
               ),
               rpcInstrumentationLayer,

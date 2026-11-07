@@ -60,6 +60,7 @@ import { type MateTaskReport, TrimmedNonEmptyString } from "@t3tools/contracts";
 import {
   KeyLinkDown,
   KeyLinkUp,
+  type KeyNotAdmitted,
   type LinkedMate,
   type TicketRefusal,
   MATE_OVERVIEW_EVERY_MS,
@@ -94,7 +95,7 @@ import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
-import { ZeropsMateOwner } from "./ZeropsMateOwner.ts";
+import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import type { MateChanges } from "@t3tools/shared/hqChanges";
@@ -164,18 +165,33 @@ export const refusalOf = (close: LinkClose | undefined): string | undefined => {
   return Option.isSome(closed) && "reason" in closed.value ? closed.value.reason : undefined;
 };
 
+/** HQ's refusals of the Mate's key for a safety rule: while one stands, nobody acts in the Mate. */
+export type KeyUnsafe = Extract<KeyNotAdmitted, "key_too_wide" | "key_not_sensitive">;
+const KEY_UNSAFE: ReadonlyArray<string> = [
+  "key_too_wide",
+  "key_not_sensitive",
+] satisfies ReadonlyArray<KeyUnsafe>;
+const keyUnsafe = (reason: string | undefined): reason is KeyUnsafe =>
+  reason !== undefined && KEY_UNSAFE.includes(reason);
+
 /**
- * Whether the session's `subject` only reads along in this Mate: a Zerops person other than the
- * owner HQ last named, or any Zerops person while HQ refuses the Mate's key, until HQ next names
- * its owner. Nobody does while HQ has named no owner yet, as the client opens its composer then.
+ * What the session's person may do in this Mate: act, only read along, or nothing while HQ refuses
+ * its key for a safety rule (why, as HQ named it).
  */
-export const readsAlongOnly = (standing: HqStanding, subject: string): boolean => {
-  if (!subject.startsWith(ZEROPS_SUBJECT_PREFIX)) return false;
-  if (standing.kind === "not-linked") return standing.refusal !== undefined;
-  return (
-    typeof standing.mate.ownerUserId === "string" &&
-    zeropsUserIdOf(subject) !== standing.mate.ownerUserId
-  );
+export type MateActing = "acts" | "reads-along" | KeyUnsafe;
+
+/**
+ * What the session's `subject` may do in this Mate (`MateActing`). A Zerops person other than the
+ * owner HQ last named (`ZeropsMateOwner`, kept across link loss and refusal) reads along; any
+ * Zerops person does nothing while HQ refuses the key for a safety rule. Any other refusal, a dead
+ * key among them, changes nobody's standing: Zerops refuses each of the key's calls by itself.
+ * Everyone acts while HQ has named no owner since the server started, as the client opens its
+ * composer then.
+ */
+export const actingIn = (owner: MateOwner, standing: HqStanding, subject: string): MateActing => {
+  if (!subject.startsWith(ZEROPS_SUBJECT_PREFIX)) return "acts";
+  if (standing.kind === "not-linked" && keyUnsafe(standing.refusal)) return standing.refusal;
+  return typeof owner === "string" && zeropsUserIdOf(subject) !== owner ? "reads-along" : "acts";
 };
 
 export interface ZeropsHqLinkOptions {
