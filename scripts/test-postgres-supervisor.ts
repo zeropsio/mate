@@ -11,7 +11,6 @@ import {
   lifecycleLock,
   postgresBinDir,
   postgresHome,
-  pruneStaleClusters,
   startCluster,
   startRecord,
 } from "./test-postgres.ts";
@@ -114,7 +113,6 @@ async function guardPostgres() {
 }
 
 async function supervise() {
-  pruneStaleClusters({ home: postgresHome, now: Date.now(), report });
   let bootstrapOwner = process.connected;
   let onIdle: (() => void) | undefined;
   process.once("disconnect", () => {

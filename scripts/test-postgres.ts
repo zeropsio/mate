@@ -220,18 +220,44 @@ export function startCluster(
   io.start();
 }
 
-/** A test cluster home unused this long is abandoned, whether or not its checkout still exists. */
-export const STALE_CLUSTER_MS = 24 * 60 * 60 * 1000;
+/**
+ * The file in a per-checkout test PostgreSQL home naming the checkout it serves. mate-hq's
+ * `conformance/scripts/test-ramdisk.ts` (`recordCheckout`) writes it; z3's own home is shared by
+ * every z3 checkout and carries none.
+ */
+const CHECKOUT_RECORD = "checkout";
+
+/** The checkout a test PostgreSQL home records, or undefined when it records none. */
+function checkoutRecord(home: string): string | undefined {
+  try {
+    return NodeFS.readFileSync(NodePath.join(home, CHECKOUT_RECORD), "utf8");
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return undefined;
+    throw error;
+  }
+}
 
 /**
- * Removes the test PostgreSQL homes beside `home` (named `mate-test-pg…` and owned by this user)
- * that no run has started, stopped or written for STALE_CLUSTER_MS and that hold no live
- * postmaster, so a killed or abandoned checkout's cluster is reclaimed by a later run.
+ * Whether a test PostgreSQL home with this checkout record (undefined: none) is orphaned: the
+ * checkout it names no longer exists. A home without a record is never judged.
  */
-export function pruneStaleClusters(input: {
+export function clusterOrphaned(
+  record: string | undefined,
+  exists: (path: string) => boolean,
+): boolean {
+  return record !== undefined && record !== "" && !exists(record);
+}
+
+/**
+ * Removes the test PostgreSQL homes beside `home` (named `mate-test-pg…`, owned by this user)
+ * whose recorded checkout no longer exists and that hold no live postmaster, so a removed
+ * worktree's cluster leaves at the next run. A home whose checkout exists is never touched.
+ */
+export function pruneOrphanedClusters(input: {
   readonly home: string;
-  readonly now: number;
   readonly alive?: (pid: number) => boolean;
+  readonly exists?: (path: string) => boolean;
   readonly report: (line: string) => void;
 }): void {
   const parent = NodePath.dirname(input.home);
@@ -241,18 +267,12 @@ export function pruneStaleClusters(input: {
     if (!name.startsWith("mate-test-pg") || other === NodePath.resolve(input.home)) continue;
     const stat = NodeFS.statSync(other, { throwIfNoEntry: false });
     if (!stat?.isDirectory() || (uid !== undefined && stat.uid !== uid)) continue;
-    const lastUse = Math.max(
-      stat.mtimeMs,
-      ...NodeFS.readdirSync(other).map(
-        (entry) =>
-          NodeFS.statSync(NodePath.join(other, entry), { throwIfNoEntry: false })?.mtimeMs ?? 0,
-      ),
-    );
-    if (input.now - lastUse < STALE_CLUSTER_MS) continue;
+    const record = checkoutRecord(other);
+    if (!clusterOrphaned(record, input.exists ?? NodeFS.existsSync)) continue;
     if (postmasterLive(NodePath.join(other, "data"), input.alive ?? processAlive)) continue;
-    NodeFS.rmSync(other, { recursive: true, force: true });
+    NodeFS.rmSync(other, { recursive: true, force: true, maxRetries: 3 });
     input.report(
-      `Removed test PostgreSQL home ${other}: unused for over 24 h and no postmaster runs on it.`,
+      `Removed test PostgreSQL home ${other}: its checkout ${record} no longer exists and no postmaster runs on it.`,
     );
   }
 }
@@ -279,6 +299,8 @@ function connect(): Promise<NodeNet.Socket | undefined> {
   });
 }
 
+const stderrLine = (line: string) => process.stderr.write(`${line}\n`);
+
 const mebibytes = (bytes: number) => `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
 
 /**
@@ -301,11 +323,15 @@ function refuseFullDisk(home: string) {
     .filter(Boolean)
     .map((line) => {
       const [kibibytes, ...path] = line.split("\t");
-      return { name: NodePath.basename(path.join("\t")), bytes: Number(kibibytes) * 1024 };
+      return { path: path.join("\t"), bytes: Number(kibibytes) * 1024 };
     })
     .sort((a, b) => b.bytes - a.bytes)
     .slice(0, 5)
-    .map((entry) => `${entry.name} (${mebibytes(entry.bytes)})`);
+    .map((entry) => {
+      const checkout = checkoutRecord(entry.path);
+      const owner = checkout === undefined ? "" : ` for ${checkout}`;
+      return `${NodePath.basename(entry.path)}${owner} (${mebibytes(entry.bytes)})`;
+    });
   const volume = NodeChildProcess.spawnSync("df", ["-P", home], { encoding: "utf8" })
     .stdout.trim()
     .split("\n")
@@ -341,6 +367,8 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
     const existing = await connect();
     if (existing) socket = existing;
     else {
+      // Orphans leave before the room check, so a removed worktree's cluster never refuses a run.
+      pruneOrphanedClusters({ home: postgresHome, report: stderrLine });
       refuseFullDisk(postgresHome);
       NodeFS.rmSync(socketPath, { force: true });
       const diagnosticsPath = NodePath.join(postgresHome, "supervisor.log");
