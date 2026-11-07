@@ -61,7 +61,6 @@ export const HqScope = Schema.Union([
     repo: Schema.String,
     number: Schema.Int,
   }),
-  Schema.Struct({ kind: Schema.Literal("operation"), appId: Schema.String }),
   Schema.Struct({
     kind: Schema.Literal("attention"),
     projectId: Schema.String,
@@ -257,7 +256,6 @@ export const hqScopeKey = (scope: HqScope): string => {
     case "agentUsage":
       return usageCanonical([scope.kind, scope.query, scope.detail ?? null]);
     case "app-detail":
-    case "operation":
       return JSON.stringify([scope.kind, scope.appId]);
     case "change":
     case "discussion":
