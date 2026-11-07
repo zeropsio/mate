@@ -28,28 +28,31 @@ delivery. Local-only: never commit it or its credentials.
 ## Size the work, then verify
 
 Name the tier before the first tool call. Its loop is the whole loop; no higher-tier rituals.
+Tests run only when the owner explicitly asks; normal verification is lint, typecheck and build
+(plus a live look for UI).
 
 - **Tweak** — existing look: CSS, spacing, colour, copy, icon, one component's layout. Grep, edit, one
   look cropped to the surface at the reference viewport (1786 × 1000, menu at 435 px) in the report's
   theme, `vp check` the files, one commit. Nothing extra (test, harness, matrix, ledger entry,
   subagent, release) unless asked. Delete tests pinning the old class, pixel or colour; do not update them.
-- **Change** — behaviour: state, data, protocol, new control. A witnessed case at the cheapest level
-  (OWNER.md Testing) or a named existing one, targeted `vp test run`, package typecheck, one live
-  look for UI.
+- **Change** — behaviour: state, data, protocol, new control. Lint and typecheck of the touched
+  packages, one live look for UI.
 - **Pass** — a maintainer calls it a pass, or it redesigns several surfaces or lands a slice: loop below.
 
 The loop:
 
 - Prepare a worktree: `cd "$(node scripts/prepare-worktree.ts <name>)"`.
-- Iterate with targeted `vp test run <files>`. Never repo-wide `vp check`, `vp run -r test` or
-  `vp run -r typecheck` in a worktree.
-- On completion run `node scripts/gate-changed.ts` once (`--help` for flags, `--list` previews): one
-  blocking command, timeout at least ten minutes, never detached and polled. Then re-run only failed
-  files, and the gate once more; it reuses passed stages.
-- CI runs blocking verification on `main`, `kh-next`, `kh-bisect/**` and pull requests (a newer push
-  cancels older runs except on `main`; `kh-next` is the integration branch that fast-forwards `main`);
-  browser scenario shards run nightly on `main` and on demand in the non-blocking `Signal`
-  workflow, where a failure gets one same-commit rerun to tell a flake from a regression.
+- Never repo-wide `vp check` or `vp run -r typecheck` in a worktree.
+- On completion run `node scripts/gate-changed.ts` once (`--help` for flags, `--list` previews): lint,
+  typecheck and build of the changed packages in one blocking command, never detached and polled.
+  Re-run it after a fix; it reuses passed stages. `--tests` adds test suites and test machinery only
+  when the owner asks for tests.
+- CI runs lint/format, typecheck and build on `main`, `kh-next`, `kh-bisect/**` and pull requests (a
+  newer push cancels older runs except on `main`; `kh-next` is the integration branch that
+  fast-forwards `main`). Test suites and test machinery run only on a manual dispatch of CI or a
+  `kh-bisect/**` manifest naming them; browser scenario shards only on a manual dispatch of the
+  non-blocking `Signal` workflow, where a failure gets one same-commit rerun to tell a flake from a
+  regression.
 - Markdown tables: `vp fmt` the file before committing; unaligned rows fail CI's Check job.
 - The server is event-sourced; async flows emit typed receipts. Wait on receipts and worker drains,
   never sleeps or polling.
@@ -122,7 +125,7 @@ To answer a question, go to the home:
   platform fact. One surface/flow/component belongs in tests (title is the product sentence; one-line
   why when the owner decided against the obvious) or code. Reasons/reversals belong in the commit message.
 - Test admission and removal: OWNER.md Testing. `scripts/check-test-sentences.ts` enforces
-  witness lines and `Drops-test`/`Drops-test-file` trailers; `scripts/witness-replay.ts <file>`
+  witness lines and `Drops-test`/`Drops-test-file` trailers when tests run (gate `--tests`, manual CI); `scripts/witness-replay.ts <file>`
   replays a file's witnesses.
 - Wire-shaped test input: `recorded(<schema>, <name>, edit?)` from `packages/test-recordings` (HQ
   from mate-hq conformance; written only by `scripts/sync-recordings.ts`, which keeps only the
