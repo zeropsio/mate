@@ -4,6 +4,7 @@ import {
   releaseWaitingLine,
   waitingItemsOf,
   waitingKindOf,
+  waitingPhrase,
   waitingCountWords,
   waitingSummary,
   waitingTitle,
@@ -58,6 +59,18 @@ describe("waitingKindOf — what a Mate waits on the viewer for", () => {
     },
   ] as const)("$title", ({ activity, review, kind }) => {
     expect(waitingKindOf({ activityKind: activity, reviewWaits: review })).toBe(kind);
+  });
+});
+
+describe("waitingPhrase — each thing in a few plain words", () => {
+  it.each([
+    { waiting: item(mate("Wren", "plan")), phrase: "Approve Wren's plan" },
+    { waiting: item(mate("Rhea", "question")), phrase: "Answer Rhea" },
+    { waiting: item(mate("Fen", "failed")), phrase: "Help Fen" },
+    { waiting: item(mate("Noibit", "change")), phrase: "Review Noibit's change" },
+    { waiting: release, phrase: "Release Tea Shop" },
+  ])("$phrase", ({ waiting, phrase }) => {
+    expect(waitingPhrase(waiting)).toBe(phrase);
   });
 });
 

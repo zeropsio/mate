@@ -224,6 +224,24 @@ describe("Add automated Mates: the organization's key", () => {
     expect(() => button(tree, "Set it in Settings › Automation")).toThrow();
   });
 
+  // The owner's cardinal sin: the key's note must land in room the first frame already held.
+  it("holds the key note's room from the first frame when the key is not read yet", () => {
+    const held = (tree: ReactTestRenderer) =>
+      tree.root.findAll((node) => node.props["data-zerops-automated-key-note"] === "held");
+    const tree = mount(form({ keyState: "unknown" }));
+    expect(held(tree)).toHaveLength(1);
+    act(() => tree.update(form({ keyState: "missing" })));
+    expect(held(tree)).toHaveLength(1);
+    expect(spoken(tree.root)).toContain(NO_KEY);
+  });
+
+  it("draws no key note where the key was read before the dialog opened", () => {
+    const tree = mount(form({ keyState: "set" }));
+    expect(
+      tree.root.findAll((node) => node.props["data-zerops-automated-key-note"] !== undefined),
+    ).toHaveLength(0);
+  });
+
   it("keeps a choice it already offered, unavailable, once HQ turns out unable to make one", () => {
     const onCreate = vi.fn();
     const tree = mount(form({ keyState: "unknown", onCreate }));

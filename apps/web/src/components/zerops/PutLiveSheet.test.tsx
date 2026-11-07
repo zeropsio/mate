@@ -1,7 +1,4 @@
 // @vitest-environment happy-dom
-import { flowChange } from "@t3tools/client-runtime/zerops";
-import { HqChange } from "@t3tools/shared/hqChanges";
-import * as Schema from "effect/Schema";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -10,31 +7,6 @@ import { putLiveSheet } from "~/zerops/putLive.logic";
 
 import { Dialog } from "../ui/dialog";
 import { PutLiveSheet } from "./PutLiveSheet";
-
-const sha = "a".repeat(40);
-const mergedChange = flowChange(
-  Schema.decodeUnknownSync(HqChange)({
-    appId: "tea-shop",
-    repo: "shop-front",
-    number: 1,
-    mateProjectId: "fen",
-    title: "Shop front: list, filter and order products",
-    body: "- Add a recipe\n- Browse every recipe\n- Search by ingredient\n- Cook",
-    state: "merged",
-    head: sha,
-    mergedSha: sha,
-    landedHead: sha,
-    openedAt: "2026-10-06T00:00:00Z",
-    mergedAt: "2026-10-06T01:00:00Z",
-    closedAt: null,
-    updatedAt: "2026-10-06T01:00:00Z",
-    mergeability: "clean",
-    behind: false,
-    ready: true,
-    comments: null,
-  }),
-  "https://hq.example.test",
-);
 
 let root: Root | undefined;
 let host: HTMLDivElement;
@@ -61,7 +33,13 @@ function render(
         <PutLiveSheet
           model={putLiveSheet({
             project: "Tea Shop",
-            changes: [mergedChange],
+            changes: [
+              {
+                title: "Shop front: list, filter and order products",
+                description:
+                  "- Add a recipe\n- Browse every recipe\n- Search by ingredient\n- Cook",
+              },
+            ],
             recipe,
           })}
           onPutLive={handlers.onPutLive ?? (() => {})}

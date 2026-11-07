@@ -697,6 +697,7 @@ function checking(): GroupFlowProduction {
 describe("drawnChip — what the menu draws of a chip", () => {
   const NOW: ProductionChip = { label: "prod", state: "waiting", version: "v0.1.44", waiting: 1 };
   it.each([
+    { view: { kind: "chip", chip: NOW } as const, drawn: NOW },
     { view: { kind: "unknown", partial: NOW } as const, drawn: NOW },
     { view: { kind: "unknown" } as const, drawn: undefined },
     { view: { kind: "none" } as const, drawn: undefined },

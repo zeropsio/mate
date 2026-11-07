@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vite-plus/test";
-import type { HqGitAdoption, RepoListEntry } from "@t3tools/shared/hqChanges";
+import {
+  tokenExpiryLabel,
+  type HqGitAdoption,
+  type RepoListEntry,
+} from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import {
   gitAdoptionSentence,
@@ -122,5 +126,12 @@ describe("direct Git setup", () => {
   it.each(["", "mate/main", "refs/heads/main", "a..b", "@", "main.lock"])(
     "refuses the reserved or malformed branch %s",
     (branch) => expect(gitSetupBranchValid(branch)).toBe(false),
+  );
+  it.each([
+    "https://github.com/acme/shop",
+    "https://gitlab.com/team/app",
+    "https://code.example/team/app",
+  ])("labels unknown expiry once for %s", () =>
+    expect(tokenExpiryLabel(null)).toBe("Expiry not reported"),
   );
 });

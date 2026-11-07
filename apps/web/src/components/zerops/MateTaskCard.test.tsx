@@ -118,6 +118,7 @@ describe("a task's issue card, as its chain", () => {
       ["PR #14"],
     ],
     ["says its task was stopped", session({ status: "stopped" }), "Stopped", []],
+    ["holds an empty line for a task before its Mate's most recent", session({}), " ", []],
     [
       "names its pull request on GitHub and its checks",
       session({
@@ -135,6 +136,12 @@ describe("a task's issue card, as its chain", () => {
       }),
       "Working",
       ["PR #14", "checks failing"],
+    ],
+    [
+      "names its merged pull request",
+      session({ status: "merged", pullRequest: { ...pullRequest, state: "merged" } }),
+      "Merged",
+      ["PR #14"],
     ],
   ] as const)("%s", (_case, given, status, facts) => {
     // Where it stands beside its Mate in the header; its facts on its card.

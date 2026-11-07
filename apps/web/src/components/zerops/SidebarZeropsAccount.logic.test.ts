@@ -7,6 +7,7 @@ import {
   SIDEBAR_ACCOUNT_DESTINATIONS,
   sidebarAccountDestinationOf,
   sidebarAccountLines,
+  sidebarAccountOrganizationChoices,
   sidebarAccountRoleLine,
   sidebarAccountRoleParts,
 } from "./SidebarZeropsAccount.logic";
@@ -80,6 +81,25 @@ describe("sidebarAccountLines", () => {
     expect(
       sidebarAccountLines({ name: "Ada", organization: organization("   ") }).organization,
     ).toBe(null);
+  });
+});
+
+describe("sidebarAccountOrganizationChoices", () => {
+  it("still names the one organization an account is in: the trigger promises it", () => {
+    // The row that opens this menu wears the two-way chevron and the
+    // organization's name. Dropping the group left that promise unanswered.
+    expect(sidebarAccountOrganizationChoices([organization("Zerops")])).toEqual([
+      organization("Zerops"),
+    ]);
+  });
+
+  it("offers every organization once there is a choice to make", () => {
+    const organizations = [organization("Zerops"), organization("Acme")];
+    expect(sidebarAccountOrganizationChoices(organizations)).toEqual(organizations);
+  });
+
+  it("offers nothing while none has been read", () => {
+    expect(sidebarAccountOrganizationChoices([])).toEqual([]);
   });
 });
 

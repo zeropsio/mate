@@ -2,6 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { HqGitAdoption, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { gitRemoteExpiry } from "@t3tools/client-runtime/zerops";
 import { makeHqApi } from "@t3tools/client-runtime/zerops/hq";
@@ -546,6 +547,15 @@ describe("Git environment setup's real form", () => {
     expect(query.get("workflows")).toBe("write");
     expect(query.get("expires_in")).toBe("366");
     expect(query.get("name")).toBe("Mate Shop");
+  });
+  it("the token permissions the environment form lists are the ones the token guide lists", async () => {
+    await draw({ repos: [] });
+    await chooseRepository();
+    const guide = gitTokenGuide("https://github.com/acme/shop", "Shop");
+    if (guide.kind !== "guide") throw new Error("expected a guide");
+    expect(Array.from(host.querySelectorAll("li")).map((node) => node.textContent)).toContain(
+      guide.permission,
+    );
   });
   it("Enter reads the edited branch before enabling Add", async () => {
     await draw({

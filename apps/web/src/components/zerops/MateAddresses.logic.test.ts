@@ -1,27 +1,25 @@
-// @vitest-environment happy-dom
 import { describe, expect, it } from "vite-plus/test";
 
 import { mateAddressOpenTarget } from "./MateAddresses.logic";
 
-const click = (options: MouseEventInit = {}) =>
-  new MouseEvent(options.button ? "auxclick" : "click", options);
+const click = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false };
 
 describe("mateAddressOpenTarget", () => {
   /** A pick opens the address in the panel's Browser; the browser's own new-tab gestures open a tab. */
   it.each([
-    { name: "a plain click opens it in the panel", event: click(), expected: "panel" },
-    { name: "⌘-click opens a new tab", event: click({ metaKey: true }), expected: "new-tab" },
-    { name: "ctrl-click opens a new tab", event: click({ ctrlKey: true }), expected: "new-tab" },
+    { name: "a plain click opens it in the panel", event: click, expected: "panel" },
+    { name: "⌘-click opens a new tab", event: { ...click, metaKey: true }, expected: "new-tab" },
+    { name: "ctrl-click opens a new tab", event: { ...click, ctrlKey: true }, expected: "new-tab" },
     {
       name: "shift-click opens a new tab",
-      event: click({ shiftKey: true }),
+      event: { ...click, shiftKey: true },
       expected: "new-tab",
     },
-    { name: "a middle click opens a new tab", event: click({ button: 1 }), expected: "new-tab" },
+    { name: "a middle click opens a new tab", event: { ...click, button: 1 }, expected: "new-tab" },
     { name: "a key press opens it in the panel", event: undefined, expected: "panel" },
     /** `auxclick` fires for the right button too: its menu is the browser's, never a pick. */
-    { name: "a right click opens nothing", event: click({ button: 2 }), expected: "none" },
-    { name: "a back button opens nothing", event: click({ button: 3 }), expected: "none" },
+    { name: "a right click opens nothing", event: { ...click, button: 2 }, expected: "none" },
+    { name: "a back button opens nothing", event: { ...click, button: 3 }, expected: "none" },
   ] as const)("$name", ({ event, expected }) => {
     expect(mateAddressOpenTarget(event)).toBe(expected);
   });
