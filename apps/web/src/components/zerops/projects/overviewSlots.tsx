@@ -12,6 +12,7 @@ import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import {
   formatRunClock,
+  releaseFailureOf,
   stageMarks,
   stageStandings,
   type FlowPullRequest,
@@ -42,7 +43,6 @@ import {
   drawnChip,
   productionChip,
   productionMenu,
-  releaseFailureOf,
   rollbacksOf,
   stageStopChip,
   stopServing,
@@ -142,6 +142,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
             failure: releaseFailureOf({
               releases: read.releases,
               environmentInputs: read.environmentInputs,
+              stalled: read.release.stalled,
             }),
             rollbacks: rollbacksOf(read.releases),
           }

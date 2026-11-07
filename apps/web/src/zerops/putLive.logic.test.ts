@@ -36,6 +36,7 @@ const facts = (over: Partial<PutLiveFacts> = {}): PutLiveFacts => ({
   production: undefined,
   gate: { allowed: false, reason: "There is no production to release to." },
   releases: [],
+  failure: () => undefined,
   ...over,
 });
 

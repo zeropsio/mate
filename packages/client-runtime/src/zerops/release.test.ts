@@ -653,7 +653,9 @@ describe("a release in flight", () => {
     },
   ])("$name", ({ release, rollouts, inFlight, stalled }) => {
     expect(releaseInFlight({ newest: release, rollouts })).toBe(inFlight);
-    expect(releaseStalled({ newest: release, rollouts })).toBe(stalled);
+    expect(releaseStalled({ newest: release, rollouts, notes: undefined, jobs: [] })?.tag).toBe(
+      stalled,
+    );
   });
 });
 

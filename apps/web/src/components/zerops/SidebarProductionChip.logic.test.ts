@@ -4,7 +4,9 @@ import type {
   GroupEnvironmentRowInput,
   GroupFlowProduction,
   GroupFlowStop,
+  ReleaseFailure,
 } from "@t3tools/client-runtime/zerops";
+import { releaseFailureOf } from "@t3tools/client-runtime/zerops";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
@@ -20,7 +22,6 @@ import {
   productionChip,
   productionMenu,
   projectChips,
-  releaseFailureOf,
   stageChip,
   stageStopChip,
   stageMenu,
@@ -29,7 +30,6 @@ import {
   type ChipView,
   type ReleasesAnswer,
   type ProductionChip,
-  type ReleaseFailure,
   type StopServing,
 } from "./SidebarProductionChip.logic";
 
@@ -883,6 +883,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
   it("names the newest release whose production deploy failed, with HQ's words and time", () => {
     expect(
       releaseFailureOf({
+        stalled: undefined,
         releases: [
           release({
             tag: "v0.1.57",
@@ -906,6 +907,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
   it("reads HQ's words for a release that lists the commit short", () => {
     expect(
       releaseFailureOf({
+        stalled: undefined,
         releases: [
           release({
             tag: "v0.1.57",
@@ -945,6 +947,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     );
     expect(
       releaseFailureOf({
+        stalled: undefined,
         releases: [
           release({
             tag: "v0.1.57",
@@ -964,6 +967,7 @@ describe("releaseFailureOf — the release that did not go through, newer than w
   it("names a release the old broker refused, from its kept record, with its reason", () => {
     expect(
       releaseFailureOf({
+        stalled: undefined,
         releases: [
           release({
             tag: "v0.1.57",
@@ -1000,12 +1004,15 @@ describe("releaseFailureOf — the release that did not go through, newer than w
     },
     { name: "no release at all", releases: [] },
   ])("says nothing when $name", ({ releases }) => {
-    expect(releaseFailureOf({ releases, environmentInputs: environments })).toBeUndefined();
+    expect(
+      releaseFailureOf({ releases, environmentInputs: environments, stalled: undefined }),
+    ).toBeUndefined();
   });
 
   it("keeps the failure when HQ records no failed deploy of its commit", () => {
     expect(
       releaseFailureOf({
+        stalled: undefined,
         releases: [
           release({
             tag: "v0.1.57",

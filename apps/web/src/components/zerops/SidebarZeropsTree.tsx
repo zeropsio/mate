@@ -94,6 +94,7 @@ import {
   type ZeropsGroupPendingMember,
   type ZeropsPlacedBirth,
   type ZeropsPublicRoute,
+  type ReleaseFailure,
   formatRunClock,
 } from "@t3tools/client-runtime/zerops";
 import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
@@ -275,7 +276,6 @@ import {
   type ChipView,
   type ProductionChip,
   type ReleasesAnswer,
-  type ReleaseFailure,
   type StopServing,
 } from "./SidebarProductionChip.logic";
 import {

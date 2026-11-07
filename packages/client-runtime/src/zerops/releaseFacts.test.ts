@@ -110,7 +110,8 @@ function walk(steps: ReadonlyArray<Step>) {
       held,
       press: step.press,
       inFlight: step.inFlight,
-      stalled: step.stalled,
+      stalled:
+        step.stalled === undefined ? undefined : { tag: step.stalled, at: undefined, reasons: [] },
       suggestion: step.suggestion,
       releases: step.releases,
     });
@@ -119,6 +120,7 @@ function walk(steps: ReadonlyArray<Step>) {
       held,
       press: step.press,
       clockMs: step.nowMs ?? NOW,
+      reads: { environmentInputs: [], stalled: undefined },
       read: (tag) => current(tag, step.moment, step.releases),
     });
     held = shown.held;
@@ -355,11 +357,12 @@ describe("a release HQ ended without landing says so: no clock ends it", () => {
       held: undefined,
       press: { kind: "done" },
       inFlight,
-      stalled: "v0.1.1",
+      stalled: { tag: "v0.1.1", at: undefined, reasons: [] },
       suggestion: "v0.1.2",
       releases: [row("v0.1.1", standing)],
     });
     const outcome = releaseOutcomeOf({
+      reads: { environmentInputs: [], stalled: undefined },
       ...follows,
       pressing: false,
       clockMs: NOW,
@@ -500,6 +503,7 @@ describe("a release that failed on several parts", () => {
       failedEntries: services.map((service) => ({ service, commit: HEAD })),
     });
     const outcome = releaseOutcomeOf({
+      reads: { environmentInputs: [], stalled: undefined },
       tagged,
       releasing: true,
       pressing: false,
@@ -772,6 +776,7 @@ describe("a roll back's review opened on its way follows the roll back to its en
         permission: { allowed: true },
         press: { kind: "idle" },
         outcome: releaseOutcomeOf({
+          reads: { environmentInputs: [], stalled: undefined },
           tagged: follows.tagged,
           releasing: follows.releasing,
           pressing: false,
@@ -871,6 +876,7 @@ describe("a release is released once its deploys have ended", () => {
   ])("$name", ({ deploying, kind }) => {
     expect(
       releaseOutcomeOf({
+        reads: { environmentInputs: [], stalled: undefined },
         tagged: row("v0.1.0", "live"),
         releasing: true,
         deploying,
@@ -907,6 +913,7 @@ describe("a release on its way says how long", () => {
   ])("$name", ({ since, progress, clock }) => {
     expect(
       releaseOutcomeOf({
+        reads: { environmentInputs: [], stalled: undefined },
         tagged: row("v0.1.0", undefined, { taggedAt: new Date(NOW - since).toISOString() }),
         releasing: true,
         pressing: false,

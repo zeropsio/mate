@@ -3,6 +3,7 @@ import type {
   CanonicalEnvironmentRow as EnvironmentRow,
   FlowPullRequest,
   FlowReleaseRow,
+  ReleaseFailure,
 } from "@t3tools/client-runtime/zerops";
 
 /** How many releases History shows before *Show all*. */
@@ -15,8 +16,13 @@ export type HistoryReleaseInput = Pick<FlowReleaseRow, "tag" | "taggedAt"> &
 export interface HistoryRelease {
   readonly tag: string;
   readonly taggedAt: string;
-  /** Live where production runs it; Rolled back where production went back past it. */
-  readonly state: "live" | "rolled-back" | "deploy-failed" | undefined;
+  /**
+   * Live where production runs it; how it did not go through (`releaseFailure`); Rolled back where
+   * production went back past it.
+   */
+  readonly state: "live" | ReleaseFailure["kind"] | "rolled-back" | undefined;
+  /** HQ's words for how it did not go through, in one line (`releaseFailureWords`). */
+  readonly failure: string | undefined;
   /** The release a roll back went back to: it put no change of its own live. */
   readonly backTo: string | undefined;
   /** The Mates' changes it put live, newest first. */
@@ -65,39 +71,52 @@ function rolledBack(release: HistoryReleaseInput, releases: ReadonlyArray<Histor
   });
 }
 
-export function historyReleases(input: {
+export function historyReleases<R extends HistoryReleaseInput>(input: {
   /** Newest first, as the flow lists them. */
-  readonly releases: ReadonlyArray<HistoryReleaseInput>;
+  readonly releases: ReadonlyArray<R>;
   readonly merged: ReadonlyArray<FlowPullRequest>;
+  /** How a release did not go through (`releaseFailure`); none where it did, or is on its way. */
+  readonly failureOf?: ((release: R) => ReleaseFailure | undefined) | undefined;
 }): ReadonlyArray<HistoryRelease> {
-  const releases = input.releases.filter((release) => release.verdict !== "refused");
+  // A refused release deployed nothing: it is listed for its refusal, never rolled back past.
+  const deployed = input.releases.filter((release) => release.verdict !== "refused");
   const newestFirst = (left: string | undefined, right: string | undefined) =>
     time(right ?? "") - time(left ?? "");
   const changes = input.merged
     .filter((change) => change.kind === "code")
     .toSorted((left, right) => newestFirst(left.mergedAt, right.mergedAt));
-  return releases.map((release) => ({
-    tag: release.tag,
-    taggedAt: release.taggedAt,
-    state:
-      release.standing === "live"
-        ? "live"
-        : release.standing === "deploy-failed"
-          ? "deploy-failed"
-          : rolledBack(release, releases)
-            ? "rolled-back"
-            : undefined,
-    backTo: release.rollbackOf ?? undefined,
-    changes: changes.filter((change) =>
-      release.history?.changes.some(
-        (recorded) => recorded.repo === change.repository && recorded.number === change.number,
+  return input.releases.map((release) => {
+    const failure = input.failureOf?.(release);
+    return {
+      tag: release.tag,
+      taggedAt: release.taggedAt,
+      state:
+        release.standing === "live"
+          ? "live"
+          : failure !== undefined
+            ? failure.kind
+            : release.verdict !== "refused" && rolledBack(release, deployed)
+              ? "rolled-back"
+              : undefined,
+      failure: failure === undefined ? undefined : releaseFailureWords(failure),
+      backTo: release.rollbackOf ?? undefined,
+      changes: changes.filter((change) =>
+        release.history?.changes.some(
+          (recorded) => recorded.repo === change.repository && recorded.number === change.number,
+        ),
       ),
-    ),
-    changeTitles: release.history?.changes.map((change) => change.title),
-    outsideCommitCount: release.history?.outsideCommitCount,
-    commitCount: release.history?.commitCount,
-    ranges: release.history?.ranges,
-  }));
+      changeTitles: release.history?.changes.map((change) => change.title),
+      outsideCommitCount: release.history?.outsideCommitCount,
+      commitCount: release.history?.commitCount,
+      ranges: release.history?.ranges,
+    };
+  });
+}
+
+/** A failure's one line: HQ's words, or — a stall HQ could not tell the end of — that it is unknown. */
+function releaseFailureWords(failure: ReleaseFailure): string | undefined {
+  if (failure.error !== undefined) return failure.error;
+  return failure.kind === "stalled" ? "Deploy status unknown — check it in Zerops" : undefined;
 }
 
 /** A release's second line: how many changes it put live, or where it went back to. */
@@ -114,6 +133,8 @@ export const RELEASE_STATE_WORDS = {
   live: "Live",
   "rolled-back": "Rolled back",
   "deploy-failed": "Deploy failed",
+  refused: "Refused",
+  stalled: "Not live",
 } as const;
 
 /** The quiet line of a release's commits no Mate's change landed. */

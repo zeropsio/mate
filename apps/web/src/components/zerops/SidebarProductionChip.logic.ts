@@ -28,18 +28,15 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import {
   cannotTellWhatRuns,
   changesCountWords,
-  sameCommit,
   serviceNames,
-  type FlowReleaseRow,
-  type GroupEnvironmentRowInput,
   type GroupFlowProduction,
+  type ReleaseFailure,
   type GroupFlowStop,
   type ZeropsPublicRoute,
   firstDeployLine,
 } from "@t3tools/client-runtime/zerops";
 
 import { deployBuilding, type Deployment } from "@t3tools/client-runtime/zerops/flow";
-import { type HqJob, jobFailed } from "@t3tools/client-runtime/zerops/hq";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -99,88 +96,6 @@ export function stopServing(input: {
   return serving.every((service) => statusWord(service.status) === "STOPPED")
     ? { kind: "stopped" }
     : { kind: "serving" };
-}
-
-/** A release that did not go through, newer than what production serves. */
-export interface ReleaseFailure {
-  readonly tag: string;
-  /**
-   * Its production deploy failed, or it is a release the old broker refused after its tag — a
-   * record kept from before HQ, which refuses a release before any tag or record.
-   */
-  readonly kind: "deploy-failed" | "refused";
-  /** When: the failed deploy's, as HQ records it, or the refused tag's; `undefined` where unread. */
-  readonly at: string | undefined;
-  /** The words for it: the failed deploy's message, as HQ records it, or the broker's recorded refusal reason. */
-  readonly error: string | undefined;
-  /** The services whose deploys failed, by the order the release lists them. */
-  readonly services: ReadonlyArray<string>;
-}
-
-/**
- * The newest release that failed or was refused, among the ones newer than
- * the release production runs (`stopFailedDeploy`'s rule): an older failure
- * is history. HQ's record of the failed deploy carries its words and its time.
- */
-export function releaseFailureOf(input: {
-  /** Newest first. */
-  readonly releases: ReadonlyArray<FlowReleaseRow>;
-  readonly environmentInputs: ReadonlyArray<Pick<GroupEnvironmentRowInput, "tier" | "services">>;
-}): ReleaseFailure | undefined {
-  const live = input.releases.findIndex((release) => release.standing === "live");
-  const newer = live === -1 ? input.releases : input.releases.slice(0, live);
-  const release = newer.find(
-    (entry) => entry.standing === "deploy-failed" || entry.verdict === "refused",
-  );
-  if (release === undefined) return undefined;
-  if (release.verdict === "refused") {
-    return {
-      tag: release.tag,
-      kind: "refused",
-      at: release.taggedAt,
-      error: wordsOf(release.detail),
-      services: [],
-    };
-  }
-  const entries = release.failedEntries;
-  // One failed deploy's words and time are the release's; several each keep their own, said where
-  // each service is.
-  const [entry] = entries;
-  const failed =
-    entry === undefined || entries.length > 1
-      ? undefined
-      : failedDeploy(input.environmentInputs, entry);
-  return {
-    tag: release.tag,
-    kind: "deploy-failed",
-    at: failed === undefined ? undefined : (failed.endedAt ?? failed.at),
-    error: wordsOf(failed?.reason ?? undefined),
-    services: entries.map((failedEntry) => failedEntry.service),
-  };
-}
-
-const wordsOf = (text: string | undefined): string | undefined => {
-  const trimmed = text?.trim();
-  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
-};
-
-/**
- * HQ's job of one service's production deploy of one commit that ended deploying nothing — the
- * build's own failure, or HQ's refusal — while it is the newest.
- */
-function failedDeploy(
-  environments: ReadonlyArray<Pick<GroupEnvironmentRowInput, "tier" | "services">>,
-  entry: { readonly service: string; readonly commit: string },
-): HqJob | undefined {
-  const production = environments.find((environment) => environment.tier === "production");
-  const latest = production?.services.find((service) => service.hostname === entry.service)?.deploy
-    ?.latest;
-  return latest !== undefined &&
-    latest.sha !== null &&
-    jobFailed(latest) &&
-    sameCommit(entry.commit, latest.sha)
-    ? latest
-    : undefined;
 }
 
 export type ChipLabel = "prod" | "stage";
@@ -902,12 +817,22 @@ function stopWord(
   }
 }
 
-/** "Release v0.1.57 failed 12 min ago: <HQ's words>." */
+/**
+ * "Release v0.1.57 failed 12 min ago: <HQ's words>.", "Release v0.1.57 didn't go live: <HQ's
+ * words>." — or, for a stall HQ could not tell the end of, that its status is unknown.
+ */
 function failureSentence(failure: ReleaseFailure, nowMs: number): string {
   const ago = failure.at === undefined ? undefined : deployedAgo(failure.at, nowMs);
-  const verb = failure.kind === "refused" ? "was refused" : "failed";
   const when = ago === undefined ? "" : ` ${ago}`;
+  if (failure.kind === "stalled" && failure.error === undefined)
+    return `Deploy status unknown for ${failure.tag}${when}: check it in Zerops.`;
   const why = failure.error === undefined ? "" : `: ${failure.error.replace(/\.$/u, "")}`;
+  const verb =
+    failure.kind === "refused"
+      ? "was refused"
+      : failure.kind === "stalled"
+        ? "didn't go live"
+        : "failed";
   return `Release ${failure.tag} ${verb}${when}${why}.`;
 }
 
@@ -1093,9 +1018,11 @@ export function stageMenu(input: {
   return { stops: [...listed, ...coming] };
 }
 
-/** How a release did not go through: "failed deploying app", "was refused". */
+/** How a release did not go through: "failed deploying app", "was refused", "didn't go live". */
 function failedHow(failure: ReleaseFailure): string {
   if (failure.kind === "refused") return "was refused";
+  if (failure.kind === "stalled")
+    return failure.error === undefined ? "has an unknown deploy status" : "didn't go live";
   return failure.services.length === 0
     ? "failed"
     : `failed deploying ${serviceNames(failure.services)}`;

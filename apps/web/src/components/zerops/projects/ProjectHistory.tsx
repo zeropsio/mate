@@ -1,5 +1,5 @@
 /** Application history reads recorded release membership; only an expanded row requests Git content. */
-import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import { releaseFailure, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
 import { createContext, useMemo, useState, type ReactNode } from "react";
 
@@ -42,7 +42,15 @@ export function ProjectHistory({
   const releases = useMemo(
     () =>
       flow?.releasesKnown === true
-        ? historyReleases({ releases: flow.releases, merged: flow.merged })
+        ? historyReleases({
+            releases: flow.releases,
+            merged: flow.merged,
+            failureOf: (release) =>
+              releaseFailure(release, {
+                environmentInputs: flow.environmentInputs,
+                stalled: flow.release.stalled,
+              }),
+          })
         : undefined,
     [flow],
   );
@@ -155,6 +163,9 @@ function ReleaseRow({
             </span>
           )}
         </span>
+        {release.failure === undefined ? null : (
+          <span className="ov-change-line">{release.failure}</span>
+        )}
         <span className="ov-change-line">
           {releaseLine(release)}
           {release.commitCount === undefined

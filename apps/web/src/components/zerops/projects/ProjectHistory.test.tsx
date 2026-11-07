@@ -70,6 +70,7 @@ const RELEASE: HistoryRelease = {
   tag: "v1.0.4",
   taggedAt: "2026-10-20T09:00:00Z",
   state: "live",
+  failure: undefined,
   backTo: undefined,
   changes: [],
   outsideCommitCount: 2,

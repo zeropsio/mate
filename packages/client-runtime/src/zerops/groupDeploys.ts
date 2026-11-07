@@ -37,6 +37,7 @@ import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
   type HqEnvironment,
   type CanonicalHqEnvironment,
+  type HqJob,
   canonicalEnvironmentsOf,
   type UnreadEnvironment,
   jobFailed,
@@ -377,6 +378,8 @@ export interface ReleaseDeploys {
   readonly failed: ReadonlyArray<ReleaseDeployFailure>;
   /** Each production's newest release rollout, as HQ told it (`releaseInFlight`). */
   readonly rollouts: ReadonlyArray<ReleaseRollout | null | undefined>;
+  /** Each production service's newest job, as HQ lists it (`releaseStalled`). */
+  readonly jobs: ReadonlyArray<HqJob>;
 }
 
 /**
@@ -394,6 +397,7 @@ export function releaseDeploys(
   const production = new Map<string, string>();
   const failed: Array<ReleaseDeployFailure> = [];
   const rollouts: Array<ReleaseRollout | null | undefined> = [];
+  const jobs: Array<HqJob> = [];
   for (const environment of environments) {
     if (environment.tier !== "production") continue;
     rollouts.push(environment.release);
@@ -404,6 +408,7 @@ export function releaseDeploys(
     failed.push(...(environment.releaseFailures ?? []));
     for (const service of environment.services) {
       const latest = service.deploy?.latest;
+      if (latest !== undefined) jobs.push(latest);
       if (latest !== undefined && latest.sha !== null && jobFailed(latest)) {
         const tag =
           latest.cause === "release"
@@ -424,7 +429,7 @@ export function releaseDeploys(
       production.set(service.hostname, sha);
     }
   }
-  return { production, failed, rollouts };
+  return { production, failed, rollouts, jobs };
 }
 
 /**
