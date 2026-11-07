@@ -31,6 +31,9 @@ const schemas = {
 
 /** A `$provenance.schema` this consumer decodes. */
 export type RecordedSchema = keyof typeof schemas;
+/** Whether this consumer decodes recordings of `schema`: the sync keeps only those. */
+export const consumes = (schema: string): schema is RecordedSchema =>
+  Object.hasOwn(schemas, schema);
 /** A value recorded under `S`, as the consumer's schema decodes it. */
 export type Recorded<S extends RecordedSchema> = (typeof schemas)[S]["Type"];
 
@@ -73,7 +76,7 @@ export function recordedIn(root: string) {
     try {
       const recording = decodeRecording(NodeFS.readFileSync(file, "utf8"));
       const named = recording.$provenance.schema;
-      if (!Object.hasOwn(schemas, named)) throw new Error(`names no known schema "${named}"`);
+      if (!consumes(named)) throw new Error(`names no known schema "${named}"`);
       if (named !== schema) throw new Error(`names schema "${named}", not "${schema}"`);
       const decode = Schema.decodeUnknownSync(decoderOf(schema));
       const value = decode(recording.value);
