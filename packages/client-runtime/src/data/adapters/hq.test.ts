@@ -625,7 +625,11 @@ describe("hqNavigationLink", () => {
       const fixture = hqFixtureWire();
       const { fiber } = yield* run(store, fixture);
       expect(fixture.sent.map(({ request }) => request)).toEqual([
-        { type: "subscribe", scopes: [{ scope: NAVIGATION, knownKeys: [] }] },
+        {
+          type: "subscribe",
+          scopes: [{ scope: NAVIGATION, knownKeys: [] }],
+          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
+        },
       ]);
       expect(phase(store, hqAppsScope(ORG))).toBe("baselining");
 
@@ -643,6 +647,31 @@ describe("hqNavigationLink", () => {
       expect(readsOfState(store.state()).coverage(hqAppsScope(ORG))).toBe("complete");
       yield* Fiber.interrupt(fiber);
     }),
+  );
+
+  // witness: packages/client-runtime/src/data/adapters/hq.ts | if (open === null || !asked.has(hqScopeKey(message.scope))) return; → return;
+  it.effect(
+    "HQ saying a scope changed is answered by asking that scope again with the person's token, and what that read sends is shown",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* live(store, fixture);
+        const before = fixture.sent.length;
+        yield* fixture.send({ type: "scope-changed", scope: NAVIGATION });
+        yield* settle;
+        expect(fixture.sent.slice(before).map(({ request }) => request)).toEqual([
+          { type: "retry", scopes: [NAVIGATION], accessToken: HQ_FIXTURE_ACCESS_TOKEN },
+        ]);
+        yield* fixture.send(
+          navigation("scope-values", 4, [
+            { key: "app:shop", value: app("shop", "Shop 2", ["ada"]) },
+          ]),
+        );
+        yield* settle;
+        expect(appName(store, "shop")).toBe("Shop 2");
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 
   it.effect(
@@ -749,6 +778,7 @@ describe("hqNavigationLink", () => {
         {
           type: "subscribe",
           scopes: [{ scope: NAVIGATION, knownKeys: ["app:shop", "project:ada"] }],
+          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
         },
       ]);
       yield* Fiber.interrupt(fiber);
@@ -845,10 +875,14 @@ describe("hqNavigationLink", () => {
               knownKeys: ["app:shop", "project:ada"],
             },
           ],
+          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
         },
       ]);
       expect(fixture.sent.filter(({ request }) => request.type === "retry")).toEqual([
-        { segment: 2, request: { type: "retry", scopes: [NAVIGATION] } },
+        {
+          segment: 2,
+          request: { type: "retry", scopes: [NAVIGATION], accessToken: HQ_FIXTURE_ACCESS_TOKEN },
+        },
       ]);
       expect(phase(store, hqAppsScope(ORG))).toBe("baselining");
       yield* Fiber.interrupt(fiber);
@@ -1970,6 +2004,7 @@ describe("an HQ session", () => {
       expect(fixture.opens()).toBe(2);
       expect(fixture.sent.find(({ segment }) => segment === 2)?.request).toEqual({
         type: "retry",
+        accessToken: HQ_FIXTURE_ACCESS_TOKEN,
       });
       yield* Fiber.interrupt(fiber);
     }),
