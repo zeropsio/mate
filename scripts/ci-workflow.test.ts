@@ -32,6 +32,7 @@ import { checkJobIds } from "./ci-blame.ts";
 import { checkSteps } from "./ci-local.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
+// witness: .github/workflows/ci.yml | MATE_CI_SELECTION: ${{ steps.blame.outputs.selection_manifest }} → MATE_CI_SELECTION: ${{ steps.blame.outputs.jobs }}
 it("CI selection passes one candidate manifest to Changes and State Smoke", () => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
@@ -545,6 +546,7 @@ const selectionWorkspace = () => {
   return directory;
 };
 
+// witness: .github/workflows/ci.yml | if [[ "$listed" -lt "$expected" ]]; then → if false; then
 it("a truncated GitHub change list selects every gated job", () => {
   const directory = selectionWorkspace();
   const output = NodePath.join(directory, "output");

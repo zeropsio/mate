@@ -180,6 +180,7 @@ it("State Smoke CI gives sign-in its own job and spreads a full selection across
   }
 });
 
+// witness: scripts/ci-blame.ts | (candidate !== undefined && manifest.candidate !== candidate) || → false ||
 it.each(["candidate", "plan", "base"])(
   "State Smoke rejects a %s mismatch in the CI manifest before running any shard",
   (missing) => {
@@ -210,6 +211,7 @@ it.each(["candidate", "plan", "base"])(
   },
 );
 
+// witness: scripts/state-smoke.ts | process.env.GITHUB_ACTIONS === "true" && !process.env.MATE_CI_SELECTION) → false)
 it.each([
   ["planning", ["--plan", "--base", base]],
   ["a shard", ["--selection", "[]", "--shard", "1/1"]],

@@ -265,6 +265,7 @@ describe("revision-bound witness receipts", () => {
     ).toBe(true);
   });
 
+  // witness: scripts/gate-changed.ts | receipt.version === 1 && → true &&
   it("an unknown selection manifest version cannot reuse a gate receipt or its stages", () => {
     gate.write(edited, "export {}; // unknown version\n");
     expect(gate.run(["--force"]).status).toBe(0);
