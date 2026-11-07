@@ -343,6 +343,106 @@ describe("ZeropsApiClient authentication", () => {
     expect(stored).toEqual([]);
   });
 
+  // witness: packages/client-runtime/src/zerops/api.ts | this.#sessionOwner !== undefined || Boolean(session.refreshToken) → Boolean(session.refreshToken)
+  it("renews a session it holds no refresh token for through the session's owner, and repeats the request", async () => {
+    const stub = recordingFetch((request) =>
+      request.authorization === "Bearer access-2"
+        ? jsonResponse(200, { id: "user-1", email: "a@b.c", clientUserList: [] })
+        : jsonResponse(401, { code: "notAuthorized" }),
+    );
+    const asked: ZeropsSession[] = [];
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      sessionOwner: {
+        renew: async (stale) => {
+          asked.push(stale);
+          return { accessToken: "access-2" };
+        },
+      },
+    });
+    client.restoreSession({ accessToken: "access-1" });
+
+    const answered = await client.fetchUser().then(
+      (user) => user.id,
+      () => "refused",
+    );
+
+    expect(answered).toBe("user-1");
+    expect(asked).toEqual([{ accessToken: "access-1" }]);
+    expect(stub.requests.map(({ url }) => new URL(url).pathname)).toEqual([
+      "/api/rest/public/user/info",
+      "/api/rest/public/user/info",
+    ]);
+    expect(client.session?.accessToken).toBe("access-2");
+  });
+
+  // witness: packages/client-runtime/src/zerops/api.ts | if (renewed !== null) return renewed; → return stale;
+  it("ends the session when its owner says it has ended", async () => {
+    const stub = recordingFetch(() => jsonResponse(401, { code: "notAuthorized" }));
+    const stored: Array<ZeropsSession | null> = [];
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        stored.push(session);
+      },
+      sessionOwner: { renew: async () => null },
+    });
+    client.restoreSession({ accessToken: "access-1" });
+
+    const error = await client.fetchUser().catch((cause: unknown) => cause);
+
+    expect((error as ZeropsApiError).kind).toBe("expired-session");
+    expect(stub.requests).toHaveLength(1);
+    expect(client.session).toBe(null);
+    expect(stored).toEqual([null]);
+  });
+
+  // witness: packages/client-runtime/src/zerops/api.ts | if (cause instanceof ZeropsApiError) throw cause; → void cause;
+  it("keeps the session and says why when its owner refuses the renewal", async () => {
+    const stub = recordingFetch(() => jsonResponse(401, { code: "notAuthorized" }));
+    const held: ZeropsSession = { accessToken: "access-1" };
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      sessionOwner: {
+        renew: async () => {
+          throw new ZeropsApiError("Another person signed in.", "expired-session", 401);
+        },
+      },
+    });
+    client.restoreSession(held);
+
+    const error = await client.fetchUser().catch((cause: unknown) => cause);
+
+    expect((error as ZeropsApiError).kind).toBe("expired-session");
+    expect(stub.requests).toHaveLength(1);
+    expect(client.session).toBe(held);
+  });
+
+  // witness: packages/client-runtime/src/zerops/api.ts | throw new ZeropsApiError("Couldn't reach Zerops to renew the session.", "network"); → return stale;
+  it("keeps the session when its owner can't be reached", async () => {
+    const stub = recordingFetch(() => jsonResponse(401, { code: "notAuthorized" }));
+    const stored: Array<ZeropsSession | null> = [];
+    const held: ZeropsSession = { accessToken: "access-1" };
+    const client = new ZeropsApiClient({
+      fetch: stub.fetch,
+      onSessionChange: (session) => {
+        stored.push(session);
+      },
+      sessionOwner: {
+        renew: async () => {
+          throw new Error("The bridge stopped answering.");
+        },
+      },
+    });
+    client.restoreSession(held);
+
+    const error = await client.fetchUser().catch((cause: unknown) => cause);
+
+    expect((error as ZeropsApiError).kind).toBe("network");
+    expect(client.session).toBe(held);
+    expect(stored).toEqual([]);
+  });
+
   it("adopts another tab's renewed session without ending a request in flight", async () => {
     let answer!: (response: Response) => void;
     const stub = recordingFetch(
