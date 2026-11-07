@@ -108,6 +108,64 @@ describe("shared births in the group tree", () => {
     );
   });
 
+  // witness: packages/client-runtime/src/data/projections/birthProgress.ts | const authorized = roleCurrent && app.can?.add_mate?.allow === true; → const authorized = roleCurrent;
+  it("a person who lost the role mid-birth sees the stopped state and no Continue", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], projects: [], services: [] }).forEach(store.dispatch);
+    membershipInputs("OWNER").forEach(store.dispatch);
+    // HQ's birth as its stopped attempt left it: the creation claimed, then refused by Zerops.
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [
+          {
+            id: "a1",
+            name: "Shop",
+            projects: [],
+            births: [
+              {
+                id: "b1",
+                face: "rose:seal",
+                madeBy: "ada",
+                intent: { ...birth.intent!, projectName: "Shop - Nova" },
+                attempts: {
+                  create: {
+                    by: "ada",
+                    at: "2026-11-05T10:00:00.000Z",
+                    refused: {
+                      at: "2026-11-05T10:00:01.000Z",
+                      reason: "Creation refused by Zerops.",
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        ],
+        ungrouped: [],
+      },
+    });
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    const shown = () => sharedBirthPresentation(registry.get(read).open[0]!);
+    // Continue before role loss.
+    expect(shown().line).toContain("Creation refused by Zerops.");
+    expect(shown().actions).toContain("continue");
+
+    // The membership update: this person is READ_ONLY now.
+    membershipInputs("READ_ONLY", false, 2).forEach(store.dispatch);
+    expect({
+      reason: shown().line.includes("Creation refused by Zerops."),
+      guidance: shown().line.includes(
+        "The person who started this setup can continue if they can add Mates and attach the project.",
+      ),
+      continues: shown().actions.filter((action) => action === "continue").length,
+    }).toEqual({ reason: true, guidance: true, continues: 0 });
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
   it("an interrupted setup names the remaining attachment while the accepted import awaits its service", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);

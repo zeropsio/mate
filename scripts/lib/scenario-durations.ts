@@ -67,6 +67,5 @@ export const scenarioDurations: Readonly<Record<string, number>> = {
   "apps/web/test/scenarios/areas/c-mate/engine-secret.scenario.ts": 6_666,
   "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts": 6_402,
   "apps/web/test/scenarios/areas/f-create/birth-geometry.scenario.ts": 6_272,
-  "apps/web/test/scenarios/areas/f-create/birth-role-loss.scenario.ts": 6_142,
   "apps/web/test/scenarios/areas/foundation/hqContract.scenario.ts": 4_571,
 };
