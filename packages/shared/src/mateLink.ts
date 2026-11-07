@@ -577,10 +577,17 @@ export const KeyNotAdmitted = Schema.Literals([
 ]);
 export type KeyNotAdmitted = typeof KeyNotAdmitted.Type;
 
-/** How HQ closes a link: `4409` superseded, `4408` silence, `1001` going away, `1012` service restart, `1007` malformed, `1009` too big, `1011` unreadable. */
+/**
+ * HQ's reason on `1011` when admission could not resolve the hello's key: Zerops gave no verdict on
+ * it, or HQ could not read its own entry for it — the reason does not tell the two apart.
+ */
+export const KEY_UNRESOLVED = "the key could not be resolved";
+
+/** How HQ closes a link: `4409` superseded, `4408` silence, `1001` going away, `1012` service restart, `1007` malformed, `1009` too big, `1011` unreadable ({@link KEY_UNRESOLVED} at admission). */
 export const MateLinkClosed = Schema.Union([
   Schema.Struct({ code: Schema.Literal(4401), reason: Schema.Literal("key_refused") }),
   Schema.Struct({ code: Schema.Literal(4403), reason: KeyNotAdmitted }),
+  Schema.Struct({ code: Schema.Literal(1011), reason: Schema.Literal(KEY_UNRESOLVED) }),
   Schema.Struct({ code: Schema.Literals([1001, 1007, 1009, 1011, 1012, 4408, 4409]) }),
 ]);
 export type MateLinkClosed = typeof MateLinkClosed.Type;

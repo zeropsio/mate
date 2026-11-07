@@ -1,6 +1,6 @@
 import type { CreationPressState } from "../operations/creationPress.ts";
 import { failedSetupProcess } from "./setupFailure.ts";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, MateHqKey } from "@t3tools/contracts";
 import type { EnvironmentShellStatus } from "../../state/shell.ts";
 import type { EnvironmentThreadStatus } from "../../state/threads.ts";
 import {
@@ -793,6 +793,8 @@ export function mateNoticeDecision(input: {
   readonly mateName: string;
   readonly recovery?: MateRecovery;
   readonly limit?: { readonly provider: string; readonly detail: string };
+  /** HQ's word on the Mate's key, as the Mate's own config says it (`ServerConfig.hqKey`). */
+  readonly hqKey?: MateHqKey | undefined;
 }) {
   const { reachability } = input;
   const surface = input.conversationShown ? ("banner" as const) : ("stage" as const);
@@ -833,7 +835,10 @@ export function mateNoticeDecision(input: {
               ? "none"
               : "opening"
             : reachability.kind === "ready" && reachability.notice === null
-              ? "none"
+              ? // Only a connected Mate's config is its word now; it speaks over the conversation.
+                input.hqKey === undefined || !input.conversationShown
+                ? "none"
+                : "hq-key"
               : "reachability";
   const actions: ReadonlyArray<ReachabilityAction> =
     phase === "recovery"
@@ -848,7 +853,7 @@ export function mateNoticeDecision(input: {
             ? [...reachabilityPhrase(reachability, input).actions, "open-in-zerops"]
             : reachabilityPhrase(reachability, input).actions;
   const severity =
-    phase === "limit"
+    phase === "limit" || (phase === "hq-key" && input.hqKey?.state === "refused")
       ? ("attention" as const)
       : phase === "recovery"
         ? recovery!.tone === "error"

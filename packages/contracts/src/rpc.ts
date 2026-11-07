@@ -1033,6 +1033,8 @@ export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerCon
     usageLimitsCommand: Schema.optional(Schema.Boolean),
     /** Opt-in prevents an older client receiving a new event it cannot decode. */
     mateUpdate: Schema.optional(Schema.Boolean),
+    /** Whether this client understands `hqKey` events; the snapshot's `hqKey` goes to every client. */
+    hqKey: Schema.optional(Schema.Boolean),
   }),
   success: ServerConfigStreamEvent,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),

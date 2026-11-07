@@ -83,6 +83,7 @@ import {
   primaryServerConfigAtom,
   primaryServerConfigEventAtom,
   primaryServerWelcomeAtom,
+  serverEnvironment,
 } from "../state/server";
 import { readProject, setActiveEnvironmentId, useActiveEnvironmentId } from "../state/entities";
 import {
@@ -235,6 +236,7 @@ function SignedInRootRouteView() {
       : `${gateInputs.projectId}:${gateInputs.serviceId}`,
   );
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
+  const hqKey = useAtomValue(serverEnvironment.hqKeyValueAtom(speaksFor));
   const conversationShown = gate.kind === "outlet" && conversation.kind === "shown";
   // One stretch however the lost link alternates between reconnecting and retrying.
   const linkSlow = useHeldFor(
@@ -255,6 +257,7 @@ function SignedInRootRouteView() {
           timestampFormat,
           conversationShown,
           linkSlow,
+          hqKey,
           nowMs,
           mateName: speakingName,
         })

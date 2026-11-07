@@ -1,3 +1,4 @@
+import type { MateHqKey } from "@t3tools/contracts";
 import type { OperationProgress } from "@t3tools/client-runtime/data";
 import {
   comingSentence,
@@ -8,7 +9,7 @@ import {
 } from "./mateArrival";
 import { COMING_UP_LINE, TAKING_LONGER_LINE, type MateComing } from "@t3tools/client-runtime/data";
 import { NOT_SET_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
-import { usageLimitWords } from "./noticeWords";
+import { hqKeyWords, usageLimitWords } from "./noticeWords";
 
 const UNCERTAIN_RESTART =
   "Zerops did not answer whether it took the restart. Check the Mate before trying again.";
@@ -167,6 +168,8 @@ export function mateNoticeVoice(
     readonly timestampFormat?: TimestampFormat;
     /** A lost link over a shown conversation has lasted past `MATE_VOICE_SLOW_MS`. */
     readonly linkSlow?: boolean;
+    /** HQ's word on the Mate's key, from its own config (`ServerConfig.hqKey`). */
+    readonly hqKey?: MateHqKey | undefined;
   },
 ): WebMateVoice {
   const { reachability } = input;
@@ -234,6 +237,10 @@ export function mateNoticeVoice(
           "The conversation will open once the update finishes.",
           "waking",
         );
+  if (decision.phase === "hq-key" && input.hqKey !== undefined) {
+    const words = hqKeyWords(input.hqKey, name);
+    return say(words.headline, words.secondary, "idle");
+  }
   if (decision.phase === "none") return { surface: "none" };
   if (decision.phase === "opening")
     return {

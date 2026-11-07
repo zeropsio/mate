@@ -74,6 +74,15 @@ export function applyServerConfigProjection(
           source: "live",
         };
       });
+    case "hqKey":
+      return Option.map(current, (projection) => {
+        const { hqKey: _previous, ...config } = projection.config;
+        return {
+          config: event.payload.hqKey === null ? config : { ...config, hqKey: event.payload.hqKey },
+          latestEvent: event,
+          source: "live",
+        };
+      });
     case "settingsUpdated":
       return Option.map(current, (projection) => ({
         config: {

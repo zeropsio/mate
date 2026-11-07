@@ -6,7 +6,7 @@ import { isAllowedWebSocketOrigin } from "./auth/origin.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
-import { actingIn, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
+import { actingIn, hqKeyOf, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
 import { ZeropsMateOwner } from "./zerops/ZeropsMateOwner.ts";
 import { administersProject, ZeropsMateAccessList } from "./zerops/ZeropsMateAccessList.ts";
 import { ThreadFileWrites } from "./zerops/ThreadFileWrites.ts";
@@ -507,6 +507,10 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
       );
       const zeropsCli = yield* ZeropsCli;
       const zeropsMateUpdate = yield* ZeropsMateUpdate;
+      // HQ's word on the Mate's key, as every connected person is told it; none outside Zerops.
+      const hqKeyLink = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsHqLink));
+      const currentHqKey =
+        hqKeyLink === undefined ? Effect.succeed(null) : Effect.map(hqKeyLink.standing, hqKeyOf);
       const zeropsDataConsole = yield* ZeropsDataConsoleModule.ZeropsDataConsole;
       const zeropsGitRemoteProbe = yield* ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe;
       // What a thread's agent wrote, read back; absent where no store backs it.
@@ -808,6 +812,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           );
           const environment = yield* serverEnvironment.getDescriptor;
           const auth = yield* serverAuth.getDescriptor();
+          const hqKey = yield* currentHqKey;
           const availableEditors: ReadonlyArray<EditorId> = yield* resolveAvailableEditorsForConfig(
             externalLauncher.resolveAvailableEditors(),
           );
@@ -846,6 +851,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
               otlpLogsEnabled: config.otlpLogsUrl !== undefined,
             },
             settings,
+            ...(hqKey === null ? {} : { hqKey }),
             shellResumeCompletionMarker: true,
             ...(fileManagerRevealKind === undefined
               ? {}
@@ -1871,8 +1877,25 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                       })),
                     )
                   : Stream.empty;
+              // Seeded with the snapshot's word so only a change goes out.
+              const hqKeyUpdates =
+                input.hqKey === true && hqKeyLink !== undefined
+                  ? hqKeyLink.changes.pipe(
+                      Stream.mapEffect(() => currentHqKey),
+                      (words) => Stream.concat(Stream.make(config.hqKey ?? null), words),
+                      Stream.changesWith(
+                        (previous, next) => JSON.stringify(previous) === JSON.stringify(next),
+                      ),
+                      Stream.drop(1),
+                      Stream.map((hqKey) => ({
+                        version: 1 as const,
+                        type: "hqKey" as const,
+                        payload: { hqKey },
+                      })),
+                    )
+                  : Stream.empty;
               const liveUpdates = Stream.merge(
-                mateUpdates,
+                Stream.merge(mateUpdates, hqKeyUpdates),
                 Stream.merge(
                   keybindingsUpdates,
                   Stream.merge(
