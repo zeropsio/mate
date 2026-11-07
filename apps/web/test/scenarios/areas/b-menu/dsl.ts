@@ -6,6 +6,7 @@ import { clickText, menuMateIn, xpathLiteral } from "../../harness/browser.ts";
 import type { ScenarioExtension, ScenarioOptions } from "../../harness/scenario.ts";
 import type { OverviewMain, MateThreadKind } from "@t3tools/shared/mateLink";
 import { createScenario } from "../../harness/scenario.ts";
+import { landCode, mateAccess, publishRecipe } from "../../harness/mateAccess.ts";
 import {
   conversationHistory,
   relayAttention,
@@ -17,6 +18,7 @@ import {
   removeProject,
   denyProjectRead,
   startStageBuild,
+  finishStageBuild,
   stageService,
   holdDetails,
   releaseDetails,
@@ -341,6 +343,8 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
         }
       }),
   };
+  /** Each stage to add, by its application's id. */
+  const stagesToAdd = new Map<string, string>();
   return {
     ...s,
     menu,
@@ -348,6 +352,38 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
       Effect.gen(function* () {
         yield* s.given.project(name, { app, kind: "stage", environmentName: "stage" });
         yield* stageService(s.drivers, name);
+      }),
+    /**
+     * The stage `name` stands in Zerops, not yet in `app`, whose Mate `credential` has put a stage
+     * recipe deploying its `web` code and that code on `main`: adding the stage deploys it.
+     */
+    stageToAdd: (name: string, app: string, credential: string) =>
+      Effect.gen(function* () {
+        const appId = s.appIds.get(app);
+        if (appId === undefined) return yield* Effect.die(new Error(`No application ${app}`));
+        const { core } = s.drivers;
+        yield* publishRecipe(
+          core,
+          s.owner,
+          credential,
+          appId,
+          "stage",
+          [
+            "services:",
+            "  - hostname: app",
+            "    type: ubuntu/nodejs@22",
+            `    buildFromGit: ${mateAccess(core, s.owner, credential).url(appId, "web")}`,
+            "    zeropsSetup: app",
+            "",
+          ].join("\n"),
+        );
+        yield* landCode(core, s.owner, credential, appId, "web", {
+          "zerops.yaml": "zerops:\n  - setup: app\n    run:\n      start: node index.js\n",
+          "index.js": 'console.log("shop");\n',
+        });
+        yield* s.given.project(name, { app, kind: "stage", registered: false });
+        yield* stageService(s.drivers, name);
+        stagesToAdd.set(name, appId);
       }),
     colleague: {
       said: (name: string, text: string) => conversationHistory(s.drivers, name, text),
@@ -372,7 +408,14 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
       ) => moveMate(s.drivers, name, app, kind),
       deletes: (name: string) => removeProject(s.drivers, name),
       denies: (name: string) => denyProjectRead(s.drivers, name),
-      builds: (name: string) => startStageBuild(s.drivers, name),
+      /** Adds the stage `name` (`stageToAdd`), which HQ builds. */
+      builds: (name: string) => {
+        const appId = stagesToAdd.get(name);
+        return appId === undefined
+          ? Effect.die(new Error(`${name} is no stage to add`))
+          : startStageBuild(s.drivers, s.owner, appId, name);
+      },
+      buildEnds: (name: string) => finishStageBuild(s.drivers, name),
     },
   };
 });

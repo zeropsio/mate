@@ -10,7 +10,7 @@ import {
   type RecipeTier,
 } from "@t3tools/shared/hqRecipe";
 import { gitClient } from "./gitClient.ts";
-import { stateBecomes } from "./recipe.ts";
+import { changeBecomes, stateBecomes } from "./recipe.ts";
 import type { ScenarioCore } from "./hqCore.ts";
 
 type Git = Effect.Success<typeof gitClient>;
@@ -103,6 +103,8 @@ export const publishRecipe = Effect.fn("scenarios.publishRecipe")(function* (
   credential: string,
   appId: string,
   tier: RecipeTier,
+  /** The tier's import: its services, by default one with no code to deploy. */
+  services = "services:\n  - hostname: api\n    type: ubuntu/nodejs@22\n",
 ) {
   const access = mateAccess(core, owner, credential);
   yield* access.repo(appId, RECIPE_REPO);
@@ -118,10 +120,51 @@ export const publishRecipe = Effect.fn("scenarios.publishRecipe")(function* (
   const path = NodePath.join(work, RECIPE_TIER_PATHS[tier]);
   yield* Effect.sync(() => {
     NodeFS.mkdirSync(NodePath.dirname(path), { recursive: true });
-    NodeFS.writeFileSync(path, "services:\n  - hostname: api\n    type: ubuntu/nodejs@22\n");
+    NodeFS.writeFileSync(path, services);
   });
   yield* git.checked(["add", "-A"], work);
   yield* git.checked(["commit", "-q", "-m", `Add the ${tier} recipe`], work);
   yield* git.checked(["push", "-q", "origin", `HEAD:refs/heads/mate/Ada/${String(number)}`], work);
   yield* stateBecomes(core.call, owner, appId, number, "merged");
+});
+
+/**
+ * The Mate lands `files` as the first history of its application's repository `repo`, as zcp does
+ * over HQ's HTTP and Git: a change, its push, and the owner's merge onto `main`.
+ */
+export const landCode = Effect.fn("scenarios.landCode")(function* (
+  core: ScenarioCore,
+  owner: string,
+  credential: string,
+  appId: string,
+  repo: string,
+  files: Readonly<Record<string, string>>,
+) {
+  const access = mateAccess(core, owner, credential);
+  yield* access.repo(appId, repo);
+  const opened = yield* core.call("POST", "/api/mate/changes", {
+    headers: access.headers,
+    body: { repo, title: `Start ${repo}` },
+  });
+  expect(opened.status, JSON.stringify(opened.body)).toBe(200);
+  const number = (opened.body as { readonly change: { readonly number: number } }).change.number;
+  const git = yield* gitClient;
+  yield* access.clone(git, appId, repo, repo);
+  const work = NodePath.join(git.dir, repo);
+  // HQ makes a repository empty: its first change starts the history `main` takes.
+  yield* git.checked(["checkout", "-q", "--orphan", "change"], work);
+  yield* Effect.sync(() => {
+    for (const [path, content] of Object.entries(files))
+      NodeFS.writeFileSync(NodePath.join(work, path), content);
+  });
+  yield* git.checked(["add", "-A"], work);
+  yield* git.checked(["commit", "-q", "-m", `Start ${repo}`], work);
+  const head = yield* git.checked(["rev-parse", "HEAD"], work);
+  yield* git.checked(["push", "-q", "origin", `HEAD:refs/heads/mate/Ada/${String(number)}`], work);
+  yield* changeBecomes(core.call, owner, appId, repo, number, (change) => change["head"] === head);
+  const merged = yield* core.call("POST", `/api/apps/${appId}/changes/${repo}/${number}/merge`, {
+    session: owner,
+    body: { expectedHead: head },
+  });
+  expect(merged.status, JSON.stringify(merged.body)).toBe(200);
 });

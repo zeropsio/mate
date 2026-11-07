@@ -1302,7 +1302,8 @@ describe("owner-reported layout regressions", () => {
           it.effect("a stage building moves neither the project row's words nor its time", () =>
             Effect.gen(function* () {
               const s = yield* menuScenario();
-              yield* s.given.project("Ada", { mate: true, app: "Shop" });
+              const ada = yield* s.given.project("Ada", { mate: true, app: "Shop" });
+              yield* s.stageToAdd("Shop-stage", "Shop", ada!);
               yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
               yield* s.given.signedIn;
               yield* s.menu.grouped("Ada", "Shop");
@@ -1323,8 +1324,12 @@ describe("owner-reported layout regressions", () => {
               });
               const calm = yield* Effect.promise(() => rowReading(s.page));
               expect(calm.tag, "ASSERTION: a calm project's row shows no tag").toBeNull();
-              // Its address is being published, then it builds: its tag comes, then changes words.
-              yield* s.stage("Shop-stage", "Shop");
+              // It builds, then its address is being published: its tag comes, then changes words.
+              yield* s.colleague.builds("Shop-stage");
+              yield* s.menu.chip("\\b(?:building|deploying|releasing)\\b", 15_000);
+              yield* Effect.promise(() => waitForStillFrames(s.page));
+              const building = yield* Effect.promise(() => rowReading(s.page));
+              yield* s.colleague.buildEnds("Shop-stage");
               s.drivers.zerops.put("service-stack", {
                 ...s.drivers.zerops
                   .rows("service-stack")
@@ -1332,13 +1337,9 @@ describe("owner-reported layout regressions", () => {
                 id: "app-Shop-stage",
                 subdomainAccess: true,
               });
-              yield* s.menu.chip("coming up", 15_000);
+              yield* s.menu.chip("turning its address on", 15_000);
               yield* Effect.promise(() => waitForStillFrames(s.page));
               const coming = yield* Effect.promise(() => rowReading(s.page));
-              yield* s.colleague.builds("Shop-stage");
-              yield* s.menu.chip("\\b(?:building|deploying|releasing)\\b", 15_000);
-              yield* Effect.promise(() => waitForStillFrames(s.page));
-              const building = yield* Effect.promise(() => rowReading(s.page));
               for (const busy of [coming, building]) {
                 const seen = `calm ${said(calm)}; busy ${said(busy)}`;
                 expect(

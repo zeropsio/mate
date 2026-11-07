@@ -1,4 +1,6 @@
 import { applicationDetailsGate } from "../../fakes/b-menu/hqDetails.ts";
+import { endBuild, installBuildProtocol } from "../../fakes/e-env/builds.ts";
+import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import {
@@ -164,34 +166,35 @@ export const denyProjectRead = (drivers: ScenarioDrivers, name: string) =>
       code: "insufficientPermissions",
     });
   });
-export const startStageBuild = (drivers: ScenarioDrivers, name: string) =>
+/**
+ * A colleague adds the stage `name` to its application: HQ brings it up by deploying the
+ * application's `main` there (`env_added`), and the platform holds that build running.
+ */
+export const startStageBuild = Effect.fn("b-menu.startStageBuild")(function* (
+  drivers: ScenarioDrivers,
+  owner: string,
+  appId: string,
+  name: string,
+) {
+  installBuildProtocol(drivers.zerops);
+  const attached = yield* drivers.core.call("POST", `/api/apps/${appId}/projects`, {
+    session: owner,
+    body: { projectId: name, kind: "stage", environment: { name: "stage" } },
+  });
+  expect(attached.status, `HQ refused adding ${name}`).toBe(201);
+});
+
+/** HQ's held build of the stage `name` ends: the platform finishes its process. */
+export const finishStageBuild = (drivers: ScenarioDrivers, name: string) =>
   Effect.sync(() => {
-    drivers.zerops.writes.autoComplete = false;
-    const version = `building-${name}`;
-    drivers.zerops.world.appVersions.set(version, {
-      id: version,
-      serviceId: `app-${name}`,
-      name: "stage-next",
-      status: "BUILDING",
-      archive: undefined,
-      zeropsYaml: undefined,
-      setup: undefined,
-    });
-    drivers.zerops.put(
-      "app-version",
-      {
-        id: version,
-        clientId: "ORG",
-        projectId: name,
-        serviceStackId: `app-${name}`,
-        name: "stage-next",
-        status: "BUILDING",
-        source: "CLI",
-        created: "2026-10-05T12:00:00.000Z",
-      },
-      "membership-first",
-    );
-    drivers.zerops.writes.start(name, "stack.build", [`app-${name}`], version);
+    const build = drivers.zerops
+      .rows("process")
+      .find(
+        (row) =>
+          row.projectId === name && row.status === "RUNNING" && row.actionName === "stack.build",
+      );
+    expect(build, `a running build of ${name}`).toBeDefined();
+    endBuild(drivers.zerops, String(build!.id), "FINISHED");
   });
 
 export const stageService = (drivers: ScenarioDrivers, name: string) =>

@@ -46,8 +46,8 @@ describe("B: menu liveness", () => {
     it.effect("a colleague's stage build appears in the menu", () =>
       Effect.gen(function* () {
         const s = yield* menuScenario();
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.stage("Shop-stage", "Shop");
+        const ada = yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.stageToAdd("Shop-stage", "Shop", ada!);
         yield* s.given.signedIn;
         yield* s.menu.grouped("Ada", "Shop");
         const chipContrast = Effect.promise(async () => {
