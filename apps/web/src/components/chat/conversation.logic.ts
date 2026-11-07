@@ -751,6 +751,15 @@ export interface BrokeOff {
   readonly next: string | null;
 }
 
+/**
+ * A run admission refused over whose agent login it is. The engine keeps the words its sender was
+ * told ("…only they can run it"), which read as addressed to whoever opens the conversation later,
+ * the login's own signer included: every reader is told the fact, and the composer tells the person
+ * writing now what stops them.
+ */
+const NOT_THE_SENDERS_LOGIN =
+  "This message did not run: its sender is not the person signed in to the agent it went to.";
+
 function brokeOffOn(input: {
   readonly entries: ReadonlyArray<TimelineEntry>;
   readonly latest: boolean;
@@ -1081,13 +1090,15 @@ export function deriveConversationStructure(given: {
       live || waiting
         ? null
         : typed
-          ? run?.end?.kind === "failed" || run?.end?.kind === "crashed"
-            ? {
-                entryId: null,
-                reason: run.end.reason,
-                next: run.end.kind === "failed" && isLatestTurn ? run.end.next : null,
-              }
-            : null
+          ? run?.end?.kind === "failed" && run.end.admission?.reason === "not-permitted"
+            ? { entryId: null, reason: NOT_THE_SENDERS_LOGIN, next: null }
+            : run?.end?.kind === "failed" || run?.end?.kind === "crashed"
+              ? {
+                  entryId: null,
+                  reason: run.end.reason,
+                  next: run.end.kind === "failed" && isLatestTurn ? run.end.next : null,
+                }
+              : null
           : brokeOffOn({
               entries: turnEntries,
               latest: span === spans.at(-1),
