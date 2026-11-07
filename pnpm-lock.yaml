@@ -972,6 +972,9 @@ importers:
       '@t3tools/shared':
         specifier: workspace:*
         version: link:../packages/shared
+      '@t3tools/test-recordings':
+        specifier: workspace:*
+        version: link:../packages/test-recordings
       effect:
         specifier: 4.0.1
         version: 4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586)
