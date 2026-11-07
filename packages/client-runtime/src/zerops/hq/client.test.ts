@@ -629,6 +629,7 @@ describe("makeHqApi", () => {
     }
   });
 
+  // witness: packages/client-runtime/src/zerops/hq/client.ts | response.status !== 503 → response.status !== 0
   it.each<[string, Response | "throw", Partial<HqError>]>([
     [
       "a refusal carries HQ's code, and its reason in words",
@@ -648,7 +649,6 @@ describe("makeHqApi", () => {
     ],
     // The owner decision (RELMSG): a 503 wrote nothing (mate-hq spec/protocol.md), so it reads as
     // HQ not answering, and the person may try again.
-    // witness: packages/client-runtime/src/zerops/hq/client.ts | response.status !== 503 → response.status !== 0
     [
       "a write HQ answered with 503 is HQ not answering, not uncertain",
       json(503, { code: "unavailable" }),
