@@ -1,35 +1,29 @@
 import { describe, expect, it } from "vite-plus/test";
-import * as Schema from "effect/Schema";
 
 import {
-  CursorAskQuestionRequest,
-  CursorUpdateTodosRequest,
+  CursorListAvailableModelsResponse,
   extractAskQuestions,
+  extractPlanMarkdown,
   extractTodosAsPlan,
 } from "./CursorAcpExtension.ts";
 
-const decodeAskQuestion = Schema.decodeUnknownSync(CursorAskQuestionRequest);
-const decodeUpdateTodos = Schema.decodeUnknownSync(CursorUpdateTodosRequest);
-
 describe("CursorAcpExtension", () => {
   it("extracts ask-question prompts from the real Cursor ACP payload shape", () => {
-    const questions = extractAskQuestions(
-      decodeAskQuestion({
-        toolCallId: "ask-1",
-        title: "Need input",
-        questions: [
-          {
-            id: "language",
-            prompt: "Which language should I use?",
-            options: [
-              { id: "ts", label: "TypeScript" },
-              { id: "rs", label: "Rust" },
-            ],
-            allowMultiple: false,
-          },
-        ],
-      }),
-    );
+    const questions = extractAskQuestions({
+      toolCallId: "ask-1",
+      title: "Need input",
+      questions: [
+        {
+          id: "language",
+          prompt: "Which language should I use?",
+          options: [
+            { id: "ts", label: "TypeScript" },
+            { id: "rs", label: "Rust" },
+          ],
+          allowMultiple: false,
+        },
+      ],
+    });
 
     expect(questions).toEqual([
       {
@@ -46,21 +40,19 @@ describe("CursorAcpExtension", () => {
   });
 
   it("defaults ask-question multi-select to false when Cursor omits allowMultiple", () => {
-    const questions = extractAskQuestions(
-      decodeAskQuestion({
-        toolCallId: "ask-2",
-        questions: [
-          {
-            id: "mode",
-            prompt: "Which mode should I use?",
-            options: [
-              { id: "agent", label: "Agent" },
-              { id: "plan", label: "Plan" },
-            ],
-          },
-        ],
-      }),
-    );
+    const questions = extractAskQuestions({
+      toolCallId: "ask-2",
+      questions: [
+        {
+          id: "mode",
+          prompt: "Which mode should I use?",
+          options: [
+            { id: "agent", label: "Agent" },
+            { id: "plan", label: "Plan" },
+          ],
+        },
+      ],
+    });
 
     expect(questions).toEqual([
       {
@@ -76,21 +68,35 @@ describe("CursorAcpExtension", () => {
     ]);
   });
 
+  it("extracts plan markdown from the real Cursor create-plan payload shape", () => {
+    const planMarkdown = extractPlanMarkdown({
+      toolCallId: "plan-1",
+      name: "Refactor parser",
+      overview: "Tighten ACP parsing",
+      plan: "# Plan\n\n1. Add schemas\n2. Remove casts",
+      todos: [
+        { id: "t1", content: "Add schemas", status: "in_progress" },
+        { id: "t2", content: "Remove casts", status: "pending" },
+      ],
+      isProject: false,
+    });
+
+    expect(planMarkdown).toBe("# Plan\n\n1. Add schemas\n2. Remove casts");
+  });
+
   it("projects todo updates into a plan shape and drops invalid entries", () => {
     expect(
-      extractTodosAsPlan(
-        decodeUpdateTodos({
-          toolCallId: "todos-1",
-          todos: [
-            { id: "1", content: "Inspect state", status: "completed" },
-            { id: "2", content: "  Apply fix  ", status: "in_progress" },
-            { id: "3", title: "Fallback title", status: "pending" },
-            { id: "4", content: "Unknown status", status: "weird_status" },
-            { id: "5", content: "   " },
-          ],
-          merge: true,
-        }),
-      ),
+      extractTodosAsPlan({
+        toolCallId: "todos-1",
+        todos: [
+          { id: "1", content: "Inspect state", status: "completed" },
+          { id: "2", content: "  Apply fix  ", status: "in_progress" },
+          { id: "3", title: "Fallback title", status: "pending" },
+          { id: "4", content: "Unknown status", status: "weird_status" },
+          { id: "5", content: "   " },
+        ],
+        merge: true,
+      }),
     ).toEqual({
       plan: [
         { step: "Inspect state", status: "completed" },
@@ -103,22 +109,46 @@ describe("CursorAcpExtension", () => {
 
   it("falls back to the title when content is present but blank", () => {
     expect(
-      extractTodosAsPlan(
-        decodeUpdateTodos({
-          toolCallId: "todos-2",
-          todos: [
-            { id: "1", content: "", title: "Titled step", status: "pending" },
-            { id: "2", content: "   ", title: "Whitespace content", status: "in_progress" },
-            { id: "3", content: "", title: "", status: "pending" },
-          ],
-          merge: true,
-        }),
-      ),
+      extractTodosAsPlan({
+        toolCallId: "todos-2",
+        todos: [
+          { id: "1", content: "", title: "Titled step", status: "pending" },
+          { id: "2", content: "   ", title: "Whitespace content", status: "in_progress" },
+          { id: "3", content: "", title: "", status: "pending" },
+        ],
+        merge: true,
+      }),
     ).toEqual({
       plan: [
         { step: "Titled step", status: "pending" },
         { step: "Whitespace content", status: "inProgress" },
       ],
     });
+  });
+
+  it("decodes Cursor list_available_models responses with per-model config options", () => {
+    const decoded = CursorListAvailableModelsResponse.make({
+      models: [
+        {
+          value: "gpt-5.4",
+          name: "GPT-5.4",
+          configOptions: [
+            {
+              id: "reasoning",
+              name: "Reasoning",
+              category: "thought_level",
+              type: "select",
+              currentValue: "medium",
+              options: [
+                { value: "low", name: "Low" },
+                { value: "medium", name: "Medium" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(decoded.models[0]?.configOptions?.[0]?.id).toBe("reasoning");
   });
 });

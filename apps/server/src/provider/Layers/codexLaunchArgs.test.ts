@@ -1,7 +1,5 @@
 import * as NodeAssert from "node:assert/strict";
 
-import { CodexSettings } from "@t3tools/contracts";
-import * as Schema from "effect/Schema";
 import { describe, it } from "vite-plus/test";
 
 import {
@@ -10,18 +8,10 @@ import {
   resolveCodexLaunchArgs,
 } from "./codexLaunchArgs.ts";
 
-const decodeCodexSettings = Schema.decodeSync(CodexSettings);
-
 describe("resolveCodexLaunchArgs", () => {
   it("uses T3CODE_CODEX_LAUNCH_ARGS before configured settings", () => {
     NodeAssert.equal(
       resolveCodexLaunchArgs(" --strict-config ", { T3CODE_CODEX_LAUNCH_ARGS: "--enable foo" }),
-      "--enable foo",
-    );
-    NodeAssert.equal(
-      resolveCodexLaunchArgs(decodeCodexSettings({ launchArgs: "--strict-config" }).launchArgs, {
-        T3CODE_CODEX_LAUNCH_ARGS: "--enable foo",
-      }),
       "--enable foo",
     );
   });
@@ -31,19 +21,20 @@ describe("resolveCodexLaunchArgs", () => {
       resolveCodexLaunchArgs(" --strict-config ", { T3CODE_CODEX_LAUNCH_ARGS: "   " }),
       "--strict-config",
     );
-    NodeAssert.equal(
-      resolveCodexLaunchArgs(decodeCodexSettings({ launchArgs: "--strict-config" }).launchArgs, {
-        T3CODE_CODEX_LAUNCH_ARGS: "   ",
-      }),
-      "--strict-config",
-    );
+  });
+
+  it("ignores whitespace-only environment values", () => {
+    NodeAssert.equal(resolveCodexLaunchArgs("", { T3CODE_CODEX_LAUNCH_ARGS: "   " }), "");
   });
 });
 
 describe("codexAppServerArgs", () => {
+  it("returns the app-server command for empty launch args", () => {
+    NodeAssert.deepStrictEqual(codexAppServerArgs(""), ["app-server"]);
+  });
+
   it("appends parsed launch args after app-server", () => {
-    const settings = decodeCodexSettings({ launchArgs: "--strict-config --enable foo" });
-    NodeAssert.deepStrictEqual(codexAppServerArgs(settings.launchArgs), [
+    NodeAssert.deepStrictEqual(codexAppServerArgs("--strict-config --enable foo"), [
       "app-server",
       "--strict-config",
       "--enable",
@@ -54,22 +45,15 @@ describe("codexAppServerArgs", () => {
 
 describe("codexExecLaunchArgs", () => {
   it("keeps shared codex flags and omits app-server-only flags", () => {
-    const settings = decodeCodexSettings({
-      launchArgs: '--strict-config --enable foo --listen off --config model="gpt 5"',
-    });
-    NodeAssert.deepStrictEqual(codexExecLaunchArgs(settings.launchArgs), [
-      "--strict-config",
-      "--enable",
-      "foo",
-      "--config",
-      "model=gpt 5",
-    ]);
+    NodeAssert.deepStrictEqual(
+      codexExecLaunchArgs('--strict-config --enable foo --listen off --config model="gpt 5"'),
+      ["--strict-config", "--enable", "foo", "--config", "model=gpt 5"],
+    );
   });
 
   it("does not pair value-taking flags with adjacent flags", () => {
-    const settings = decodeCodexSettings({
-      launchArgs: "--config --strict-config --enable --disable",
-    });
-    NodeAssert.deepStrictEqual(codexExecLaunchArgs(settings.launchArgs), ["--strict-config"]);
+    NodeAssert.deepStrictEqual(codexExecLaunchArgs("--config --strict-config --enable --disable"), [
+      "--strict-config",
+    ]);
   });
 });
