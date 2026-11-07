@@ -8,7 +8,7 @@ import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 import { testRamdiskRoot } from "./lib/test-scratch-root.ts";
 import { acquireProcessLock } from "./test-process-lock.ts";
-import { acquirePostgresAdmission } from "./test-postgres-admission.ts";
+import { acquirePostgresAdmission, sharedDaemonEnvironment } from "./test-postgres-admission.ts";
 
 /**
  * Shared by worktrees by default; MATE_TEST_PG_HOME isolates protocol testing from their leases.
@@ -349,7 +349,11 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
         daemon = NodeChildProcess.spawn(
           process.execPath,
           [NodeURL.fileURLToPath(new URL("./test-postgres-supervisor.ts", import.meta.url))],
-          { detached: true, stdio: ["ignore", "ignore", diagnostics, "ipc"] },
+          {
+            detached: true,
+            env: sharedDaemonEnvironment(),
+            stdio: ["ignore", "ignore", diagnostics, "ipc"],
+          },
         );
       } finally {
         NodeFS.closeSync(diagnostics);
