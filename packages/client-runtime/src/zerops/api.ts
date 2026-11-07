@@ -752,6 +752,17 @@ export interface ZeropsApiClientOptions {
    * writes queue per token in memory.
    */
   readonly holdToken?: TokenWriteHold;
+  /**
+   * The session belongs to another party that keeps its refresh token (hq's session bridge). A
+   * renewal hands it the refused session and holds what it answers; `null` says the session ended.
+   * A `ZeropsApiError` it throws refuses the renewal and keeps the session.
+   */
+  readonly sessionOwner?: ZeropsSessionOwnerPort;
+}
+
+/** The party that renews a session this client holds only the access token of. */
+export interface ZeropsSessionOwnerPort {
+  readonly renew: (stale: ZeropsSession) => Promise<ZeropsSession | null>;
 }
 
 export interface ZeropsDataHttpRequest {
@@ -944,6 +955,7 @@ export class ZeropsApiClient {
   #session: ZeropsSession | null = null;
   #generation = 0;
   #refreshPromise: Promise<ZeropsSession> | null = null;
+  readonly #sessionOwner: ZeropsSessionOwnerPort | undefined;
 
   constructor(options: ZeropsApiClientOptions = {}) {
     this.#baseUrl = (options.baseUrl ?? DEFAULT_ZEROPS_API_BASE).replace(/\/+$/, "");
@@ -955,6 +967,7 @@ export class ZeropsApiClient {
     this.#renewSession = options.renewSession ?? ((_stale, refresh) => refresh());
     this.#renewAhead = options.renewAhead;
     this.#holdToken = options.holdToken ?? makeTokenWriteLock();
+    this.#sessionOwner = options.sessionOwner;
   }
 
   get session(): ZeropsSession | null {
@@ -1804,7 +1817,7 @@ export class ZeropsApiClient {
       if (
         !(cause instanceof ZeropsApiError) ||
         cause.kind !== "expired-session" ||
-        !this.#session?.refreshToken
+        !this.#renewable(this.#session)
       ) {
         throw cause;
       }
@@ -3195,7 +3208,7 @@ export class ZeropsApiClient {
     if (this.#refreshPromise) return this.#refreshPromise;
     const generation = this.#generation;
     const current = this.#session;
-    if (!current?.refreshToken) {
+    if (!this.#renewable(current)) {
       await this.#setSession(null);
       throw new ZeropsApiError(
         "Your Zerops session has expired. Sign in again.",
@@ -3235,7 +3248,10 @@ export class ZeropsApiClient {
       return session;
     };
     this.#refreshPromise = (async () => {
-      const renewed = await this.#renewSession(current, refresh);
+      const renewed =
+        this.#sessionOwner === undefined
+          ? await this.#renewSession(current, refresh)
+          : await this.#renewWithOwner(this.#sessionOwner, current, generation);
       this.#assertGeneration(generation);
       if (renewed !== this.#session) this.adoptRenewedSession(renewed);
       return renewed;
@@ -3244,6 +3260,34 @@ export class ZeropsApiClient {
     });
 
     return this.#refreshPromise;
+  }
+
+  /** A session this client can renew: one with a refresh token, or any while its owner renews it. */
+  #renewable(session: ZeropsSession | null): session is ZeropsSession {
+    return session !== null && (this.#sessionOwner !== undefined || Boolean(session.refreshToken));
+  }
+
+  /** The owner's answer for `stale`. An owner that can't answer leaves the session held, as a network failure does. */
+  async #renewWithOwner(
+    owner: ZeropsSessionOwnerPort,
+    stale: ZeropsSession,
+    generation: number,
+  ): Promise<ZeropsSession> {
+    let renewed: ZeropsSession | null;
+    try {
+      renewed = await owner.renew(stale);
+    } catch (cause) {
+      if (cause instanceof ZeropsApiError) throw cause;
+      throw new ZeropsApiError("Couldn't reach Zerops to renew the session.", "network");
+    }
+    this.#assertGeneration(generation);
+    if (renewed !== null) return renewed;
+    await this.#setSession(null);
+    throw new ZeropsApiError(
+      "Your Zerops session has ended. Sign in again.",
+      "expired-session",
+      401,
+    );
   }
 
   /**
@@ -3346,7 +3390,7 @@ export class ZeropsApiClient {
       this.#assertGeneration(generation);
       if (response.status === 401 && retryAfterRefresh) {
         const session = this.#session;
-        if (session?.refreshToken) {
+        if (this.#renewable(session)) {
           // A renewal that replaced the token this request carried revoked it: the request
           // repeats with the renewed one, and renewing again would revoke that under others.
           if (session.accessToken === sentToken)
