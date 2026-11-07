@@ -171,6 +171,7 @@ export function OverviewCardMate({
     hqSigners:
       signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
     overview: overviewInHq,
+    ownerUserId: people?.owner?.userId,
     standUpBy: tags.standUp?.by,
     madeBy: tags.madeBy,
     viewer,

@@ -149,8 +149,8 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  * 2026-09-29, of a *Sign in* on the row: it did nothing there, and stood on
  * the row's edge).
  *
- * To the person who made it — named by HQ's record, whether New project or Add a Mate made it, or
- * by its stand-up's record on a Mate recorded before HQ kept its maker — the line says it waits
+ * To its owner as HQ records it — its maker until a hand-over names another; its maker, or its
+ * stand-up's asker, only while HQ names none — the line says it waits
  * on them: "Waiting for your sign-in", in ink, with the amber dot of what needs them (board D1,
  * 2026-09-30). One state, one phrase whichever flow made it (run 4, 2026-10-02). A Mate whose
  * sign-in somebody is waited for never reads like a failure (the owner, 2026-10-01): anybody else
@@ -185,6 +185,8 @@ export function mateOwnerView(input: {
    * `stored`); otherwise the row says nothing of a sign-in.
    */
   readonly overview: MatePresence["overview"] | undefined;
+  /** Whom HQ names its owner (`ownerUserId`): the person its sign-in waits on. */
+  readonly ownerUserId?: string | undefined;
   /** Who added it, as HQ's stand-up record names them (`readZeropsMembership(…).standUp`). */
   readonly standUpBy?: string | undefined;
   /** Who made it, as HQ's record names them (`readZeropsMembership(…).madeBy`). */
@@ -215,7 +217,9 @@ export function mateOwnerView(input: {
     return { seat, signInLine: undefined, waitsOnViewer: false };
   }
   const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
-  const awaited = input.madeBy ?? input.standUpBy;
+  // Its owner acts in it alone, so its sign-in waits on them; its maker or stand-up asker stands in
+  // only while HQ has not named one.
+  const awaited = input.ownerUserId ?? input.madeBy ?? input.standUpBy;
   if (awaited === undefined) {
     return { seat, signInLine: NOBODY_SIGNED_IN, waitsOnViewer: false };
   }
