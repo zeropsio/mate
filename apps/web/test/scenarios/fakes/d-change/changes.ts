@@ -71,7 +71,6 @@ export const changeFixture = Effect.fn(function* (
           ),
       ),
     { kind: "app-detail", appId },
-    s.drivers.core.call.accessOf(s.owner),
   ).pipe(Effect.scoped);
   const edited = yield* s.drivers.core.call("PATCH", "/api/mate/changes/appdev/1", {
     headers,

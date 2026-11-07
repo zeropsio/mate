@@ -360,7 +360,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     yield* Effect.promise(() => web.setRoutes());
     if (!credential) return;
     // The Mate links itself; consumers read HQ's attention for it, so that is the receipt.
-    const attentionTicket = yield* ticketFor(core.call, owner);
+    const attentionDoor = yield* ticketFor(core.call, owner);
     yield* Effect.gen(function* () {
       const watch = yield* Effect.acquireRelease(
         Effect.sync(() => link.watchMateRefusal(0)),
@@ -369,14 +369,13 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
       yield* Effect.raceFirst(
         openScenarioNavigation(
           core.origin,
-          attentionTicket,
+          attentionDoor,
           (message) =>
             (message.type === "scope-reset" || message.type === "scope-values") &&
             message.scope.kind === "attention" &&
             message.scope.projectId === name &&
             message.values.some((entry) => decodeAttentionScope(entry.value).overview != null),
           { kind: "attention", projectId: name },
-          core.call.accessOf(owner),
         ),
         Effect.promise(() => watch.promise).pipe(
           Effect.flatMap((receipt) =>
@@ -467,10 +466,10 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     });
     yield* link.send(yield* encodeLink({ type: "overview", full: true, overview }));
     // Sending is not an application receipt: wait for the overview consumers will actually read.
-    const attentionTicket = yield* ticketFor(core.call, owner);
+    const attentionDoor = yield* ticketFor(core.call, owner);
     yield* openScenarioNavigation(
       core.origin,
-      attentionTicket,
+      attentionDoor,
       (message) =>
         (message.type === "scope-reset" || message.type === "scope-values") &&
         message.scope.kind === "attention" &&
@@ -480,7 +479,6 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
           return value.overview?.main?.id === mate.thread.id;
         }),
       { kind: "attention", projectId: name },
-      core.call.accessOf(owner),
     ).pipe(Effect.scoped);
     return credential;
   });

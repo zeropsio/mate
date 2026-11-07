@@ -74,10 +74,9 @@ it.effect(
       );
       yield* openScenarioNavigation(
         server.origin,
-        "ticket",
+        { ticket: "ticket", accessToken: "owner-token" },
         (message) => message.type === "scope-ready" && message.scope.kind === "attention",
         scope,
-        "owner-token",
       );
       expect(requests).toEqual([
         { type: "subscribe", scopes: [{ scope }], accessToken: "owner-token" },

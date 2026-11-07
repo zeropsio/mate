@@ -39,7 +39,6 @@ const changeReceipt = (
             ),
         ),
       { kind: "app-detail", appId },
-      core.call.accessOf(owner),
     ).pipe(Effect.scoped);
   });
 
