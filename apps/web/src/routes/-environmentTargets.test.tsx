@@ -6,6 +6,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
 import {
   makeMateAdapter,
+  NOT_READ_INVENTORY,
   shownCanonicalHqListNavigationAtom,
   type AccountStore,
   type MateAdapter,
@@ -720,10 +721,12 @@ describe("a Mate's link, whatever its row says of it at the moment", () => {
 });
 
 describe("useRouteGateInputs", () => {
+  // witness: apps/web/src/routes/-environmentTargets.ts | (input.organization === "chosen" && !input.inventoryKnown) || → !input.inventoryKnown ||
   it("asks for an organization on a thread deep link before one is chosen", async () => {
     shell.organization = "needs-selection";
 
-    expect(await gateOnRoute(inventory(null))).toEqual({ kind: "choose-organization" });
+    // What the inventory provider holds while no organization is chosen: nothing read, none coming.
+    expect(await gateOnRoute(NOT_READ_INVENTORY)).toEqual({ kind: "choose-organization" });
   });
 
   const OTHER = "project-1:service-2";

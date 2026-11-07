@@ -186,10 +186,11 @@ export function routeTarget(input: {
     };
   }
   // A project HQ names is read through before its Mate is said to be absent: a Mate read there
-  // whose machine has not taken it in yet is on its way, not missing.
+  // whose machine has not taken it in yet is on its way, not missing. Without a chosen
+  // organization no inventory is read at all, so its unread state is no reading on its way.
   const discovering =
     input.organization === "choosing" ||
-    !input.inventoryKnown ||
+    (input.organization === "chosen" && !input.inventoryKnown) ||
     input.named === "reading" ||
     input.named === "with-mate";
   if (discovering) return { kind: "unresolved", discovery: "pending" };
