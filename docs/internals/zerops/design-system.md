@@ -53,6 +53,10 @@ One word for each thing:
   (the platform's build message, HQ's refusal, its rollout's note, a service it left out) on every surface that
   says it; **Deploy status unknown** only where HQ itself could not tell how the deploy ended. Every surface reads
   one verdict, `releaseFailure` in client-runtime's `zerops/releaseFacts.ts`.
+- **key was refused**, **HQ doesn't accept the key**, **HQ couldn't check the key** — HQ's word on a Mate's key,
+  told to the people in the Mate over its conversation with what its owner can do, until the key works again.
+  Zerops is named as the one that did not answer only where HQ says so; its `1011` at admission does not.
+  Every surface reads one verdict, the Mate server's `hqKeyOf` (`ServerConfig.hqKey`).
 - **planning** — HQ deciding which deploys a merge or release asks for. Until HQ has, a surface says **Waiting for
   planning**, never that nothing will deploy. Source words: rollout, plan lock.
 - **setup**, **setup files** — never recipe or import files.

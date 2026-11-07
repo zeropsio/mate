@@ -1,4 +1,5 @@
 import type { TimestampFormat } from "@t3tools/contracts/settings";
+import type { MateHqKey } from "@t3tools/contracts";
 import { formatShortTimestamp } from "../timestampFormat";
 import { admissionRefusalWords } from "@t3tools/client-runtime/data";
 import { projectLimitError } from "@t3tools/client-runtime/data";
@@ -59,4 +60,52 @@ export function usageLimitHistoryWords(
       ? ""
       : `; reset ${formatShortTimestamp(resetsAt, timestampFormat)} ${date(resetsAt)}`;
   return `${mateName} hit ${limitName(provider, window)}${at === null ? "" : ` on ${date(at)}`}${reset}.`;
+}
+
+/** While HQ refuses the key for a safety rule nobody acts in the Mate (`actingIn`). */
+const NOBODY_ACTS = "Until then, nobody can act here.";
+/** Any other refusal leaves who acts as it was; only the link is down, so tickets wait. */
+const SIGN_INS_WAIT = "New sign-ins wait until HQ accepts it.";
+
+/**
+ * What HQ's word on the Mate's key tells the people in it: which part said no or did not answer,
+ * and what its owner can do. The key is `ZCP_API_KEY` on the project's `zcp` service, read live.
+ */
+export function hqKeyWords(
+  hqKey: MateHqKey,
+  name: string,
+): { readonly headline: string; readonly secondary: string } {
+  if (hqKey.state === "unresolved")
+    return {
+      headline: `HQ couldn't check ${name}'s key.`,
+      secondary:
+        "Zerops or HQ didn't answer. The Mate tries again on its own; new sign-ins wait until then.",
+    };
+  switch (hqKey.reason) {
+    case "key_refused":
+      return {
+        headline: `${name}'s key was refused.`,
+        secondary: `Zerops or HQ no longer accepts its access token. Its owner can set a new one as ZCP_API_KEY on the Zerops Control Plane service. ${SIGN_INS_WAIT}`,
+      };
+    case "key_too_wide":
+      return {
+        headline: `HQ doesn't accept ${name}'s key.`,
+        secondary: `Its access token isn't limited to this one project. Its owner can set one that is as ZCP_API_KEY on the Zerops Control Plane service. ${NOBODY_ACTS}`,
+      };
+    case "key_not_sensitive":
+      return {
+        headline: `HQ doesn't accept ${name}'s key.`,
+        secondary: `Its access token can be read in clear among the project's variables. Its owner can mark ZCP_API_KEY as sensitive in Zerops. ${NOBODY_ACTS}`,
+      };
+    case "not_a_mate":
+      return {
+        headline: `HQ doesn't hold this project as a Mate.`,
+        secondary: `HQ holds ${name}'s project as neither a Mate nor a devstage, so it refuses the link. ${SIGN_INS_WAIT}`,
+      };
+    default:
+      return {
+        headline: `HQ doesn't accept ${name}'s key.`,
+        secondary: `HQ's reason: ${hqKey.reason}. ${SIGN_INS_WAIT}`,
+      };
+  }
 }

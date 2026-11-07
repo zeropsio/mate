@@ -33,8 +33,9 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   HQ's `access` frame is read past like any frame this build cannot decode: the Mate's own list
  *   is the only one (`ZeropsMateAccessList`).
  * - **Closed:** HQ names why (`MateLinkClosed`). A refused key (`4401`) or one HQ does not admit
- *   (`4403`, its code the reason) is the Mate's standing until HQ next sends its state; a link
- *   superseded by the Mate's own newer one (`4409`) is expected.
+ *   (`4403`, its code the reason) is the Mate's standing until HQ next sends its state, and so is
+ *   an admission that could not resolve the key (`1011`, {@link KEY_UNRESOLVED}) unless a refusal
+ *   stands; a link superseded by the Mate's own newer one (`4409`) is expected.
  *
  * A link that closes or never opens is tried again after a growing wait; one superseded (`4409`)
  * after the shortest. HQ is reached over IPv6 only, and the link is kept until it closes.
@@ -53,6 +54,7 @@ import type {
   CrewSnapshot,
   MateAttention,
   MateHealth,
+  MateHqKey,
   OrchestrationThreadShell,
   ServerProvider,
 } from "@t3tools/contracts";
@@ -63,6 +65,7 @@ import {
   type KeyNotAdmitted,
   type LinkedMate,
   type TicketRefusal,
+  KEY_UNRESOLVED,
   MATE_OVERVIEW_EVERY_MS,
   MateLinkClosed,
   type MateOverview,
@@ -138,7 +141,11 @@ export interface LinkClose {
   readonly reason?: string;
 }
 
-/** Where the Mate stands with its HQ. */
+/**
+ * Where the Mate stands with its HQ. `unresolved`: the latest link HQ closed because its admission
+ * could not resolve the key ({@link KEY_UNRESOLVED}); never beside a refusal, which it does not
+ * displace.
+ */
 export type HqStanding =
   /**
    * HQ has not sent the Mate yet; or it refused the key, why as HQ's close reason; or the Mate
@@ -148,9 +155,13 @@ export type HqStanding =
       readonly kind: "not-linked";
       readonly refusal?: string;
       readonly withheld?: "no_public_origin";
+      readonly unresolved?: true;
     }
   /** The Mate as HQ last sent it. */
-  | { readonly kind: "linked"; readonly mate: LinkedMate };
+  | { readonly kind: "linked"; readonly mate: LinkedMate; readonly unresolved?: true };
+
+/** HQ's word on the key at the latest admission that closed a link, until HQ next sends its state. */
+type KeyVerdict = { readonly refusal: string } | { readonly unresolved: true };
 
 /** The close code HQ supersedes a link with: the Mate's own newer link took over. */
 const SUPERSEDED = 4409;
@@ -159,10 +170,16 @@ const PLANNED_HANDOVER: ReadonlyArray<number> = [1001, 1012];
 
 const decodeClosed = Schema.decodeUnknownOption(MateLinkClosed);
 
-/** HQ's refusal of the key a link closed with (`4401`, `4403`): its reason; none for any other. */
-export const refusalOf = (close: LinkClose | undefined): string | undefined => {
+/**
+ * HQ's word on the key a link closed with: refused (`4401`, `4403`), its reason; not resolved
+ * (`1011` {@link KEY_UNRESOLVED}); none for any other close.
+ */
+const verdictOf = (close: LinkClose | undefined): KeyVerdict | undefined => {
   const closed = decodeClosed(close);
-  return Option.isSome(closed) && "reason" in closed.value ? closed.value.reason : undefined;
+  if (Option.isNone(closed) || !("reason" in closed.value)) return undefined;
+  return closed.value.reason === KEY_UNRESOLVED
+    ? { unresolved: true }
+    : { refusal: closed.value.reason };
 };
 
 /** HQ's refusals of the Mate's key for a safety rule: while one stands, nobody acts in the Mate. */
@@ -193,6 +210,14 @@ export const actingIn = (owner: MateOwner, standing: HqStanding, subject: string
   if (standing.kind === "not-linked" && keyUnsafe(standing.refusal)) return standing.refusal;
   return typeof owner === "string" && zeropsUserIdOf(subject) !== owner ? "reads-along" : "acts";
 };
+
+/** What the people in the Mate are told of HQ's word on its key (`ServerConfig.hqKey`); none while none stands. */
+export const hqKeyOf = (standing: HqStanding): MateHqKey | null =>
+  standing.kind === "not-linked" && standing.refusal !== undefined
+    ? { state: "refused", reason: standing.refusal }
+    : standing.unresolved === true
+      ? { state: "unresolved" }
+      : null;
 
 export interface ZeropsHqLinkOptions {
   readonly autoUpdatePolicy?: Pick<MateAutoUpdatePolicy["Service"], "open">;
@@ -250,7 +275,7 @@ export class ZeropsHqLink extends Context.Service<
   {
     /** Where the Mate stands with its HQ now. */
     readonly standing: Effect.Effect<HqStanding>;
-    /** Fires with each state HQ sends: `standing` may have moved. */
+    /** Fires whenever `standing` may have moved: each state HQ sends, each word it closes on the key. */
     readonly changes: Stream.Stream<void>;
   }
 >()("t3/zerops/ZeropsHqLink") {}
@@ -358,8 +383,7 @@ export const makeZeropsHqLink = (
 ): Effect.Effect<ZeropsHqLink["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
     const state = yield* SubscriptionRef.make<Option.Option<LinkedMate>>(Option.none());
-    // HQ's refusal of the key on the latest link that closed, until HQ next sends its state.
-    const refusal = yield* Ref.make<string | undefined>(undefined);
+    const keyVerdict = yield* SubscriptionRef.make<KeyVerdict | undefined>(undefined);
     let reportedKey: string | undefined;
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
     const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_OVERVIEW_EVERY_MS);
@@ -582,7 +606,7 @@ export const makeZeropsHqLink = (
             return (options.chiefOpener?.(frame.mate.chiefOpenerUserId) ?? Effect.void).pipe(
               Effect.andThen(SubscriptionRef.set(state, Option.some(frame.mate))),
               Effect.andThen(options.owner?.(frame.mate.ownerUserId ?? null) ?? Effect.void),
-              Effect.andThen(Ref.set(refusal, undefined)),
+              Effect.andThen(SubscriptionRef.set(keyVerdict, undefined)),
               Effect.andThen(Ref.set(automatedHere, frame.mate.automated === true)),
               Effect.andThen(options.mateChanges?.(frame.mate) ?? Effect.void),
               Effect.andThen(options.automation?.heard(frame.mate) ?? Effect.void),
@@ -724,8 +748,12 @@ export const makeZeropsHqLink = (
             attempt = 0;
             continue;
           }
-          const refused = refusalOf(close);
-          if (refused !== undefined) yield* Ref.set(refusal, refused);
+          const heard = verdictOf(close);
+          // No answer on the key says nothing against a refusal that stands.
+          if (heard !== undefined)
+            yield* SubscriptionRef.update(keyVerdict, (held) =>
+              "unresolved" in heard && held !== undefined && "refusal" in held ? held : heard,
+            );
           // Only an admitted link that stayed up, one the Mate's own newer link superseded, or one
           // HQ handed over on purpose resets the wait; a link that never gets state is a failure.
           const lived = (yield* Clock.currentTimeMillis) - began;
@@ -747,14 +775,19 @@ export const makeZeropsHqLink = (
         if (options.publicOrigin === undefined) {
           return { kind: "not-linked", withheld: "no_public_origin" } as const;
         }
-        const refused = yield* Ref.get(refusal);
-        if (refused !== undefined) return { kind: "not-linked", refusal: refused } as const;
+        const word = yield* SubscriptionRef.get(keyVerdict);
+        if (word !== undefined && "refusal" in word)
+          return { kind: "not-linked", refusal: word.refusal } as const;
+        const unresolved = word === undefined ? {} : ({ unresolved: true } as const);
         const held = yield* SubscriptionRef.get(state);
         return Option.isSome(held)
-          ? ({ kind: "linked", mate: held.value } as const)
-          : ({ kind: "not-linked" } as const);
+          ? ({ kind: "linked", mate: held.value, ...unresolved } as const)
+          : ({ kind: "not-linked", ...unresolved } as const);
       }),
-      changes: Stream.map(SubscriptionRef.changes(state), () => undefined),
+      changes: Stream.merge(
+        Stream.map(SubscriptionRef.changes(state), () => undefined),
+        Stream.map(SubscriptionRef.changes(keyVerdict), () => undefined),
+      ),
     });
   });
 
