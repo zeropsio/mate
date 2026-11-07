@@ -39,6 +39,7 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     },
   );
 
+  // witness: packages/client-runtime/src/zerops/hq/refusals.ts | needs_owner_seal: → needs_owner_seal_unknown:
   it.each([
     ["github_unavailable", "HQ could not set the GitHub app up just now. Try again."],
     [
