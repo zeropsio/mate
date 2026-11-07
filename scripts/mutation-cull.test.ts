@@ -208,7 +208,7 @@ describe("mutation cull", () => {
         Object.entries(process.env).filter(([name]) => !name.startsWith("VITEST")),
       );
       NodeChildProcess.spawnSync(
-        "vp",
+        new URL("../node_modules/.bin/vp", import.meta.url).pathname,
         ["test", "run", "--config", config, "--reporter=json", `--outputFile=${report}`],
         { cwd: fixture, env, encoding: "utf8" },
       );
