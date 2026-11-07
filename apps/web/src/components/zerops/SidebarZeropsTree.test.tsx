@@ -5,6 +5,7 @@ import {
   streamOf,
   accountReadsAtom,
   hqNavigation,
+  hqProjectPeople,
   makeAccountStore,
   observeAccount,
   type HqWire,
@@ -14,6 +15,7 @@ import {
   graceOver,
   liveProjects,
   membershipInputs,
+  seedHqProjectPeople,
 } from "@t3tools/client-runtime/data/fixtures";
 import { markupDom } from "../../../test/markupDom";
 import { olderNavigation } from "~/zerops/__fixtures__/olderNavigation";
@@ -89,7 +91,7 @@ import {
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
 import { markMateDeleting, settleDeletingMates } from "~/zerops/deletingMates";
-import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import { zeropsMateOwnerOf, type ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import {
   PROJECT_CUSTOM_ORDER_STORAGE_KEY,
   PROJECT_ORDER_STORAGE_KEY,
@@ -711,22 +713,39 @@ describe("SidebarZeropsTree", () => {
     expect(opened).toEqual(["links-dev"]);
   });
 
+  // HQ's navigation row names the owner whether or not anybody is signed in to the Mate's agent
+  // now: both rows HQ recorded draw its owner's picture, as HQ's person record pictures them.
+  // witness: packages/client-runtime/src/data/projections/hqProjectPeople.ts | person?.ownerUserId ?? agentSigner(signedInNow, everSignedIn) → agentSigner(signedInNow, everSignedIn)
   it("wears a colleague's picture on its face's corner, cut out of the face, never before the name", () => {
-    const jan = { name: "Jan Novák", initials: "JN", avatarUrl: "https://cdn/jan.png" };
-    const html = render([CRM_DEV], { getOwner: () => jan });
-    const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
-    const row = html.slice(rowAt, html.indexOf("</button>", rowAt));
-    const ownerAt = row.indexOf('data-zerops-surface="sidebar-mate-owner"');
-    // In the face's box, after the face and before the words: "(face) Cleo"
-    // on the name's line read as a person called Cleo (the owner, 2026-09-30).
-    expect(ownerAt).toBeGreaterThan(row.indexOf("</svg>"));
-    expect(ownerAt).toBeLessThan(row.indexOf('data-zerops-surface="sidebar-mate-name"'));
+    const rowOf = (recording: "navigation-project.signed-in" | "navigation-project.no-signer") => {
+      const store = makeAccountStore(AtomRegistry.make());
+      seedHqProjectPeople(store, "org-avatar", {
+        projects: { "crm-dev": { recording } },
+        people: { owner: { name: "Jan Novák", avatarUrl: "https://cdn/jan.png" } },
+      });
+      const owner = hqProjectPeople.derive(readsOfState(store.state()), "org-avatar")["crm-dev"]
+        ?.owner;
+      store.close();
+      const html = render([CRM_DEV], { getOwner: () => zeropsMateOwnerOf(owner, "viewer") });
+      const rowAt = html.indexOf('data-zerops-surface="sidebar-mate"');
+      return html.slice(rowAt, html.indexOf("</button>", rowAt));
+    };
+    for (const row of [
+      rowOf("navigation-project.signed-in"),
+      rowOf("navigation-project.no-signer"),
+    ]) {
+      const ownerAt = row.indexOf('data-zerops-surface="sidebar-mate-owner"');
+      // In the face's box, after the face and before the words: "(face) Cleo"
+      // on the name's line read as a person called Cleo (the owner, 2026-09-30).
+      expect(ownerAt).toBeGreaterThan(row.indexOf("</svg>"));
+      expect(ownerAt).toBeLessThan(row.indexOf('data-zerops-surface="sidebar-mate-name"'));
 
-    expect(row).toContain('data-zerops-avatar="picture"');
-    expect(row).toContain('src="https://cdn/jan.png"');
+      expect(row).toContain('data-zerops-avatar="picture"');
+      expect(row).toContain('src="https://cdn/jan.png"');
 
-    // The picture is decoration; whose Mate it is is still said.
-    expect(row).toContain("Jan Novák&#x27;s Mate");
+      // The picture is decoration; whose Mate it is is still said.
+      expect(row).toContain("Jan Novák&#x27;s Mate");
+    }
   });
 
   it("puts nothing on the face of the viewer's own Mate", () => {

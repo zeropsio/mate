@@ -166,6 +166,9 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "apps/web/src/**",
     "packages/client-runtime/src/**",
   ],
+  // A recording's consumers read it at run time through `recorded()`.
+  "packages/test-recordings/recorded.ts": ["packages/test-recordings/*/*.json"],
+  "packages/test-recordings/recorded.test.ts": ["packages/test-recordings/*/*.json"],
   "packages/client-runtime/src/zerops/zcpFixtures.test.ts": [
     "packages/client-runtime/src/zerops/fixtures/zcp/**",
   ],
@@ -199,6 +202,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/ensure-electron-runtime.test.ts": [],
   "scripts/gate-changed.test.ts": [],
   "scripts/state-smoke.test.ts": [".github/workflows/ci.yml"],
+  "scripts/sync-recordings.test.ts": [],
   "scripts/gate-rerun.test.ts": [],
   "scripts/gate-file-inputs.test.ts": [
     "scripts/**/*.test.ts",

@@ -1,0 +1,33 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "revision": "7473a0e70617b7bcd03f6f307afefe3cf3f5bac7",
+    "via": "rolling-restart.test.ts",
+    "schema": "navigation project:<id>"
+  },
+  "value": {
+    "appId": "00000000-0000-4000-8000-000000000001",
+    "everSignedIn": {
+      "claude-code": "owner"
+    },
+    "kind": "mate",
+    "mate": {
+      "face": "S5",
+      "madeBy": "owner",
+      "serviceId": "zcp",
+      "standupRequestedBy": null
+    },
+    "name": "P-s5-00000000-0000-4000-8000-000000000002",
+    "person": {
+      "chiefProjectId": null,
+      "mine": true,
+      "ownerUserId": "owner",
+      "unseen": null,
+      "waitsOnViewer": true
+    },
+    "projectId": "P-s5-00000000-0000-4000-8000-000000000002",
+    "signedInNow": {
+      "claude-code": "owner"
+    }
+  }
+}
