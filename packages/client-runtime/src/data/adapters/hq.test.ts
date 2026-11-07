@@ -650,7 +650,7 @@ describe("hqNavigationLink", () => {
     }),
   );
 
-  // witness: packages/client-runtime/src/data/adapters/hq.ts | if (open === null || !asked.has(hqScopeKey(message.scope))) return; → return;
+  // witness: packages/client-runtime/src/data/adapters/hq.ts | (asked.has(scopeKey) ? [scope] : []) → []
   it.effect(
     "HQ saying a scope changed is answered by asking that scope again with the person's token, and what that read sends is shown",
     () =>

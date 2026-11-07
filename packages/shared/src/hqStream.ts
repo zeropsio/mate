@@ -61,7 +61,6 @@ export const HqScope = Schema.Union([
     repo: Schema.String,
     number: Schema.Int,
   }),
-  Schema.Struct({ kind: Schema.Literal("operation"), appId: Schema.String }),
   Schema.Struct({
     kind: Schema.Literal("attention"),
     projectId: Schema.String,
@@ -113,17 +112,24 @@ export const HqSubscription = Schema.Struct({
   ),
 );
 export type HqSubscription = typeof HqSubscription.Type;
+/**
+ * The most scopes one `subscribe`, `unsubscribe` or `retry` frame names: HQ closes a socket
+ * whose frame names more as malformed (`1007`), so a longer list is sent as several frames.
+ */
+export const HQ_STREAM_FRAME_SCOPES = 128;
 export const HqStreamRequest = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("retry"),
     /** Omitted scopes retry this person's refused journals, including before subscribing. */
-    scopes: Schema.optionalKey(Schema.Array(HqScope).check(Schema.isMaxLength(128))),
+    scopes: Schema.optionalKey(
+      Schema.Array(HqScope).check(Schema.isMaxLength(HQ_STREAM_FRAME_SCOPES)),
+    ),
     /** The person's current Zerops access token: HQ reads the scopes again with it. */
     accessToken: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("subscribe"),
-    scopes: Schema.Array(HqSubscription).check(Schema.isMaxLength(128)),
+    scopes: Schema.Array(HqSubscription).check(Schema.isMaxLength(HQ_STREAM_FRAME_SCOPES)),
     /**
      * The person's current Zerops access token: HQ admits a
      * {@link HQ_PROTECTED_SCOPE_KINDS protected scope} on one read with it, and reads with it what
@@ -133,7 +139,7 @@ export const HqStreamRequest = Schema.Union([
   }),
   Schema.Struct({
     type: Schema.Literal("unsubscribe"),
-    scopes: Schema.Array(HqScope).check(Schema.isMaxLength(128)),
+    scopes: Schema.Array(HqScope).check(Schema.isMaxLength(HQ_STREAM_FRAME_SCOPES)),
   }),
   Schema.Struct({
     type: Schema.Literal("seen"),
@@ -257,7 +263,6 @@ export const hqScopeKey = (scope: HqScope): string => {
     case "agentUsage":
       return usageCanonical([scope.kind, scope.query, scope.detail ?? null]);
     case "app-detail":
-    case "operation":
       return JSON.stringify([scope.kind, scope.appId]);
     case "change":
     case "discussion":
@@ -325,10 +330,6 @@ export const HqNavigationMate = Schema.Struct({
   face: Schema.String,
   madeBy: Schema.NullOr(Schema.String),
   standupRequestedBy: Schema.NullOr(Schema.String),
-  /** Still sent by HQ; no client reads it since a birth is one import. */
-  setupMarker: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
-  /** Still sent by older HQ builds; no client reads it. */
-  keyWider: Schema.optionalKey(Schema.Boolean),
   birthId: Schema.optionalKey(Schema.String),
   /** The accepted setup import, retained after its browser press ends. */
   importProcessId: Schema.optionalKey(Schema.String),

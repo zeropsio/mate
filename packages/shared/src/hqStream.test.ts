@@ -145,17 +145,6 @@ it("navigation preserves production release standing and deploy evidence", () =>
   expect(readPress(press)).toEqual(press);
 });
 
-it.each([true, false, null])("navigation carries setup marker evidence %s", (setupMarker) => {
-  const value = {
-    face: "",
-    madeBy: null,
-    standupRequestedBy: null,
-    setupMarker,
-    keyWider: false,
-  };
-  expect(readMate(value)).toEqual(value);
-});
-
 it("Decision: HQ navigation does not carry the retired closure flag", () => {
   const mate = { face: "ada", madeBy: null, standupRequestedBy: null };
   const withRetiredField = { ...mate, closedOff: false };
@@ -167,7 +156,6 @@ it("navigation retains the accepted import identity on an attached Mate after it
     face: "ada",
     madeBy: null,
     standupRequestedBy: null,
-    setupMarker: null,
     birthId: "birth-ada",
     importProcessId: "accepted-import",
   };

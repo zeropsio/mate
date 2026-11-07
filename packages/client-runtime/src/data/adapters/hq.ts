@@ -21,6 +21,7 @@ import { lifecycleReceipt } from "../families/hqLifecycle.ts";
  * @module data/adapters/hq
  */
 import {
+  HQ_STREAM_FRAME_SCOPES,
   hqScopeKey,
   hqStreamCloseFailure,
   HqStreamMessage,
@@ -148,6 +149,21 @@ const SOCKET_CREATED: StreamEvent = { kind: "socket-created" };
 
 const protocolIdentity = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
+
+/**
+ * Sends a frame naming scopes as the fewest frames HQ's per-frame cap
+ * ({@link HQ_STREAM_FRAME_SCOPES}) allows; none for no scopes. Each frame is made of its own part,
+ * so one asking a read carries its own token.
+ */
+const sendScopes = <S>(
+  segment: HqSegment,
+  scopes: ReadonlyArray<S>,
+  frameOf: (part: ReadonlyArray<S>) => Effect.Effect<HqStreamRequest, StreamFault>,
+) =>
+  Effect.gen(function* () {
+    for (let at = 0; at < scopes.length; at += HQ_STREAM_FRAME_SCOPES)
+      yield* segment.send(yield* frameOf(scopes.slice(at, at + HQ_STREAM_FRAME_SCOPES)));
+  });
 
 /** The families each scope kind feeds. */
 const familiesOf = (kind: HqScope["kind"]): ReadonlyArray<AnyFamilySpec> =>
@@ -415,11 +431,8 @@ export function hqNavigationLink(options: {
       /** Asks HQ for registrations on a segment. */
       const subscribe = (segment: HqSegment, registrations: ReadonlyArray<Registered>) =>
         Effect.gen(function* () {
-          yield* segment.send(
-            yield* withToken({
-              type: "subscribe" as const,
-              scopes: registrations.map(subscription),
-            }),
+          yield* sendScopes(segment, registrations.map(subscription), (scopes) =>
+            withToken({ type: "subscribe" as const, scopes }),
           );
           for (const registered of registrations) asked.add(hqScopeKey(registered.wire));
         });
@@ -533,17 +546,25 @@ export function hqNavigationLink(options: {
           // A refused scope comes back only by the person's explicit retry or their role on its
           // project changing (`roleChanged`), sent before asking.
           const retried = registrations.filter(({ wire }) => refused.delete(hqScopeKey(wire)));
-          if (retried.length > 0)
-            yield* segment.send(
-              yield* withToken({ type: "retry", scopes: retried.map(({ wire }) => wire) }),
-            );
-          if (known.length > 0)
-            yield* segment.send({ type: "unsubscribe", scopes: known.map(({ wire }) => wire) });
+          yield* sendScopes(
+            segment,
+            retried.map(({ wire }) => wire),
+            (scopes) => withToken({ type: "retry" as const, scopes }),
+          );
+          yield* sendScopes(
+            segment,
+            known.map(({ wire }) => wire),
+            (scopes) => Effect.succeed({ type: "unsubscribe" as const, scopes }),
+          );
           yield* subscribe(segment, registrations);
         });
       const resubscribe = (registered: Registered) => again([registered]);
 
-      const onMessage = (encoded: string): Effect.Effect<void, StreamFault> =>
+      /** Reads one message; a change it reports joins `changed`, answered by {@link onMessages}. */
+      const onMessage = (
+        encoded: string,
+        changed: Map<string, HqScope>,
+      ): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
           if (stopped) return;
           heardAt = yield* Clock.currentTimeMillis;
@@ -563,8 +584,8 @@ export function hqNavigationLink(options: {
               return yield* deliver(message);
             case "scope-changed":
               // HQ pushes no values of a change: asking the scope again is the read that answers it.
-              if (open === null || !asked.has(hqScopeKey(message.scope))) return;
-              return yield* open.send(yield* withToken({ type: "retry", scopes: [message.scope] }));
+              changed.set(hqScopeKey(message.scope), message.scope);
+              return;
             case "scope-ready": {
               const scopeKey = hqScopeKey(message.scope);
               const entry = subscribed.get(scopeKey);
@@ -686,6 +707,25 @@ export function hqNavigationLink(options: {
               });
             }
           }
+        });
+
+      /**
+       * Reads one drain of the segment's queue: every frame HQ sent before this reader's turn,
+       * in order. The changes among them are answered together, by one `retry` naming each scope
+       * still asked (split only at the frame cap), so HQ reads the person's role and projects once
+       * for all of them, never once a scope.
+       */
+      const onMessages = (messages: ReadonlyArray<string>) =>
+        Effect.gen(function* () {
+          const changed = new Map<string, HqScope>();
+          for (const encoded of messages) yield* onMessage(encoded, changed);
+          const segment = open;
+          if (stopped || segment === null) return;
+          yield* sendScopes(
+            segment,
+            [...changed].flatMap(([scopeKey, scope]) => (asked.has(scopeKey) ? [scope] : [])),
+            (scopes) => withToken({ type: "retry" as const, scopes }),
+          );
         });
 
       /**
@@ -825,7 +865,9 @@ export function hqNavigationLink(options: {
               refusedWhole = false;
               yield* opened.send(yield* withToken({ type: "retry" }));
             }
-            const reading = yield* Effect.forkScoped(Stream.runForEach(opened.messages, onMessage));
+            const reading = yield* Effect.forkScoped(
+              Stream.runForEachArray(opened.messages, onMessages),
+            );
             // A new segment resumes every scope still observed from its cursor, in one ask.
             const resumed = [...subscribed.values()]
               .map(({ registered }) => registered)
