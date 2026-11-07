@@ -1426,56 +1426,38 @@ describe("mateNotYours — whether a Mate's face is paler under its owner's badg
     mark: ownerMark({ name: "Jan", initials: "J", avatarUrl: null }),
   } as const;
   it.each([
-    {
-      name: "a colleague's",
-      seat: person,
-      isViewer: false,
-      signer: "u-jan",
-      viewer: "u-eva",
-      pale: true,
-    },
-    {
-      name: "the viewer's own",
-      seat: person,
-      isViewer: true,
-      signer: "u-eva",
-      viewer: "u-eva",
-      pale: false,
-    },
+    { name: "a colleague's", seat: person, isViewer: false, mine: false, pale: true },
+    { name: "the viewer's own", seat: person, isViewer: true, mine: true, pale: false },
     {
       name: "nobody's",
       seat: { kind: "nobody", label: "" },
       isViewer: false,
-      signer: undefined,
-      viewer: "u-eva",
+      mine: undefined,
       pale: true,
     },
     {
-      name: "unnamed, signed by somebody else",
+      name: "unnamed, HQ names somebody else",
       seat: { kind: "unnamed" },
       isViewer: false,
-      signer: "u-jan",
-      viewer: "u-eva",
+      mine: false,
       pale: true,
     },
     {
-      name: "unnamed, signed by the viewer",
+      name: "unnamed, HQ names the viewer",
       seat: { kind: "unnamed" },
       isViewer: false,
-      signer: "u-eva",
-      viewer: "u-eva",
+      mine: true,
       pale: false,
     },
     {
       name: "unnamed, whose unknown",
       seat: { kind: "unnamed" },
       isViewer: false,
-      signer: undefined,
-      viewer: "u-eva",
+      mine: undefined,
       pale: false,
     },
-  ] as const)("$name", ({ seat, isViewer, signer, viewer, pale }) => {
-    expect(mateNotYours({ seat, isViewer, signer, viewer })).toBe(pale);
+  ] as const)("$name", ({ seat, isViewer, mine, pale }) => {
+    expect(mateNotYours({ seat, isViewer, mine })).toBe(pale);
   });
 });
 

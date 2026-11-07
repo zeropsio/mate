@@ -22,6 +22,8 @@ import {
   ZeropsOffboarding,
 } from "./ZeropsOffboarding.ts";
 import { make as makeAccessList, ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import * as ZeropsMateOwnerModule from "./ZeropsMateOwner.ts";
+import type { MateOwner } from "./ZeropsMateOwner.ts";
 import { make as makeProjectSigners, ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 import {
   make as makeSignOut,
@@ -52,11 +54,11 @@ const WORK: MateLogin = {
 /**
  * Offboarding over the real sign-out: Eva signed in Claude Code's own login and the `work` login,
  * Jan Codex; a live session runs on each of Eva's. `access` is what `hasProjectAccess` answers,
- * `owners` whose the project's own row says it is.
+ * `owner` whom HQ names the Mate's owner.
  */
 const offboarding = (
   access: Readonly<Record<string, boolean | undefined>>,
-  owners: Effect.Effect<ReadonlyArray<string> | undefined> = Effect.succeed(undefined),
+  owner: Effect.Effect<MateOwner> = Effect.succeed(undefined),
 ) =>
   Effect.gen(function* () {
     const stopped = yield* Ref.make<ReadonlyArray<string>>([]);
@@ -88,7 +90,7 @@ const offboarding = (
     const service = yield* makeOffboarding({
       signers: Effect.succeed({ "claude-code": EVA, [WORK.id]: EVA, codex: JAN }),
       hasProjectAccess: (userId) => Effect.succeed(access[userId]),
-      owners,
+      owner,
       signOut: signOut.signOut,
     });
     return { service, stopped, steps };
@@ -140,26 +142,26 @@ describe("ZeropsOffboarding", () => {
   );
 });
 
-// Decision: When the Mate's owner (the OWNER override on its own project row) changes, the Mate
-// signs out every provider login whose signer is not the new owner and ends the running agent,
-// through the existing offboarding path.
-describe("ZeropsOffboarding, when the project changes hands", () => {
+// Decision: When the Mate's owner changes, the Mate signs out every provider login whose signer
+// is not the new owner and ends the running agent, through the existing offboarding path. The
+// owner is HQ's record (Karel, 2026-11-07: "musime drzet informaci o vlastnikovi v hq").
+describe("ZeropsOffboarding, when the Mate changes hands", () => {
   it.effect(
-    "an owner change on the project row signs out every login whose signer is not the new owner, the old owner's access kept",
+    "an owner change HQ names signs out every login whose signer is not the new owner, the old owner's access kept",
     () =>
       Effect.gen(function* () {
-        const owners = yield* Ref.make<ReadonlyArray<string> | undefined>(undefined);
+        const owner = yield* Ref.make<MateOwner>(undefined);
         const { service, stopped, steps } = yield* offboarding(
           { [EVA]: true, [JAN]: true },
-          Ref.get(owners),
+          Ref.get(owner),
         );
-        // No own read yet, then the first owner read: what it starts from, nobody signed out.
+        // HQ has not said yet, then names an owner: what it starts from, nobody signed out.
         assert.strictEqual(yield* service.checkNow, 0);
-        yield* Ref.set(owners, [EVA]);
+        yield* Ref.set(owner, EVA);
         assert.strictEqual(yield* service.checkNow, 0);
         assert.strictEqual(yield* service.checkNow, 0);
         // Eva hands the Mate to Jan: Eva keeps her access (her organization role), not her logins.
-        yield* Ref.set(owners, [JAN]);
+        yield* Ref.set(owner, JAN);
         assert.strictEqual(yield* service.checkNow, 2);
         assert.deepStrictEqual(yield* Ref.get(stopped), ["claudeAgent", "claude-code", WORK.id]);
         const done = yield* Ref.get(steps);
@@ -205,6 +207,7 @@ describe("ZeropsOffboarding's loop", () => {
             Layer.provide(
               Layer.mergeAll(
                 ServerConfig.layer({ zerops: environment } as ServerConfig.ServerConfig["Service"]),
+                ZeropsMateOwnerModule.layer,
                 Layer.succeed(
                   ZeropsProjectSigners,
                   ZeropsProjectSigners.of({
@@ -319,6 +322,7 @@ describe("ZeropsOffboarding after the access list goes stale", () => {
             Layer.provide(
               Layer.mergeAll(
                 config,
+                ZeropsMateOwnerModule.layer,
                 Layer.succeed(ZeropsMateAccessList, list),
                 Layer.succeed(ZeropsProjectSigners, signers),
                 Layer.succeed(

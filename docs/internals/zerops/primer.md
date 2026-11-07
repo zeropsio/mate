@@ -14,6 +14,10 @@
 - A **release** names a fixed selection of application code and configuration for production.
   A **rollback** is a release selecting earlier work.
 - A **login** is a coding agent's account access; its **signer** is the person who signed in with it.
+- A Mate's **owner** is the person HQ records on it: its maker, then whoever signs its agent in, or
+  the person a hand-over names; a registered Chief's is its registered person. Only HQ keeps it. The
+  Mate and the web read it from HQ (`ownerUserId`), never from the Zerops `OWNER` override or a
+  login's signer; the Mate only reports its sign-ins (`lastSignedInAt`).
 - A **persona** is a Mate's standing instructions for how its coding agents work and talk in its chats
   outside a crew. It starts from a **persona template**, Zerops's own or one an organization keeps in HQ,
   or is written by hand.

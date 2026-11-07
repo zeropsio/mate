@@ -3558,8 +3558,7 @@ function useMateRowState<T extends RosterCandidate>({
   const notYours = mateNotYours({
     seat: seated.seat,
     isViewer: owner?.isViewer === true,
-    signer: records.person,
-    viewer,
+    mine: hqPeople?.mine,
   });
   // Its face — the one its chat's top bar wears (`mateFace`): the state its reading wears, the
   // events it greets, its restart.

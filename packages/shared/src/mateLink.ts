@@ -256,8 +256,13 @@ export type OverviewThreads = typeof OverviewThreads.Type;
 export const LoginDigest = Schema.Struct({
   /** A Zerops user id, or nobody yet. */
   signedInBy: Schema.NullOr(Schema.String),
-  /** Last recorded signer for the owner badge; never authority to spend a login. */
+  /** Last recorded signer, kept through sign-out; never authority to spend a login. */
   lastSignedInBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /**
+   * When `lastSignedInBy` signed it in, by the Mate's clock, where the Mate watched it; none for a
+   * signer it only heard from HQ. A new time is a sign-in, which moves the Mate's owner in HQ.
+   */
+  lastSignedInAt: Schema.optionalKey(Schema.NullOr(IsoDateTime)),
   /** Its credential is there. */
   present: Schema.Boolean,
   /** An API key, not a person's sign-in. */

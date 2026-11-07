@@ -31,7 +31,7 @@ const named = (list: AccessList | undefined) =>
 
 describe("administersProject", () => {
   const list = (members: AccessList["members"]): Option.Option<AccessList> =>
-    Option.some({ members, owners: [], readAtMs: 0, expiresAtMs: 1 });
+    Option.some({ members, readAtMs: 0, expiresAtMs: 1 });
   const ADA = { userId: "ada", role: "ADMIN", visibility: "open" } as const;
   const BEN = { userId: "ben", role: "BASIC_USER", visibility: "open" } as const;
   const ADA_LISTED = { ...ADA, visibility: "listed" } as const;
@@ -72,15 +72,18 @@ const read = (
 describe("ownAccessList", () => {
   it.each([
     ["no OWNER override", {}],
-    ["an inactive OWNER-override holder", { "cu-ben": "OWNER" }],
-  ])("A Chief without an active OWNER-override holder admits nobody: %s", (_name, overrides) => {
-    const input = read(
-      [person("ada", "ADMIN"), person("ben", "NO_ACCESS", "WAITING_AUTHORIZATION")],
-      overrides,
-    );
-    const chief = { ...input, project: { ...input.project, tagList: ["mate", "chief"] } };
-    assert.deepStrictEqual(ownAccessList(PROJECT, chief, 0).members, []);
-  });
+    ["an active OWNER-override holder", { "cu-ada": "OWNER" }],
+  ])(
+    "A Chief admits nobody while HQ names no owner, whatever its overrides say: %s",
+    (_name, overrides) => {
+      const input = read(
+        [person("ada", "ADMIN"), person("ben", "NO_ACCESS", "WAITING_AUTHORIZATION")],
+        overrides,
+      );
+      const chief = { ...input, project: { ...input.project, tagList: ["mate", "chief"] } };
+      assert.deepStrictEqual(ownAccessList(PROJECT, chief, 0).members, []);
+    },
+  );
 
   it.each<[string, Extract<AccessRead, { kind: "read" }>, string]>([
     ["an active org Basic user is opened for", read([person("ben", "BASIC_USER")]), "ben:open"],
@@ -349,31 +352,6 @@ describe("ZeropsMateAccessList, live over the Zerops websocket", () => {
             [["jan", "eva"], []],
           ],
         );
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "A project frame that moves the OWNER override names the new owner and tells the change, whoever else the list opens for",
-    () =>
-      Effect.gen(function* () {
-        const { answer, frame, own } = yield* liveRead;
-        // Both are organization owners: the move changes nobody's role or reach, only whose it is.
-        yield* Ref.set(
-          answer,
-          read([person("jan", "OWNER"), person("eva", "OWNER")], { "cu-jan": "OWNER" }),
-        );
-        const list = yield* makeAccessList(own);
-        yield* TestClock.adjust(Duration.zero);
-        const ownersNow = Effect.map(
-          list.current,
-          (current) => Option.getOrUndefined(current)?.owners,
-        );
-        assert.deepStrictEqual(yield* ownersNow, ["jan"]);
-        const changed = yield* Stream.runHead(list.changes).pipe(Effect.forkChild);
-        yield* TestClock.adjust(Duration.zero);
-        yield* frame({ kind: "project", overrides: { "cu-eva": "OWNER" } });
-        assert.isTrue(Option.isSome(yield* Fiber.join(changed)));
-        assert.deepStrictEqual(yield* ownersNow, ["eva"]);
       }).pipe(Effect.scoped),
   );
 

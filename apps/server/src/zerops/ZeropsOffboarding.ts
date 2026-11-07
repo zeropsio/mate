@@ -1,7 +1,7 @@
 /**
  * ZeropsOffboarding — a person this project no longer opens for is signed out
  * of every login they signed in here (X4), and so is everyone but the new
- * owner once the project changes hands.
+ * owner once the Mate changes hands.
  *
  * Whenever the access list reports, and whenever a sign-in is
  * recorded, it reads who signed each login in (`ZeropsProjectSigners`, an
@@ -16,12 +16,16 @@
  * A read that cannot say signs nobody out — a platform blip never logs a
  * room out — and a sign-out that stumbles is logged, the rest go on.
  *
- * The same pass watches whose the project is: the owners its own row names
- * (`AccessList.owners`, its `OWNER` override), which move the access list too. When they change to someone,
- * every login whose signer is not among the new owners is signed out the same
- * way, whatever access its signer keeps through their organization role: the
- * old owner's login never runs the new owner's agent. The first owners a pass
- * reads are its baseline, and a pass that cannot read them keeps the last.
+ * The same pass watches whose the Mate is: the owner HQ names
+ * (`ZeropsMateOwner`), moved by a hand-over or by another person's sign-in, and
+ * a pass runs each time it moves. When HQ names a person other than the last
+ * one it named, every login whose signer is not the new owner is signed out
+ * the same way, whatever access its signer keeps through their organization
+ * role: the old owner's login never runs the new owner's agent. The first
+ * person HQ names is the baseline. While HQ names nobody — before its first
+ * state, or a Mate HQ records no owner of — nothing has changed hands and
+ * nobody is signed out for it: each login still runs only its own signer's
+ * turns (`ZeropsProjectSigners`), and access loss still signs a person out.
  *
  * @module ZeropsOffboarding
  */
@@ -36,6 +40,7 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "../config.ts";
 import { KNOWN_AGENT_IDS } from "./ZeropsAgentAuth.ts";
 import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { type ProjectSigners, ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 import { type SignOutTarget, ZeropsSignOut } from "./ZeropsSignOut.ts";
 import { subscribeChanges } from "./zeropsChanges.ts";
@@ -54,39 +59,35 @@ const targetOf = (key: string): SignOutTarget =>
     ? { agentId: key as ZeropsAgentId }
     : { loginId: key };
 
-const sameOwners = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) =>
-  a.length === b.length && a.every((owner) => b.includes(owner));
-
 export const make = (options: {
   readonly signers: Effect.Effect<ProjectSigners>;
   readonly hasProjectAccess: ZeropsProjectSigners["Service"]["hasProjectAccess"];
-  /** Whose the project is as its own row names it; `undefined` while no own read says. */
-  readonly owners: Effect.Effect<ReadonlyArray<string> | undefined>;
+  /** Whom HQ names the Mate's owner (`ZeropsMateOwner.owner`). */
+  readonly owner: Effect.Effect<MateOwner>;
   readonly signOut: ZeropsSignOut["Service"]["signOut"];
   /** Take removals observed since the last pass and check each against the current list. */
   readonly takeRemovals?: Effect.Effect<(userId: string) => Effect.Effect<boolean>>;
 }) =>
   Effect.gen(function* () {
-    const lastOwners = yield* Ref.make<ReadonlyArray<string> | undefined>(undefined);
+    /** The last person HQ named the owner, as the last pass read it. */
+    const lastOwner = yield* Ref.make<string | undefined>(undefined);
     const takeRemovals =
       options.takeRemovals ?? Effect.succeed((_userId: string) => Effect.succeed(false));
-    /** The new owners when they changed to someone since the last pass that read them. */
-    const ownersMoved = Effect.gen(function* () {
-      const owners = yield* options.owners;
-      if (owners === undefined) return undefined;
-      const previous = yield* Ref.getAndSet(lastOwners, owners);
-      return previous !== undefined && owners.length > 0 && !sameOwners(previous, owners)
-        ? owners
-        : undefined;
+    /** The new owner when HQ named another person since the last pass that read one. */
+    const ownerMoved = Effect.gen(function* () {
+      const owner = yield* options.owner;
+      if (typeof owner !== "string") return undefined;
+      const previous = yield* Ref.getAndSet(lastOwner, owner);
+      return previous !== undefined && previous !== owner ? owner : undefined;
     });
     return ZeropsOffboarding.of({
       checkNow: Effect.gen(function* () {
         const wasRemoved = yield* takeRemovals;
-        const newOwners = yield* ownersMoved;
+        const newOwner = yield* ownerMoved;
         let signedOut = 0;
         for (const [key, signer] of Object.entries(yield* options.signers)) {
           if (signer.length === 0) continue;
-          const handedOver = newOwners !== undefined && !newOwners.includes(signer);
+          const handedOver = newOwner !== undefined && signer !== newOwner;
           if (!handedOver) {
             const access = yield* options.hasProjectAccess(signer);
             if (access !== false && (access !== undefined || !(yield* wasRemoved(signer)))) {
@@ -114,8 +115,8 @@ export const make = (options: {
   });
 
 /**
- * While this is a Zerops project, one pass whenever the access list reports a read or frame, and
- * whenever a sign-in is recorded. Comparing reports retains an observed removal even if the read
+ * While this is a Zerops project, one pass whenever the access list reports a read or frame,
+ * whenever a sign-in is recorded, and whenever HQ names another owner. Comparing reports retains an observed removal even if the read
  * the frame builds on has expired; a successful unchanged read also gets a pass.
  */
 export const layer = Layer.effect(
@@ -124,6 +125,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig.ServerConfig;
     const signers = yield* ZeropsProjectSigners;
     const accessList = yield* ZeropsMateAccessList;
+    const mateOwner = yield* ZeropsMateOwner;
     // Retain changes between reports until a pass can act on them.
     const observed = yield* Ref.make<{
       readonly openers: ReadonlySet<string> | undefined;
@@ -132,7 +134,7 @@ export const layer = Layer.effect(
     const service = yield* make({
       signers: signers.signers,
       hasProjectAccess: signers.hasProjectAccess,
-      owners: Effect.map(accessList.current, (list) => Option.getOrUndefined(list)?.owners),
+      owner: mateOwner.owner,
       signOut: (yield* ZeropsSignOut).signOut,
       takeRemovals: Effect.gen(function* () {
         const removed = yield* Ref.modify(observed, (state) => [
@@ -165,7 +167,7 @@ export const layer = Layer.effect(
           }),
         ),
       );
-      const moved = yield* subscribeChanges([reports, signers.changes]);
+      const moved = yield* subscribeChanges([reports, signers.changes, mateOwner.changes]);
       yield* Effect.forkScoped(Effect.forever(Effect.andThen(moved, service.checkNow)));
     }
     return service;

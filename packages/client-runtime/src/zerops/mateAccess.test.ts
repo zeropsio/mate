@@ -141,19 +141,13 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
       name: "HQ names an owner, and its agent's signer",
       owned: true,
       signers: { "claude-code": "u-jan" },
-      records: { named: true, signedIn: true, signer: "u-jan" },
+      records: { named: true, signedIn: true },
     },
     {
       name: "HQ names an owner, nobody signed in (a creator below ADMIN, a hand-over)",
       owned: true,
       signers: {},
       records: { named: true, signedIn: false },
-    },
-    {
-      name: "HQ names no owner, the signer names the person (an org owner's Mate)",
-      owned: false,
-      signers: { codex: "u-eva" },
-      records: { named: true, signedIn: true, signer: "u-eva" },
     },
     {
       name: "HQ names no owner and nobody signed in: nobody's",
@@ -182,11 +176,7 @@ describe("mateOwnerRecords — what a Mate's own records say of its person", () 
   ])("$name", ({ owned, signers, records }) => {
     expect(
       mateOwnerRecords(signers === undefined ? {} : { hq: placedWith(signers) }, owned),
-    ).toEqual({
-      ...records,
-      person: "signer" in records ? records.signer : undefined,
-      runsWithoutSignIn: false,
-    });
+    ).toEqual({ ...records, runsWithoutSignIn: false });
   });
 });
 
@@ -264,25 +254,6 @@ describe("a member's own project grant decides their Mate as a named override do
   });
 });
 
-describe("a ready agent's person from HQ", () => {
-  it.each([
-    ["ready: its maker", true, {}, "u-maker"],
-    ["not ready, nobody signed in: its maker, whatever their role", false, {}, "u-maker"],
-    ["signed in by somebody else: still its maker", true, { codex: "u-signer" }, "u-maker"],
-  ] as const)("%s", (_case, ready, signers, person) => {
-    const placement = placedWith(signers);
-    const project = {
-      id: PROJECT,
-      hq: {
-        ...placement,
-        mate: { ...placement.mate!, madeBy: "u-maker", runsWithoutSignIn: ready },
-      },
-    };
-    expect(mateOwnerRecords(project, undefined).person).toBe(person);
-    expect(mateOwnerRecords(project, undefined).runsWithoutSignIn).toBe(ready);
-  });
-});
-
 describe("an automated Mate's records", () => {
   it.each([
     ["automated, nobody signed in", true, true],
@@ -295,60 +266,7 @@ describe("an automated Mate's records", () => {
         id: PROJECT,
         hq: { ...placement, mate: { ...placement.mate!, madeBy: "u-maker", automated } },
       };
-      expect(mateOwnerRecords(project, undefined)).toMatchObject({
-        person: "u-maker",
-        runsWithoutSignIn,
-      });
+      expect(mateOwnerRecords(project, undefined)).toMatchObject({ runsWithoutSignIn });
     },
   );
-});
-
-it.each([false, true])(
-  "a Mate somebody else signed in, then out, stays its maker's (runsWithoutSignIn: %s)",
-  (runsWithoutSignIn) => {
-    const hq: HqPlacement = {
-      ...placedWith({}),
-      mate: {
-        face: "",
-        madeBy: "u-maker",
-        runsWithoutSignIn,
-        logins: {
-          "claude-code": {
-            signedInBy: null,
-            lastSignedInBy: "u-eva",
-            present: false,
-            token: false,
-          },
-        },
-      },
-    };
-    const project = { id: PROJECT, clientId: ORG, userRoles: [], hq };
-    expect(mateOwnerRecords(project, false)).toEqual({
-      named: true,
-      signedIn: false,
-      signer: "u-eva",
-      person: "u-maker",
-      runsWithoutSignIn,
-    });
-  },
-);
-
-it("logout keeps Claude's badge priority when Codex remains signed in by someone else", () => {
-  const hq: HqPlacement = {
-    ...placedWith({}),
-    mate: {
-      face: "",
-      logins: {
-        "claude-code": { signedInBy: null, lastSignedInBy: "u-eva", present: false, token: false },
-        codex: { signedInBy: "u-jan", lastSignedInBy: "u-jan", present: true, token: false },
-      },
-    },
-  };
-  expect(mateOwnerRecords({ hq }, false)).toEqual({
-    named: true,
-    signedIn: true,
-    signer: "u-eva",
-    person: "u-eva",
-    runsWithoutSignIn: false,
-  });
 });

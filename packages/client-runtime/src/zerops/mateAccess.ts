@@ -209,16 +209,11 @@ export function mateMemberName(member: MateOwnerCandidate): string | undefined {
 }
 
 /**
- * What a Mate's own records say of its person before anybody is looked up, as
- * facts: whether they name anybody at all (an owner HQ names, or the signer of
- * its agent), and whether anybody has
- * signed its agent in (D6's signer of the agent's own login; a login added
- * beside it names only who uses that one).
- *
- * Read off the project and where HQ places it, so a list knows them as soon as
- * HQ's overview of the Mate names its logins: a Mate whose records name nobody
- * is nobody's whether or not anybody is named yet, and the first person to sign
- * its agent in makes it theirs. A viewer HQ sends no overview to sees no signer.
+ * What a Mate's own records say of whose it is and of its sign-in before anybody is looked up, as
+ * facts: whether HQ names an owner of it (`ownerUserId`, the only word on whose it is: nothing here
+ * guesses one from its maker or its signer), whether anybody is signed in to its agent now (D6's
+ * signer of the agent's own login; a login added beside it names only who uses that one), and
+ * whether it waits on no sign-in at all. A viewer HQ sends no overview to sees nobody signed in.
  */
 export function mateOwnerRecords(
   project: Pick<MateAccessProject, "hq">,
@@ -227,43 +222,27 @@ export function mateOwnerRecords(
 ): {
   readonly named: boolean | undefined;
   readonly signedIn: boolean;
-  /** The Zerops user id who signed its agent in, where somebody did. */
-  readonly signer: string | undefined;
-  /** The Zerops user id HQ makes it the Mate of (`matePerson`): its maker, or its signer. */
-  readonly person: string | undefined;
   /**
    * It runs on an agent Mate signs nobody in to (its overview), or it is automated, on the
    * organization's key: it waits on no sign-in.
    */
   readonly runsWithoutSignIn: boolean;
 } {
-  const records = matePerson(project);
-  return { named: records.signedIn || records.person !== undefined || owned, ...records };
+  const mate = project.hq?.mate;
+  const logins = mate?.logins ?? {};
+  return {
+    named: owned,
+    signedIn: MATE_AGENT_LOGINS.some((key) => {
+      const userId = logins[key]?.signedInBy;
+      return typeof userId === "string" && userId.length > 0;
+    }),
+    // An automated Mate's agents run on the organization's key: nobody signs it in, ever.
+    runsWithoutSignIn: mate?.runsWithoutSignIn === true || mate?.automated === true,
+  };
 }
 
-/**
- * The agents whose own signer speaks for the Mate, in the order it is named by; a login added
- * beside them names only who uses it.
- */
-const MATE_OWNER_SIGNER_KEYS: ReadonlyArray<string> = ["claude-code", "codex"];
-
-/**
- * What HQ says of the agents' own logins: a current signer, else the last recorded signer for
- * display. Claude Code comes first; history never says the login is signed in.
- */
-function mateOwnerSigner(project: Pick<MateAccessProject, "hq">): {
-  readonly signedIn: boolean;
-  readonly signer: string | undefined;
-} {
-  const logins = project.hq?.mate?.logins ?? {};
-  const activeSigner = MATE_OWNER_SIGNER_KEYS.map((key) => logins[key]?.signedInBy).find(
-    (userId): userId is string => typeof userId === "string" && userId.length > 0,
-  );
-  const signer = MATE_OWNER_SIGNER_KEYS.map(
-    (key) => logins[key]?.signedInBy ?? logins[key]?.lastSignedInBy,
-  ).find((userId): userId is string => typeof userId === "string" && userId.length > 0);
-  return { signedIn: activeSigner !== undefined, signer };
-}
+/** The agents' own logins, whose signer signs the Mate's agent in; a login added beside them does not. */
+const MATE_AGENT_LOGINS: ReadonlyArray<string> = ["claude-code", "codex"];
 
 /**
  * Whether anybody has ever signed one of a Mate's logins in, any agent's: a current signer, the
@@ -276,18 +255,6 @@ export function mateSignedInOnce(project: Pick<MateAccessProject, "hq">): boolea
       (userId) => typeof userId === "string" && userId.length > 0,
     ),
   );
-}
-
-/** Its maker, else its current or last signer, as HQ names them. */
-function matePerson(project: Pick<MateAccessProject, "hq">) {
-  const { signedIn, signer } = mateOwnerSigner(project);
-  const mate = project.hq?.mate;
-  // An automated Mate's agents run on the organization's key: nobody signs it in, ever.
-  const runsWithoutSignIn = mate?.runsWithoutSignIn === true || mate?.automated === true;
-  // Its maker's for good, whatever their role and whoever signs its agent in; a Mate recorded
-  // before HQ kept its maker is its signer's (`usageOwner`).
-  const person = mate?.madeBy ?? mate?.standupRequestedBy ?? signer ?? undefined;
-  return { signedIn, signer, person, runsWithoutSignIn };
 }
 
 /** A member row is an integration token when its address is the token's own (`token-<id>@zerops.io`). */

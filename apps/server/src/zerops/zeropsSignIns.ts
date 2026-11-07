@@ -8,6 +8,10 @@
  * an HQ write moves it. That is how whose a login is outlives a restart, or a container that
  * boots with nothing: the server keeps no file of it.
  *
+ * A sign-in watched here is kept with when it happened, by this server's clock (`signedAt`). HQ's
+ * map names no time, so a signer it fills in has none. The Mate reports that time to HQ
+ * (`lastSignedInAt`): a new one is a sign-in, which moves the Mate's owner in HQ.
+ *
  * When the credential goes, its entry becomes display history and never authorizes a turn. A
  * login nobody signed in here and HQ names nobody for — one signed in from a terminal — is
  * nobody's until somebody signs it in here.
@@ -15,6 +19,7 @@
  * @module zeropsSignIns
  */
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
@@ -35,6 +40,12 @@ export interface SignInStore {
   readonly load: Effect.Effect<SignInRecords>;
   /** The last recorded signer, including logins whose credentials are gone. */
   readonly lastSigners: Effect.Effect<Readonly<Record<string, string>>>;
+  /**
+   * When the last recorded signer signed each login in (ISO 8601), for the sign-ins this server
+   * watched; a login whose signer only HQ's map named has none.
+   */
+  readonly signedAt: Effect.Effect<Readonly<Record<string, string>>>;
+  /** Records that `record.by` signed the login `key` in now, stamped with this server's clock. */
   readonly save: (key: string, record: SignInRecord) => Effect.Effect<void>;
   readonly clear: (key: string) => Effect.Effect<void>;
   /** Fill logins without a signer from HQ's `signers` frame. */
@@ -69,13 +80,19 @@ const applySigners = (
 export const memorySignInStore = (initial: SignInRecords = {}) =>
   Effect.gen(function* () {
     const records = yield* Ref.make(initial);
+    const signedAt = yield* Ref.make<Readonly<Record<string, string>>>({});
     const moved = yield* PubSub.unbounded<void>();
     const told = PubSub.publish(moved, undefined);
     return {
       load: Ref.get(records).pipe(Effect.map(activeRecords)),
       lastSigners: Ref.get(records).pipe(Effect.map(lastSignersOf)),
+      signedAt: Ref.get(signedAt),
       save: (key, record) =>
-        Ref.update(records, (current) => ({ ...current, [key]: record })).pipe(
+        DateTime.now.pipe(
+          Effect.flatMap((now) =>
+            Ref.update(signedAt, (current) => ({ ...current, [key]: DateTime.formatIso(now) })),
+          ),
+          Effect.andThen(Ref.update(records, (current) => ({ ...current, [key]: record }))),
           Effect.andThen(told),
         ),
       clear: (key) =>

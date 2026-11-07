@@ -5,17 +5,17 @@
  * `userRoles` and the organisation's persons, through the shared door rule
  * (`@t3tools/shared/mateAccess` `projectAccess` over `zeropsRoles`): an active person whose
  * effective role (their override here, else their org role) is Basic user or above is opened for,
- * one at Read only is listed, anyone else is absent. A project tagged `chief` opens only for
- * the people its own `OWNER` overrides name. It recomputes every
+ * one at Read only is listed, anyone else is absent. A project tagged `chief` opens only for its
+ * owner as HQ names it (`ZeropsMateOwner`), and for nobody while HQ names none; it recomputes when
+ * HQ names another. It recomputes every
  * {@link ACCESS_RECOMPUTE_EVERY} give or take {@link ACCESS_RECOMPUTE_JITTER}, and at once when a
  * ticket names a person the list does not open for. A read that fails, Zerops refusing the key
  * included, keeps the last list as it is. Between reads the Zerops websocket keeps it live
  * (`ZeropsAccessSocket`): each frame applies over the rows the last read and frames left, and the
  * list is recomputed from them; a frame that changes no row changes nothing. Every (re)connect
  * reads again, for what the socket missed. After every read, and every frame that changed a row,
- * whom the list names goes up to HQ (`access_report`), whole every time. The list names whose the
- * project is too: whom its `OWNER` override names (`projectOwners`), the owner marker a hand-over
- * moves. It is the only list: HQ sends the Mate none.
+ * whom the list names goes up to HQ (`access_report`), whole every time. It names nobody the
+ * Mate's owner: that is HQ's word alone. It is the only list: HQ sends the Mate none.
  *
  * The same socket carries the project's process frames (ZEROPS-078): the list hands them on,
  * with each `connected`, to whoever waits on a process (`processes`), and reads none itself.
@@ -28,7 +28,6 @@
 import {
   type MateAccessMember,
   projectAccess,
-  projectOwners,
   type ZeropsOrgMember,
 } from "@t3tools/shared/mateAccess";
 import type { AccessReport, TicketRefusal } from "@t3tools/shared/mateLink";
@@ -61,6 +60,7 @@ import {
 } from "./ZeropsAccessSocket.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
+import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
 
 /**
@@ -82,8 +82,6 @@ export const ACCESS_READ_BUDGET = Duration.seconds(15);
 export interface AccessList {
   /** Whom the project opens for or lists. */
   readonly members: ReadonlyArray<MateAccessMember>;
-  /** Whom the project's own row names its owner (`projectOwners`). */
-  readonly owners: ReadonlyArray<string>;
   /** When the read it builds on landed (the Mate's own clock, ms). */
   readonly readAtMs: number;
   /** Past this no new ticket is admitted ({@link ACCESS_LIST_HOLDS}). */
@@ -96,19 +94,23 @@ export interface OwnRows {
   readonly members: ReadonlyArray<ZeropsOrgMember>;
 }
 
-/** The Mate's own list from the rows of its project `projectId`, read at `nowMs`. */
-export const ownAccessList = (projectId: string, rows: OwnRows, nowMs: number): AccessList => {
-  const owners = projectOwners({ members: rows.members, overrides: rows.project.overrides });
-  const members = projectAccess({
-    projectId,
-    members: rows.members,
-    overrides: rows.project.overrides,
-  });
+/**
+ * The Mate's own list from the rows of its project `projectId`, read at `nowMs`, with `owner` the
+ * owner HQ names (`ZeropsMateOwner`): a Chief opens for them alone, and for nobody without one.
+ */
+export const ownAccessList = (
+  projectId: string,
+  rows: OwnRows,
+  nowMs: number,
+  owner?: MateOwner,
+): AccessList => {
   return {
-    members: rows.project.tagList.includes("chief")
-      ? members.filter((member) => owners.includes(member.userId))
-      : members,
-    owners,
+    members: projectAccess({
+      projectId,
+      members: rows.members,
+      overrides: rows.project.overrides,
+      chief: rows.project.tagList.includes("chief") ? { userId: owner ?? null } : null,
+    }),
     readAtMs: nowMs,
     expiresAtMs: nowMs + Duration.toMillis(ACCESS_LIST_HOLDS),
   };
@@ -200,14 +202,11 @@ export const accessNamed = (list: AccessList, at: string): AccessReport => ({
   listed: list.members.filter((m) => m.visibility === "listed").map((m) => m.userId),
 });
 
-/** Who a list opens for and lists, and whose it is: what its readers act on. */
+/** Who a list opens for and lists: what its readers act on. */
 const reachOf = (list: AccessList | undefined): string =>
   list === undefined
     ? ""
-    : JSON.stringify([
-        list.members.map((member) => [member.userId, member.role, member.visibility]),
-        list.owners,
-      ]);
+    : JSON.stringify(list.members.map((member) => [member.userId, member.role, member.visibility]));
 
 /**
  * Whether the session's `subject` administers the Mate's project: a Zerops person the list opens
@@ -236,8 +235,7 @@ export class ZeropsMateAccessList extends Context.Service<
     /** Whom the own list names, latest first, then after each change (`access_report`). */
     readonly reports: Stream.Stream<AccessReport>;
     /**
-     * Fires when the list changes whom it opens for or lists, or whose the project is, never
-     * when it only aged.
+     * Fires when the list changes whom it opens for or lists, never when it only aged.
      */
     readonly changes: Stream.Stream<void>;
     /**
@@ -263,13 +261,14 @@ interface Held {
 
 /**
  * The list with `own`, the Mate's own read of its project, kept live between reads by `live` (the
- * Zerops websocket over its organisation, once a read named it); without it, a list that never
- * names anybody.
+ * Zerops websocket over its organisation, once a read named it) and recomputed when `owner` (HQ's,
+ * which a Chief opens for) moves; without it, a list that never names anybody.
  */
 export const make = (own?: {
   readonly projectId: string;
   readonly read: ZeropsAccessRead["Service"]["read"];
   readonly live?: (clientId: string) => Stream.Stream<AccessLiveEvent>;
+  readonly owner?: Pick<ZeropsMateOwner["Service"], "owner" | "changes">;
 }) =>
   Effect.gen(function* () {
     const held = yield* Ref.make<Held>({ rows: undefined, own: undefined });
@@ -309,6 +308,8 @@ export const make = (own?: {
      * read in flight, so an answer Zerops gave before the frame never lands after it.
      */
     const serial = yield* Semaphore.make(1);
+    /** Whom HQ names the owner now; read inside `serial`, so a move applies after it. */
+    const ownerNow = own?.owner?.owner ?? Effect.succeed<MateOwner>(undefined);
 
     const readOnce = (from: NonNullable<typeof own>) =>
       Effect.gen(function* () {
@@ -319,9 +320,10 @@ export const make = (own?: {
           }),
         );
         if (read.kind !== "read") return;
+        const owner = yield* ownerNow;
         const [, after] = yield* update((_, nowMs) => ({
           rows: read,
-          own: ownAccessList(from.projectId, read, nowMs),
+          own: ownAccessList(from.projectId, read, nowMs, owner),
         }));
         if (after.own === undefined) return;
         yield* report(after, after.own.readAtMs);
@@ -335,14 +337,34 @@ export const make = (own?: {
     const appliedFrame = (from: NonNullable<typeof own>, frame: AccessFrame) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
+        const owner = yield* ownerNow;
         const [before, after] = yield* update((current) => {
           if (current.rows === undefined || current.own === undefined) return current;
           const rows = applyAccessFrame(current.rows, frame);
           return rows === current.rows
             ? current
-            : { rows, own: ownAccessList(from.projectId, rows, current.own.readAtMs) };
+            : { rows, own: ownAccessList(from.projectId, rows, current.own.readAtMs, owner) };
         });
         if (after !== before) yield* report(after, now);
+      }).pipe(serial.withPermits(1));
+
+    /**
+     * The list over the same rows once HQ names another owner, holding from the read it builds on;
+     * reported only when it changes whom it opens for (a Chief's).
+     */
+    const ownerMoved = (from: NonNullable<typeof own>) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        const owner = yield* ownerNow;
+        const [before, after] = yield* update((current) =>
+          current.rows === undefined || current.own === undefined
+            ? current
+            : {
+                rows: current.rows,
+                own: ownAccessList(from.projectId, current.rows, current.own.readAtMs, owner),
+              },
+        );
+        if (reachOf(before.own) !== reachOf(after.own)) yield* report(after, now);
       }).pipe(serial.withPermits(1));
 
     /**
@@ -391,6 +413,12 @@ export const make = (own?: {
             }
           });
         }),
+      );
+    }
+
+    if (own?.owner !== undefined) {
+      yield* Stream.runForEach(own.owner.changes, () => ownerMoved(own)).pipe(
+        Effect.forkScoped({ startImmediately: true }),
       );
     }
 
@@ -448,6 +476,7 @@ export const layer = (environment: Pick<ZeropsEnvironment, "apiBaseUrl" | "proje
       return yield* make({
         projectId: environment.projectId,
         read: (yield* ZeropsAccessRead).read,
+        owner: yield* ZeropsMateOwner,
         live: (clientId) =>
           accessEvents({ ...environment, clientId, mateKey, connect: connectAccessSocket }).pipe(
             Stream.provideService(HttpClient.HttpClient, httpClient),
