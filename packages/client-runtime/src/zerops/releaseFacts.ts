@@ -299,7 +299,7 @@ export function releaseOutcomeOf(input: {
  * under way it left the service out for; nothing for a service that went live or HQ asked nothing
  * of.
  */
-function releaseSteps(input: {
+export function releaseSteps(input: {
   readonly tag: string;
   readonly environmentInputs: ReadonlyArray<
     Pick<GroupEnvironmentRowInput, "tier" | "services" | "release">

@@ -6,13 +6,18 @@ import {
   changeReadoutOfRecord,
   changeRemarks,
   parseChangeDiff,
+  releaseOutcomeOf,
+  releaseSteps,
   releaseVersionField,
   type ChangeReadout,
   type FlowPullRequest,
+  type FlowReleaseRow,
+  type ReleaseFailureReads,
   type ReviewClose,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { CrewTask } from "@t3tools/contracts";
 import type {
   ChangeCommit,
@@ -685,6 +690,79 @@ const CREATION_PLAN: NonNullable<Parameters<typeof ReleaseReviewView>[0]["servic
     },
     { kind: "deploy", service: "agentrunner", sha: SEVEN_E },
   ],
+};
+
+/** v0.1.57 as HQ lists it, deploying app and api from one commit. */
+const tagged57 = (over: Partial<FlowReleaseRow> = {}): FlowReleaseRow => ({
+  tag: "v0.1.57",
+  verdict: "approved",
+  detail: undefined,
+  line: "app 7e1c0d2 · api 7e1c0d2",
+  entries: [
+    { service: "app", commit: SEVEN_E },
+    { service: "api", commit: SEVEN_E },
+  ],
+  taggedAt: minutesAgo(1.2),
+  standing: undefined,
+  word: "Approved",
+  rollBack: false,
+  failedEntries: [],
+  ...over,
+});
+
+/** A production service's newest job of v0.1.57, as HQ's navigation streams it. */
+const job57 = (service: string, state: HqJob["state"], over: Partial<HqJob> = {}): HqJob => ({
+  id: `job-${service}`,
+  kind: "deploy",
+  service,
+  sha: SEVEN_E,
+  state,
+  cause: "release",
+  ref: "v0.1.57",
+  reason: null,
+  appVersionId: null,
+  processId: null,
+  requestedBy: null,
+  at: minutesAgo(1.2),
+  endedAt: null,
+  supersededBy: null,
+  ...over,
+});
+
+const productionReads = (
+  jobs: ReadonlyArray<HqJob>,
+  stalled: ReleaseFailureReads["stalled"] = undefined,
+) => ({
+  environmentInputs: [
+    {
+      tier: "production" as const,
+      release: null,
+      services: jobs.map((job) => ({
+        hostname: job.service ?? "",
+        deploy: { latest: job, live: null },
+      })),
+    },
+  ],
+  stalled,
+});
+
+/** The sheet's outcome as the app derives it (`releaseOutcomeOf`), from HQ's rows and jobs. */
+const derived57 = (input: {
+  readonly tagged: FlowReleaseRow;
+  readonly jobs: ReadonlyArray<HqJob>;
+  readonly stalled?: ReleaseFailureReads["stalled"];
+}) => {
+  const reads = productionReads(input.jobs, input.stalled);
+  return releaseOutcomeOf({
+    tagged: input.tagged,
+    releasing: true,
+    stalled: input.stalled !== undefined,
+    reads,
+    steps: releaseSteps({ tag: "v0.1.57", environmentInputs: reads.environmentInputs, nowMs: NOW }),
+    pressing: false,
+    tag: "v0.1.57",
+    clockMs: NOW,
+  });
 };
 
 function Release({
@@ -1421,6 +1499,72 @@ export const REVIEW_STATES: ReadonlyArray<{
           services: ["app"],
           at: minutesAgo(2),
         }}
+        press={{ kind: "done" }}
+      />
+    ),
+  },
+  {
+    id: "release-steps",
+    label: "Release · each service's step",
+    node: (
+      <Release
+        outcome={derived57({
+          tagged: tagged57(),
+          jobs: [job57("app", "building"), job57("api", "queued")],
+        })}
+        press={{ kind: "done" }}
+      />
+    ),
+  },
+  {
+    id: "release-failed-words",
+    label: "Release failed · the platform's words",
+    node: (
+      <Release
+        outcome={derived57({
+          tagged: tagged57({
+            standing: "deploy-failed",
+            failedEntries: [{ service: "app", commit: SEVEN_E }],
+          }),
+          jobs: [
+            job57("app", "failed", {
+              endedAt: minutesAgo(2),
+              reason: "Build failed: npm ERR! missing script: build",
+            }),
+          ],
+        })}
+        press={{ kind: "done" }}
+      />
+    ),
+  },
+  {
+    id: "release-stalled-reason",
+    label: "Release stalled · HQ's reason",
+    node: (
+      <Release
+        outcome={derived57({
+          tagged: tagged57(),
+          jobs: [],
+          stalled: {
+            tag: "v0.1.57",
+            at: minutesAgo(3),
+            reasons: ["api: Zerops refused the deploy token"],
+          },
+        })}
+        press={{ kind: "done" }}
+      />
+    ),
+  },
+  {
+    id: "release-stalled-unknown",
+    label: "Release stalled · HQ couldn't tell",
+    node: (
+      <Release
+        outcome={derived57({
+          tagged: tagged57(),
+          jobs: [],
+          stalled: { tag: "v0.1.57", at: minutesAgo(3), reasons: [] },
+        })}
         press={{ kind: "done" }}
       />
     ),

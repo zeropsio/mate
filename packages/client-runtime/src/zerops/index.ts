@@ -501,6 +501,7 @@ export {
   releaseOutcomeOf,
   releaseStageMarks,
   releaseStep,
+  releaseSteps,
   releaseWhereWords,
   rollbackOnItsWay,
   type ReleaseFacts,
