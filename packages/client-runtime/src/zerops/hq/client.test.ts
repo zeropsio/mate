@@ -646,6 +646,14 @@ describe("makeHqApi", () => {
       json(503, { code: "zerops_unanswered" }),
       { kind: "unavailable", code: "zerops_unanswered", message: ZEROPS_UNANSWERED },
     ],
+    // The owner decision (RELMSG): a 503 wrote nothing (mate-hq spec/protocol.md), so it reads as
+    // HQ not answering, and the person may try again.
+    // witness: packages/client-runtime/src/zerops/hq/client.ts | response.status !== 503 → response.status !== 0
+    [
+      "a write HQ answered with 503 is HQ not answering, not uncertain",
+      json(503, { code: "unavailable" }),
+      { kind: "unavailable", code: "unavailable", message: "HQ is not answering right now." },
+    ],
     // A read with no answer is HQ not answering (`a connection that drops`); a write may have landed.
     [
       "a write with no answer is uncertain",
@@ -1974,7 +1982,7 @@ describe("makeHqApi — a write HQ may have made", () => {
     const hq = fakeHq((seen) => {
       if (seen.path !== "/api/apps/app-1/releases") return undefined;
       if (seen.method === "POST") throw new TypeError("Failed to fetch");
-      return json(503, { code: "zerops_unavailable" });
+      return json(500, { code: "zerops_unavailable" });
     });
     const api = makeHqApi({
       address: ADDRESS,
@@ -2001,7 +2009,7 @@ describe("makeHqApi — a write HQ may have made", () => {
     const hq = fakeHq((seen) => {
       if (seen.path === "/api/door") return undefined;
       writes.push(seen);
-      return failed ? json(503, { code: "internal_error" }) : new Response(null, { status: 204 });
+      return failed ? json(500, { code: "internal_error" }) : new Response(null, { status: 204 });
     });
     const api = makeHqApi({
       address: ADDRESS,
@@ -2023,7 +2031,7 @@ describe("makeHqApi — a write HQ may have made", () => {
 
   it("confirms a name already held after a 503 without sending the write again", async () => {
     const hq = fakeHq((seen) => {
-      if (seen.path === "/api/apps/app-1") return json(503, { code: "internal_error" });
+      if (seen.path === "/api/apps/app-1") return json(500, { code: "internal_error" });
       if (seen.path === "/api/structure")
         return json(200, { apps: [{ id: "app-1", name: "Harbor", projects: [] }] });
       return undefined;
@@ -2060,8 +2068,8 @@ describe("makeHqApi — a write HQ may have made", () => {
       openSocket: NO_SOCKET,
     });
     await expect(api.renameApp("app-1", "Harbor")).rejects.toMatchObject({
-      kind: "uncertain",
-      message: HQ_WRITE_UNCERTAIN,
+      kind: "unavailable",
+      message: "HQ is not answering right now.",
     });
     expect(hq.seen.filter((entry) => entry.method === "PATCH")).toHaveLength(1);
     await api.renameApp("app-1", "Harbor");
@@ -2073,7 +2081,7 @@ describe("makeHqApi — a write HQ may have made", () => {
       if (seen.path !== "/api/apps/app-1/releases") return undefined;
       if (seen.method === "GET") return json(200, { releases: [] });
       return new Response(JSON.stringify({ code: "zerops_unavailable" }), {
-        status: 503,
+        status: 500,
         headers: { "content-type": "application/json", "retry-after": "2" },
       });
     });
@@ -2143,7 +2151,7 @@ describe("makeHqApi — original lifecycle receipts", () => {
     const hq = fakeHq((seen) =>
       seen.path === "/api/lifecycle/original"
         ? seen.method === "POST"
-          ? json(503, { code: "internal_error" })
+          ? json(500, { code: "internal_error" })
           : json(200, { record })
         : undefined,
     );
