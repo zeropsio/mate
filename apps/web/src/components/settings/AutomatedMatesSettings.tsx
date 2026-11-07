@@ -15,15 +15,14 @@ import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { aiKeyLine } from "./automatedMatesSettings.logic";
+import { settingDay } from "./automationParts";
+import { type NameOf, NOBODY_NAMED } from "./automationSettings.logic";
 import { IntegrationAction, IntegrationRow } from "./IntegrationRow";
 import { searchableSetting } from "./settingsSearch";
 import { AppIntakeView } from "../zerops/projectAutomation/sourceForms";
 
 // A project's GitHub issues form lives on its page (`projectAutomation/sourceForms`); importable from here.
 export { AppIntakeView };
-
-const day = (iso: string) =>
-  new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
 /** In the settings' place, where this HQ can't do automated Mates. */
 export function AutomatedMatesUnsupported() {
@@ -44,12 +43,15 @@ export function OrganizationKeyView({
   onSet,
   onRemove,
   onAgain,
+  nameOf = NOBODY_NAMED,
 }: {
   readonly provider: (typeof OPENCODE_KEY_PROVIDERS)[number];
   readonly read: OrgAiKeysRead;
   readonly onSet: (provider: string, value: string) => void;
   readonly onRemove: (provider: string) => void;
   readonly onAgain: () => void;
+  /** A member's name by Zerops user id, as the organization's member list names them. */
+  readonly nameOf?: NameOf;
 }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState("");
@@ -80,7 +82,7 @@ export function OrganizationKeyView({
         "Saving…"
       )
     ) : set ? (
-      `${provider.name} · ${aiKeyLine(view, day)}`
+      `${provider.name} · ${aiKeyLine(view, settingDay, nameOf)}`
     ) : (
       `Your ${provider.name} key pays for the open models automated Mates run.`
     );

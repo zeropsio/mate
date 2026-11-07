@@ -1,13 +1,17 @@
 // @vitest-environment happy-dom
-import type { HqGithubView } from "@t3tools/shared/hqGithub";
+import { HqGithubView } from "@t3tools/shared/hqGithub";
+import { HqDiscordView, HqSlackView } from "@t3tools/shared/hqIntake";
+import * as Schema from "effect/Schema";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   appNameProblem,
   appOwner,
   appRepositories,
+  connectedByLine,
   defaultAppName,
   githubReturnLine,
+  githubSealLine,
   githubReturnTo,
   githubSection,
   githubStatus,
@@ -56,6 +60,9 @@ const CONNECTED: HqGithubView = {
     },
   ],
 };
+const decodeGithub = Schema.decodeUnknownSync(HqGithubView);
+const decodeSlack = Schema.decodeUnknownSync(HqSlackView);
+const decodeDiscord = Schema.decodeUnknownSync(HqDiscordView);
 const known = (held: HqGithubView) => ({ state: "known", held, stale: false }) as const;
 
 describe("Settings › Automation's GitHub section", () => {
@@ -297,5 +304,81 @@ describe("one app on many GitHub accounts", () => {
     // Accepted or suspended since, another organization's, or one with no app: nothing to say.
     expect(githubReturnLine("waiting", githubSection(known(CONNECTED), true))).toBeNull();
     expect(githubReturnLine("waiting", githubSection(known({ state: "none" }), true))).toBeNull();
+  });
+});
+
+describe("who an organization-wide credential is held as", () => {
+  const people = new Map([["u-ada", "Ada Lovelace"]]);
+  const nameOf = (userId: string) => people.get(userId);
+  const day = (iso: string) => iso.slice(0, 10);
+  // HQ main's GitHub view (mate-hq 01e86bfe81, spec/protocol.md S10a) and v0.4.2's, which keeps no seal.
+  const github = (seal: object) => {
+    const view = decodeGithub({
+      state: "connected",
+      slug: "acme-mate",
+      appId: 123456,
+      botLogin: "acme-mate[bot]",
+      owner: "acme",
+      appUrl: "https://github.com/apps/acme-mate",
+      installUrl: "https://github.com/apps/acme-mate/installations/new",
+      public: true,
+      installations: [],
+      ...seal,
+    });
+    const section = githubSection(known(view), true);
+    return section.kind === "connected" ? githubSealLine(section.seal, nameOf, day) : section.kind;
+  };
+
+  // witness: apps/web/src/components/settings/automationSettings.logic.ts | if (view.sealedBy === null) return { kind: "needed" }; → if (view.sealedBy === null) return { kind: "unrecorded" };
+  it("a GitHub app nobody is recorded to have sealed says Mate uses it for nothing until an Owner or Admin makes it again", () => {
+    expect(github({ sealedBy: null, sealedAt: null })).toBe(
+      "Nobody is recorded to have set this app up, so Mate uses it for nothing until an Owner or Admin makes it again.",
+    );
+  });
+
+  // witness: apps/web/src/components/settings/automationSettings.logic.ts | const name = by === null || by === undefined ? undefined : nameOf(by); → const name = undefined;
+  it("a GitHub app names the Owner or Admin who sealed it, as the member list names them, and when", () => {
+    expect(github({ sealedBy: "u-ada", sealedAt: "2026-11-07T14:11:01.000Z" })).toBe(
+      "Set up by Ada Lovelace on 2026-11-07.",
+    );
+    // Somebody the member list does not hold goes unnamed.
+    expect(github({ sealedBy: "u-gone", sealedAt: "2026-11-07T14:11:01.000Z" })).toBe(
+      "Set up on 2026-11-07.",
+    );
+  });
+
+  // witness: apps/web/src/components/settings/automationSettings.logic.ts | if (view.sealedBy === undefined) return { kind: "unrecorded" }; → if (view.sealedBy === undefined) return { kind: "needed" };
+  it("an older HQ's GitHub app, which keeps no seal record, says nothing of who set it up and is not asked to be made again", () => {
+    expect(github({})).toBeNull();
+  });
+
+  // witness: apps/web/src/components/settings/automationSettings.logic.ts | const tail = sealedWords(view.connectedBy, view.connectedAt, nameOf, day); → const tail = "";
+  it("Slack and Discord name who connected them and when; an older HQ's say neither", () => {
+    const slack = decodeSlack({
+      connected: true,
+      workspace: "Acme",
+      eventsUrl: "https://hq.example/api/intake/slack/pub-1",
+      eventsRefusedAt: null,
+      eventsAcceptedAt: null,
+      connectedBy: "u-ada",
+      connectedAt: "2026-11-07T14:11:01.000Z",
+    });
+    const discord = decodeDiscord({
+      connected: true,
+      interactionsUrl: "https://hq.example/api/intake/discord/pub-2",
+      inviteUrl: null,
+      allowed: [],
+      connectedBy: "u-gone",
+      connectedAt: "2026-11-06T09:00:00.000Z",
+    });
+    const older = decodeDiscord({
+      connected: true,
+      interactionsUrl: "https://hq.example/api/intake/discord/pub-2",
+      inviteUrl: null,
+      allowed: [],
+    });
+    expect(connectedByLine(slack, nameOf, day)).toBe("Connected by Ada Lovelace on 2026-11-07.");
+    expect(connectedByLine(discord, nameOf, day)).toBe("Connected on 2026-11-06.");
+    expect(connectedByLine(older, nameOf, day)).toBeNull();
   });
 });

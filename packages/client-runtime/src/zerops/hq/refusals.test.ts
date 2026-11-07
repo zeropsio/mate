@@ -42,6 +42,10 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
   it.each([
     ["github_unavailable", "HQ could not set the GitHub app up just now. Try again."],
     [
+      "needs_owner_seal",
+      "Nobody is recorded to have set this GitHub app up, so Mate uses it for nothing. An Owner or Admin makes it again.",
+    ],
+    [
       "repository_changed",
       "The repository on GitHub is no longer the one connected. Connect it again under Repositories.",
     ],

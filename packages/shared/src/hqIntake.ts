@@ -64,6 +64,8 @@ export const HqAiKeyView = Schema.Struct({
   provider: Schema.String,
   set: Schema.Boolean,
   setAt: Schema.NullOr(Schema.String),
+  /** The Zerops user id of the Owner or Admin who set it; absent from an older HQ. */
+  setBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type HqAiKeyView = typeof HqAiKeyView.Type;
 
@@ -103,7 +105,12 @@ export const HqSlackView = Schema.Struct({
    * Absent from an HQ that predates them.
    */
   eventsRefusedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  eventsAcceptedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  eventsAcceptedAt: Schema.optionalKey(Schema.NullOr(Schema.String)) /**
+   * The Zerops user id of the Owner or Admin who sealed its bot token, and when (ISO); both `null`
+   * while not connected. Absent from an older HQ.
+   */,
+  connectedBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  connectedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type HqSlackView = typeof HqSlackView.Type;
 
@@ -149,6 +156,12 @@ export const HqDiscordView = Schema.Struct({
   inviteUrl: Schema.NullOr(Schema.String),
   /** Discord user ids allowed to start and steer tasks. */
   allowed: Schema.Array(Schema.String),
+  /**
+   * The Zerops user id of the Owner or Admin who sealed its bot token, and when (ISO); both `null`
+   * while not connected. Absent from an older HQ.
+   */
+  connectedBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  connectedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type HqDiscordView = typeof HqDiscordView.Type;
 
