@@ -3,17 +3,23 @@
 /**
  * `node scripts/sync-recordings.ts <producer checkout>`: the one writer of
  * `packages/test-recordings/<producer>/`. It copies the checkout's `conformance/recordings/*.json`
- * byte for byte into the directory of the producer their `$provenance` names, and removes the
- * recordings that producer no longer makes. Whether they decode is the recordings' own test.
+ * whose `$provenance.schema` a consumer here decodes byte for byte into the directory of the
+ * producer their `$provenance` names, skips the ones nothing here consumes, and removes the rest.
+ * Whether they decode is the recordings' own test.
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import { consumes } from "@t3tools/test-recordings/recorded";
 
 export interface SyncedRecordings {
   readonly producer: string;
   readonly copied: ReadonlyArray<string>;
+  /** Recorded under a schema no consumer here decodes. */
+  readonly skipped: ReadonlyArray<string>;
   readonly removed: ReadonlyArray<string>;
 }
+
+const schemaOf = (text: string): unknown => JSON.parse(text)?.$provenance?.schema;
 
 const producerOf = (file: string, text: string): string => {
   const producer: unknown = JSON.parse(text)?.$provenance?.producer;
@@ -37,6 +43,11 @@ export function syncRecordings(checkout: string, target: string): SyncedRecordin
   if (named.size !== 1)
     throw new Error(`${source} names ${[...named].join(", ")}; one checkout is one producer.`);
   const producer = [...named][0]!;
+  const skipped = names.filter((name) => {
+    const schema = schemaOf(texts.get(name)!.toString("utf8"));
+    return typeof schema !== "string" || !consumes(schema);
+  });
+  for (const name of skipped) texts.delete(name);
   const directory = NodePath.join(target, producer);
   NodeFS.mkdirSync(directory, { recursive: true });
   const removed = NodeFS.readdirSync(directory)
@@ -44,7 +55,7 @@ export function syncRecordings(checkout: string, target: string): SyncedRecordin
     .sort();
   for (const name of removed) NodeFS.rmSync(NodePath.join(directory, name));
   for (const [name, bytes] of texts) NodeFS.writeFileSync(NodePath.join(directory, name), bytes);
-  return { producer, copied: names, removed };
+  return { producer, copied: [...texts.keys()], skipped, removed };
 }
 
 if (import.meta.main) {
@@ -52,12 +63,12 @@ if (import.meta.main) {
     const [checkout, ...rest] = process.argv.slice(2);
     if (!checkout || rest.length)
       throw new Error("Usage: node scripts/sync-recordings.ts <producer checkout>");
-    const { producer, copied, removed } = syncRecordings(
+    const { producer, copied, skipped, removed } = syncRecordings(
       NodePath.resolve(checkout),
       NodePath.resolve(import.meta.dirname, "..", "packages", "test-recordings"),
     );
     console.log(
-      `${producer}: ${copied.length} recordings copied${removed.length ? `, removed ${removed.join(", ")}` : ""}.`,
+      `${producer}: ${copied.length} recordings copied${skipped.length ? `, skipped ${skipped.join(", ")} (no consumer)` : ""}${removed.length ? `, removed ${removed.join(", ")}` : ""}.`,
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

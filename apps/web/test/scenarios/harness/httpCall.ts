@@ -71,6 +71,11 @@ export const makeHttpCall = (
                 ...(options.session === undefined
                   ? {}
                   : { authorization: `Bearer ${options.session}` }),
+                // A read has no body: the person's token rides beside the session, as the product
+                // client sends it, and HQ shows only the projects Zerops lists to that token.
+                ...(token !== undefined && (method === "GET" || method === "HEAD")
+                  ? { "x-zerops-access-token": token }
+                  : {}),
                 ...options.headers,
                 ...(id === undefined ? {} : { [READINESS_HEADER]: id }),
               },

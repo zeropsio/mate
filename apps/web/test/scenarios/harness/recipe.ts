@@ -6,6 +6,27 @@ import * as Schedule from "effect/Schedule";
 
 import type { Call } from "./httpCall.ts";
 
+/** The change `number` of `repo`, once HQ's record of it is `ready`. */
+export const changeBecomes = (
+  call: Call,
+  session: string,
+  appId: string,
+  repo: string,
+  number: number,
+  ready: (change: Readonly<Record<string, unknown>>) => boolean,
+) =>
+  call("GET", `/api/apps/${appId}/changes`, { session }).pipe(
+    Effect.map(
+      (answer) =>
+        (answer.body as { readonly changes: ReadonlyArray<Record<string, unknown>> }).changes.find(
+          (change) => change["repo"] === repo && change["number"] === number,
+        ) ?? {},
+    ),
+    Effect.filterOrFail(ready),
+    Effect.retry(Schedule.spaced(Duration.millis(50))),
+    Effect.timeout(Duration.seconds(10)),
+  );
+
 /** The recipe change `number`'s state, once it is `state`. */
 export const stateBecomes = (
   call: Call,
@@ -14,14 +35,4 @@ export const stateBecomes = (
   number: number,
   state: string,
 ) =>
-  call("GET", `/api/apps/${appId}/changes`, { session }).pipe(
-    Effect.map(
-      (answer) =>
-        (answer.body as { readonly changes: ReadonlyArray<Record<string, unknown>> }).changes.find(
-          (change) => change["repo"] === RECIPE_REPO && change["number"] === number,
-        ) ?? {},
-    ),
-    Effect.filterOrFail((change) => change["state"] === state),
-    Effect.retry(Schedule.spaced(Duration.millis(50))),
-    Effect.timeout(Duration.seconds(10)),
-  );
+  changeBecomes(call, session, appId, RECIPE_REPO, number, (change) => change["state"] === state);

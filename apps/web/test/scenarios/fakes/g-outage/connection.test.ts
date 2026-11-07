@@ -104,7 +104,7 @@ it("stall keeps both sides open, blocks both directions and leaves the next sock
     await nextFrame(socket);
     const stalled = await proxy.stall();
     upstreamSocket!.send(JSON.stringify({ type: "change", name: "stalled rename" }));
-    await stalled.waitForDownstream("stalled rename");
+    await stalled.waitForDownstream("the rename", (frame) => frame.includes("stalled rename"));
     socket.send(JSON.stringify({ type: "blocked input" }));
     await stalled.waitForUpstream();
     expect(received).toBe(0);

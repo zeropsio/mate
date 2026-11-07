@@ -3,23 +3,44 @@
  * Wire-shaped test input as its producer really sent it. A producer's own suite records what it
  * sends as `<producer>/<name>.json` — a `$provenance` header and the `value` —,
  * `scripts/sync-recordings.ts` copies those files here verbatim, and nothing else writes them.
- * `recorded(name, edit?)` decodes the value through the schema its header names, applies the test's
- * edit and decodes the result again: a test reads only what the wire can carry.
+ * `recorded(schema, name, edit?)` decodes the value through the consumer's schema for the wire name
+ * its header names — the one the test asks for —, applies the test's edit and decodes the result
+ * again: a test reads only what the wire can carry.
  *
  * @module test-recordings/recorded
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import { HqNavigationProject } from "@t3tools/shared/hqStream";
+import { HqGithubView } from "@t3tools/shared/hqGithub";
+import { HqRefusal } from "@t3tools/shared/hqProblems";
+import {
+  HqNavigationProject,
+  HqScopeChanged,
+  HqScopeDelivery,
+  HqScopeFailure,
+} from "@t3tools/shared/hqStream";
 import { Schema } from "effect";
 
-/** A recorded value as the consumer's schema decodes it. */
-export type Recorded = HqNavigationProject;
-
 /** The consumer's schema for each `$provenance.schema` a producer records under. */
-const schemas: ReadonlyMap<string, Schema.Decoder<Recorded>> = new Map([
-  ["navigation project:<id>", HqNavigationProject],
-]);
+const schemas = {
+  "navigation project:<id>": HqNavigationProject,
+  "scope-values": HqScopeDelivery,
+  "scope-error": HqScopeFailure,
+  "scope-changed": HqScopeChanged,
+  "GET /api/org/github": HqGithubView,
+  "POST /api/org/github/installations/:id/suspend": HqRefusal,
+} as const;
+
+/** A `$provenance.schema` this consumer decodes. */
+export type RecordedSchema = keyof typeof schemas;
+/** Whether this consumer decodes recordings of `schema`: the sync keeps only those. */
+export const consumes = (schema: string): schema is RecordedSchema =>
+  Object.hasOwn(schemas, schema);
+/** A value recorded under `S`, as the consumer's schema decodes it. */
+export type Recorded<S extends RecordedSchema> = (typeof schemas)[S]["Type"];
+
+const decoderOf = <S extends RecordedSchema>(schema: S): Schema.Decoder<Recorded<S>> =>
+  schemas[schema];
 
 const decodeRecording = Schema.decodeUnknownSync(
   Schema.fromJsonString(
@@ -43,7 +64,11 @@ export const producers = (root: string): string[] =>
 
 /** `recorded` over the producers' directories under `root`. */
 export function recordedIn(root: string) {
-  return (name: string, edit?: (value: Recorded) => Recorded): Recorded => {
+  return <S extends RecordedSchema>(
+    schema: S,
+    name: string,
+    edit?: (value: Recorded<S>) => Recorded<S>,
+  ): Recorded<S> => {
     const files = producers(root)
       .map((producer) => NodePath.join(root, producer, `${name}.json`))
       .filter((file) => NodeFS.existsSync(file));
@@ -52,9 +77,10 @@ export function recordedIn(root: string) {
     const file = files[0]!;
     try {
       const recording = decodeRecording(NodeFS.readFileSync(file, "utf8"));
-      const schema = schemas.get(recording.$provenance.schema);
-      if (!schema) throw new Error(`names no known schema "${recording.$provenance.schema}"`);
-      const decode = Schema.decodeUnknownSync(schema);
+      const named = recording.$provenance.schema;
+      if (!consumes(named)) throw new Error(`names no known schema "${named}"`);
+      if (named !== schema) throw new Error(`names schema "${named}", not "${schema}"`);
+      const decode = Schema.decodeUnknownSync(decoderOf(schema));
       const value = decode(recording.value);
       return edit ? decode(edit(value)) : value;
     } catch (error) {
@@ -65,5 +91,5 @@ export function recordedIn(root: string) {
   };
 }
 
-/** A committed recording by name, decoded, edited by the test and decoded again. */
+/** A committed recording of `schema` by name, decoded, edited by the test and decoded again. */
 export const recorded = recordedIn(import.meta.dirname);
