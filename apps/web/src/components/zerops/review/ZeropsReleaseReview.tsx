@@ -365,6 +365,7 @@ function ReleaseData({
     held,
     press,
     clockMs,
+    reads: { environmentInputs: flow.environmentInputs, stalled: flow.release.stalled },
     deploying: followed?.jobs.some(jobInFlight) === true,
     read: (tag) =>
       releaseFacts({
@@ -1431,6 +1432,7 @@ function RollbackData({
     releasing: tracking,
     stalled: tracking && follows.stalled,
     superseded: tracking ? follows.superseded : undefined,
+    reads: { environmentInputs: flow.environmentInputs, stalled: flow.release.stalled },
     pressing: false,
     tag: followed ?? suggestion,
     clockMs,

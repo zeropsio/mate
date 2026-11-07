@@ -18,6 +18,7 @@ import {
   releaseInFlightReason,
   releaseLanding,
   releaseStalled,
+  type ReleaseStall,
   releaseCandidate,
   compareForRelease,
   releaseEntries,
@@ -42,7 +43,11 @@ import {
 } from "../../zerops/index.ts";
 import type { UnreadEnvironment } from "../../zerops/hq/index.ts";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
-import type { CanonicalHqNavigationApp, HqNavigationChange } from "@t3tools/shared/hqStream";
+import type {
+  CanonicalHqNavigationApp,
+  HqNavigationChange,
+  HqNavigationRollout,
+} from "@t3tools/shared/hqStream";
 import { canonicalEnvironmentRow, type CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
 import type { CanonicalGroupEnvironmentRowInput } from "../../zerops/groupDeploys.ts";
 import type { Release, HqReleaseTarget } from "@t3tools/shared/hqRelease";
@@ -79,8 +84,8 @@ export interface ZeropsReleaseOffer {
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /** The release tag on its way to production (`releaseInFlight`); Release waits for it. */
   readonly inFlight: string | undefined;
-  /** The newest release, once HQ ended its deploy with some of it not live (`releaseStalled`). */
-  readonly stalled: string | undefined;
+  /** The newest release, once HQ ended its deploy with some of it not live, and HQ's words for why. */
+  readonly stalled: ReleaseStall | undefined;
   /**
    * What pressing it would put live, per repository HQ compared (`movedCommits`): the commits
    * `main` has that its services do not run. With squash merges each is one task delivered.
@@ -263,6 +268,8 @@ export function joinProjectFlows(input: {
   readonly acceptedReleases?: ReadonlyMap<string, string>;
   /** Each group's stops, by its id, while HQ has told its environments. */
   readonly stops: ReadonlyMap<string, GroupStops>;
+  /** HQ's notes on each group's recent rollouts, by its id: what a stalled release says. */
+  readonly rolloutNotes?: ReadonlyMap<string, ReadonlyArray<HqNavigationRollout>>;
   /** Each group's releases as HQ records them, newest first, by its id, once HQ answered. */
   readonly releases: ReadonlyMap<string, ReadonlyArray<Release>>;
   /** Each group's repositories with their `main`, read with its releases. */
@@ -319,7 +326,9 @@ export function joinProjectFlows(input: {
         return notice === undefined ? [] : [[projectId, notice] as const];
       }),
     );
-    const { rollouts } = git ? { rollouts: [] } : releaseDeploys(stops?.environments ?? []);
+    const { rollouts, jobs } = git
+      ? { rollouts: [], jobs: [] }
+      : releaseDeploys(stops?.environments ?? []);
     const listed = (records ?? []).map(flowReleaseOf);
     const newest = listed[0];
     const deploy = {
@@ -333,7 +342,12 @@ export function joinProjectFlows(input: {
           productions: git ? [] : productionsRunning(stops?.environments ?? []),
         }) ??
         acceptedRelease,
-      stalled: releaseStalled({ newest, rollouts }),
+      stalled: releaseStalled({
+        newest,
+        rollouts,
+        jobs,
+        notes: input.rolloutNotes?.get(group.groupId),
+      }),
     };
     const repos = input.repos.get(group.groupId);
     const recipe = git ? undefined : input.recipes.get(group.groupId);
@@ -453,7 +467,7 @@ function projectFlow(
     readonly acceptedRelease?: string | undefined;
   },
   /** The newest release on its way to production, or stalled there (`releaseInFlight`, `releaseStalled`). */
-  deploy: { readonly inFlight: string | undefined; readonly stalled: string | undefined },
+  deploy: { readonly inFlight: string | undefined; readonly stalled: ReleaseStall | undefined },
   /** Why the grant withholds each of the group's projects it withholds alone. */
   withheld: ReadonlyMap<string, string>,
 ): ZeropsProjectFlow {

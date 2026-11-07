@@ -14,17 +14,22 @@
  * @module releaseFacts
  */
 
+import { jobOf } from "./flow/stopDetail.ts";
+import type { GroupEnvironmentRowInput } from "./groupDeploys.ts";
+import { type HqJob, jobFailed } from "./hq/environments.ts";
 import { serviceNames } from "./projectAttention.ts";
 import { formatRunClock } from "./runClock.ts";
-import type { FlowReleaseRow, ReleaseComparison } from "./release.ts";
+import type { FlowReleaseRow, ReleaseComparison, ReleaseStall } from "./release.ts";
 import type { Moved } from "./releaseCompare.ts";
 import {
   RELEASE_ESTIMATE_MS,
+  reviewAge,
   type ReleaseOutcome,
   type ReleaseReplaces,
   type ReviewPress,
 } from "./reviewVerdict.ts";
 import { stageMarks, type StageMark, type StageStandings } from "./stageMarks.ts";
+import { sameCommit } from "./versionName.ts";
 
 /** A release's own facts, as the review shows them. */
 export interface ReleaseFacts {
@@ -128,7 +133,7 @@ export function releaseFollows(input: {
   /** The release tag on its way to production (`releaseInFlight`). */
   readonly inFlight: string | undefined;
   /** The newest release, once HQ ended its deploy with some of it not live (`releaseStalled`). */
-  readonly stalled: string | undefined;
+  readonly stalled: ReleaseStall | undefined;
   /** The version offered next. */
   readonly suggestion: string;
   readonly releases: ReadonlyArray<FlowReleaseRow>;
@@ -137,7 +142,8 @@ export function releaseFollows(input: {
   readonly tagged: FlowReleaseRow | undefined;
   readonly releasing: boolean;
   /**
-   * HQ ended its follow and it is neither live nor failed: the review says its outcome is unknown.
+   * HQ ended its follow and it is neither live nor failed: the review says HQ's words for why, or
+   * that its outcome is unknown where HQ has none (`releaseFailure`).
    */
   readonly stalled: boolean;
   /**
@@ -169,7 +175,7 @@ export function releaseFollows(input: {
     releasing &&
     input.inFlight !== tag &&
     superseded === undefined &&
-    stalledAt(tagged, input.stalled);
+    stalledAt(tagged, input.stalled?.tag);
   return {
     tag,
     tagged,
@@ -209,7 +215,10 @@ export function rollbackOnItsWay(input: {
   return made?.rollbackOf === input.tag ? inFlight : undefined;
 }
 
-/** Where the tag it made stands: on its way, live, or failed — `offered` before it was made. */
+/**
+ * Where the tag it made stands: on its way (each service's step), live, failed or stalled with
+ * HQ's words (`releaseFailure`) — `offered` before it was made.
+ */
 export function releaseOutcomeOf(input: {
   readonly tagged: FlowReleaseRow | undefined;
   readonly releasing: boolean;
@@ -217,6 +226,10 @@ export function releaseOutcomeOf(input: {
   readonly stalled?: boolean | undefined;
   /** A newer release above it (`releaseFollows`). */
   readonly superseded?: { readonly by: string; readonly live: string | undefined } | undefined;
+  /** What the tagged release's failure is read from (`releaseFailure`). */
+  readonly reads: ReleaseFailureReads;
+  /** Each production service's step while it is on its way (`releaseSteps`). */
+  readonly steps?: ReadonlyArray<string> | undefined;
   readonly pressing: boolean;
   readonly tag: string;
   readonly clockMs: number;
@@ -227,34 +240,46 @@ export function releaseOutcomeOf(input: {
   readonly deploying?: boolean | undefined;
 }): ReleaseOutcome {
   const { tagged } = input;
+  const failure = tagged === undefined ? undefined : releaseFailure(tagged, input.reads);
   if (tagged?.standing === "live" && input.deploying !== true)
     return { kind: "released", at: tagged.taggedAt };
-  if (tagged?.standing === "deploy-failed" || tagged?.verdict === "refused") {
-    const services = tagged.failedEntries.map((entry) => entry.service);
+  if (tagged !== undefined && failure !== undefined && failure.kind !== "stalled") {
+    const { services } = failure;
     return {
       kind: "failed",
       ...(tagged.problems === undefined ? {} : { problems: tagged.problems }),
       detail:
-        tagged.verdict === "refused"
-          ? (tagged.detail ?? "HQ refused the release")
+        failure.kind === "refused"
+          ? (failure.error ?? "HQ refused the release")
           : services.length === 0
             ? "Its production deploy failed"
             : services.length === 1
               ? `The deploy of ${services[0]} failed`
               : `The deploys of ${serviceNames(services)} failed`,
+      ...(failure.kind === "refused" || failure.error === undefined
+        ? {}
+        : { error: failure.error }),
       services,
-      at: tagged.taggedAt,
+      at: failure.at ?? tagged.taggedAt,
     };
   }
   if (!input.releasing && tagged?.standing !== "live") return { kind: "offered" };
   if (input.superseded !== undefined) return { kind: "superseded", ...input.superseded };
-  if (input.stalled === true) return { kind: "stalled", at: tagged?.taggedAt };
+  if (input.stalled === true)
+    return {
+      kind: "stalled",
+      at: failure?.at ?? tagged?.taggedAt,
+      ...(failure?.kind !== "stalled" || failure.error === undefined
+        ? {}
+        : { error: failure.error }),
+    };
   if (input.pressing && tagged === undefined) {
     return { kind: "releasing", progress: `Preparing ${input.tag}` };
   }
+  const steps = (input.steps ?? []).map((step) => ` · ${step}`).join("");
   const since = tagged?.taggedAt === undefined ? Number.NaN : Date.parse(tagged.taggedAt);
   if (Number.isNaN(since)) {
-    return { kind: "releasing", progress: `Putting ${input.tag} live` };
+    return { kind: "releasing", progress: `Putting ${input.tag} live${steps}` };
   }
   // The clock the conversation and the menu count in; past the minute or two it promised
   // (`RELEASE_TAKES`), it says so, never a bare clock that might have hung.
@@ -263,9 +288,158 @@ export function releaseOutcomeOf(input: {
   const late = elapsedMs >= RELEASE_ESTIMATE_MS ? " · taking longer than usual" : "";
   return {
     kind: "releasing",
-    progress: `Putting ${input.tag} live · ${clock}${late}`,
+    progress: `Putting ${input.tag} live${steps} · ${clock}${late}`,
     clock: `${clock}${late}`,
   };
+}
+
+/**
+ * Each production service's step of the release `tag`, in production's own words (`jobOf`):
+ * "api: building 3f9c1b2", "web: 77ab0e1 queued" — its rollout's job, or the job of the commit
+ * under way it left the service out for; nothing for a service that went live or HQ asked nothing
+ * of.
+ */
+function releaseSteps(input: {
+  readonly tag: string;
+  readonly environmentInputs: ReadonlyArray<
+    Pick<GroupEnvironmentRowInput, "tier" | "services" | "release">
+  >;
+  readonly nowMs: number;
+}): ReadonlyArray<string> {
+  const age = (iso: string) => reviewAge(iso, input.nowMs)?.toLowerCase() ?? "";
+  return input.environmentInputs.flatMap((environment) => {
+    if (environment.tier !== "production") return [];
+    const waitedOn = new Set(
+      environment.release?.tag === input.tag
+        ? environment.release.leftOut.map((left) => left.job)
+        : [],
+    );
+    return environment.services.flatMap((service) => {
+      const latest = service.deploy?.latest;
+      if (latest === undefined) return [];
+      const its =
+        (latest.cause === "release" && latest.ref === input.tag) || waitedOn.has(latest.id);
+      const line = its ? jobOf(latest, age)?.line : undefined;
+      return line === undefined
+        ? []
+        : [`${service.hostname}: ${line.charAt(0).toLowerCase()}${line.slice(1)}`];
+    });
+  });
+}
+
+/**
+ * How a release did not go through. Its production deploy failed; or it is a release the old
+ * broker refused after its tag — a record kept from before HQ, which refuses a release before any
+ * tag or record; or HQ ended its deploy with some of it not live and no build of it failing
+ * (`releaseStalled`).
+ */
+export interface ReleaseFailure {
+  readonly tag: string;
+  readonly kind: "deploy-failed" | "refused" | "stalled";
+  /** When: the failed deploy's or the stall's end, as HQ records it, or the refused tag's; `undefined` where unread. */
+  readonly at: string | undefined;
+  /**
+   * HQ's words for it: the failed deploy's message, the broker's recorded refusal reason, the
+   * stall's reasons. None for a stall where HQ could not tell how its deploy ended: unknown.
+   */
+  readonly error: string | undefined;
+  /** The services whose deploys failed, by the order the release lists them. */
+  readonly services: ReadonlyArray<string>;
+}
+
+/** What a release's failure is read from: production's jobs, and the newest release's stall. */
+export interface ReleaseFailureReads {
+  readonly environmentInputs: ReadonlyArray<Pick<GroupEnvironmentRowInput, "tier" | "services">>;
+  /** The newest release HQ ended with some of it not live (`ZeropsProjectFlow.release.stalled`). */
+  readonly stalled: ReleaseStall | undefined;
+}
+
+/**
+ * How `release` did not go through, with HQ's words and time; `undefined` where it did, or is
+ * still on its way. The one derivation every surface that says a release failed reads.
+ */
+export function releaseFailure(
+  release: FlowReleaseRow,
+  reads: ReleaseFailureReads,
+): ReleaseFailure | undefined {
+  if (release.verdict === "refused")
+    return {
+      tag: release.tag,
+      kind: "refused",
+      at: release.taggedAt,
+      error: wordsOf(release.detail),
+      services: [],
+    };
+  if (release.standing === "deploy-failed") {
+    const entries = release.failedEntries;
+    // One failed deploy's words and time are the release's; several each keep their own, said
+    // where each service is.
+    const [entry] = entries;
+    const failed =
+      entry === undefined || entries.length > 1
+        ? undefined
+        : failedDeploy(reads.environmentInputs, entry);
+    return {
+      tag: release.tag,
+      kind: "deploy-failed",
+      at: failed === undefined ? undefined : (failed.endedAt ?? failed.at),
+      error: wordsOf(failed?.reason ?? undefined),
+      services: entries.map((failedEntry) => failedEntry.service),
+    };
+  }
+  const { stalled } = reads;
+  if (release.standing === undefined && stalled?.tag === release.tag)
+    return {
+      tag: release.tag,
+      kind: "stalled",
+      at: stalled.at,
+      error: wordsOf(stalled.reasons.join("; ")),
+      services: [],
+    };
+  return undefined;
+}
+
+/**
+ * The newest release that did not go through (`releaseFailure`), among the ones newer than the
+ * release production runs (`stopFailedDeploy`'s rule): an older failure is history.
+ */
+export function releaseFailureOf(
+  input: ReleaseFailureReads & {
+    /** Newest first. */
+    readonly releases: ReadonlyArray<FlowReleaseRow>;
+  },
+): ReleaseFailure | undefined {
+  const live = input.releases.findIndex((release) => release.standing === "live");
+  const newer = live === -1 ? input.releases : input.releases.slice(0, live);
+  for (const release of newer) {
+    const failure = releaseFailure(release, input);
+    if (failure !== undefined) return failure;
+  }
+  return undefined;
+}
+
+const wordsOf = (text: string | undefined): string | undefined => {
+  const trimmed = text?.trim();
+  return trimmed === undefined || trimmed.length === 0 ? undefined : trimmed;
+};
+
+/**
+ * HQ's job of one service's production deploy of one commit that ended deploying nothing — the
+ * build's own failure, or HQ's refusal — while it is the newest.
+ */
+function failedDeploy(
+  environments: ReadonlyArray<Pick<GroupEnvironmentRowInput, "tier" | "services">>,
+  entry: { readonly service: string; readonly commit: string },
+): HqJob | undefined {
+  const production = environments.find((environment) => environment.tier === "production");
+  const latest = production?.services.find((service) => service.hostname === entry.service)?.deploy
+    ?.latest;
+  return latest !== undefined &&
+    latest.sha !== null &&
+    jobFailed(latest) &&
+    sameCommit(entry.commit, latest.sha)
+    ? latest
+    : undefined;
 }
 
 /**
@@ -278,6 +452,12 @@ export function releaseStep(input: {
   readonly press: ReviewPress;
   readonly clockMs: number;
   readonly read: (tag: string) => ReleaseFacts;
+  /** What its failure and its services' steps are read from (`releaseFailure`, `releaseSteps`). */
+  readonly reads: ReleaseFailureReads & {
+    readonly environmentInputs: ReadonlyArray<
+      Pick<GroupEnvironmentRowInput, "tier" | "services" | "release">
+    >;
+  };
   /** HQ's deploys of it still run, as the press's answer follows them (`releaseOutcomeOf`). */
   readonly deploying?: boolean | undefined;
 }): {
@@ -293,6 +473,14 @@ export function releaseStep(input: {
     releasing: follows.releasing,
     stalled: follows.stalled,
     superseded: follows.superseded,
+    reads: input.reads,
+    steps: follows.ticking
+      ? releaseSteps({
+          tag: follows.tag,
+          environmentInputs: input.reads.environmentInputs,
+          nowMs: input.clockMs,
+        })
+      : undefined,
     pressing: press.kind === "running",
     tag: follows.tag,
     clockMs: input.clockMs,

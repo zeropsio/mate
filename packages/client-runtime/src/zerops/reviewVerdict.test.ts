@@ -1928,6 +1928,7 @@ describe("HQ actionable findings in change review", () => {
   it("Validation that is pending or unavailable is never shown as passing, and live code with a failed endpoint is not labelled a failed deploy.", () => {
     expect(
       releaseOutcomeOf({
+        reads: { environmentInputs: [], stalled: undefined },
         tagged: {
           tag: "v1",
           verdict: "approved",

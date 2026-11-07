@@ -1071,8 +1071,15 @@ export type ReleaseOutcome =
       readonly clock?: string | undefined;
     }
   | { readonly kind: "released"; readonly at: string | undefined }
-  /** HQ ended its follow without confirming the deploy's outcome. */
-  | { readonly kind: "stalled"; readonly at: string | undefined }
+  /**
+   * HQ ended its follow with some of it not live and no build failing: `error` is HQ's words for
+   * why; none where HQ could not tell how the deploy ended.
+   */
+  | {
+      readonly kind: "stalled";
+      readonly at: string | undefined;
+      readonly error?: string | undefined;
+    }
   /**
    * A newer release HQ did not refuse sits above it: the release it followed is over, and `live`
    * is what production runs in full now.
@@ -1082,6 +1089,8 @@ export type ReleaseOutcome =
       readonly kind: "failed";
       readonly problems?: ReadonlyArray<HqProblem> | undefined;
       readonly detail?: string | undefined;
+      /** HQ's words for the failed deploy: the platform's message (`releaseFailure`). */
+      readonly error?: string | undefined;
       /** The services whose deploys failed, by the order the release lists them. */
       readonly services?: ReadonlyArray<string> | undefined;
       readonly at?: string | undefined;
@@ -1353,18 +1362,25 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
             ? ` in ${services[0]}'s deploy`
             : ` in the deploys of ${listed(services)}`
       }`;
+      const error = outcome.error ?? outcome.detail;
+      // "The deploy of api failed 2 minutes ago: <the platform's words>" — HQ's, where it said any.
+      const age =
+        outcome.error === undefined || outcome.at === undefined
+          ? undefined
+          : reviewAge(outcome.at, input.now)?.toLowerCase();
+      const said = `${outcome.detail ?? "Its deploy failed"}${age === undefined ? "" : ` ${age}`}`;
       return {
         verdict: {
           state: "release-failed",
           tone: "failed",
           title: `${tag} didn't go out`,
-          why: outcome.detail ?? "Its deploy failed",
+          why: outcome.error === undefined ? said : `${said}: ${outcome.error.replace(/\.$/u, "")}`,
           fix: problemsFix(outcome.problems ?? []) ?? {
             verb: "fix it",
             problem: {
               what,
               ...(outcome.at === undefined ? {} : { at: outcome.at }),
-              ...(outcome.detail === undefined ? {} : { error: outcome.detail }),
+              ...(error === undefined ? {} : { error }),
               ask: "Find out why, fix it, and release again.",
             },
           },
@@ -1382,6 +1398,8 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         tag,
         what: "release",
         at: outcome.at,
+        error: outcome.error,
+        keeps,
       });
     case "superseded":
       return supersededModel({ state: "release-superseded", tag, outcome });
@@ -1443,16 +1461,43 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
 }
 
 /**
- * HQ stopped following a tag without proving a landing or a failure. The platform may still be
- * deploying it, or already running it; ask the person's Mate to check the original deploy.
+ * HQ ended a tag's deploy with some of it not live and no build failing. With HQ's words for why
+ * — its rollout's note, a service it left out or skipped — the review says them; without, HQ could
+ * not tell how the deploy ended: the platform may still be deploying it, or already running it,
+ * and the person's Mate is asked to check the original deploy.
  */
 function stalledModel(input: {
   readonly state: "release-stalled" | "rollback-stalled";
-  /** The tag whose deploy outcome is unconfirmed. */
+  /** The tag whose deploy did not go live. */
   readonly tag: string;
   readonly what: "release" | "roll back";
   readonly at: string | undefined;
+  /** HQ's words for why (`releaseFailure`); `undefined`: unknown. */
+  readonly error: string | undefined;
+  /** What production still runs, in a sentence, where the review knows it. */
+  readonly keeps: string | undefined;
 }): ReviewModel {
+  const at = input.at === undefined ? {} : { at: input.at };
+  if (input.error !== undefined)
+    return {
+      verdict: {
+        state: input.state,
+        tone: "attention",
+        title: `${input.tag} didn't go live`,
+        why: input.error.replace(/\.$/u, ""),
+        fix: {
+          verb: "fix it",
+          problem: {
+            what: `HQ didn't put all of ${input.what} ${input.tag} live`,
+            ...at,
+            error: input.error,
+            ask: "Find out why, fix it, and release again.",
+          },
+        },
+      },
+      consequence: input.keeps ?? "Production keeps running what it runs.",
+      primary: undefined,
+    };
   return {
     verdict: {
       state: input.state,
@@ -1463,7 +1508,7 @@ function stalledModel(input: {
         verb: "check it",
         problem: {
           what: `The deploy status of ${input.what} ${input.tag} is unknown`,
-          ...(input.at === undefined ? {} : { at: input.at }),
+          ...at,
           ask: "Check how the deploy ended in Zerops, and resolve anything that needs attention.",
         },
       },
@@ -1618,6 +1663,8 @@ function rollbackVerdictOf(input: RollbackReviewInput): ReviewModel {
         tag: nextTag,
         what: "roll back",
         at: outcome.at,
+        error: outcome.error,
+        keeps: undefined,
       });
     case "failed":
       return {

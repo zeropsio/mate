@@ -307,6 +307,7 @@ export {
   type ReleaseVerdict,
   releaseRow,
   releaseStalled,
+  type ReleaseStall,
   rolledBackTo,
   shortCommit,
   type FlowRelease,
@@ -494,6 +495,8 @@ export {
 export {
   holdReleaseFacts,
   releaseFacts,
+  releaseFailure,
+  releaseFailureOf,
   releaseFollows,
   releaseOutcomeOf,
   releaseStageMarks,
@@ -501,6 +504,8 @@ export {
   releaseWhereWords,
   rollbackOnItsWay,
   type ReleaseFacts,
+  type ReleaseFailure,
+  type ReleaseFailureReads,
 } from "./releaseFacts.ts";
 export { formatRunClock } from "./runClock.ts";
 export {

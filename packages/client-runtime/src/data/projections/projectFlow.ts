@@ -161,7 +161,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
         tier?.state === "present" ? [tier.importYaml] : [],
       ),
     );
-    const environments = canonicalAppEnvironments.derive(read, key).environments;
+    const { environments, unread, rollouts } = canonicalAppEnvironments.derive(read, key);
     const projectIds = [
       ...new Set(
         (environments ?? []).flatMap((environment) =>
@@ -214,7 +214,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       environments === undefined
         ? undefined
         : canonicalGroupStopsOf({
-            unread: canonicalAppEnvironments.derive(read, key).unread,
+            unread,
             environments,
             projects,
             versions,
@@ -251,6 +251,7 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
       navigationOffers: { [appId]: app.releaseOffer },
       acceptedReleases: new Map(acceptedRelease === undefined ? [] : [[appId, acceptedRelease]]),
       stops: new Map(stops === undefined ? [] : [[appId, zeropsStops(stops)]]),
+      rolloutNotes: new Map(rollouts === undefined ? [] : [[appId, rollouts]]),
       releases: new Map(detail.releases === undefined ? [] : [[appId, detail.releases]]),
       repos: new Map(detail.repos === undefined ? [] : [[appId, detail.repos]]),
       recipes: new Map(recipe === undefined ? [] : [[appId, recipe]]),

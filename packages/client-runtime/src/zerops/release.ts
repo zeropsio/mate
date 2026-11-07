@@ -42,7 +42,9 @@ import { compareReleaseTags, type Release, type ReleaseRollout } from "@t3tools/
 
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 import type { HqGitReleasePreflight, HqReleaseTarget } from "@t3tools/shared/hqRelease";
+import type { HqNavigationRollout } from "@t3tools/shared/hqStream";
 import type { GitDelivery } from "./gitDelivery.ts";
+import type { HqJob } from "./hq/environments.ts";
 
 import type { ReleaseDeployFailure } from "./groupDeploys.ts";
 import type { EnvironmentRow } from "./groupRows.ts";
@@ -369,14 +371,67 @@ export function releaseLanding(input: {
   return behind ? newest.tag : undefined;
 }
 
+/** The newest release HQ ended without all of it going live, and HQ's words for why. */
+export interface ReleaseStall {
+  readonly tag: string;
+  /** When HQ ended its last job of it (`ReleaseRollout.endedAt`); `undefined` where unsaid. */
+  readonly at: string | undefined;
+  /**
+   * HQ's words, each once: its rollout's note, each service it left out ("api: …", never one it
+   * stopped on purpose), each release job it skipped or superseded. None where HQ could not tell —
+   * a job it ended `unresolved` — or said nothing: the deploy's outcome is unknown.
+   */
+  readonly reasons: ReadonlyArray<string>;
+}
+
 /**
  * The newest release, once HQ ended its deploy to production saying some of it did not go live
- * (`releaseDeploy`), or `undefined`: one that landed waits for production's own word that it runs
- * it, and one a Core says nothing of landing of is never called stalled.
+ * (`releaseDeploy`), with HQ's words for why; `undefined` otherwise: one that landed waits for
+ * production's own word that it runs it, and one a Core says nothing of landing of is never
+ * called stalled.
  */
-export function releaseStalled(input: Parameters<typeof releaseDeploy>[0]): string | undefined {
+export function releaseStalled(
+  input: Parameters<typeof releaseDeploy>[0] & {
+    /** HQ's notes on the application's recent rollouts (`HqNavigationRollout`), by rollout id. */
+    readonly notes: ReadonlyArray<HqNavigationRollout> | undefined;
+    /** Each production service's newest job (`ReleaseDeploys.jobs`). */
+    readonly jobs: ReadonlyArray<HqJob>;
+  },
+): ReleaseStall | undefined {
   const deploy = releaseDeploy(input);
-  return deploy?.ended === true && deploy.landed === false ? deploy.tag : undefined;
+  if (deploy?.ended !== true || deploy.landed !== false) return undefined;
+  const its = input.rollouts.filter(
+    (rollout): rollout is ReleaseRollout => rollout != null && rollout.tag === deploy.tag,
+  );
+  const reasons = new Set<string>();
+  for (const rollout of its) {
+    const note = input.notes?.find((entry) => entry.id === rollout.id)?.note?.trim();
+    if (note !== undefined && note.length > 0) reasons.add(note);
+  }
+  const waitedOn = new Set(its.flatMap((rollout) => rollout.leftOut.map((left) => left.job)));
+  for (const job of input.jobs) {
+    const reason = job.reason?.trim();
+    const released = (job.cause === "release" && job.ref === deploy.tag) || waitedOn.has(job.id);
+    if (
+      released &&
+      job.service !== null &&
+      (job.state === "skipped" || job.state === "superseded") &&
+      reason !== undefined &&
+      reason.length > 0
+    )
+      reasons.add(`${job.service}: ${reason}`);
+  }
+  for (const left of its.flatMap((rollout) => rollout.leftOut))
+    if (left.stopped === undefined && left.job === null)
+      reasons.add(`${left.service}: ${left.reason}`);
+  const at = its
+    .map((rollout) => rollout.endedAt)
+    .filter((ended): ended is string => ended !== null)
+    .reduce<string | undefined>(
+      (latest, ended) => (latest === undefined || ended > latest ? ended : latest),
+      undefined,
+    );
+  return { tag: deploy.tag, at, reasons: [...reasons] };
 }
 
 /** The one word beside a release's dot (R5). */

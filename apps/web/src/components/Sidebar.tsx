@@ -212,7 +212,7 @@ import {
   type SidebarProjectFlow,
   type SidebarZeropsTreeProps,
 } from "./zerops/SidebarZeropsTree";
-import { releaseFailureOf, rollbacksOf } from "./zerops/SidebarProductionChip.logic";
+import { rollbacksOf } from "./zerops/SidebarProductionChip.logic";
 import { useMatesActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
@@ -237,7 +237,7 @@ import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
 import { useProjectFlows } from "../zerops/projectFlows";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
-import type { CanonicalEnvironmentRow } from "@t3tools/client-runtime/zerops";
+import { releaseFailureOf, type CanonicalEnvironmentRow } from "@t3tools/client-runtime/zerops";
 import {
   candidatesNotice,
   findCandidate,
@@ -1372,6 +1372,7 @@ export default function Sidebar() {
         releaseFailure: releaseFailureOf({
           releases: flow.releases,
           environmentInputs: flow.environmentInputs,
+          stalled: flow.release.stalled,
         }),
         // HQ's roll backs: production's chip says one on its way by what it goes back to.
         releaseRollbacks: rollbacksOf(flow.releases),

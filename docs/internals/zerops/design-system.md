@@ -49,6 +49,10 @@ One word for each thing:
   own object stays a **change**.
 - **release** — "Putting {version} live", "{service} gets {version}". No commit hash names a release.
   In the Git browser a commit's 7-character id may stand beside its subject, as a link, never alone.
+- **didn't go out**, **didn't go live** — a release that did not go through, said with HQ's own words for why
+  (the platform's build message, HQ's refusal, its rollout's note, a service it left out) on every surface that
+  says it; **Deploy status unknown** only where HQ itself could not tell how the deploy ended. Every surface reads
+  one verdict, `releaseFailure` in client-runtime's `zerops/releaseFacts.ts`.
 - **planning** — HQ deciding which deploys a merge or release asks for. Until HQ has, a surface says **Waiting for
   planning**, never that nothing will deploy. Source words: rollout, plan lock.
 - **setup**, **setup files** — never recipe or import files.

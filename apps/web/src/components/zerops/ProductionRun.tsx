@@ -9,7 +9,6 @@
  * The run belongs to the project: it is drawn wherever its production is, never in a Mate's
  * conversation.
  */
-import { productionProjectOf } from "@t3tools/client-runtime/zerops";
 import { useNavigate } from "@tanstack/react-router";
 import { XIcon } from "lucide-react";
 import { useEffect, useMemo } from "react";
@@ -20,6 +19,7 @@ import { useCompactProjectFlows, type ZeropsProjectFlow } from "~/zerops/project
 import { usePutLive, usePutLiveRun } from "~/zerops/putLive";
 import {
   putLiveAddress,
+  putLiveFactsOf,
   putLiveOwnLine,
   putLiveProgress,
   putLiveReleased,
@@ -177,9 +177,7 @@ function DismissButton({ onDismiss }: { readonly onDismiss: () => void }) {
 function putLiveFlowFacts(flow: ZeropsProjectFlow | undefined): PutLiveFlowFacts | undefined {
   if (flow === undefined || !flow.declarationsRead || !flow.releasesKnown) return undefined;
   return {
-    production: productionProjectOf(flow.environments),
-    gate: flow.release.gate,
-    releases: flow.releases,
+    ...putLiveFactsOf(flow),
     inFlight: flow.release.inFlight,
     suggestion: flow.release.suggestion,
   };

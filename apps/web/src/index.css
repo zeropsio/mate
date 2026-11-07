@@ -9190,9 +9190,15 @@ div.ov-change:hover {
   background: var(--zerops-status-ok);
 }
 
-.ov-history-state[data-state="deploy-failed"] {
+.ov-history-state[data-state="deploy-failed"],
+.ov-history-state[data-state="refused"] {
   background: var(--zerops-status-failed-surface);
   color: var(--zerops-status-failed-text);
+}
+
+.ov-history-state[data-state="stalled"] {
+  background: var(--zerops-status-attention-surface);
+  color: var(--zerops-status-attention-text);
 }
 
 /* An open release's changes hug its row; the next release stands clear of them. */
