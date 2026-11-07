@@ -1078,9 +1078,10 @@ describe("A: sign-in, session and organizations", () => {
         await ready;
         await tab.run(() => {});
         expect(menuText()).toContain(name);
+        // Each page asks for the member list once and shows its menu while that read is held.
         expect(
           base.rest.requests().filter(({ route }) => route === "GET /client/ORG/user/list"),
-        ).toHaveLength(0);
+        ).toHaveLength(load + 2);
       }
       expect(fixture.doors()).toBe(1);
       expect(unexpected).toEqual([]);

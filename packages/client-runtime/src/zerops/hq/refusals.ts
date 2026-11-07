@@ -221,6 +221,8 @@ const AUTOMATION_WORDS = {
     "The repository on GitHub is no longer the one connected. Connect it again under Repositories.",
   // The organization's GitHub app (`mate-hq apps/hq/src/githubApp.ts`).
   github_unavailable: "HQ could not set the GitHub app up just now. Try again.",
+  needs_owner_seal:
+    "Nobody is recorded to have set this GitHub app up, so Mate uses it for nothing. An Owner or Admin makes it again.",
   // Slack.
   slack_unavailable: "HQ could not set Slack up just now. Try again.",
   bot_token: "That is not a bot token. Copy it again from the app's settings.",
@@ -299,6 +301,14 @@ export const NO_HQ_WORDS = "This organization has no HQ yet. Ask an admin to set
  * (`503 zerops_unanswered`): nothing was done, and pressing again may go through.
  */
 export const ZEROPS_UNANSWERED = "Zerops is not answering, so HQ did nothing. Try again.";
+
+/**
+ * What a call says where HQ holds no credential that reads what it needs of the project
+ * (`503 zerops_unavailable`, reason `no_credential`): no presented key, environment deploy token
+ * or Mate key covers it, so HQ decided nothing. Trying again changes nothing until one does.
+ */
+export const ZEROPS_NO_CREDENTIAL =
+  "HQ has no access key for this project in Zerops, so it did nothing. Open the project's Mate, or renew its deploy token, then try again.";
 
 /** What anything asked of the organization's HQ says where its official HQ is not open here. */
 export const HQ_NOT_OPEN = "This organization's HQ is not open here.";

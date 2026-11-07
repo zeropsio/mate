@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { hqPersonFamily, hqPeopleScope, placementsScope } from "../families/hqNavigation.ts";
+import { placementsScope } from "../families/hqNavigation.ts";
+import { membersScope } from "../families/organizationMembers.ts";
 import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
@@ -8,7 +9,7 @@ import type { StreamEvent } from "../streamMachine.ts";
 import { hqProjectPeople } from "./hqProjectPeople.ts";
 
 const ORG = "org";
-const SCOPES: ReadonlyArray<ScopeKey> = [placementsScope(ORG), hqPeopleScope(ORG)];
+const SCOPES: ReadonlyArray<ScopeKey> = [placementsScope(ORG)];
 const revision = { kind: "hq", incarnation: "i", revision: 1 } as const;
 
 const person = (fields: {
@@ -46,19 +47,43 @@ const rows: ReadonlyArray<Row> = [
   // Eva signed Codex out since: nobody holds it now, she did once.
   placement("bob", { ownerUserId: "u-eva", waitsOnViewer: false }, {}, { codex: "u-eva" }),
   placement("nobody", { ownerUserId: null, waitsOnViewer: false }, {}),
-  // HQ named an owner it sends no person record of: nobody is drawn.
+  // HQ named an owner the member list does not hold: nobody is drawn.
   placement("ghost", { ownerUserId: "u-ghost", waitsOnViewer: false }, {}),
+];
+
+/** The organization's member list as `GET /client/{id}/user/list` answers it. */
+const MEMBERS = [
   {
-    family: "hqPerson",
-    id: "u-jan",
-    revision,
-    value: { name: "Jan Novák", clientUserId: "cu-jan", avatarUrl: "https://img/jan.png" } as never,
+    id: "cu-jan",
+    userId: "u-jan",
+    status: "ACTIVE",
+    user: {
+      id: "u-jan",
+      fullName: "Jan Novák",
+      avatar: { smallAvatarUrl: "https://img/jan.png", largeAvatarUrl: null },
+    },
   },
+  { id: "cu-eva", userId: "u-eva", status: "ACTIVE", user: { id: "u-eva", fullName: "Eva" } },
+];
+const membersAnswered = (generation: number): ReadonlyArray<AccountInput> => [
+  stream(membersScope(ORG), { kind: "demand", demanded: true }),
+  stream(membersScope(ORG), { kind: "attempt" }),
+  stream(membersScope(ORG), { kind: "handshake" }),
+  { kind: "baseline-begin", scope: membersScope(ORG), generation },
   {
-    family: "hqPerson",
-    id: "u-eva",
-    revision,
-    value: { name: "Eva", clientUserId: "cu-eva", avatarUrl: null } as never,
+    kind: "baseline-commit",
+    scope: membersScope(ORG),
+    generation,
+    via: "zerops-read",
+    members: [ORG],
+    rows: [
+      {
+        family: "organizationMembers",
+        id: ORG,
+        value: MEMBERS,
+        revision: { kind: "zerops", version: null },
+      },
+    ],
   },
 ];
 
@@ -86,6 +111,7 @@ const read = apply(emptyAccount, [
   { kind: "delivery", via: "hq-stream", scopes: generations, reset: true, rows, removals: [] },
   { kind: "hq-ready", scopes: generations },
   ...SCOPES.map((scope) => stream(scope, { kind: "baseline-committed" })),
+  ...membersAnswered(1),
 ]);
 const removed = apply(read, [
   {
@@ -201,35 +227,7 @@ describe("hqProjectPeople", () => {
     expect(people(none).ada?.chief).toEqual({ projectId: null, mine: false });
   });
 
-  it("retains an owner's identity and picture with an unknown name", () => {
-    const person = hqPersonFamily.hq!.decode(
-      { name: 42, avatarUrl: "avatar", clientUserId: "member" },
-      "person:u-jan",
-    )!;
-    const next = apply(read, [
-      {
-        kind: "delivery",
-        via: "hq-stream",
-        scopes: generations,
-        reset: false,
-        rows: [
-          {
-            family: "hqPerson",
-            id: "u-jan",
-            value: person,
-            revision: { ...revision, revision: 2 },
-          },
-        ],
-        removals: [],
-      },
-    ]);
-    expect(people(next).ada?.owner).toEqual({
-      userId: "u-jan",
-      name: "Unknown",
-      avatarUrl: "avatar",
-    });
-  });
-
+  // witness: packages/client-runtime/src/data/projections/zeropsPeople.ts | const userId = member.userId ?? member.user?.id; → const userId = member.id;
   it.each([
     {
       name: "an owner HQ names, with their picture",
@@ -320,20 +318,6 @@ describe("hqProjectPeople", () => {
       signedInNow: { "claude-code": "u-jan" },
       everSignedIn: { "claude-code": "u-jan" },
     });
-  });
-
-  it("draws nobody for an owner HQ withdrew from the reader", () => {
-    const withdrawn = apply(read, [
-      {
-        kind: "delivery",
-        via: "hq-stream",
-        scopes: generations,
-        reset: false,
-        rows: [],
-        removals: [{ family: "hqPerson", id: "u-jan", reason: "no-access" }],
-      },
-    ]);
-    expect(people(withdrawn).ada?.owner).toBeNull();
   });
 
   it("says nothing of a project HQ removed, nor before HQ said anything", () => {

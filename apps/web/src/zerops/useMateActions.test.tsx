@@ -1872,12 +1872,14 @@ describe("useMateActions — the last Mate's Delete", () => {
     service: undefined,
   } as unknown as ZeropsCandidatePresentation;
 
+  // witness: apps/web/src/zerops/useMateActions.tsx | if (application !== undefined && !application.also && isCurrent()) → if (false)
   it.each([
     {
       case: "the last Mate deleting its project too opens the project's Delete, confirmed, once the Mate is gone",
       listed: [FEN, STAGE],
       also: true,
       asked: "Acme Docs",
+      keptGit: [],
       opened: {
         confirmed: true,
         target: {
@@ -1893,6 +1895,15 @@ describe("useMateActions — the last Mate's Delete", () => {
       listed: [FEN, STAGE],
       also: false,
       asked: "Acme Docs",
+      keptGit: [{ kind: "answer-kept-git", orgId: "org-acme", appId: "acme", answer: "keep" }],
+      opened: null,
+    },
+    {
+      case: "the last Mate keeping its project answers HQ's question whether to keep the project's Git with keep, once the Mate is gone",
+      listed: [FEN, STAGE],
+      also: false,
+      asked: "Acme Docs",
+      keptGit: [{ kind: "answer-kept-git", orgId: "org-acme", appId: "acme", answer: "keep" }],
       opened: null,
     },
     {
@@ -1900,9 +1911,10 @@ describe("useMateActions — the last Mate's Delete", () => {
       listed: [FEN, QUINN],
       also: true,
       asked: undefined,
+      keptGit: [],
       opened: null,
     },
-  ])("$case", async ({ listed, also, asked, opened }) => {
+  ])("$case", async ({ listed, also, asked, keptGit, opened }) => {
     useDeleteApplicationDialog.getState().close();
     mock.listing.current = { ...(mock.listing.current as object), value: listed };
     mount();
@@ -1916,6 +1928,11 @@ describe("useMateActions — the last Mate's Delete", () => {
       mock.deleteDialog.current!.onConfirm(also);
     });
     expect(mock.retirementCompleted).toHaveBeenCalledOnce();
+    expect(
+      mock.renameProject.mock.calls
+        .map(([intent]) => intent)
+        .filter((intent) => intent.kind === "answer-kept-git"),
+    ).toEqual(keptGit);
     expect(useDeleteApplicationDialog.getState().request).toEqual(opened);
   });
 });
