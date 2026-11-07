@@ -66,7 +66,7 @@ const readOnce = Effect.gen(function* () {
 });
 
 describe("ZeropsAccessRead", () => {
-  // The Mate admits only the owner (the person holding the project's OWNER override); HQ's own ticket check (card FA, running) admits only the registered person, which is the same person once registered; before registration the Mate's list is the gate.
+  // The Mate admits only the owner HQ names (its registered person); HQ's own ticket check admits only the registered person too.
   it.effect(
     "a project tagged chief admits only its owner, whatever role another member holds",
     () => {
@@ -92,11 +92,10 @@ describe("ZeropsAccessRead", () => {
       return Effect.gen(function* () {
         const outcome = yield* readOnce;
         if (outcome.kind !== "read") return assert.fail(`read failed: ${outcome.kind}`);
-        const list = ownAccessList(PROJECT_ID, outcome, 0);
+        const list = ownAccessList(PROJECT_ID, outcome, 0, "owner");
         assert.deepStrictEqual(list.members, [
           { userId: "owner", role: "OWNER", visibility: "open" },
         ]);
-        assert.deepStrictEqual(list.owners, ["owner"]);
         assert.strictEqual(ticketVerdict(list, "owner", 0), "open");
         for (const userId of ["admin", "org-owner", "basic", "reader"]) {
           assert.strictEqual(ticketVerdict(list, userId, 0), "not_in_list");

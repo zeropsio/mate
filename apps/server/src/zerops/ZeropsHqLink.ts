@@ -20,7 +20,8 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   HQ's pings.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
- *   every session on a moved Chief mark (`chief`), and to `ZeropsChangesFile`, which keeps the
+ *   every session on a moved Chief mark (`chief`), and to `ZeropsMateOwner`, whom it names the
+ *   Mate's owner (`ownerUserId`), and to `ZeropsChangesFile`, which keeps the
  *   Mate's changes from every state where zcp reads them, and to `ZeropsConnections` for the known
  *   Chief opener restriction; tickets (`ticket`), each answered `ticket-ack`, or `ticket_refused`
  *   when the native list or known Chief opener does not admit its person; the
@@ -96,6 +97,7 @@ import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
+import { ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import type { MateChanges } from "@t3tools/shared/hqChanges";
@@ -206,6 +208,8 @@ export interface ZeropsHqLinkOptions {
   readonly ticket?: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
   readonly closeSession?: (sessionId: string) => Effect.Effect<void>;
   readonly chiefOpener?: (userId: string | null | undefined) => Effect.Effect<void>;
+  /** Hands on whom each state names the Mate's owner, `null` for none (`ZeropsMateOwner.named`). */
+  readonly owner?: (userId: string | null) => Effect.Effect<void>;
   /** Whom the Mate's own access list names, latest first, then after each change (`access_report`). */
   readonly accessReports?: Stream.Stream<AccessReport>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
@@ -570,6 +574,7 @@ export const makeZeropsHqLink = (
             if (sentKey !== undefined) reportedKey = sentKey;
             return (options.chiefOpener?.(frame.mate.chiefOpenerUserId) ?? Effect.void).pipe(
               Effect.andThen(SubscriptionRef.set(state, Option.some(frame.mate))),
+              Effect.andThen(options.owner?.(frame.mate.ownerUserId ?? null) ?? Effect.void),
               Effect.andThen(Ref.set(refusal, undefined)),
               Effect.andThen(Ref.set(automatedHere, frame.mate.automated === true)),
               Effect.andThen(options.mateChanges?.(frame.mate) ?? Effect.void),
@@ -888,6 +893,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const credential = yield* ZeropsGitCredentialFile;
       const observeCredential = yield* ZeropsObserveCredentialFile;
       const signIns = yield* ZeropsSignIns;
+      const owner = yield* ZeropsMateOwner;
       // The engine's conversations are the chats: V1's projections (a thread left running at the
       // flip among them) are never read.
       const attention = yield* ZeropsMateAttention;
@@ -930,6 +936,8 @@ export const layer = (crew: OverviewSources["crew"]) =>
         ticket: connections.ticket,
         closeSession: connections.closeSession,
         chiefOpener: connections.chiefOpener,
+        // HQ's state is where the Mate learns whose it is: the one source behind `ZeropsMateOwner`.
+        owner: owner.named,
         gitCredential: credential.write,
         observeCredential: observeCredential.write,
         signers: signIns.heard,

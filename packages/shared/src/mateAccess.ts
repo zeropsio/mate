@@ -26,10 +26,13 @@ export const ChiefMateOwner = Schema.Struct({
 });
 export type ChiefMateOwner = typeof ChiefMateOwner.Type;
 
-/** A personal Chief never inherits someone else's organization authority. */
+/**
+ * A personal Chief never inherits someone else's organization authority: it opens for its person
+ * (HQ's owner of it) alone, and for nobody while none is known.
+ */
 export function restrictChiefAccess(
   members: ReadonlyArray<MateAccessMember>,
-  chief: ChiefMateOwner | null | undefined,
+  chief: Pick<ChiefMateOwner, "userId"> | null | undefined,
 ): ReadonlyArray<MateAccessMember> {
   return chief == null ? members : members.filter((member) => member.userId === chief.userId);
 }
@@ -126,24 +129,6 @@ export function resolveDoorVisibility(input: {
   };
 }
 
-/**
- * Whom the project's own row names its owner: each member its `OWNER` override names (the owner
- * marker a birth writes and a hand-over moves), in the member list's order — never an organization
- * role, which reaches every project and marks none of them anyone's.
- */
-export function projectOwners(input: {
-  readonly members: ReadonlyArray<ZeropsOrgMember>;
-  readonly overrides: Readonly<Record<string, string>>;
-}): ReadonlyArray<string> {
-  return input.members.flatMap((member) =>
-    member.userId.length > 0 &&
-    member.clientUserId.length > 0 &&
-    asOrgRole(input.overrides[member.clientUserId]) === "OWNER"
-      ? [member.userId]
-      : [],
-  );
-}
-
 /** One member the project lets in: open, or listed (the door refuses them as read-only). */
 export const MateAccessMember = Schema.Struct({
   userId: Schema.String,
@@ -160,7 +145,8 @@ export function projectAccess(input: {
   readonly projectId: string;
   readonly members: ReadonlyArray<ZeropsOrgMember>;
   readonly overrides: Readonly<Record<string, string>>;
-  readonly chief?: ChiefMateOwner | null;
+  /** A Chief's person, which it opens for alone; none on any other project. */
+  readonly chief?: Pick<ChiefMateOwner, "userId"> | null;
 }): ReadonlyArray<MateAccessMember> {
   const access: Array<MateAccessMember> = [];
   for (const member of input.members) {
