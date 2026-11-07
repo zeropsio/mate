@@ -220,12 +220,6 @@ export const HqMoveOffersError = Schema.Struct({
   reason: Schema.NullOr(Schema.String),
   disposition: Schema.Literals(["refused", "transient"]),
 });
-export const HqNavigationPerson = Schema.Struct({
-  name: Schema.String,
-  clientUserId: Schema.String,
-  avatarUrl: Schema.NullOr(Schema.String),
-});
-export type HqNavigationPerson = typeof HqNavigationPerson.Type;
 /** On-demand read; the result has the same shape as Changes.compare. Never broadcast. */
 export const HqCompareMessage = Schema.Struct({
   type: Schema.Literal("compare"),

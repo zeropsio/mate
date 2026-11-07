@@ -9,7 +9,6 @@ import {
   placementFamily,
   hqAppsScope,
   hqOrganizationScope,
-  hqPeopleScope,
   hqPressesScope,
   hqStatusScope,
   placementsScope,
@@ -23,6 +22,7 @@ import { membershipInputs } from "../__fixtures__/membership.ts";
 import { hqMates } from "./hqMates.ts";
 import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
 import { gitEnvironment } from "../__fixtures__/hqWire.ts";
+import { membersScope } from "../families/organizationMembers.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
@@ -30,7 +30,6 @@ const NAV: ReadonlyArray<ScopeKey> = [
   hqStatusScope(ORG),
   hqAppsScope(ORG),
   placementsScope(ORG),
-  hqPeopleScope(ORG),
   hqPressesScope(ORG),
 ];
 const revision = { kind: "hq", incarnation: "i", revision: 1 } as const;
@@ -135,12 +134,6 @@ const rows: ReadonlyArray<Row> = [
       everSignedIn: {},
     },
   },
-  {
-    family: "hqPerson",
-    id: "u1",
-    revision,
-    value: { name: "Jan", clientUserId: "cu1", avatarUrl: null },
-  },
   { family: "hqPress", id: "p1", revision, value: PRESS },
 ];
 
@@ -214,6 +207,26 @@ const read = apply(demanded, [
   { kind: "delivery", via: "hq-stream", scopes: generations, reset: true, rows, removals: [] },
   { kind: "hq-ready", scopes: generations },
   ...NAV.map((scope) => stream(scope, { kind: "baseline-committed" })),
+  // The organization's member list names HQ's user ids (`GET /client/{id}/user/list`).
+  stream(membersScope(ORG), { kind: "demand", demanded: true }),
+  stream(membersScope(ORG), { kind: "attempt" }),
+  stream(membersScope(ORG), { kind: "handshake" }),
+  { kind: "baseline-begin", scope: membersScope(ORG), generation: 1 },
+  {
+    kind: "baseline-commit",
+    scope: membersScope(ORG),
+    generation: 1,
+    via: "zerops-read",
+    members: [ORG],
+    rows: [
+      {
+        family: "organizationMembers",
+        id: ORG,
+        value: [{ id: "cu1", userId: "u1", user: { id: "u1", fullName: "Jan" } }],
+        revision: { kind: "zerops", version: null },
+      },
+    ],
+  },
 ]);
 const down = pastGrace(
   apply(read, [
@@ -547,7 +560,7 @@ describe("hqNavigation", () => {
       structure?.apps.map(({ name, projects }) => [name, projects.map((p) => p.name)]),
     ).toEqual([["Shop", ["Ada", "Stage"]]]);
     expect(structure?.ungrouped.map(({ name }) => name)).toEqual(["Lone"]);
-    expect(people).toEqual({ u1: { name: "Jan", clientUserId: "cu1", avatarUrl: null } });
+    expect(people).toEqual({ u1: { name: "Jan", clientUserId: "cu1" } });
     expect(presses).toEqual({ p1: PRESS });
     expect(organization?.build).toBe("b1");
   });
@@ -814,12 +827,6 @@ describe("HQ-computed Mate owners", () => {
     { name: "HQ names no owner despite a saved signer", state: read, owner: null, expected: {} },
   ])("$name", ({ state, owner, expected }) => {
     expect(owners(readsOfState(owned(state, owner)), ORG)).toEqual(expected);
-  });
-  it("withholds an owner when HQ denies their person fact", () => {
-    const state = apply(owned(read, "u1"), [
-      { kind: "access", family: "hqPerson", id: "u1", access: "denied" },
-    ]);
-    expect(owners(readsOfState(state), ORG)).toEqual({});
   });
   it("moves the owner on newer HQ evidence without reading project grants", () => {
     const before = owned(read, "u1");

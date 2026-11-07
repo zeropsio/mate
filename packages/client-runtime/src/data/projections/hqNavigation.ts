@@ -26,7 +26,6 @@ import { zeropsStructure } from "../../zerops/hq/structure.ts";
 import { canonicalEnvironmentsOf } from "../../zerops/hq/environments.ts";
 import {
   hqAppsScope,
-  hqPeopleScope,
   hqPressesScope,
   hqStatusScope,
   placementsScope,
@@ -45,6 +44,7 @@ import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { retryDelayMs, STREAM_POLICY } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
+import { zeropsPeople } from "./zeropsPeople.ts";
 import {
   applicationFacts,
   applicationProjects,
@@ -130,7 +130,7 @@ export const hqEnvironmentOffers = {
 >;
 
 /** The ids a navigation scope lists, each with its value. */
-function listed<F extends "hqApp" | "placement" | "hqPerson" | "hqPress">(
+function listed<F extends "hqApp" | "placement" | "hqPress">(
   read: ProjectionReads,
   family: F,
   scope: Parameters<ProjectionReads["members"]>[0],
@@ -309,13 +309,9 @@ function navigationOf(
     ),
     people: includePeople
       ? Object.fromEntries(
-          listed(read, "hqPerson", hqPeopleScope(orgId)).map(({ id, value }) => [
+          [...zeropsPeople(read, orgId)].map(([id, { name, clientUserId }]) => [
             id,
-            {
-              name: value.name ?? "Unknown",
-              avatarUrl: value.avatarUrl,
-              ...(value.clientUserId === undefined ? {} : { clientUserId: value.clientUserId }),
-            },
+            { name, clientUserId },
           ]),
         )
       : {},
