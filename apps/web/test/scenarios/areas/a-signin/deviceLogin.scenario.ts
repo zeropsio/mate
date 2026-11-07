@@ -2,29 +2,45 @@ import { scenarioSuite } from "../../harness/suite.ts";
 import { beforeAll, describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import { deviceLoginDist } from "../../harness/deviceLoginBundle.ts";
+import { zeropsHqDist } from "../../harness/zeropsHqBundle.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { recordStep } from "../../harness/lastStep.ts";
+import { signedInAtHq } from "../../harness/zeropsHq.ts";
 import { installSignIn, sensitiveSharedValue } from "./fake.ts";
-import { account, historyAddresses, vault, zeropsWindow } from "./dsl.ts";
+import { account, vault, zeropsWindow } from "./dsl.ts";
 
-/** The device-login build, once `beforeAll` has it. */
+/** The `zerops-hq` build, once `beforeAll` has it. */
 let dist = "";
+/** Mate at an origin that Zerops HQ's bridge refuses, as a preview: it signs in by device login. */
 const deviceLoginScenario = () => createScenario([installSignIn], { signIn: "device-login", dist });
+type Scenario = Effect.Success<ReturnType<typeof deviceLoginScenario>>;
+
+/** The owner signed in at Zerops HQ in the scenario's browser, as the Zerops window then finds them. */
+const atZerops = (s: Scenario) =>
+  Effect.promise(() => signedInAtHq(s.drivers.zeropsHq!, s.page, "owner"));
 
 /** Advance the platform's one-second poll only after the person's answer reaches Zerops. */
-const signInAfterAnswer = (s: Effect.Success<ReturnType<typeof deviceLoginScenario>>) =>
+const signInAfterAnswer = (s: Scenario) =>
   Effect.gen(function* () {
     yield* Effect.promise(() => s.clock.install());
+    const answered = s.drivers.zeropsHqAnswered();
     const signIn = yield* Effect.forkChild(s.given.signedIn);
-    yield* Effect.promise(() => s.drivers.zerops.waitForRequest("POST /authorize-login"));
+    yield* Effect.promise(() => answered);
     yield* Effect.promise(() => s.clock.advanceStepped(1_000));
     yield* Fiber.join(signIn);
   });
 
+/** Answers in the window that `button` opens, then lets the client's next check run. */
+const answerAndCheck = (s: Scenario, button: string, decision: "Approve" | "Deny") =>
+  Effect.gen(function* () {
+    const window = zeropsWindow(s);
+    yield* window.answers(yield* window.opens(button), decision);
+    yield* Effect.promise(() => s.clock.advanceStepped(1_000));
+  });
+
 describe("A: sign-in through the Zerops window", () => {
   beforeAll(async () => {
-    dist = await deviceLoginDist();
+    dist = await zeropsHqDist();
   });
   scenarioSuite((it) => {
     // Catches an approval in the Zerops window leaving the person at the door, or the window
@@ -47,6 +63,7 @@ describe("A: sign-in through the Zerops window", () => {
         yield* signInAfterAnswer(s);
         const consent = yield* zeropsWindow(s).lastConsentPage;
         expect(consent.searchParams.get("display")).toBe("popup");
+        expect(consent.searchParams.get("app")).toBe("mate");
         expect(consent.searchParams.has("intent")).toBe(false);
         yield* account(s.page).showsPerson("owner");
         yield* s.then.menu.row("Shop").appears();
@@ -67,14 +84,21 @@ describe("A: sign-in through the Zerops window", () => {
     it.effect("sign-up through Zerops opens the new, empty account into Mate's onboarding", () =>
       Effect.gen(function* () {
         const s = yield* deviceLoginScenario();
-        const window = zeropsWindow(s);
+        s.drivers.zerops.world.organizations.set("NEWORG", { name: "Newcomer" });
+        s.given.person("newcomer", { orgId: "NEWORG", role: "OWNER" });
         yield* Effect.promise(() => s.clock.install());
         yield* Effect.promise(() => s.page.goto(s.web.origin));
-        yield* window.answers(yield* window.opens("Create one on Zerops"), "Approve");
-        yield* Effect.promise(() => s.clock.advanceStepped(1_000));
-        const consent = yield* window.lastConsentPage;
+        const window = yield* zeropsWindow(s).opens("Create one on Zerops");
+        // Nobody is signed in to Zerops in this browser: the window signs the newcomer up first.
+        yield* Effect.promise(async () => {
+          await window.locator("::-p-aria(Sign up as)").fill("newcomer");
+          await window.locator('::-p-aria(Sign up[role="button"])').click();
+        });
+        yield* zeropsWindow(s).answers(window, "Approve");
+        const consent = yield* zeropsWindow(s).lastConsentPage;
         expect(consent.searchParams.get("intent")).toBe("register");
         expect(consent.searchParams.get("display")).toBe("popup");
+        yield* Effect.promise(() => s.clock.advanceStepped(1_000));
         yield* Effect.promise(async () => {
           // The shared HQ starts the owner's organization at sign-in.
           await s.page.waitForFunction(
@@ -98,41 +122,33 @@ describe("A: sign-in through the Zerops window", () => {
       Effect.gen(function* () {
         const s = yield* deviceLoginScenario();
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        const window = zeropsWindow(s);
+        yield* atZerops(s);
         yield* Effect.promise(() => s.clock.install());
         yield* Effect.promise(() => s.page.goto(s.web.origin));
-        yield* window.answers(yield* window.opens("Continue with your Zerops account"), "Deny");
-        yield* Effect.promise(() => s.clock.advanceStepped(1_000));
-        yield* window.says("Sign-in was cancelled.");
-        yield* window.answers(yield* window.opens("Try again"), "Approve");
-        yield* Effect.promise(() => s.clock.advanceStepped(1_000));
+        yield* answerAndCheck(s, "Continue with your Zerops account", "Deny");
+        yield* zeropsWindow(s).says("The sign-in was denied in Zerops.");
+        yield* answerAndCheck(s, "Try again", "Approve");
         yield* account(s.page).showsPerson("owner");
         yield* s.then.menu.row("Shop").appears();
         yield* s.then.noExternalNetwork;
       }),
     );
 
-    // Catches a request the platform forgot leaving the landing waiting forever, or Mate closing
-    // the window the person is still using (halfway through signing up) when a code lapses.
-    it.effect("a Zerops window left past its time says to start again", () =>
+    // Catches a request the platform let lapse leaving the landing waiting forever.
+    // witness: apps/web/src/zerops/zeropsHq.ts | expired: "The Zerops window timed out. Try again.", → expired: "Signing in ended.",
+    it.effect("a Zerops window left past its time says to try again", () =>
       Effect.gen(function* () {
         const s = yield* deviceLoginScenario();
+        yield* atZerops(s);
         yield* Effect.promise(() => s.clock.install());
         const window = zeropsWindow(s);
         yield* Effect.promise(() => s.page.goto(s.web.origin));
-        const opened = yield* window.opens("Continue with your Zerops account");
-        yield* window.says("MATE-0001");
-        // A request lapses after five minutes: Mate asks for a new code and leaves the window be,
-        // saying the window may still show the old one.
+        yield* window.opens("Continue with your Zerops account");
+        const [request] = s.drivers.zeropsHq!.deviceLogins;
+        yield* window.says(request!.userCode);
+        // A request lapses after five minutes.
         yield* Effect.promise(() => s.clock.advance(6 * 60_000, true));
-        yield* window.says("MATE-0002");
-        yield* window.says("the code in the Zerops window may have changed");
-        expect(opened.isClosed()).toBe(false);
-        // Half an hour on, the person has walked away.
-        for (let lapse = 0; lapse < 4; lapse++)
-          yield* Effect.promise(() => s.clock.advance(6 * 60_000, true));
-        yield* window.says("The Zerops window timed out. Start again.");
-        expect(opened.isClosed()).toBe(false);
+        yield* window.says("The Zerops window timed out. Try again.");
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -142,11 +158,12 @@ describe("A: sign-in through the Zerops window", () => {
       Effect.gen(function* () {
         const s = yield* deviceLoginScenario();
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* atZerops(s);
         const window = zeropsWindow(s);
-        s.web.setPerson(s.page, "personal");
         yield* Effect.promise(() => s.clock.install());
         yield* Effect.promise(() => s.page.goto(s.web.origin));
         yield* window.blocksPopups;
+        const answered = s.drivers.zeropsHqAnswered();
         yield* Effect.promise(() =>
           s.page.locator("::-p-aria(Continue with your Zerops account)").click(),
         );
@@ -156,58 +173,15 @@ describe("A: sign-in through the Zerops window", () => {
             .map((anchor) => (anchor as HTMLAnchorElement).href)
             .wait(),
         );
-        // A tab, not a popup: nothing to close itself.
-        expect(new URL(link).searchParams.has("display")).toBe(false);
         // The person opens the link: a tab of their own browser, signed in to Zerops.
         const tab = yield* Effect.promise(() => s.web.newPage(s.page.browserContext()));
-        s.web.setPerson(tab, "personal");
         yield* Effect.promise(() => tab.goto(link));
         yield* Effect.promise(() => tab.locator('::-p-aria(Approve[role="button"])').click());
-        yield* Effect.promise(() => s.drivers.zerops.waitForRequest("POST /authorize-login"));
+        yield* Effect.promise(() => answered);
         yield* Effect.promise(() => s.page.bringToFront());
         yield* Effect.promise(() => s.clock.advanceStepped(1_000));
         yield* account(s.page).showsPerson("owner");
         yield* s.then.menu.row("Shop").appears();
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches HQ's card asking for a click, a second window, or the request left in an address:
-    // HQ approves from its note in the same tab and sends it home, signed in.
-    it.effect("opened from HQ's Mate card, Mate signs in with no click, in the same tab", () =>
-      Effect.gen(function* () {
-        const s = yield* deviceLoginScenario();
-        yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        s.drivers.zerops.deviceLogin.approvesFromHq = true;
-        s.web.setPerson(s.page, "personal");
-        yield* Effect.promise(() => s.page.goto(`${s.web.origin}/?signin=hq`));
-        yield* account(s.page).showsPerson("owner");
-        yield* s.then.menu.row("Shop").appears();
-        const consent = yield* zeropsWindow(s).lastConsentPage;
-        expect(consent.searchParams.get("back")).toBe(`${s.web.origin}/?signin=hq-return`);
-        expect(consent.searchParams.has("display")).toBe(false);
-        // Mate's own entries hold no sign-in, and no entry holds the poll secret.
-        for (const address of yield* historyAddresses(s.page)) {
-          expect(address).not.toContain("poll-");
-          if (address.startsWith(s.web.origin)) expect(address).not.toMatch(/signin|device-/u);
-        }
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
-    // Catches a denial at HQ reading as an error, or leaving the tab at HQ.
-    it.effect("a sign-in from HQ's card denied on HQ's card returns to the landing as it was", () =>
-      Effect.gen(function* () {
-        const s = yield* deviceLoginScenario();
-        s.web.setPerson(s.page, "personal");
-        // Opened without HQ's card, the consent page asks.
-        yield* Effect.promise(() => s.page.goto(`${s.web.origin}/?signin=hq`));
-        yield* Effect.promise(() => s.page.locator('::-p-aria(Deny[role="button"])').click());
-        const window = zeropsWindow(s);
-        yield* window.says("Continue with your Zerops account");
-        const text = yield* Effect.promise(() => s.page.evaluate(() => document.body.innerText));
-        expect(text).not.toContain("Sign-in didn't finish");
-        expect(new URL(s.page.url()).search).toBe("");
         yield* s.then.noExternalNetwork;
       }),
     );
@@ -219,18 +193,21 @@ describe("A: sign-in through the Zerops window", () => {
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* signInAfterAnswer(s);
         yield* s.then.menu.row("Shop").appears();
-        const [session] = s.drivers.zerops.deviceLogin.sessions;
+        const issued = s.drivers.zeropsHq!.deviceLogins.length;
         const b = yield* s.given.browserActor({ context: s.page.browserContext() });
         yield* Effect.promise(() => b.page.goto(s.web.origin));
         yield* account(b.page).showsPerson("owner");
         yield* account(b.page).signOut;
         yield* account(b.page).signedOut;
         yield* Effect.promise(() => s.drivers.zerops.waitForRequest("POST /auth/logout"));
-        expect(s.drivers.zerops.deviceLogin.revoked).toEqual([session!.accessToken]);
+        expect(s.drivers.zeropsHq!.revoked).toHaveLength(1);
         yield* Effect.promise(() => s.page.bringToFront());
         yield* account(s.page).signedOut;
         yield* account(s.page).reload;
         yield* account(s.page).signedOut;
+        expect(s.drivers.zeropsHq!.deviceLogins, "No sign-in started by itself").toHaveLength(
+          issued,
+        );
         yield* s.then.noExternalNetwork;
       }),
     );

@@ -4,15 +4,9 @@
  * balance, top-ups, automatic top-up, invoices, cards and billing details; no link opens a part
  * of it.
  */
-import { zeropsConsentOrigin } from "./deviceLogin";
-
-/** The site's origin where the build names none of its own. */
-const HQ_ORIGIN = "https://hq.zerops.io";
+import { zeropsHqOrigin } from "./signInMode";
 
 /** The organization's billing page in Zerops. */
-export function hqCreditUrl(
-  organizationId: string,
-  origin: string = zeropsConsentOrigin() ?? HQ_ORIGIN,
-): string {
+export function hqCreditUrl(organizationId: string, origin: string = zeropsHqOrigin()): string {
   return new URL(`/organizations/${encodeURIComponent(organizationId)}`, origin).toString();
 }

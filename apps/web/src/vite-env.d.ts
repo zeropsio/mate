@@ -14,13 +14,13 @@ interface ImportMetaEnv {
   readonly VITE_ZEROPS_APP_URL?: string;
   /** The Zerops API this build talks to (`https://api.app-alpha.zerops.dev`); prg1's when unset. */
   readonly VITE_ZEROPS_API_URL?: string;
-  /** The way in: `handover` (the default) or `device-login` (`zerops/deviceLogin.ts`). */
+  /** The way in: `handover` (the default) or `zerops-hq` (`zerops/zeropsHq.ts`). */
   readonly VITE_ZEROPS_SIGN_IN?: string;
-  /** Swaps the device login's consent page origin, e.g. a local HQ; the API's link when unset. */
-  readonly VITE_ZEROPS_CONSENT_ORIGIN?: string;
+  /** Zerops HQ, whose session a `zerops-hq` build shares; `https://hq.zerops.io` when unset. */
+  readonly VITE_ZEROPS_HQ_ORIGIN?: string;
   /** The one HQ every organization signs in to (`zerops/accountHq.ts` `configuredHq`). */
   readonly VITE_HQ_ORIGIN: string;
-  /** The login app the consent page asks for; `mate` when unset. */
+  /** The login app Zerops HQ's device login asks for, where its bridge refuses this origin; `mate` when unset. */
   readonly VITE_ZEROPS_LOGIN_APP_CODE?: string;
   /** The Adobe Express Embed SDK's API key (`components/express/expressSdk.ts`); no Express panel when unset. */
   readonly VITE_ADOBE_EXPRESS_CLIENT_ID?: string;

@@ -13,6 +13,8 @@ import type { ZeropsSessionStatus } from "./ZeropsSessionProvider";
 /** What the session last said, for the next load's first frame. */
 export const BOOT_FRAME_STORAGE_KEY = "mate:boot-frame";
 export const BOOT_FRAME_SIGNED_IN = "app";
+/** Signed in to Zerops HQ's session, which keeps nothing in this origin's storage. */
+export const BOOT_FRAME_SHARED = "zerops-hq";
 
 export type BootFrameMode = "app" | "mark";
 
@@ -28,7 +30,8 @@ export function bootFrameMode(input: {
   readonly desktop: boolean;
 }): BootFrameMode {
   if (input.desktop) return "mark";
-  const signedIn = input.remembered === BOOT_FRAME_SIGNED_IN && input.session !== null;
+  const shared = input.remembered === BOOT_FRAME_SHARED;
+  const signedIn = shared || (input.remembered === BOOT_FRAME_SIGNED_IN && input.session !== null);
   return signedIn || RETURNING.test(input.pathname) ? "app" : "mark";
 }
 

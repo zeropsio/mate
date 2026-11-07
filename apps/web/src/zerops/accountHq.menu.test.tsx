@@ -96,7 +96,6 @@ async function mountMenu(
 ) {
   vi.stubEnv("VITE_HQ_ORIGIN", "https://hq.example.test");
   vi.stubEnv("VITE_ZEROPS_API_URL", "https://zerops.example.test");
-  if (deviceLogin) vi.stubEnv("VITE_ZEROPS_SIGN_IN", "device-login");
   const noDom = Object.fromEntries(
     ["Node", "Element", "HTMLElement", "ShadowRoot"].map((key) => [key, function none() {}]),
   );
@@ -443,20 +442,6 @@ async function mountMenu(
               return new Response(null, { status: 404 });
             }
             const response = await zerops(input, init);
-            if (deviceLogin && url.pathname.endsWith("/auth/device-login"))
-              return Response.json({
-                requestId: "req-1",
-                pollSecret: "poll-1",
-                userCode: "MATE-0001",
-                verificationUrl: "https://zerops.example.test/consent?request=req-1",
-                expiresIn: 300,
-                interval: 1,
-              });
-            if (deviceLogin && url.pathname.endsWith("/auth/device-login/check"))
-              return Response.json({
-                status: "APPROVED",
-                auth: { auth: approvedSession, user: person },
-              });
             if (
               url.pathname.endsWith("/public-port-routing/search") ||
               url.pathname.endsWith("/client-user/search") ||
@@ -860,25 +845,9 @@ async function mountMenu(
     );
   }
   await tab.run(async () => {
-    if (deviceLogin) {
-      const { runZeropsDeviceLogin } = await import("./deviceLogin");
-      const run = runZeropsDeviceLogin({
-        kind: "login",
-        apiBase: "https://zerops.example.test",
-        onStage: () => {},
-        ports: {
-          open: () => null,
-          fetch: (input, init) => fetch(input, init),
-          wait: async () => {},
-          nowMs: () => Date.now(),
-          appCode: "mate",
-          consentOrigin: undefined,
-        },
-      });
-      const outcome = await run.outcome;
-      if (outcome.kind !== "approved" || outcome.session === null)
-        throw new Error(`The device login was ${outcome.kind}.`);
-      await tab.session().adoptDeviceLogin(outcome.session);
+    // A session with a refresh token, as a desktop window's device login collects it.
+    if (approvedSession !== undefined) {
+      await tab.session().adoptDeviceLogin(approvedSession);
       return;
     }
     const url = handover.startZeropsHandover();
@@ -1134,9 +1103,10 @@ describe("A: sign-in, session and organizations", () => {
       base.browser.openTab().localStorage.getItem(ZEROPS_SESSION_STORAGE_KEY)!,
     );
     expect(stored.accessToken).not.toBe(approvedSession.accessToken);
+    // The reload renews the session it kept: it starts no sign-in of its own.
     expect(
       base.rest.requests().filter(({ route }) => route === "POST /auth/device-login"),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
     expect(fixture.unexpected).toEqual([]);
   });
 

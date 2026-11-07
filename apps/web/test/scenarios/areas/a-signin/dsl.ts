@@ -152,7 +152,6 @@ export function firstHqAnswer(page: Page) {
 
 /** Device login from the landing: the Zerops window, what the person does there, what Mate says. */
 export function zeropsWindow(s: Scenario, page: Page = s.page) {
-  const deviceLogin = s.drivers.zerops.deviceLogin;
   return {
     /** Clicks `button` on Mate's side; the window it opens, routed and on the consent page. */
     opens: (button: string) =>
@@ -161,7 +160,7 @@ export function zeropsWindow(s: Scenario, page: Page = s.page) {
       Effect.promise(() => answerInZerops(window, decision)),
     /** The consent page the last window was pointed at: the API's link and this client's asks. */
     lastConsentPage: Effect.sync(() => {
-      const shown = deviceLogin.consentPages.at(-1);
+      const shown = s.drivers.zeropsHq?.consentPages.at(-1);
       if (!shown) throw new Error("No consent page was shown");
       return shown;
     }),
@@ -183,18 +182,6 @@ export function zeropsWindow(s: Scenario, page: Page = s.page) {
     ),
   };
 }
-
-/** Every address this tab's history holds, oldest first: what Back and Forward would open again. */
-export const historyAddresses = (page: Page) =>
-  Effect.promise(async () => {
-    const session = await page.createCDPSession();
-    try {
-      const { entries } = await session.send("Page.getNavigationHistory");
-      return entries.map((entry) => entry.url);
-    } finally {
-      await session.detach();
-    }
-  });
 
 /** A Mate's vault, from its conversation's right panel. */
 export function vault(page: Page) {

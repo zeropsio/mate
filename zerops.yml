@@ -36,13 +36,10 @@ zerops:
         # Where this client is published, the origin `isHostedStaticApp`
         # compares against; left unset it defaults to upstream's app.t3.codes.
         VITE_HOSTED_APP_URL: https://mate.zerops.io
-        # Sign in by Zerops device login (`zerops/deviceLogin.ts`): the Zerops
-        # window approves, the tab polls for its session. The login app is
-        # `mate` (the default code); container builds still use the hand-over.
-        VITE_ZEROPS_SIGN_IN: device-login
-        # The consent page is HQ's, whatever origin the API's verificationUrl
-        # names: HQ approves a fresh log-in directly and closes its window.
-        VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
+        # The session Zerops HQ shares with every Zerops app (`zerops/zeropsHq.ts`),
+        # through its bridge; container builds still use the hand-over.
+        VITE_ZEROPS_SIGN_IN: zerops-hq
+        VITE_ZEROPS_HQ_ORIGIN: https://hq.zerops.io
         # Mate HQ, the one every Mate and this client share (`configuredHq`):
         # named here, no organization's anchor is read to find it.
         VITE_HQ_ORIGIN: https://mate-hq.zerops.io
@@ -112,9 +109,9 @@ zerops:
         # names its canonical origin.
         VITE_HOSTED_APP_URL: https://web-31d9.prg1.zerops.app
         VITE_HQ_ORIGIN: https://hq-31d9-8080.prg1.zerops.app
-        VITE_ZEROPS_SIGN_IN: device-login
+        VITE_ZEROPS_SIGN_IN: zerops-hq
         VITE_ADOBE_EXPRESS_CLIENT_ID: a3cdc81c5842438cb95c4e772c03e0a7
-        VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
+        VITE_ZEROPS_HQ_ORIGIN: https://hq.zerops.io
         VITE_APP_SHELL_WORKER: app-shell
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         PUPPETEER_SKIP_DOWNLOAD: "1"

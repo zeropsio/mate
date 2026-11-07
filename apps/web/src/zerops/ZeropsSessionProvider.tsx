@@ -8,10 +8,13 @@ import { browserTransportFetch } from "@t3tools/client-runtime/data";
  * through more than one branch of that gate, and the session has to outlive
  * route transitions.
  *
- * The access token lives here and in `localStorage` — never on a mate server.
+ * The access token lives here and in `localStorage` — never on a mate server. A `zerops-hq` build
+ * holds only Zerops HQ's access token, in memory: HQ keeps the session (`zeropsHq.ts`).
  */
 
 import {
+  DEFAULT_ZEROPS_API_BASE,
+  ZeropsApiError,
   ZEROPS_SESSION_STORAGE_KEY,
   type ZeropsApiClient,
   clearZeropsSession,
@@ -61,6 +64,13 @@ import { browserZeropsReauth } from "./reauth";
 import { installDevHooks } from "./devHooks";
 import { browserZeropsStorage } from "./storage";
 import { tokenWrites } from "./tokenWriteLock";
+import { zeropsSignInMode } from "./signInMode";
+import {
+  makeZeropsHqClient,
+  makeZeropsHqPrompts,
+  zeropsSessionOf,
+  type ZeropsHqPrompts,
+} from "./zeropsHq";
 
 export type ZeropsSessionStatus =
   | "loading"
@@ -92,16 +102,12 @@ export interface ZeropsSessionValue {
     readonly zcpClaimed: boolean;
   }) => Promise<void>;
   /**
-   * Adopts the session a device login collected (`deviceLogin.ts`): proven before it is stored,
-   * like a hand-over's.
+   * Adopts the session a desktop window's device login collected (`nativeSignIn.ts`): proven before
+   * it is stored, like a hand-over's.
    */
   readonly adoptDeviceLogin: (session: ZeropsSession) => Promise<void>;
-  /**
-   * The bearer a sudo device login is asked with: the held session's, renewed first when it
-   * expires within fifteen minutes. A renewal during the approval would revoke the token the
-   * request is bound to, so it happens before the request, never during.
-   */
-  readonly sudoBearer: () => Promise<string>;
+  /** Zerops HQ's sign-in and sudo prompts, in a `zerops-hq` build. */
+  readonly zeropsHq: ZeropsHqPrompts | null;
   readonly signOut: () => Promise<void>;
   readonly verifyAgain?: () => void;
   /** A background retry of a failed check is running: the failure stays, saying it tries again. */
@@ -130,9 +136,6 @@ function leaveForSignIn(): void {
   window.history.replaceState(null, "", root);
   window.dispatchEvent(new Event("popstate"));
 }
-
-/** A sudo request asked of a session about to expire would die with it: it renews first. */
-const SUDO_RENEWAL_MARGIN_MS = 15 * 60_000;
 
 /** What a page reads of the session machine's state. */
 function statusOf(state: ZeropsSessionState): ZeropsSessionStatus {
@@ -189,13 +192,17 @@ function makeSession(storage: ZeropsStorageAdapter) {
   // The recipe endpoint mock passes all other traffic to the platform.
   const fetch = browserTransportFetch;
   const browser = window;
+  const apiBase = import.meta.env.VITE_ZEROPS_API_URL?.trim();
+  const hq =
+    zeropsSignInMode() === "zerops-hq"
+      ? makeZeropsHqClient(apiBase || DEFAULT_ZEROPS_API_BASE)
+      : null;
   // Web Locks exist only in a secure context; without them each tab renews alone.
   const locks: LockManager | undefined = browser.navigator.locks;
   let driver!: ZeropsSessionDriver;
   /** True while the person's own sign-out runs: its session end is no refusal. */
   let signingOut = false;
   const owner = ownerRecordIn(browser);
-  const apiBase = import.meta.env.VITE_ZEROPS_API_URL?.trim();
   const calls = makeZeropsSessionCalls({
     // The platform this build talks to; prg1 when the build names none.
     ...(apiBase ? { baseUrl: apiBase } : {}),
@@ -208,15 +215,55 @@ function makeSession(storage: ZeropsStorageAdapter) {
         // session that dies between renders cannot leave an
         // authorized-looking UI behind.
         driver.send({ type: "SESSION_ENDED", cause: signingOut ? "signed-out" : "refused" });
-        return clearZeropsSession(storage);
+        return hq === null ? clearZeropsSession(storage) : undefined;
       }
-      return saveZeropsSession(storage, session);
+      return hq === null ? saveZeropsSession(storage, session) : undefined;
     },
-    renewSession: (stale, refresh) => driver.renew(stale, refresh),
+    ...(hq === null
+      ? {
+          renewSession: (stale: ZeropsSession, refresh: () => Promise<ZeropsSession>) =>
+            driver.renew(stale, refresh),
+        }
+      : {
+          sessionOwner: {
+            renew: async (stale: ZeropsSession) => {
+              const renewed = await hq.rejected(stale.accessToken);
+              if (renewed === null) return null;
+              // Another person's session is no renewal: the machine's probe switches the account.
+              if (renewed.userId !== stale.userId)
+                throw new ZeropsApiError(
+                  "Your Zerops session changed to another account.",
+                  "expired-session",
+                  401,
+                );
+              return zeropsSessionOf(renewed);
+            },
+          },
+        }),
   });
   const { client } = calls;
+  const prompts =
+    hq === null
+      ? null
+      : makeZeropsHqPrompts(hq, {
+          scheme: () =>
+            browser.document.documentElement?.classList.contains("dark") ? "dark" : "light",
+          reload: () => browser.location.reload(),
+        });
+  /** HQ's sign-in opens by itself where it shows over the page: a device login's popup needs a click. */
+  const promptSignIn = () => {
+    if (prompts !== null && hq?.mode() !== "device-login") prompts.signIn();
+  };
   driver = makeZeropsSessionDriver({
-    loadStored: () => loadZeropsSession(storage),
+    loadStored:
+      hq === null
+        ? () => loadZeropsSession(storage)
+        : () =>
+            hq.ready().then(
+              (view) => (view === null ? null : zeropsSessionOf(view)),
+              // HQ didn't answer in time: signed out until it does, through `changes`.
+              () => null,
+            ),
     verify: async (session) => {
       client.restoreSession(session);
       try {
@@ -248,7 +295,7 @@ function makeSession(storage: ZeropsStorageAdapter) {
     // lets the token lapse; through a real outage the renewal only fails and is asked again.
     awake: () => browser.document.visibilityState === "visible",
     newGeneration: randomUUID,
-    reauth: browserZeropsReauth.ask,
+    reauth: hq === null ? browserZeropsReauth.ask : promptSignIn,
     reauthSettled: browserZeropsReauth.settled,
   });
   /**
@@ -264,9 +311,51 @@ function makeSession(storage: ZeropsStorageAdapter) {
     } finally {
       signingOut = false;
     }
-    if (held !== null) void calls.revoke(held);
+    // HQ's sign-out ends the session in every Zerops app, and at the platform. An HQ that doesn't
+    // answer can't hold the person here.
+    if (hq !== null) void hq.signOut().catch(() => undefined);
+    else if (held !== null) void calls.revoke(held);
   };
-  return { calls, client, driver, signOutLocally };
+  /**
+   * Every change HQ's session goes through, in any app or tab, reaches the machine as a stored
+   * session would. A session that ends under an open account, unless by this tab's sign-out,
+   * opens HQ's sign-in over the landing.
+   */
+  const watchHq = () => {
+    if (hq === null) return () => undefined;
+    return hq.changes((view) => {
+      const next = view === null ? null : zeropsSessionOf(view);
+      const ended = next === null && driver.state().status === "signed-in" && !signingOut;
+      driver.send({
+        type: "STORAGE_CHANGED",
+        next,
+        held: next !== null && next.accessToken === client.session?.accessToken,
+      });
+      if (ended) promptSignIn();
+      // A session that arrives by any route answers a sign-in still out, or one that gave up.
+      if (next !== null && prompts?.state().kind === "sign-in") prompts.close();
+    });
+  };
+  /**
+   * The first answer of a load that finds nobody signed in opens HQ's sign-in. The session a
+   * build before HQ's kept here is signed out at the platform and forgotten.
+   */
+  const startHq = () => {
+    if (hq === null) return () => undefined;
+    void loadZeropsSession(storage).then((old) => {
+      if (old === null) return;
+      void clearZeropsSession(storage);
+      void calls.revoke(old);
+    });
+    const stop = driver.subscribe(() => {
+      const { status } = driver.state();
+      if (status === "booting" || status === "verifying") return;
+      stop();
+      if (status === "signed-out") promptSignIn();
+    });
+    return stop;
+  };
+  return { calls, client, driver, prompts, signOutLocally, startHq, watchHq };
 }
 
 export function ZeropsSessionProvider({
@@ -280,13 +369,24 @@ export function ZeropsSessionProvider({
   const [selectedMembershipId, setSelectedMembershipId] = useState<string | null>(null);
   const [organizationStatus, setOrganizationStatus] = useState<ZeropsOrganizationStatus>("idle");
 
-  const { calls, client, driver, signOutLocally } = useMemo(() => makeSession(storage), [storage]);
+  const { calls, client, driver, prompts, signOutLocally, startHq, watchHq } = useMemo(
+    () => makeSession(storage),
+    [storage],
+  );
   const machine = useSyncExternalStore(driver.subscribe, driver.state);
   const status = statusOf(machine);
   const retrying = machine.status === "verifying" && machine.retry === true;
   const user = machine.status === "signed-in" ? machine.user : null;
 
-  useEffect(() => driver.start(), [driver]);
+  useEffect(() => {
+    const stopHq = startHq();
+    const stop = driver.start();
+    return () => {
+      stopHq();
+      stop();
+    };
+  }, [driver, startHq]);
+  useEffect(watchHq, [watchHq]);
   useEffect(
     () =>
       installDevHooks(async (session) => {
@@ -312,6 +412,8 @@ export function ZeropsSessionProvider({
         driver.send({ type: "OWNER_CHANGED", owner: parseZeropsSessionOwner(event.newValue) });
         return;
       }
+      // HQ's session reaches this tab through `changes`, never through storage.
+      if (prompts !== null) return;
       if (event.key !== ZEROPS_SESSION_STORAGE_KEY && event.key !== null) return;
       const next = event.key === null ? null : parseZeropsSession(event.newValue);
       driver.send({
@@ -335,7 +437,7 @@ export function ZeropsSessionProvider({
       window.removeEventListener("online", onOnline);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [client, driver]);
+  }, [client, driver, prompts]);
 
   const organizations = useMemo(() => (user ? zeropsClientsFromUser(user) : []), [user]);
   const activeOrganization = useMemo(
@@ -435,11 +537,7 @@ export function ZeropsSessionProvider({
           setLastRegistration({ auth: session, user: adopted, zcpClaimed: true });
         }
       },
-      sudoBearer: async () => {
-        const bearer = await calls.freshBearer(SUDO_RENEWAL_MARGIN_MS, Date.now());
-        if (bearer === null) throw new Error("Sign in to Zerops again.");
-        return bearer;
-      },
+      zeropsHq: prompts,
       adoptDeviceLogin: async (session) => {
         driver.signedIn((await calls.adoptToken(session)).user);
       },
@@ -461,6 +559,7 @@ export function ZeropsSessionProvider({
       lastRegistration,
       organizationStatus,
       organizations,
+      prompts,
       selectOrganization,
       signOutLocally,
       updateVerifiedMemberships,

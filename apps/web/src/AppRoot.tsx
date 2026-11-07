@@ -5,8 +5,7 @@ import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
 import { ZeropsMenuPreview } from "./zerops/useMenuRows";
 import { ZeropsHqNavigation } from "./zerops/hqNavigation";
 import { ZeropsHostedLanding } from "./components/zerops/landing/ZeropsHostedLanding";
-import { zeropsSignInMode } from "./zerops/deviceLogin";
-import { driveZeropsHqSignIn } from "./zerops/hqSignIn";
+import { ZeropsHqOverlay } from "./components/zerops/landing/ZeropsHqOverlay";
 import { appBasePath } from "./basePath";
 import { resolveZeropsAccountGate } from "./routes/-accountGate";
 import { RouterProvider } from "@tanstack/react-router";
@@ -42,17 +41,7 @@ export function ZeropsAccountDataBoundary({ children }: { readonly children: Rea
 }
 
 function AccountProductBoundary({ router }: { readonly router: AppRouter }) {
-  const { status, user, client, adoptDeviceLogin } = useZeropsSession();
-  // A trip through HQ from its Mate card settles with the session check (`hqSignIn.ts`): it runs for
-  // a signed-out tab of a device-login build, and is spent unrun any other way.
-  useEffect(() => {
-    if (status === "loading") return;
-    driveZeropsHqSignIn(
-      status === "signed-out" && zeropsSignInMode() === "device-login"
-        ? { apiBase: client.baseUrl, adopt: adoptDeviceLogin }
-        : null,
-    );
-  }, [adoptDeviceLogin, client, status]);
+  const { status, user } = useZeropsSession();
   useEffect(() => {
     if (window.location.pathname.replace(/\/$/, "") === `${appBasePath()}/pair`) {
       window.history.replaceState(null, "", `${appBasePath()}/zerops`);
@@ -94,6 +83,7 @@ export function AppRoot({ router }: { readonly router: AppRouter }) {
     <RenderErrorBoundary fallback={<ZeropsAppFailed onReload={() => window.location.reload()} />}>
       <ZeropsSessionProvider>
         <AccountProductBoundary router={router} />
+        <ZeropsHqOverlay />
       </ZeropsSessionProvider>
     </RenderErrorBoundary>
   );

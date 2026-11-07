@@ -12,11 +12,15 @@ declare module "vite-plus/test" {
 }
 
 /**
- * The builds scenarios run: the shipped one, and the same source built to sign in by device login
- * (`VITE_ZEROPS_SIGN_IN`). The way in is chosen at build time, so each is its own bundle; the
- * device-login one is built only for the scenarios that ask for it (`scenarioBundle`).
+ * The builds scenarios run: the hand-over one, and the same source built to take Zerops HQ's
+ * shared session (`VITE_ZEROPS_SIGN_IN`), as production's is. The way in is chosen at build time,
+ * so each is its own bundle. The `zerops-hq` one is built only for the scenarios that ask for it
+ * (`zeropsHqDist`).
  */
-export type ScenarioBundle = "handover" | "device-login";
+export type ScenarioBundle = "handover" | "zerops-hq";
+
+/** Zerops HQ, as the `zerops-hq` build names it. A scenario routes it to the test HQ (`zeropsHq.ts`). */
+export const ZEROPS_HQ_ORIGIN = "https://hq.zerops.io";
 
 export async function buildScenarioBundle(bundle: ScenarioBundle = "handover") {
   const root = NodeURL.fileURLToPath(new URL("../../../../../", import.meta.url));
@@ -24,6 +28,7 @@ export async function buildScenarioBundle(bundle: ScenarioBundle = "handover") {
     ...process.env,
     NODE_ENV: "production",
     VITE_ZEROPS_SIGN_IN: bundle,
+    VITE_ZEROPS_HQ_ORIGIN: ZEROPS_HQ_ORIGIN,
     VITE_HOSTED_APP_CHANNEL: "latest",
     VITE_HOSTED_APP_URL: "",
     VITE_BASE_PATH: "",
@@ -77,5 +82,5 @@ export default async function setup(project: TestProject) {
 // one after the other and leave the source tree unchanged; the React compiler keeps each mostly on
 // one core, so together they take about the time of the slower one.
 if (import.meta.main) {
-  await Promise.all([buildScenarioBundle("handover"), buildScenarioBundle("device-login")]);
+  await Promise.all([buildScenarioBundle("handover"), buildScenarioBundle("zerops-hq")]);
 }
