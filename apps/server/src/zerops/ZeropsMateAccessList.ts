@@ -72,7 +72,10 @@ import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
  */
 export const ACCESS_LIST_HOLDS = Duration.minutes(15);
 
-/** How often the Mate recomputes its own list. */
+/**
+ * How often the Mate recomputes its own list. GAP-RIGHTS-3: Zerops pushes no frame for a member's
+ * removal, so the list drops them only at this recompute; see docs/architecture/identity-and-access.md#gap-rights (mate-hq).
+ */
 export const ACCESS_RECOMPUTE_EVERY = Duration.minutes(5);
 
 /** How far each wait strays either side of {@link ACCESS_RECOMPUTE_EVERY}, so Mates spread out. */

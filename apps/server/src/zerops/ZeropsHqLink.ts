@@ -451,6 +451,8 @@ export const makeZeropsHqLink = (
       });
       const keyChanged = yield* Deferred.make<LinkClose>();
       let sentKey: string | undefined;
+      // GAP-RIGHTS-7: nothing pushes a key's deletion or edit; the Mate learns of it at its next own
+      // call; see docs/architecture/identity-and-access.md#gap-rights (mate-hq).
       const keyRefusals = options.keyRefusal
         ? Stream.runForEach(options.keyRefusal.changes, (notice) =>
             Effect.gen(function* () {

@@ -47,6 +47,8 @@ export class ZeropsConnections extends Context.Service<
     ) => Effect.Effect<Option.Option<ConnectionIdentity>>;
     readonly current: (id: string) => Effect.Effect<Option.Option<ConnectionIdentity>>;
     readonly close: (id: string) => Effect.Effect<void>;
+    // GAP-RIGHTS-4: a connection never sees its person's token revoked; it ends at sign-out or a
+    // list change; see docs/architecture/identity-and-access.md#gap-rights (mate-hq).
     readonly closeSession: (sessionId: string) => Effect.Effect<void>;
     readonly chiefOpener: (userId: string | null | undefined) => Effect.Effect<void>;
   }
