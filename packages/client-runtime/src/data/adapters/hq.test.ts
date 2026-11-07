@@ -36,6 +36,7 @@ import { hqAppGitTargets } from "../projections/hqNavigation.ts";
 import { hqAppDetail } from "../projections/hqAppDetail.ts";
 import { attention } from "../__fixtures__/mateAttention.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
+import { seedMembers } from "../__fixtures__/hqProjectPeople.ts";
 import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { agentUsageOwner } from "../families/agentUsage.ts";
@@ -790,6 +791,7 @@ describe("hqNavigationLink", () => {
     (code) =>
       Effect.gen(function* () {
         const store = makeAccountStore(AtomRegistry.make());
+        seedMembers(store, ORG, { "u-karlos": { name: "Karlos" } });
         const fixture = hqFixtureWire();
         const { fiber } = yield* live(store, fixture);
         const scope = { kind: "attention", projectId: "ada", health: "apart" } as const;
