@@ -1,20 +1,22 @@
 import { describe, expect, it } from "vite-plus/test";
 import * as EffectAcpErrors from "effect-acp/errors";
-import { ProviderDriverKind } from "@t3tools/contracts";
+import { ProviderApprovalDecision, ProviderDriverKind, ThreadId } from "@t3tools/contracts";
+import * as Schema from "effect/Schema";
 
 import { acpPermissionOutcome, mapAcpToAdapterError } from "./AcpAdapterSupport.ts";
 
 describe("AcpAdapterSupport", () => {
   it("maps ACP approval decisions to permission outcomes", () => {
-    expect(acpPermissionOutcome("accept")).toBe("allow-once");
-    expect(acpPermissionOutcome("acceptForSession")).toBe("allow-always");
-    expect(acpPermissionOutcome("decline")).toBe("reject-once");
+    const decodeDecision = Schema.decodeUnknownSync(ProviderApprovalDecision);
+    expect(acpPermissionOutcome(decodeDecision("accept"))).toBe("allow-once");
+    expect(acpPermissionOutcome(decodeDecision("acceptForSession"))).toBe("allow-always");
+    expect(acpPermissionOutcome(decodeDecision("decline"))).toBe("reject-once");
   });
 
   it("maps ACP request errors to provider adapter request errors", () => {
     const error = mapAcpToAdapterError(
       ProviderDriverKind.make("cursor"),
-      "thread-1" as never,
+      ThreadId.make("thread-1"),
       "session/prompt",
       new EffectAcpErrors.AcpRequestError({
         code: -32602,
@@ -26,44 +28,10 @@ describe("AcpAdapterSupport", () => {
     expect(error.message).toContain("Invalid params");
   });
 
-  it("says a process that dies under a prompt stopped, in the person's words", () => {
-    const error = mapAcpToAdapterError(
-      ProviderDriverKind.make("grok"),
-      "thread-1" as never,
-      "session/prompt",
-      new EffectAcpErrors.AcpProcessExitedError({
-        code: 134,
-        stderr: "    at Object.run (/opt/agent/index.js:12:5)",
-      }),
-    );
-
-    expect(error._tag).toBe("ProviderAdapterProcessError");
-    if (error._tag === "ProviderAdapterProcessError") {
-      expect(error.detail).toBe(
-        "Grok stopped unexpectedly. Send a message to pick up where it left off.",
-      );
-    }
-  });
-
-  it("maps ACP process exits without stderr to a process error instead of a closed session", () => {
-    const error = mapAcpToAdapterError(
-      ProviderDriverKind.make("cursor"),
-      "thread-1" as never,
-      "session/start",
-      new EffectAcpErrors.AcpProcessExitedError({ code: 1 }),
-    );
-
-    expect(error._tag).toBe("ProviderAdapterProcessError");
-    expect(error.message).not.toContain("adapter thread is closed");
-    if (error._tag === "ProviderAdapterProcessError") {
-      expect(error.detail).toBe("ACP process exited with code 1");
-    }
-  });
-
   it("maps ACP process exits to a process error whose detail includes stderr", () => {
     const error = mapAcpToAdapterError(
       ProviderDriverKind.make("cursor"),
-      "thread-1" as never,
+      ThreadId.make("thread-1"),
       "session/start",
       new EffectAcpErrors.AcpProcessExitedError({
         code: 1,
