@@ -13,7 +13,6 @@ import {
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
 import {
-  type AccessReport,
   KeyLinkUp,
   type LinkedMate,
   MATE_OVERVIEW_EVERY_MS,
@@ -36,8 +35,6 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 
-import type { AccessRead } from "./ZeropsAccessRead.ts";
-import type { AccessLiveEvent } from "./ZeropsAccessSocket.ts";
 import * as Access from "./ZeropsMateAccessList.ts";
 import * as Tickets from "./ZeropsTicketDoor.ts";
 import * as Connections from "./ZeropsConnections.ts";
@@ -201,8 +198,6 @@ const rig = (
     readonly ticket?: ZeropsHqLinkOptions["ticket"];
     readonly closeSession?: ZeropsHqLinkOptions["closeSession"];
     readonly chiefOpener?: ZeropsHqLinkOptions["chiefOpener"];
-    /** The Mate's own access reports; none unless a test says. */
-    readonly accessReports?: Stream.Stream<AccessReport>;
     readonly mateChanges?: ZeropsHqLinkOptions["mateChanges"];
   } = {},
 ) =>
@@ -252,7 +247,6 @@ const rig = (
       ...(options.ticket === undefined ? {} : { ticket: options.ticket }),
       ...(options.closeSession === undefined ? {} : { closeSession: options.closeSession }),
       ...(options.chiefOpener === undefined ? {} : { chiefOpener: options.chiefOpener }),
-      ...(options.accessReports === undefined ? {} : { accessReports: options.accessReports }),
       ...(options.mateChanges === undefined ? {} : { mateChanges: options.mateChanges }),
       gitCredential: (credential) =>
         Effect.uninterruptible(
@@ -1033,126 +1027,6 @@ describe("ZeropsHqLink", () => {
           );
         }),
       ),
-  );
-
-  it.effect(
-    "reports the Mate's own access list once HQ answered: its latest on every link, then after each recompute",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const named = (at: string, openers: ReadonlyArray<string>): AccessReport => ({
-            at,
-            openers,
-            listed: ["eva"],
-          });
-          const reports = yield* SubscriptionRef.make(
-            named("2026-11-03T10:00:00.000Z", ["jan", "bob"]),
-          );
-          const { sockets } = yield* rig({ accessReports: SubscriptionRef.changes(reports) });
-          const reported = (socket: FakeSocket) =>
-            socket.sent.filter((message) => message.type === "access_report");
-          const first = yield* opened(sockets, 0);
-          assert.deepStrictEqual(reported(first), []);
-          admit(first);
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(reported(first), [
-            { type: "access_report", ...named("2026-11-03T10:00:00.000Z", ["jan", "bob"]) },
-          ]);
-          yield* SubscriptionRef.set(reports, named("2026-11-03T10:05:00.000Z", ["jan"]));
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(reported(first).at(-1), {
-            type: "access_report",
-            ...named("2026-11-03T10:05:00.000Z", ["jan"]),
-          });
-          first.emit("close");
-          yield* TestClock.adjust(Duration.millis(30));
-          const second = yield* linked(sockets, 1);
-          assert.deepStrictEqual(reported(second), [
-            { type: "access_report", ...named("2026-11-03T10:05:00.000Z", ["jan"]) },
-          ]);
-        }),
-      ),
-  );
-
-  it.effect(
-    "Decision: The Mate's access report carries `at`, `openers` and `listed` (full lists every time) and no `missing`; the in-memory baseline and everything that only served it are deleted; the report is still sent on every change of the live list, at start, on reconnect and with the 5 min ± 60 s re-read, unchanged.",
-    () =>
-      Effect.gen(function* () {
-        const member = (userId: string, orgRole: string) => ({
-          clientUserId: `cu-${userId}`,
-          userId,
-          orgRole,
-          status: "ACTIVE",
-          canCreateProjects: false,
-        });
-        const answer = yield* Ref.make<AccessRead>({
-          kind: "read",
-          project: { clientId: "org", overrides: {}, tagList: [] },
-          members: [member("jan", "OWNER"), member("eva", "BASIC_USER")],
-        });
-        /** One run of the Mate's server: its own list and its link, nothing kept in between. */
-        const process = Effect.gen(function* () {
-          const live = yield* Queue.unbounded<AccessLiveEvent>();
-          const list = yield* Access.make({
-            projectId: "P_MATE",
-            read: Ref.get(answer),
-            live: () => Stream.fromQueue(live),
-          });
-          const { sockets } = yield* rig({
-            accessReports: list.reports,
-            reconnectDelaysMs: [1_000],
-          });
-          return { live, sockets };
-        });
-        // When a report was made is the list's own concern; here, what it names.
-        const reported = (socket: FakeSocket): ReadonlyArray<unknown> =>
-          socket.sent.flatMap((message) =>
-            message.type === "access_report" ? [{ ...message, at: "t" }] : [],
-          );
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const { sockets } = yield* process;
-            const first = yield* linked(sockets, 0);
-            assert.deepStrictEqual(reported(first), [
-              { type: "access_report", at: "t", openers: ["jan", "eva"], listed: [] },
-            ]);
-          }),
-        );
-        // Eva is taken away while the Mate restarts: HQ, not the Mate, finds her gone.
-        yield* Ref.set(answer, {
-          kind: "read",
-          project: { clientId: "org", overrides: {}, tagList: [] },
-          members: [member("jan", "OWNER")],
-        });
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const { live, sockets } = yield* process;
-            const first = yield* linked(sockets, 0);
-            assert.deepStrictEqual(reported(first), [
-              { type: "access_report", at: "t", openers: ["jan"], listed: [] },
-            ]);
-            // A frame that lists Ben read-only: the whole list again, HQ never answering a report.
-            yield* Queue.offer(live, {
-              _tag: "frame",
-              frame: { kind: "members", upsert: [member("ben", "READ_ONLY")], remove: [] },
-            });
-            yield* TestClock.adjust(Duration.zero);
-            assert.deepStrictEqual(reported(first).at(-1), {
-              type: "access_report",
-              at: "t",
-              openers: ["jan"],
-              listed: ["ben"],
-            });
-            first.emit("close");
-            // The link's wait and its spread of up to a quarter more.
-            yield* TestClock.adjust(Duration.millis(1_251));
-            const second = yield* linked(sockets, 1);
-            assert.deepStrictEqual(reported(second), [
-              { type: "access_report", at: "t", openers: ["jan"], listed: ["ben"] },
-            ]);
-          }),
-        );
-      }),
   );
 
   it.effect("acknowledges Observe writes and revocation only after their truthful receipt", () =>

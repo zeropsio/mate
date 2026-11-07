@@ -14,8 +14,9 @@
  * (`ZeropsAccessSocket`): each frame applies over the rows the last read and frames left, and the
  * list is recomputed from them; a frame that changes no row changes nothing. Every (re)connect
  * reads again, for what the socket missed. After every read, and every frame that changed a row,
- * whom the list names goes up to HQ (`access_report`), whole every time. It names nobody the
- * Mate's owner: that is HQ's word alone. It is the only list: HQ sends the Mate none.
+ * whom the list names is told to the Mate's own sign-out of removed people (`reports`,
+ * `ZeropsOffboarding`), whole every time. It names nobody the Mate's owner: that is HQ's word
+ * alone. It is the only list and stays in the Mate: HQ is told nothing of it and sends none.
  *
  * The same socket carries the project's process frames (ZEROPS-078): the list hands them on,
  * with each `connected`, to whoever waits on a process (`processes`), and reads none itself.
@@ -30,7 +31,7 @@ import {
   projectAccess,
   type ZeropsOrgMember,
 } from "@t3tools/shared/mateAccess";
-import type { AccessReport, TicketRefusal } from "@t3tools/shared/mateLink";
+import type { TicketRefusal } from "@t3tools/shared/mateLink";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -195,6 +196,13 @@ export const ticketVerdict = (
   return member.visibility === "open" ? "open" : "read_only";
 };
 
+/** Whom the Mate's own list opens its project for and only lists, as of `at` (ISO 8601). */
+export interface AccessReport {
+  readonly at: string;
+  readonly openers: ReadonlyArray<string>;
+  readonly listed: ReadonlyArray<string>;
+}
+
 /** Whom `list` opens for and lists, as of `at`. */
 export const accessNamed = (list: AccessList, at: string): AccessReport => ({
   at,
@@ -232,7 +240,7 @@ export class ZeropsMateAccessList extends Context.Service<
      * flight) if the list does not open for them.
      */
     readonly admits: (userId: string) => Effect.Effect<"open" | TicketRefusal>;
-    /** Whom the own list names, latest first, then after each change (`access_report`). */
+    /** Whom the own list names, latest first, then after each change (`ZeropsOffboarding`). */
     readonly reports: Stream.Stream<AccessReport>;
     /**
      * Fires when the list changes whom it opens for or lists, never when it only aged.

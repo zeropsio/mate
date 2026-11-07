@@ -1,5 +1,4 @@
 import { ZeropsConnections } from "./ZeropsConnections.ts";
-import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import type { TicketFrame } from "./ZeropsTicketDoor.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
@@ -15,9 +14,8 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   changed, at most once per `MATE_OVERVIEW_EVERY_MS`, looked at again when something it is made
  *   of moves — a domain event, the crew's snapshot, a login, the update line — and never on a
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
- *   each new revision; the Mate's own access list (`access_report`), its latest on every link and
- *   again after each recompute, whole every time; `pong` to each of
- *   HQ's pings.
+ *   each new revision; `pong` to each of HQ's pings. The Mate's own access list stays in
+ *   the Mate.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
  *   every session on a moved Chief mark (`chief`), and to `ZeropsMateOwner`, whom it names the
@@ -62,7 +60,6 @@ import { type MateTaskReport, TrimmedNonEmptyString } from "@t3tools/contracts";
 import {
   KeyLinkDown,
   KeyLinkUp,
-  type AccessReport,
   type LinkedMate,
   type TicketRefusal,
   MATE_OVERVIEW_EVERY_MS,
@@ -210,8 +207,6 @@ export interface ZeropsHqLinkOptions {
   readonly chiefOpener?: (userId: string | null | undefined) => Effect.Effect<void>;
   /** Hands on whom each state names the Mate's owner, `null` for none (`ZeropsMateOwner.named`). */
   readonly owner?: (userId: string | null) => Effect.Effect<void>;
-  /** Whom the Mate's own access list names, latest first, then after each change (`access_report`). */
-  readonly accessReports?: Stream.Stream<AccessReport>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
   /** Writes or removes the explicit personal Observe credential, returning its durable receipt. */
@@ -540,12 +535,6 @@ export const makeZeropsHqLink = (
       const attention = Stream.runForEach(options.attention, (value) =>
         send({ type: "attention", attention: value }),
       );
-      const accessReports =
-        options.accessReports === undefined
-          ? Effect.never
-          : Stream.runForEach(options.accessReports, (report) =>
-              send({ type: "access_report", ...report }),
-            );
       /**
        * A task's frame (`task`, `task-message`, `task-stop`), held beside the frames that follow,
        * for as long as the link lives, until HQ's first state; HQ tells it again if that never
@@ -666,7 +655,6 @@ export const makeZeropsHqLink = (
               heard,
               onceAnswered(attention),
               onceAnswered(health),
-              onceAnswered(accessReports),
               ...(usage ? [onceAnswered(usage.run)] : []),
               reporting,
               keyRefusals,
@@ -889,7 +877,6 @@ export const layer = (crew: OverviewSources["crew"]) =>
       }
       const key = yield* ZeropsMateKey;
       const connections = yield* ZeropsConnections;
-      const access = yield* ZeropsMateAccessList;
       const credential = yield* ZeropsGitCredentialFile;
       const observeCredential = yield* ZeropsObserveCredentialFile;
       const signIns = yield* ZeropsSignIns;
@@ -932,7 +919,6 @@ export const layer = (crew: OverviewSources["crew"]) =>
         readKey: Effect.andThen(key.invalidate, key.read),
         ...(key.refusal === undefined ? {} : { keyRefusal: key.refusal }),
         connect: connectLinkSocket,
-        accessReports: access.reports,
         ticket: connections.ticket,
         closeSession: connections.closeSession,
         chiefOpener: connections.chiefOpener,
