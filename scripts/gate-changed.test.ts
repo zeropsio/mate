@@ -857,6 +857,7 @@ it.each([
           "@t3tools/web",
           "@t3tools/desktop",
           "@t3tools/mobile",
+          "@t3tools/test-recordings",
           "t3",
           "t3code-relay",
         ]

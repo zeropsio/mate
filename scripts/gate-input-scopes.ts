@@ -31,6 +31,12 @@ export const testClockFile = (path: string): boolean =>
   /(?:\.test\.ts|\.scenario\.ts)$|(?:^|\/)test\/scenarios\/.+\.ts$/u.test(path);
 export const testClockLedger = "scripts/test-clock-exceptions.json";
 
+// Test and fixture code whose wire-shaped input `scripts/check-test-inputs.ts` counts.
+export const testInputFile = (path: string): boolean =>
+  !path.startsWith(".repos/") &&
+  /\.tsx?$/u.test(path) &&
+  (retainedTestFile.test(path) || /(?:^|\/)__fixtures__\//u.test(path));
+
 /** A case's witness line, `// witness: <owner path> | <old> → <new>`; an empty new text deletes. */
 export interface Witness {
   readonly owner: string;

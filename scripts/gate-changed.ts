@@ -13,6 +13,7 @@ import {
   retainedTestFile,
   testClockFile,
   testClockLedger,
+  testInputFile,
   witnessOwners,
 } from "./gate-input-scopes.ts";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
@@ -46,6 +47,7 @@ export const repositoryInvariants = [
   "scripts/generate-theme-tokens.test.ts",
   "scripts/check-runtime-cycles.test.ts",
   "scripts/mate-readiness.test.ts",
+  "packages/test-recordings/recorded.test.ts",
 ];
 
 // Opt-in local witnesses are bounded; required CI witnesses use the full affected selection.
@@ -1201,6 +1203,12 @@ function stageHashes(
             ...(stage.args.length === 3 ? inventory.filter(testClockFile) : files),
           ];
           baseline = [testClockLedger];
+        } else if (stage.name === "test input ratchet") {
+          // The check reads the changed test and fixture files (and their base), never their imports.
+          files = [
+            ...inputs.inputFiles(["scripts/check-test-inputs.ts"], inventory),
+            ...paths.filter(testInputFile),
+          ];
         } else if (stage.name === "test sentence retention") {
           // Witnesses tie lane tests to their owners and untouched tests to touched owners.
           const touched = new Set(paths);
@@ -1211,7 +1219,9 @@ function stageHashes(
           baseline = laneTests;
           trailers = laneTrailers;
         }
-        if (stage.name !== "check touched files" && stage.name !== "test clock ratchet")
+        if (
+          !["check touched files", "test clock ratchet", "test input ratchet"].includes(stage.name)
+        )
           files = inputs.inputFiles(files, inventory);
         const command = {
           ...stage,
@@ -1626,6 +1636,12 @@ export function selectGateSteps(
       name: "test clock ratchet",
       command: "node",
       args: ["scripts/check-test-clock.ts", "--base", comparison, ...(clockScan ? [] : clockFiles)],
+    });
+  if (paths.some((path) => testInputFile(path) || path === "scripts/check-test-inputs.ts"))
+    steps.push({
+      name: "test input ratchet",
+      command: "node",
+      args: ["scripts/check-test-inputs.ts", "--base", comparison],
     });
   if (existing.length)
     steps.push({

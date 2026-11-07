@@ -532,6 +532,7 @@
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
+    "@t3tools/test-recordings": "workspace:*",
     "@types/node": "catalog:",
     "micromark-util-types": "^2.0.2",
     "vite-plus": "catalog:"
