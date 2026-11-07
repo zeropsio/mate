@@ -203,6 +203,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/gate-changed.test.ts": [],
   "scripts/state-smoke.test.ts": [".github/workflows/ci.yml"],
   "scripts/sync-recordings.test.ts": [],
+  "scripts/check-test-inputs.test.ts": [],
   "scripts/gate-rerun.test.ts": [],
   "scripts/gate-file-inputs.test.ts": [
     "scripts/**/*.test.ts",
