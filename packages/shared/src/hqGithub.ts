@@ -79,14 +79,6 @@ export const HqGithubView = Schema.Union([
      */
     public: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
     installations: Schema.Array(HqGithubInstallation),
-    /**
-     * The Zerops user id of the Owner or Admin who sealed the app's secrets, and when (ISO). Both
-     * `null` for an app nobody is recorded to have sealed: HQ acts with it on nothing
-     * (`needs_owner_seal`) until an Owner or Admin makes it again. Absent from an older HQ, which
-     * keeps no such record and uses the app.
-     */
-    sealedBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
-    sealedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
   }),
 ]);
 export type HqGithubView = typeof HqGithubView.Type;

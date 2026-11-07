@@ -6,8 +6,6 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqAiKeyView, HqIntakeView } from "@t3tools/shared/hqIntake";
 import type { HqNavigationIntake } from "@t3tools/shared/hqStream";
 
-import { type NameOf, sealedWords } from "./automationSettings.logic";
-
 /** `owner/name` of a GitHub repository's address; null for any other host. */
 export function githubRepoOf(url: string): string | null {
   let parsed: URL;
@@ -38,14 +36,13 @@ export function intakeRepoChoices(
   return [...choices];
 }
 
-/** The key's line: who set it and when, or that it is not set. */
+/** The key's line: when it was set, or that it is not. */
 export function aiKeyLine(
-  view: Pick<HqAiKeyView, "set" | "setAt" | "setBy"> | undefined,
+  view: Pick<HqAiKeyView, "set" | "setAt"> | undefined,
   day: (iso: string) => string,
-  nameOf: NameOf,
 ): string {
   if (view === undefined || !view.set) return "Not set";
-  return `Set${sealedWords(view.setBy, view.setAt, nameOf, day)}`;
+  return view.setAt === null ? "Set" : `Set on ${day(view.setAt)}`;
 }
 
 /** Where an application's automated Mates take tasks from, in a line. */

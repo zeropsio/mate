@@ -15,6 +15,7 @@ import { hqMateAttentionScope } from "../families/mateAttention.ts";
 import {
   hqAppsScope,
   hqOrganizationScope,
+  hqPeopleScope,
   hqPressesScope,
   hqStatusScope,
   placementsScope,
@@ -24,7 +25,6 @@ import {
 } from "../families/hqNavigation.ts";
 import { linkKeys, type ScopeKey } from "../model.ts";
 import { graceOver } from "./account.ts";
-import { seedMembers } from "./hqProjectPeople.ts";
 import type { Row } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
@@ -85,6 +85,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     hqStatusScope(orgId),
     hqAppsScope(orgId),
     placementsScope(orgId),
+    hqPeopleScope(orgId),
     hqPressesScope(orgId),
     hqLifecycleScope(orgId),
   ];
@@ -221,6 +222,12 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
         everSignedIn: project.mate.signers ?? {},
       },
     })),
+    ...Object.entries(seed.people ?? {}).map(([id, person]): Row => ({
+      family: "hqPerson",
+      id,
+      revision,
+      value: { name: person.name, clientUserId: person.clientUserId ?? "", avatarUrl: null },
+    })),
     ...Object.entries(seed.presses ?? {}).map(([id, press]): Row => ({
       family: "hqPress",
       id,
@@ -238,7 +245,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     removals: [],
   });
   store.dispatch({ kind: "hq-ready", scopes: navigationScopes });
-  if (seed.people !== undefined) seedMembers(store, orgId, seed.people);
   for (const record of seed.lifecycle ?? []) {
     store.dispatch({
       kind: "operation-recorded",

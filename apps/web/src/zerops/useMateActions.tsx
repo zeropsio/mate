@@ -937,11 +937,8 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
       cleanup?: {
         readonly preparedRequestId: string;
       },
-      /**
-       * Its project, where this is its last Mate: deleted too, its own Delete runs once the Mate
-       * is gone; kept, that choice answers HQ's question whether to keep the project's Git.
-       */
-      application?: { readonly target: DeleteApplicationTarget; readonly also: boolean },
+      /** Its project, which the person chose to delete too: its own Delete runs once it is gone. */
+      alsoApplication?: DeleteApplicationTarget,
       birthTarget?: { readonly birthId: string; readonly projectId: string },
     ) => {
       if (activeOrganization === null) return;
@@ -1061,15 +1058,6 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
             unobserved: "HQ must confirm the key cleanup before this deletion is finished.",
           },
         );
-        // HQ asks Owners and Admins whether to keep the Git of a project its last Mate left; the
-        // person already said keep. An answer HQ does not take leaves the question in the menu.
-        if (application !== undefined && !application.also && isCurrent())
-          await operations.submit({
-            kind: "answer-kept-git",
-            orgId: clientId,
-            appId: application.target.appId,
-            answer: "keep",
-          });
       })()
         .finally(() => {
           writing.current.delete(key);
@@ -1082,10 +1070,10 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
             if (birthTarget !== undefined) setDeletingBirth(null);
             else replyToDialog(null);
             if (candidate !== undefined) leaveDeleted(candidate);
-            if (application?.also === true)
+            if (alsoApplication !== undefined)
               useDeleteApplicationDialog
                 .getState()
-                .open({ target: application.target, confirmed: true });
+                .open({ target: alsoApplication, confirmed: true });
           },
           (cause: unknown) => {
             if (!isCurrent()) return;
@@ -1584,9 +1572,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
             deleteMate(
               dialog.candidate,
               dialog.cleanup,
-              deletingApplication === undefined
-                ? undefined
-                : { target: deletingApplication, also: alsoApplication },
+              alsoApplication ? deletingApplication : undefined,
             );
           }}
           onOpenChange={(open) => {

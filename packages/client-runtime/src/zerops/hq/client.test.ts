@@ -32,8 +32,6 @@ interface Seen {
   readonly search: string;
   readonly authorization: string | null;
   readonly accept: string | null;
-  /** `X-Zerops-Access-Token`: the person's Zerops token beside the session. */
-  readonly zeropsToken: string | null;
   readonly body: unknown;
 }
 
@@ -57,7 +55,6 @@ function fakeHq(
       search: url.search,
       authorization: headers.get("authorization"),
       accept: headers.get("accept"),
-      zeropsToken: headers.get("x-zerops-access-token"),
       body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
     };
     seen.push(request);
@@ -85,29 +82,11 @@ function fakeHq(
   };
 }
 
-/**
- * The person's Zerops sign-in as `ZeropsApiClient.accessToken` answers: the token it holds, the same
- * on every ask, until HQ refuses that one or Zerops renews its session (`renew`); each new one is
- * `access-<n>`.
- */
-/** The access tokens HQ's door was handed, in order: one per door entered. */
-const doorTokens = (hq: { readonly seen: ReadonlyArray<Seen> }) =>
-  hq.seen
-    .filter((entry) => entry.path === "/api/door")
-    .map((entry) => (entry.body as { accessToken: string }).accessToken);
-
 function doors() {
   const minted: string[] = [];
-  let renewed = false;
   return {
     minted,
-    renew: () => {
-      renewed = true;
-    },
-    accessToken: async (refused?: string) => {
-      const held = minted.at(-1);
-      if (held !== undefined && held !== refused && !renewed) return { token: held };
-      renewed = false;
+    accessToken: async () => {
       const token = `access-${minted.length + 1}`;
       minted.push(token);
       return { token };
@@ -142,8 +121,6 @@ it("reads Git content with the person's current token and the HQ session", async
   await expect(
     api.gitBrowse("compare-file", "app", "appdev", { base: sha, head: sha, path: "a.txt" }),
   ).resolves.toEqual({ hunks: null });
-  // Zerops renews the person's session: the next read carries the token current then.
-  door.renew();
   await expect(
     api.gitBrowseBytes("archive", "app", "appdev", { sha, format: "zip" }),
   ).resolves.toBeInstanceOf(Blob);
@@ -151,12 +128,12 @@ it("reads Git content with the person's current token and the HQ session", async
     {
       path: "/api/apps/app/repos/appdev/browse/compare-file",
       session: "session-1",
-      authorization: "Bearer access-1",
+      authorization: "Bearer access-2",
     },
     {
       path: "/api/apps/app/repos/appdev/browse/archive",
       session: "session-1",
-      authorization: "Bearer access-2",
+      authorization: "Bearer access-3",
     },
   ]);
 });
@@ -273,29 +250,6 @@ describe("makeHqApi", () => {
     expect(hq.seen[0]?.body).toEqual({ accessToken: "access-1", orgId: "org-1" });
   });
 
-  // witness: packages/client-runtime/src/zerops/hq/client.ts | : method === "GET" || method === "HEAD" → : false
-  it("Every HQ read carries the person's current Zerops access token beside the session, so HQ serves the projects Zerops lists to them now", async () => {
-    const hq = fakeHq();
-    const door = doors();
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      accessToken: door.accessToken,
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-    });
-    await api.structure();
-    door.renew();
-    await api.structure();
-    await api.mateTicket("p1");
-    expect(hq.seen.map((entry) => [entry.method, entry.path, entry.zeropsToken])).toEqual([
-      ["POST", "/api/door", null],
-      ["GET", "/api/structure", "access-1"],
-      ["GET", "/api/structure", "access-2"],
-      ["POST", "/api/mates/p1/ticket", null],
-    ]);
-  });
-
   describe("renewal", () => {
     const renewing = (endsAt: () => string) => fakeHq(() => undefined, endsAt);
 
@@ -313,7 +267,6 @@ describe("makeHqApi", () => {
       });
       await api.structure();
       clock += 11 * 3_600_000 + 50 * 60_000;
-      door.renew();
       await api.structure();
       expect(
         hq.seen.map((entry) => [entry.path, entry.authorization, (entry.body as any)?.accessToken]),
@@ -348,15 +301,14 @@ describe("makeHqApi", () => {
       () => undefined,
       () => isoAt(clock + 6 * 3_600_000),
     );
-    // Zerops' session, renewed once the clock moved: its token and expiry are those of then.
-    const signedInAt = clock;
+    let issued = 0;
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      accessToken: async () => ({
-        token: clock === signedInAt ? "access-1" : "access-2",
-        expiresAt: isoAt(clock + 6 * 3_600_000),
-      }),
+      accessToken: async () => {
+        issued += 1;
+        return { token: `access-${issued}`, expiresAt: isoAt(clock + 6 * 3_600_000) };
+      },
       orgId: ORG,
       now: () => clock,
       openSocket: NO_SOCKET,
@@ -399,8 +351,7 @@ describe("makeHqApi", () => {
       orgId: ORG,
       openSocket: NO_SOCKET,
     }).structure();
-    // The door's ask, its one renewal, then the read's own token beside the session.
-    expect(asked).toEqual([undefined, "stale", undefined]);
+    expect(asked).toEqual([undefined, "stale"]);
     expect(hq.seen.filter((e) => e.path === "/api/door").map((e) => e.body)).toEqual([
       { accessToken: "stale", orgId: ORG },
       { accessToken: "fresh", orgId: ORG },
@@ -457,7 +408,7 @@ describe("makeHqApi", () => {
         openSocket: NO_SOCKET,
         kept: kept.port,
       }).structure();
-      expect(doorTokens(hq)).toEqual(["access-1"]);
+      expect(reloaded.minted).toEqual([]);
       expect(hq.seen.at(-1)?.authorization).toBe("Bearer session-1");
     });
 
@@ -544,7 +495,7 @@ describe("makeHqApi", () => {
     hq.expire();
 
     await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
-    expect(doorTokens(hq)).toEqual(["access-1", "access-1"]);
+    expect(door.minted).toEqual(["access-1", "access-2"]);
     expect(hq.seen.map((entry) => `${entry.method} ${entry.path} ${entry.authorization}`)).toEqual([
       "POST /api/door null",
       "GET /api/structure Bearer session-1",
@@ -568,7 +519,7 @@ describe("makeHqApi", () => {
     hq.expire();
 
     await Promise.all([api.structure(), api.structure(), api.mateTicket("p1")]);
-    expect(doorTokens(hq)).toEqual(["access-1", "access-1"]);
+    expect(door.minted).toEqual(["access-1", "access-2"]);
   });
 
   it("ends a session whose renewal HQ refuses too, through one door", async () => {
@@ -610,9 +561,10 @@ describe("makeHqApi", () => {
   });
 
   it("ends a session truthfully when its renewal's door is refused", async () => {
-    let doorsSeen = 0;
     const hq = fakeHq((seen) =>
-      seen.path === "/api/door" && ++doorsSeen === 2
+      seen.path === "/api/door" &&
+      seen.body !== undefined &&
+      (seen.body as { accessToken: string }).accessToken === "access-2"
         ? json(401, { code: "zerops_throwaway_required" })
         : undefined,
     );
@@ -630,7 +582,7 @@ describe("makeHqApi", () => {
       kind: "refused",
       code: "zerops_throwaway_required",
     });
-    expect(doorTokens(hq)).toEqual(["access-1", "access-1"]);
+    expect(door.minted).toEqual(["access-1", "access-2"]);
   });
 
   it("waits 45 s for a door that does not answer, then gives it up, and the next call enters again", async () => {
@@ -670,8 +622,7 @@ describe("makeHqApi", () => {
       await expect(first).rejects.toMatchObject({ kind: "unavailable", code: "network" });
 
       await expect(api.structure()).resolves.toEqual({ ungrouped: [], apps: [] });
-      // The first door never reached HQ; the next call entered one of its own.
-      expect(doorTokens(hq)).toEqual(["access-1"]);
+      expect(door.minted).toEqual(["access-1", "access-2"]);
     } finally {
       deadlines.mockRestore();
       vi.useRealTimers();
@@ -725,30 +676,6 @@ describe("makeHqApi", () => {
     const failure = await api.createApp("Acme").catch((cause: unknown) => cause);
     expect(failure).toBeInstanceOf(HqError);
     expect(failure).toMatchObject(expected);
-  });
-
-  // witness: packages/client-runtime/src/zerops/hq/client.ts | : code === "zerops_unavailable" && body.reason === "no_credential" → : false
-  it("a structure verb HQ holds no Zerops credential for says so, not that HQ is not answering", async () => {
-    const hq = fakeHq((seen) =>
-      seen.path === "/api/apps"
-        ? json(503, { code: "zerops_unavailable", reason: "no_credential" })
-        : undefined,
-    );
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      accessToken: doors().accessToken,
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-    });
-    const failure = await api.createApp("Acme").catch((cause: unknown) => cause);
-    expect(failure).toBeInstanceOf(HqError);
-    expect(failure).toMatchObject({
-      kind: "unavailable",
-      code: "zerops_unavailable",
-      message:
-        "HQ has no access key for this project in Zerops, so it did nothing. Open the project's Mate, or renew its deploy token, then try again.",
-    });
   });
 });
 
@@ -809,8 +736,6 @@ describe("Git token refusals", () => {
       "The organization's GitHub app isn't installed on this repository. Add the repository to the app on GitHub, then try again.",
     app_unavailable:
       "GitHub didn't let the organization's GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
-    needs_owner_seal:
-      "The organization's GitHub app needs to be made again by an Owner or Admin before Mate uses it. They do it in Settings › Automation › GitHub.",
     object_too_large:
       "A file in this repository's history is larger than 100 MiB. HQ takes files up to 100 MiB, as GitHub does.",
   } satisfies Record<HqRemoteRefusalReason, string>;
@@ -1125,7 +1050,7 @@ describe("makeHqApi — the structure socket", () => {
     (await sockets.next()).on.close(4401);
     opening(api);
     await sockets.next();
-    expect(doorTokens(hq)).toEqual(["access-1", "access-1"]);
+    expect(door.minted).toEqual(["access-1", "access-2"]);
     expect(hq.seen.at(-1)).toMatchObject({
       path: "/api/stream-ticket",
       authorization: "Bearer session-2",
@@ -1134,13 +1059,12 @@ describe("makeHqApi — the structure socket", () => {
 
   // Audit K7: the session HQ ended over the socket is not presented again by the next load.
   it("forgets the kept session HQ ended over the socket (4401), and keeps its renewal", async () => {
-    const hq = ticketing();
     let kept: string | null = null;
     const door = doors();
     const sockets = fakeSockets();
     const api = makeHqApi({
       address: ADDRESS,
-      fetch: hq.fetch,
+      fetch: ticketing().fetch,
       accessToken: door.accessToken,
       orgId: ORG,
       openSocket: sockets.openSocket,
@@ -1160,7 +1084,7 @@ describe("makeHqApi — the structure socket", () => {
 
     opening(api);
     await sockets.next();
-    expect(doorTokens(hq)).toEqual(["access-1", "access-1"]);
+    expect(door.minted).toEqual(["access-1", "access-2"]);
     expect(kept).toBe("session-2");
   });
 

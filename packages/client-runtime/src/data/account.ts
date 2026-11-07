@@ -284,10 +284,7 @@ export function observeAccount(options: {
   readonly kinds?: ReadonlyArray<RegisteredOperationKind>;
 }): AccountObservation {
   let shown: { readonly orgId: string; readonly link: RunningLink } | null = null;
-  /**
-   * Lets go of what the shown organization holds beside its link: the own rows of the Mates HQ
-   * places that the roster does not list yet, and the member list that names HQ's people.
-   */
+  /** Lets go of the own rows of the Mates HQ places that the shown roster does not list yet. */
   let stopPlaced: (() => void) | null = null;
   /** The HQ the app named last: observed while it is the shown organization's. */
   let wantedHq: ShownHq | null = null;
@@ -392,20 +389,11 @@ export function observeAccount(options: {
       const link = startZeropsNavigation({ ...options, orgId });
       shown = { orgId, link };
       attach("zerops");
-      const stopRows = holdPlacedProjectRows({
+      stopPlaced = holdPlacedProjectRows({
         store: options.store,
         orgId,
         demandDetail: observation.demandDetail,
       });
-      // HQ names people by Zerops user id alone: the member list names and pictures them.
-      const stopMembers = observation.demandDetail({
-        family: "organizationMembers",
-        ownerId: orgId,
-      });
-      stopPlaced = () => {
-        stopRows();
-        stopMembers();
-      };
       followHq();
     },
     showHq: (next) => {

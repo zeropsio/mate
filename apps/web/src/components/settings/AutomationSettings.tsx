@@ -12,7 +12,6 @@ import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 
 import { automatedKeyState } from "~/zerops/automatedMate.logic";
 import { useOrgAiKeys } from "~/zerops/useAutomationSettings";
-import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { AutomatedMatesUnsupported, OrganizationKeyView } from "./AutomatedMatesSettings";
@@ -95,8 +94,6 @@ export function AutomationSettings({
 
 function AdminParts({ returned }: { readonly returned: GithubReturn }) {
   const { read, setKey, removeKey, again } = useOrgAiKeys(true);
-  const { activeOrganization } = useZeropsSession();
-  const nameOf = useHqPersonNames(activeOrganization?.id);
   // An HQ that keeps no organization keys predates automated Mates: one line, nothing to set.
   if (automatedKeyState(read.keys) === "unsupported") return <AutomatedMatesUnsupported />;
   return (
@@ -104,7 +101,6 @@ function AdminParts({ returned }: { readonly returned: GithubReturn }) {
       <IntegrationList>
         {NEBIUS === undefined ? null : (
           <OrganizationKeyView
-            nameOf={nameOf}
             onAgain={again}
             onRemove={removeKey}
             onSet={setKey}
@@ -113,7 +109,7 @@ function AdminParts({ returned }: { readonly returned: GithubReturn }) {
           />
         )}
         <GithubAppSettings admin returned={returned} />
-        <TaskSourcesSettings nameOf={nameOf} />
+        <TaskSourcesSettings />
       </IntegrationList>
       <TaskLimitsSettings />
     </>

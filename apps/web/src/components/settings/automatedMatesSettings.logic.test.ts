@@ -1,5 +1,3 @@
-import { HqAiKeyView } from "@t3tools/shared/hqIntake";
-import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -10,7 +8,6 @@ import {
   intakeRepoChoices,
 } from "./automatedMatesSettings.logic";
 
-const decodeAiKey = Schema.decodeUnknownSync(HqAiKeyView);
 const remote = (url: string) => ({
   url,
   repositoryId: null,
@@ -115,20 +112,6 @@ describe("the organization's API key", () => {
     ["set, with its day", { set: true, setAt: "2026-10-17T09:00:00.000Z" }, "Set on 2026-10-17"],
     ["set, its day unknown", { set: true, setAt: null }, "Set"],
   ] as const)("says it is %s, never its value", (_case, view, line) => {
-    expect(aiKeyLine(view, day, () => undefined)).toBe(line);
+    expect(aiKeyLine(view, day)).toBe(line);
   });
-});
-
-// witness: apps/web/src/components/settings/automatedMatesSettings.logic.ts | return `Set${sealedWords(view.setBy, view.setAt, nameOf, day)}`; → return `Set${sealedWords(undefined, view.setAt, nameOf, day)}`;
-it("the organization's model key names the Owner or Admin who set it, as the member list names them", () => {
-  const view = decodeAiKey({
-    provider: "nebius",
-    set: true,
-    setAt: "2026-10-17T09:00:00.000Z",
-    setBy: "u-ada",
-  });
-  const nameOf = (userId: string) => (userId === "u-ada" ? "Ada Lovelace" : undefined);
-  expect(aiKeyLine(view, (iso) => iso.slice(0, 10), nameOf)).toBe(
-    "Set by Ada Lovelace on 2026-10-17",
-  );
 });

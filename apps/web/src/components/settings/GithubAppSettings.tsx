@@ -7,9 +7,7 @@
  * accounts and organizations too: one installed from here comes back accepted, any other waits
  * apart for the Owner's or an Admin's Accept or Suspend, and Mate acts on none of its repositories
  * meanwhile. A private app says it installs only on its owner, and where to make it public.
- * *Disconnect* makes HQ forget it, after saying the app stays on GitHub to delete there. Open, it
- * names the Owner or Admin who set it up; an app nobody is recorded to have set up is used for
- * nothing, and its Owner and Admins *Make again* it from HQ's manifest.
+ * *Disconnect* makes HQ forget it, after saying the app stays on GitHub to delete there.
  */
 import type { TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
@@ -18,11 +16,10 @@ import { useEffect, useState } from "react";
 
 import { appBasePath } from "~/basePath";
 import { useGithubApp } from "~/zerops/useTaskSourceSettings";
-import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Button, InlineButton } from "../ui/button";
-import { OutLink, settingDay } from "./automationParts";
+import { OutLink } from "./automationParts";
 import { ConnectCard, ConnectStep, KeyField } from "./ConnectFlow";
 import {
   appNameProblem,
@@ -30,13 +27,10 @@ import {
   defaultAppName,
   GITHUB_ONE_LINE,
   githubReturnLine,
-  githubSealLine,
   githubReturnTo,
   type GithubReturn,
   githubSection,
   githubStatus,
-  type NameOf,
-  NOBODY_NAMED,
   postManifest,
 } from "./automationSettings.logic";
 import { IntegrationAction, IntegrationRow } from "./IntegrationRow";
@@ -71,11 +65,9 @@ export function GithubAppSettings({
 }) {
   const { read, write, manifest, install, again } = useGithubApp();
   const { activeOrganization } = useZeropsSession();
-  const nameOf = useHqPersonNames(activeOrganization?.id);
   return (
     <GithubAppView
       admin={admin}
-      nameOf={nameOf}
       controls={{
         read,
         manifest,
@@ -115,7 +107,6 @@ export function GithubAppView({
   returned,
   onPost,
   onOpen,
-  nameOf = NOBODY_NAMED,
   defaultOpen = false,
 }: {
   readonly controls: GithubAppControls;
@@ -130,8 +121,6 @@ export function GithubAppView({
   readonly onPost: (view: HqGithubManifestView) => void;
   /** Opens GitHub's install page in this tab: GitHub brings the person back here. */
   readonly onOpen: (url: string) => void;
-  /** A member's name by Zerops user id, as the organization's member list names them. */
-  readonly nameOf?: NameOf;
 }) {
   const { read } = controls;
   const section = githubSection(read.setting, admin);
@@ -140,11 +129,6 @@ export function GithubAppView({
   const working = read.action.kind === "working";
   const problem = taskSourceProblem(read.action);
   const back = githubReturnLine(returned, section);
-  // An app nobody is recorded to have sealed is used for nothing: its Owner or Admin makes it again.
-  const sealNeeded = section.kind === "connected" && section.seal.kind === "needed";
-  const sealLine =
-    section.kind === "connected" ? githubSealLine(section.seal, nameOf, settingDay) : null;
-  const makeApp = section.kind === "none" ? section.connect : sealNeeded && section.manage;
   const toggle = () => {
     setOpen((was) => !was);
     setConfirming(false);
@@ -157,8 +141,6 @@ export function GithubAppView({
       </span>
     ) : back !== null ? (
       <span role="status">{back}</span>
-    ) : sealNeeded ? (
-      sealLine
     ) : section.kind === "connected" ? (
       <>
         Connected as <span className="font-mono text-foreground">{section.botLogin}</span>
@@ -181,11 +163,11 @@ export function GithubAppView({
   return (
     <IntegrationRow
       action={
-        makeApp ? (
+        section.kind === "none" && section.connect ? (
           <IntegrationAction closeWords={null} onToggle={toggle} open={open} primary>
-            {sealNeeded ? "Make again" : "Connect"}
+            Connect
           </IntegrationAction>
-        ) : sealNeeded ? undefined : section.kind === "connected" ? (
+        ) : section.kind === "connected" ? (
           <IntegrationAction closeWords="Close" onToggle={toggle} open={open} primary={false}>
             Manage
           </IntegrationAction>
@@ -199,23 +181,20 @@ export function GithubAppView({
       line={line}
       mark={<GithubIcon className="size-5" />}
       name="GitHub"
-      open={open && (section.kind === "connected" ? !sealNeeded || makeApp : makeApp)}
+      open={open && (section.kind === "connected" || (section.kind === "none" && section.connect))}
       state={
         section.kind === "reading"
           ? { kind: "checking" }
-          : sealNeeded
-            ? { kind: "off", words: "Not in use" }
-            : section.kind === "connected"
-              ? { kind: "on", words: "Connected" }
-              : section.kind === "none"
-                ? { kind: "off", words: "Not connected" }
-                : { kind: "none" }
+          : section.kind === "connected"
+            ? { kind: "on", words: "Connected" }
+            : section.kind === "none"
+              ? { kind: "off", words: "Not connected" }
+              : { kind: "none" }
       }
       surface="settings-github"
     >
-      {section.kind === "none" || sealNeeded ? (
+      {section.kind === "none" ? (
         <CreateApp
-          again={sealNeeded}
           busy={working}
           onCancel={() => {
             setOpen(false);
@@ -230,7 +209,6 @@ export function GithubAppView({
         />
       ) : section.kind === "connected" ? (
         <>
-          {sealLine === null ? null : <p className="text-xs text-muted-foreground">{sealLine}</p>}
           <ul className="grid gap-1.5" data-zerops-surface="settings-github-installations">
             {section.installations.map((installation) => (
               <li className="flex items-center gap-1.5 text-xs" key={installation.id}>
@@ -396,15 +374,12 @@ export function GithubAppView({
 }
 
 function CreateApp({
-  again,
   organization,
   returnTo,
   busy,
   onCancel,
   onCreate,
 }: {
-  /** Making an app nobody is recorded to have sealed again: GitHub makes a new one. */
-  readonly again: boolean;
   readonly organization: string | null;
   readonly returnTo: string;
   readonly busy: boolean;
@@ -436,11 +411,7 @@ function CreateApp({
   return (
     <ConnectCard
       busy={busy || leaving}
-      note={
-        again
-          ? "GitHub makes a new app and brings you back here. Delete the old one in its settings there."
-          : "GitHub brings you back here once the app is made."
-      }
+      note="GitHub brings you back here once the app is made."
       onCancel={onCancel}
       onSubmit={() => {
         const problem = appNameProblem(name);

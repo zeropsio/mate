@@ -405,9 +405,12 @@ function Remote({
           {saving ? "Saving…" : mirrorStateLine(repo, github, now)}
         </p>
         {gate === undefined ? null : (
-          <p className="rv-note" data-zerops-mirror-gate="">
-            {gate}
-          </p>
+          <>
+            <p className="rv-note" data-zerops-mirror-gate="">
+              {gate}
+            </p>
+            <p className="rv-note">Mate checks GitHub's rules every minute.</p>
+          </>
         )}
       </div>
       {connectFollowed !== undefined || unfollow !== undefined ? (

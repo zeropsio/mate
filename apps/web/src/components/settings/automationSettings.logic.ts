@@ -64,75 +64,7 @@ export type GithubSection =
       readonly installTrip: boolean;
       /** `manage`: this person may install it further, judge what waits, or disconnect it. */
       readonly manage: boolean;
-      /** Who sealed it: {@link GithubSeal}. */
-      readonly seal: GithubSeal;
     };
-
-/**
- * Who the app is held as. `sealed`: the Owner or Admin who sealed it (a Zerops user id), and when;
- * `needed`: nobody is recorded to have, so HQ acts with it on nothing until an Owner or Admin makes
- * it again; `unrecorded`: an older HQ, which keeps no such record and uses the app.
- */
-export type GithubSeal =
-  | { readonly kind: "sealed"; readonly by: string; readonly at: string | null }
-  | { readonly kind: "needed" }
-  | { readonly kind: "unrecorded" };
-
-const NEEDS_SEAL =
-  "Nobody is recorded to have set this app up, so Mate uses it for nothing until an Owner or Admin makes it again.";
-
-function githubSeal(view: Extract<HqGithubView, { readonly state: "connected" }>): GithubSeal {
-  if (view.sealedBy === undefined) return { kind: "unrecorded" };
-  if (view.sealedBy === null) return { kind: "needed" };
-  return { kind: "sealed", by: view.sealedBy, at: view.sealedAt ?? null };
-}
-
-/**
- * Who sealed an organization-wide credential and when, as the tail of a line (" by Ada Lovelace on
- * 7 Nov 2026"): the member list names them, and somebody it does not hold goes unnamed.
- */
-export function sealedWords(
-  by: string | null | undefined,
-  at: string | null | undefined,
-  nameOf: NameOf,
-  day: (iso: string) => string,
-): string {
-  const name = by === null || by === undefined ? undefined : nameOf(by);
-  return `${name === undefined ? "" : ` by ${name}`}${at === null || at === undefined ? "" : ` on ${day(at)}`}`;
-}
-
-/** A member's name by Zerops user id; where no member list is read, nobody is named. */
-export type NameOf = (userId: string) => string | undefined;
-export const NOBODY_NAMED: NameOf = () => undefined;
-
-/**
- * Who connected a Slack app or Discord application and when ("Connected by Ada Lovelace on 7 Nov
- * 2026."); `null` from an older HQ, which says neither.
- */
-export function connectedByLine(
-  view: { readonly connectedBy?: string | null; readonly connectedAt?: string | null },
-  nameOf: NameOf,
-  day: (iso: string) => string,
-): string | null {
-  const tail = sealedWords(view.connectedBy, view.connectedAt, nameOf, day);
-  return tail === "" ? null : `Connected${tail}.`;
-}
-
-/** What the open section says of who holds the app; `null` where HQ keeps no record. */
-export function githubSealLine(
-  seal: GithubSeal,
-  nameOf: NameOf,
-  day: (iso: string) => string,
-): string | null {
-  switch (seal.kind) {
-    case "unrecorded":
-      return null;
-    case "needed":
-      return NEEDS_SEAL;
-    case "sealed":
-      return `Set up${sealedWords(seal.by, seal.at, nameOf, day)}.`;
-  }
-}
 
 /**
  * Where an installation stands: what HQ says, or for an HQ that predates the guard, accepted
@@ -215,7 +147,6 @@ export function githubSection(setting: SettingValue<HqGithubView>, admin: boolea
         privateTo: view.public === false ? { owner: view.owner, ...makePublicAt(view) } : null,
         installTrip: view.public !== undefined,
         manage: admin,
-        seal: githubSeal(view),
       };
     }
   }

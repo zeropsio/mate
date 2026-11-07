@@ -71,6 +71,7 @@ import type { Family, MemberState, ScopeKey } from "../model.ts";
 import {
   hqAppFamily,
   hqOrganizationFamily,
+  hqPersonFamily,
   hqPressFamily,
   hqStatusFamily,
   placementFamily,
@@ -190,6 +191,7 @@ export const FAMILIES = defineFamilies([
   hqStatusFamily,
   hqAppFamily,
   placementFamily,
+  hqPersonFamily,
   hqPressFamily,
   hqKeptGitFamily,
   hqMateFamily,

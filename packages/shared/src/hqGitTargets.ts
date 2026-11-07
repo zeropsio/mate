@@ -34,7 +34,6 @@ export const HqRemoteRefusalReason = Schema.Literals([
   "key_unavailable",
   "app_not_installed",
   "app_unavailable",
-  "needs_owner_seal",
   "object_too_large",
 ]);
 export type HqRemoteRefusalReason = typeof HqRemoteRefusalReason.Type;
@@ -112,8 +111,6 @@ const REMOTE_WORDS: Record<HqRemoteRefusalReason, string> = {
     "The organization's GitHub app isn't installed on this repository. Add the repository to the app on GitHub, then try again.",
   app_unavailable:
     "GitHub didn't let the organization's GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
-  needs_owner_seal:
-    "The organization's GitHub app needs to be made again by an Owner or Admin before Mate uses it. They do it in Settings › Automation › GitHub.",
   object_too_large:
     "A file in this repository's history is larger than 100 MiB. HQ takes files up to 100 MiB, as GitHub does.",
 };

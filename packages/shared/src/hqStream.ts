@@ -118,16 +118,13 @@ export const HqStreamRequest = Schema.Union([
     type: Schema.Literal("retry"),
     /** Omitted scopes retry this person's refused journals, including before subscribing. */
     scopes: Schema.optionalKey(Schema.Array(HqScope).check(Schema.isMaxLength(128))),
-    /** The person's current Zerops access token: HQ reads the scopes again with it. */
-    accessToken: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("subscribe"),
     scopes: Schema.Array(HqSubscription).check(Schema.isMaxLength(128)),
     /**
-     * The person's current Zerops access token: HQ admits a
-     * {@link HQ_PROTECTED_SCOPE_KINDS protected scope} on one read with it, and reads with it what
-     * any scope shows of Zerops (owners, "mine", usage owners).
+     * The person's current Zerops access token, which a frame asking a
+     * {@link HQ_PROTECTED_SCOPE_KINDS protected scope} carries: HQ admits it on one read with it.
      */
     accessToken: Schema.optionalKey(Schema.String),
   }),
@@ -177,14 +174,6 @@ export const HqScopeFailure = Schema.Struct({
   disposition: Schema.Literals(["refused", "transient", "corrupt"]),
 });
 export type HqScopeFailure = typeof HqScopeFailure.Type;
-/**
- * A change concerns a scope the socket holds. It carries no data: the client's `retry` naming the
- * scope, with the person's token, is the read that answers it, and HQ signals it once until then.
- */
-export const HqScopeChanged = Schema.Struct({
-  type: Schema.Literal("scope-changed"),
-  scope: HqScope,
-});
 /** Raised when the client requires new navigation facts; independent of the build label. */
 export const HQ_NAVIGATION_PROTOCOL = 1;
 export const AUTO_UPDATE_POLICY_PROTOCOL = 1;
@@ -220,6 +209,12 @@ export const HqMoveOffersError = Schema.Struct({
   reason: Schema.NullOr(Schema.String),
   disposition: Schema.Literals(["refused", "transient"]),
 });
+export const HqNavigationPerson = Schema.Struct({
+  name: Schema.String,
+  clientUserId: Schema.String,
+  avatarUrl: Schema.NullOr(Schema.String),
+});
+export type HqNavigationPerson = typeof HqNavigationPerson.Type;
 /** On-demand read; the result has the same shape as Changes.compare. Never broadcast. */
 export const HqCompareMessage = Schema.Struct({
   type: Schema.Literal("compare"),
@@ -240,7 +235,6 @@ export const HqCompareError = Schema.Struct({
 export const HqStreamMessage = Schema.Union([
   HqScopeDelivery,
   HqScopeFailure,
-  HqScopeChanged,
   HqScopeReady,
   HqMoveOffersMessage,
   HqMoveOffersError,

@@ -10,7 +10,6 @@ import { hqFixtureWire } from "./__fixtures__/hqWire.ts";
 import { fixtureWire } from "./__fixtures__/zeropsWire.ts";
 import { observeAccount, startZeropsNavigation } from "./account.ts";
 import { hqAppsScope, hqPressesScope } from "./families/hqNavigation.ts";
-import { membersScope } from "./families/organizationMembers.ts";
 import { historyScope, runningScope } from "./families/process.ts";
 import { projectsScope } from "./families/project.ts";
 import { linkKeys, type OperationIntent } from "./model.ts";
@@ -75,42 +74,6 @@ describe("startZeropsNavigation", () => {
 
 describe("observeAccount", () => {
   const HISTORY_PATH = "/project/p1/process?limit=100";
-  // witness: packages/client-runtime/src/data/account.ts | const stopMembers = observation.demandDetail({ → const stopMembers = () => ({
-  it.live(
-    "The organization shown has its member list read, which names the people HQ names by user id, and switching lets it go",
-    () =>
-      Effect.gen(function* () {
-        const store = makeAccountStore(AtomRegistry.make());
-        const fixture = fixtureWire((request) =>
-          Effect.succeed(
-            request.method === "GET"
-              ? { status: 200, body: { list: [] } }
-              : request.body?.wsOutputType === "listStream"
-                ? { items: [] }
-                : {},
-          ),
-        );
-        const account = observeAccount({ store, wire: fixture.wire, repairSession: Effect.void });
-        account.show("org-a");
-        expect(streamOf(store.state(), membersScope("org-a")).demanded).toBe(true);
-        yield* until(
-          store,
-          () =>
-            fixture.requests.some(
-              (request) => request.path === "/client/org-a/user/list?limit=100",
-            ),
-          "org-a's member list to be read",
-        );
-        account.show("org-b");
-        yield* until(
-          store,
-          () => !streamOf(store.state(), membersScope("org-a")).demanded,
-          "org-a's member list to be let go",
-        );
-        expect(streamOf(store.state(), membersScope("org-b")).demanded).toBe(true);
-        account.close();
-      }),
-  );
   it.live(
     "reads a detail held before an organization is shown once it is, and again on a switch",
     () =>

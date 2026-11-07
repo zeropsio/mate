@@ -210,23 +210,6 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
       const list = projectsOf(projectList[1]!);
       return json(200, { list, total: list.length });
     }
-    // The organization's member list: every account holding a membership there.
-    const memberList = /^GET \/client\/([^/]+)\/user\/list$/.exec(request.route);
-    if (memberList !== null) {
-      const clientId = memberList[1]!;
-      if (bearer === undefined) return failure(401, "unauthorized");
-      if (!memberOf(bearer, clientId)) return failure(403, "forbidden");
-      const clientUserList = [...accounts.values()].flatMap(({ user }) =>
-        (user.clientUserList ?? [])
-          .filter((membership) => membership.clientId === clientId)
-          .map((membership) => ({
-            ...membership,
-            userId: user.id,
-            user: { id: user.id, email: user.email, fullName: user.fullName },
-          })),
-      );
-      return json(200, { clientUserList });
-    }
     const projectRoute = /^(GET|PUT) \/project\/([^/]+)$/.exec(request.route);
     if (projectRoute !== null) {
       const [, method, projectId] = projectRoute;

@@ -29,9 +29,6 @@ async function reader(): Promise<{ read: ReadGroupAgents; asked: () => ReadonlyA
     registry,
     orgId: "org-1",
     answer: (path, search) => {
-      // The shown organization's member list, read beside every view of it.
-      if (path.includes("/user/list"))
-        return Promise.resolve({ status: 200, body: { clientUserList: [] } });
       const terms = (search?.search ?? []) as ReadonlyArray<{ name: string; value: unknown }>;
       const serviceId = String(terms.find((term) => term.name === "serviceStackId")?.value);
       asked.push(`${path} ${serviceId}`);

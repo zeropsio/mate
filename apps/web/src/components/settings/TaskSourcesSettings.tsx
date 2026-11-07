@@ -27,16 +27,7 @@ import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Radio, RadioGroup } from "../ui/radio-group";
-import {
-  HeldRoom,
-  IntakeRoom,
-  pressWords,
-  settingDay,
-  TextField,
-  WITHHELD,
-  working,
-} from "./automationParts";
-import { connectedByLine, type NameOf, NOBODY_NAMED } from "./automationSettings.logic";
+import { HeldRoom, IntakeRoom, pressWords, TextField, WITHHELD, working } from "./automationParts";
 import {
   AppChannelView,
   AppSchedulesView,
@@ -99,7 +90,7 @@ interface App {
  * the limits on each task. Which channel, webhooks and schedules feed a project's automated Mates
  * is set on that project's page.
  */
-export function TaskSourcesSettings({ nameOf }: { readonly nameOf: NameOf }) {
+export function TaskSourcesSettings() {
   const slack = useOrgTaskSource("hqSlack");
   const discord = useOrgTaskSource("hqDiscord");
   if (taskSourcesUnsupported([slack.read.setting, discord.read.setting]))
@@ -110,8 +101,8 @@ export function TaskSourcesSettings({ nameOf }: { readonly nameOf: NameOf }) {
     );
   return (
     <>
-      <SlackSettingsView controls={slack} nameOf={nameOf} />
-      <DiscordSettingsView controls={discord} nameOf={nameOf} />
+      <SlackSettingsView controls={slack} />
+      <DiscordSettingsView controls={discord} />
     </>
   );
 }
@@ -142,11 +133,6 @@ export function TaskSourcesUnsupported() {
 }
 
 // ── the parts every section shares ──────────────────────────────────────────────────────────
-
-/** Who connected it and when, as HQ holds it; nothing from an older HQ. */
-function ConnectedBy({ line }: { readonly line: string | null }) {
-  return line === null ? null : <p className="text-xs text-muted-foreground">{line}</p>;
-}
 
 const TASK_SOURCES_UPDATE = "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
 
@@ -308,12 +294,9 @@ export function SlackSettingsView({
   controls,
   manifest,
   channels,
-  nameOf = NOBODY_NAMED,
   defaultOpen = false,
 }: {
   readonly controls: Controls<"hqSlack">;
-  /** A member's name by Zerops user id, as the organization's member list names them. */
-  readonly nameOf?: NameOf;
   /** The manifest's read, where the harness hands it; else read while the steps show. */
   readonly manifest?: Controls<"hqSlackManifest">;
   /** The bot's channels' read, where the harness hands it; else read while it is managed. */
@@ -380,7 +363,6 @@ export function SlackSettingsView({
           }
           warning="Disconnecting stops every project taking tasks from Slack until it connects again."
         >
-          <ConnectedBy line={connectedByLine(view, nameOf, settingDay)} />
           <AddressField
             hint="Where Slack sends what happens in the workspace: Event Subscriptions › Request URL."
             label="Request URL"
@@ -644,12 +626,9 @@ const DISCORD_ENDPOINT = "Interactions Endpoint URL";
 
 export function DiscordSettingsView({
   controls,
-  nameOf = NOBODY_NAMED,
   defaultOpen = false,
 }: {
   readonly controls: Controls<"hqDiscord">;
-  /** A member's name by Zerops user id, as the organization's member list names them. */
-  readonly nameOf?: NameOf;
   /** Its press's part opened from the start: the harness's and a test's. */
   readonly defaultOpen?: boolean;
 }) {
@@ -702,7 +681,6 @@ export function DiscordSettingsView({
           }
           warning="Disconnecting stops every project taking tasks from Discord."
         >
-          <ConnectedBy line={connectedByLine(view, nameOf, settingDay)} />
           <DiscordConnected controls={controls} view={view} />
         </ManagePanel>
       ) : (
