@@ -36,7 +36,9 @@ Losing a link is not a release. Use the source's realtime
 contract where available. A request stays within the source's per-request bounds, declared once
 beside its wire schema; a longer list goes as several requests. The change notices read together are answered by one
 ask, so the source shares that ask's reads among them. A sampled source declares its demand and freshness policy centrally;
-components never add independent fetch, polling or recovery loops.
+components never add independent fetch, polling or recovery loops. A value its family reads once
+is read again on our own write, the person's again, or a pushed row that says it changed, never on
+a cadence in case it did.
 
 Projections are pure functions over keyed facts, source coverage, access and operations. Surfaces
 read projections, express demand and submit intents. They do not own a second remote cache, infer

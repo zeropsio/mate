@@ -155,29 +155,15 @@ const decodeUpdates = Schema.decodeUnknownOption(UpdateData);
 const decodeList = Schema.decodeUnknownOption(ListAnswer);
 const decodeIdentified = Schema.decodeUnknownOption(Identified);
 
-/** Whether a sampled value still changes without our write (`agesWhile`). */
-function agesNow(
-  sampled: { readonly agesWhile?: ((value: never) => boolean) | undefined },
-  value: unknown,
-): boolean {
-  return sampled.agesWhile?.(value as never) === true;
-}
-
 /**
- * When a sampled value read at `readAt` stops being fresh: its family's age, where it names one
- * and the value does not still change without our write; the sampled cadence otherwise.
+ * When a sampled value read at `readAt` stops being fresh: its family's age, where it names one;
+ * the sampled cadence otherwise.
  */
 function freshUntil(
-  sampled: {
-    readonly freshMs: number | null;
-    readonly agesWhile?: ((value: never) => boolean) | undefined;
-  },
+  sampled: { readonly freshMs: number | null },
   readAt: number,
-  value: unknown,
 ): number | undefined {
-  return sampled.freshMs !== null && sampled.freshMs > 0 && !agesNow(sampled, value)
-    ? readAt + sampled.freshMs
-    : undefined;
+  return sampled.freshMs !== null && sampled.freshMs > 0 ? readAt + sampled.freshMs : undefined;
 }
 
 /** Each row its family decodes; a damaged row is refused alone, its neighbours admitted. */
@@ -987,22 +973,17 @@ export function zeropsNavigationLink(options: {
           const readAt = sampledAt.get(scope);
           const now = yield* Clock.currentTimeMillis;
           // A sampled value read within its freshness is the answer to a new demand: nothing is
-          // read, and its next revalidation comes when that read stops being fresh. A value that
-          // still ages is never fresh.
+          // read, and its next revalidation comes when that read stops being fresh.
           const held = store.state().facts.get(factKey(spec.family, ownerId));
           if (
             sampled !== undefined &&
             readAt !== undefined &&
             (sampled.freshMs === null || now - readAt < sampled.freshMs) &&
-            held !== undefined &&
-            !(held.content.kind === "value" && agesNow(sampled, held.content.value))
+            held !== undefined
           )
             return yield* signal(scope, {
               kind: "baseline-committed",
-              freshUntil:
-                held.content.kind === "value"
-                  ? freshUntil(sampled, readAt, held.content.value)
-                  : undefined,
+              freshUntil: held.content.kind === "value" ? freshUntil(sampled, readAt) : undefined,
             });
           store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
           const navigationGeneration = streamOf(store.state(), scopeOf(spec, orgId)).generation;
@@ -1165,8 +1146,7 @@ export function zeropsNavigationLink(options: {
             if (heldAnswer === undefined) askedAfresh.delete(scope);
             return yield* signal(scope, {
               kind: "baseline-committed",
-              ages: agesNow(sampled, value),
-              freshUntil: freshUntil(sampled, answeredAt, value),
+              freshUntil: freshUntil(sampled, answeredAt),
             });
           }
           const items = detail?.zerops.items(answer.body, owner);
