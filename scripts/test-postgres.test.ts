@@ -626,7 +626,38 @@ it("a run whose cluster volume has less free space than the floor is refused bef
   }
 });
 
-// witness: scripts/test-postgres.ts | pruneOrphanedClusters({ home: postgresHome, report: stderrLine }); → stderrLine("");
+// witness: scripts/test-postgres.setup.ts |   ensureRoom(postgresHome); → void postgresHome;
+it("a test run on a disk without room stops at its start, before any case, even when another run's PostgreSQL supervisor already serves", async () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-room-"));
+  const home = NodePath.join(root, "home");
+  NodeFS.mkdirSync(home);
+  // Another run's supervisor: it answers every request, so only the room check can stop the run.
+  const served = NodeNet.createServer((socket) =>
+    socket.on("data", () => socket.write(`${JSON.stringify({ url: "postgres://served" })}\n`)),
+  );
+  await new Promise<void>((resolve) =>
+    served.listen(NodePath.join(home, "supervisor.sock"), resolve),
+  );
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.stubEnv("MATE_TEST_PG_MIN_FREE_BYTES", String(Number.MAX_SAFE_INTEGER));
+  vi.resetModules();
+  try {
+    const { default: setup } = await import("./test-postgres.setup.ts");
+    const refusal = await setup().then(
+      () => "",
+      (error: unknown) => String(error),
+    );
+    expect(refusal).toMatch(
+      /holding the PostgreSQL test cluster is full: \d+\.\d MiB free, below the 8589934592\.0 MiB a run needs/u,
+    );
+  } finally {
+    vi.unstubAllEnvs();
+    await new Promise<void>((resolve) => served.close(() => resolve()));
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// witness: scripts/test-postgres.ts | pruneOrphanedClusters({ home, report: stderrLine }); → stderrLine("");
 it("a run reclaims a removed worktree's test PostgreSQL home before it judges the volume's free space", async () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-room-"));
   const home = NodePath.join(root, "mate-test-pg-501");
