@@ -44,7 +44,6 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/zerops/storage.ts",
   "apps/web/src/zerops/ZeropsSessionProvider.tsx",
   "apps/web/src/zerops/handover.ts",
-  "apps/web/src/zerops/hqSignIn.ts",
   "apps/web/src/zerops/navigationStorage.ts",
   "apps/web/src/zerops/reauth.ts",
   "apps/web/src/zerops/keptSessions.ts",

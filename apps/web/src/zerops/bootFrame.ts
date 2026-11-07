@@ -16,7 +16,9 @@ import {
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "~/components/threadSidebarWidth";
 import type { ZeropsSessionStatus } from "./ZeropsSessionProvider";
+import { zeropsSignInMode } from "./signInMode";
 import {
+  BOOT_FRAME_SHARED,
   BOOT_FRAME_SIGNED_IN,
   BOOT_FRAME_STORAGE_KEY,
   bootFrameMemory,
@@ -83,7 +85,11 @@ export function rememberBootFrame(status: ZeropsSessionStatus): void {
   if (memory === "keep") return;
   try {
     if (memory === "remember") {
-      writeBrowserStorage(window.localStorage, BOOT_FRAME_STORAGE_KEY, BOOT_FRAME_SIGNED_IN);
+      writeBrowserStorage(
+        window.localStorage,
+        BOOT_FRAME_STORAGE_KEY,
+        zeropsSignInMode() === "zerops-hq" ? BOOT_FRAME_SHARED : BOOT_FRAME_SIGNED_IN,
+      );
     } else {
       window.localStorage.removeItem(BOOT_FRAME_STORAGE_KEY);
       // Signed out, a frame shown again is the sign-in's.

@@ -17,7 +17,6 @@ import { keepBootFrame } from "./zerops/bootFrame";
 import { staleChunkRecovery } from "./lib/staleChunk";
 import { warmAppChunksAfterSettling } from "./lib/appChunks";
 import { pressesInFlight } from "./zerops/matePress";
-import { captureZeropsHqSignIn } from "./zerops/hqSignIn";
 import { appBasePath } from "./basePath";
 import { preloadChatView } from "./components/ChatViewBoundary";
 import { addressOpensConversation } from "./routes/-environmentRoute";
@@ -26,9 +25,6 @@ import { isHostedStaticApp } from "./hostedPairing";
 
 // Every Zerops link and the sign-in hand-over go to this build's Zerops app.
 configureZeropsGui(import.meta.env.VITE_ZEROPS_APP_URL);
-
-// HQ's card sign-in leaves the address before the router reads it (`zerops/hqSignIn.ts`).
-captureZeropsHqSignIn();
 
 // Electron loads the app from a file-backed shell, so hash history avoids path resolution issues.
 const history = isElectron ? createHashHistory() : createBrowserHistory();

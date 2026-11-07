@@ -29,7 +29,6 @@
   "files": [
     "test/scenarios/fakes/fakeClock.ts",
     "test/scenarios/fakes/zerops.ts",
-    "test/scenarios/fakes/zeropsDeviceLogin.ts",
     "test/scenarios/fakes/zeropsWorld.ts",
     "test/scenarios/fakes/zeropsWrites.ts",
     "test/scenarios/harness/clientClock.ts",
@@ -37,7 +36,8 @@
     "test/scenarios/harness/coreSeed.ts",
     "test/scenarios/harness/fakeWorld.ts",
     "test/scenarios/harness/http.ts",
-    "test/scenarios/harness/httpCall.ts"
+    "test/scenarios/harness/httpCall.ts",
+    "test/scenarios/harness/testHqWire.ts"
   ],
   "include": [
     "src",

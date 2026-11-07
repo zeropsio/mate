@@ -52,6 +52,7 @@ catalog:
   yaml: ^2.9.0
 
 minimumReleaseAgeExclude:
+  - "@zerops/session@0.0.2"
   - uniwind@1.12.1
   - "@clerk/backend@3.14.0"
   - "@clerk/clerk-js@6.30.1"

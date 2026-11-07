@@ -95,6 +95,13 @@ describe("the boot frame", () => {
     },
     { name: "an unknown memory", remembered: "yes", session: SESSION, pathname: "/", mode: "mark" },
     {
+      name: "a browser last signed in to Zerops HQ's session, which keeps none here",
+      remembered: "zerops-hq",
+      session: null,
+      pathname: "/",
+      mode: "app",
+    },
+    {
       name: "the way back from the Zerops sign-in",
       remembered: null,
       session: null,
@@ -110,6 +117,7 @@ describe("the boot frame", () => {
     },
   ] as const;
 
+  // witness: apps/web/src/zerops/bootFrame.logic.ts | const shared = input.remembered === BOOT_FRAME_SHARED; → const shared = false;
   it.each(cases)("paints $mode for $name, in index.html as in the app", (row) => {
     expect(
       bootFrameMode({

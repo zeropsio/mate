@@ -36,7 +36,8 @@ export default async function setup(project: TestProject) {
       "--no-first-run",
       "--no-default-browser-check",
       "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost",
-      "--disable-features=MediaRouter,OptimizationHints,AutofillServerCommunication",
+      // A page at Mate's hosted origin reaches the loopback fakes, which Local Network Access refuses.
+      "--disable-features=MediaRouter,OptimizationHints,AutofillServerCommunication,LocalNetworkAccessChecks",
     ],
   });
   console.log(`scenario Chrome: launch ${(performance.now() - started).toFixed(2)}ms`);
