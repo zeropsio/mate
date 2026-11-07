@@ -18,7 +18,6 @@ import {
 
 const decodeUp = Schema.decodeUnknownExit(Schema.fromJsonString(MateLinkUp));
 const decodeDown = Schema.decodeUnknownExit(Schema.fromJsonString(MateLinkDown));
-const encodeKeyUp = Schema.encodeUnknownSync(Schema.fromJsonString(KeyLinkUp));
 
 /** The summary a Mate from before the overview sent. */
 const summary = (lastRequest: string) =>
@@ -538,17 +537,6 @@ describe("the keys model's link", () => {
         frame.type,
         "Success",
       ]);
-  });
-
-  it("Decision: The contract schema drops `missing`: an access report is its `at`, `openers` and `listed`, and HQ derives who is missing.", () => {
-    const report = { type: "access_report", at: AT, openers: ["U1"], listed: ["U2"] };
-    const decoded = decodeKeyUp(JSON.stringify(report));
-    expect(decoded._tag === "Success" && decoded.value).toEqual(report);
-    const encoded = encodeKeyUp({
-      ...report,
-      missing: ["U3"],
-    });
-    expect(JSON.parse(encoded)).toEqual(report);
   });
 
   it("the signers frame carries no write time", () => {

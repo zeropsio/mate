@@ -6,7 +6,8 @@ import { isAllowedWebSocketOrigin } from "./auth/origin.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
-import { readsAlongOnly, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
+import { actingIn, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
+import { ZeropsMateOwner } from "./zerops/ZeropsMateOwner.ts";
 import { administersProject, ZeropsMateAccessList } from "./zerops/ZeropsMateAccessList.ts";
 import { ThreadFileWrites } from "./zerops/ThreadFileWrites.ts";
 import {
@@ -2060,12 +2061,18 @@ export const websocketRpcRouteLayer = HttpRouter.add(
             .current(handle)
             .pipe(Effect.map((current) => (Option.isSome(current) ? AuthZeropsClientScopes : [])))
         : Effect.succeed(session.scopes);
-    // Asked on every acting call: HQ may name another owner while the socket stays open.
+    // Asked on every acting call: HQ may name another owner, or refuse the key, while the socket
+    // stays open.
     const hqLink = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsHqLink));
-    const readsAlong =
+    const mateOwner = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsMateOwner));
+    const acting =
       hqLink === undefined
-        ? Effect.succeed(false)
-        : Effect.map(hqLink.standing, (standing) => readsAlongOnly(standing, session.subject));
+        ? Effect.succeed("acts" as const)
+        : Effect.zipWith(
+            mateOwner?.owner ?? Effect.succeed(undefined),
+            hqLink.standing,
+            (owner, standing) => actingIn(owner, standing, session.subject),
+          );
     // An admin of the Mate's project keeps someone else's Mate current: asked per call too.
     const accessList = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsMateAccessList));
     const administers =
@@ -2080,7 +2087,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
         Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
         Effect.provide(
           Layer.merge(
-            rpcScopeAuthorizationLayer(currentScopes, readsAlong, administers),
+            rpcScopeAuthorizationLayer(currentScopes, acting, administers),
             rpcInstrumentationLayer,
           ),
         ),

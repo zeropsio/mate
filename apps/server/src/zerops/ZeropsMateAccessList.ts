@@ -14,14 +14,17 @@
  * (`ZeropsAccessSocket`): each frame applies over the rows the last read and frames left, and the
  * list is recomputed from them; a frame that changes no row changes nothing. Every (re)connect
  * reads again, for what the socket missed. After every read, and every frame that changed a row,
- * whom the list names goes up to HQ (`access_report`), whole every time. It names nobody the
- * Mate's owner: that is HQ's word alone. It is the only list: HQ sends the Mate none.
+ * whom the list names is told to the Mate's own sign-out of removed people (`reports`,
+ * `ZeropsOffboarding`), whole every time. It names nobody the Mate's owner: that is HQ's word
+ * alone. It is the only list and stays in the Mate: HQ is told nothing of it and sends none.
  *
  * The same socket carries the project's process frames (ZEROPS-078): the list hands them on,
  * with each `connected`, to whoever waits on a process (`processes`), and reads none itself.
  *
  * A list holds {@link ACCESS_LIST_HOLDS} from the read that brought it; a frame applied over it
- * does not extend that. Past that it refuses new tickets and keeps the connections already open.
+ * does not extend that. Past that it refuses new tickets as unconfirmed (`list_unconfirmed`) and
+ * keeps the connections already open (GAP-RIGHTS-6: open connections keep the last list while
+ * Zerops does not answer; see docs/architecture/identity-and-access.md#gap-rights in mate-hq).
  *
  * @module ZeropsMateAccessList
  */
@@ -30,7 +33,7 @@ import {
   projectAccess,
   type ZeropsOrgMember,
 } from "@t3tools/shared/mateAccess";
-import type { AccessReport, TicketRefusal } from "@t3tools/shared/mateLink";
+import type { TicketRefusal } from "@t3tools/shared/mateLink";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
@@ -69,7 +72,10 @@ import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
  */
 export const ACCESS_LIST_HOLDS = Duration.minutes(15);
 
-/** How often the Mate recomputes its own list. */
+/**
+ * How often the Mate recomputes its own list. GAP-RIGHTS-3: Zerops pushes no frame for a member's
+ * removal, so the list drops them only at this recompute; see docs/architecture/identity-and-access.md#gap-rights (mate-hq).
+ */
 export const ACCESS_RECOMPUTE_EVERY = Duration.minutes(5);
 
 /** How far each wait strays either side of {@link ACCESS_RECOMPUTE_EVERY}, so Mates spread out. */
@@ -183,17 +189,28 @@ export function applyAccessFrame(rows: OwnRows, frame: AccessFrame): OwnRows {
   return changed ? { ...rows, members } : rows;
 }
 
-/** What a new ticket for `userId` gets from `list` at `nowMs`: admitted, or why not. */
+/**
+ * What a new ticket for `userId` gets from `list` at `nowMs`: admitted, or why not. With no list,
+ * or one past its hold, Zerops has not confirmed whom it names, so the answer is that it cannot
+ * say (`list_unconfirmed`), never that the person is absent.
+ */
 export const ticketVerdict = (
   list: AccessList | undefined,
   userId: string,
   nowMs: number,
 ): "open" | TicketRefusal => {
-  if (list === undefined || nowMs > list.expiresAtMs) return "not_in_list";
+  if (list === undefined || nowMs > list.expiresAtMs) return "list_unconfirmed";
   const member = list.members.find((candidate) => candidate.userId === userId);
   if (member === undefined) return "not_in_list";
   return member.visibility === "open" ? "open" : "read_only";
 };
+
+/** Whom the Mate's own list opens its project for and only lists, as of `at` (ISO 8601). */
+export interface AccessReport {
+  readonly at: string;
+  readonly openers: ReadonlyArray<string>;
+  readonly listed: ReadonlyArray<string>;
+}
 
 /** Whom `list` opens for and lists, as of `at`. */
 export const accessNamed = (list: AccessList, at: string): AccessReport => ({
@@ -229,10 +246,10 @@ export class ZeropsMateAccessList extends Context.Service<
     readonly current: Effect.Effect<Option.Option<AccessList>>;
     /**
      * A new ticket's verdict for `userId`, recomputing once first (or joining the recompute in
-     * flight) if the list does not open for them.
+     * flight) if the list does not open for them or is unconfirmed.
      */
     readonly admits: (userId: string) => Effect.Effect<"open" | TicketRefusal>;
-    /** Whom the own list names, latest first, then after each change (`access_report`). */
+    /** Whom the own list names, latest first, then after each change (`ZeropsOffboarding`). */
     readonly reports: Stream.Stream<AccessReport>;
     /**
      * Fires when the list changes whom it opens for or lists, never when it only aged.
@@ -443,7 +460,7 @@ export const make = (own?: {
       admits: (userId) =>
         Effect.gen(function* () {
           const first = yield* verdict(userId);
-          if (first !== "not_in_list" || own === undefined) return first;
+          if (first === "open" || first === "read_only" || own === undefined) return first;
           yield* recompute;
           return yield* verdict(userId);
         }),

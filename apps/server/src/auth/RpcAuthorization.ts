@@ -18,6 +18,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
+import type { KeyUnsafe, MateActing } from "../zerops/ZeropsHqLink.ts";
+
 type WsRpcMethod = RpcGroup.Rpcs<typeof WsRpcGroup>["_tag"];
 
 /**
@@ -256,14 +258,25 @@ const rpcAdministeredError = (requiredScope: AuthEnvironmentScope) =>
     requiredScope,
   });
 
+const KEY_UNSAFE_MESSAGES: Record<KeyUnsafe, string> = {
+  key_too_wide:
+    "Nobody can act in this Mate: HQ does not accept its Zerops key, which reaches more than this Mate's project. Replace it with a key for this project only.",
+  key_not_sensitive:
+    "Nobody can act in this Mate: HQ does not accept its Zerops key, which is not stored as a sensitive variable. Store the key as a sensitive variable again.",
+};
+
+const rpcKeyUnsafeError = (requiredScope: AuthEnvironmentScope, reason: KeyUnsafe) =>
+  new EnvironmentAuthorizationError({ message: KEY_UNSAFE_MESSAGES[reason], requiredScope });
+
 /**
  * Authorizes every RPC on one connection against that connection's session scopes, and refuses
- * an acting call while `readsAlong` says the session's person is not the Mate's owner, unless
- * the call is one `administers` (an admin of the Mate's project) lets them make.
+ * an acting call unless `acting` says the session's person acts in the Mate: one reading along
+ * makes only a call `administers` (an admin of the Mate's project) lets them make, and nobody acts
+ * while HQ refuses the Mate's key for a safety rule, told why.
  */
 export const rpcScopeAuthorizationLayer = (
   scopes: ReadonlyArray<AuthEnvironmentScope> | Effect.Effect<ReadonlyArray<AuthEnvironmentScope>>,
-  readsAlong: Effect.Effect<boolean>,
+  acting: Effect.Effect<MateActing>,
   administers: Effect.Effect<boolean> = Effect.succeed(false),
 ) =>
   Layer.succeed(RpcScopeAuthorization)((effect, { rpc }) => {
@@ -272,8 +285,10 @@ export const rpcScopeAuthorizationLayer = (
       if (!current.includes(requiredScope))
         return Effect.fail(rpcAuthorizationError(requiredScope));
       if (!ownerOnlyRpcMethod(rpc._tag)) return effect;
-      return Effect.flatMap(readsAlong, (along) => {
-        if (!along) return effect;
+      return Effect.flatMap(acting, (verdict) => {
+        if (verdict === "acts") return effect;
+        if (verdict !== "reads-along")
+          return Effect.fail(rpcKeyUnsafeError(requiredScope, verdict));
         if (!ADMINISTERED_UNDER_OPERATE.has(rpc._tag))
           return Effect.fail(rpcReadAlongError(requiredScope));
         return Effect.flatMap(administers, (admin) =>

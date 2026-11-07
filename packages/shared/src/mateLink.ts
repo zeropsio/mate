@@ -469,9 +469,9 @@ export type MateLinkDown = typeof MateLinkDown.Type;
 /*
  * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"): the Mate dials
  * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
- * its state. The Mate reports its own Zerops access list up (`access_report`) and admits tickets
- * through that list, further restricted by HQ's known Chief opener (`ticket_refused` otherwise).
- * HQ sends no access list, and an older HQ's `access` frame is no frame of this union. Today's frames of tasks, usage and
+ * its state. The Mate admits tickets through its own Zerops access list, further restricted by
+ * HQ's known Chief opener (`ticket_refused` otherwise); it tells HQ nothing of that list, and
+ * HQ sends none, and an older HQ's `access` frame is no frame of this union. Today's frames of tasks, usage and
  * the update policy ride on it unchanged.
  * Today's `MateLinkUp`, `MateLinkDown` and `MateState` above stay for the HQ and clients that
  * still read them.
@@ -517,29 +517,19 @@ export const KeyLinkUp = Schema.Union([
     ok: Schema.Boolean,
   }),
   Schema.Struct({ type: Schema.Literal("key-refused") }),
-  /** A ticket the Mate's own list does not admit, sent instead of `ticket-ack`: definitive. */
+  /**
+   * A ticket the Mate's own list does not admit, sent instead of `ticket-ack`: definitive.
+   * `list_unconfirmed`: Zerops has not confirmed the list within its hold, so the Mate cannot say.
+   */
   Schema.Struct({
     type: Schema.Literal("ticket_refused"),
     ticket: Ticket,
-    reason: Schema.Literals(["not_in_list", "read_only"]),
-  }),
-  /**
-   * The Mate's own access list after every recompute (`at`, ISO 8601): whom its project opens for
-   * and whom it only lists, whole every time. HQ derives who went missing against the reports it
-   * applied before.
-   */
-  Schema.Struct({
-    type: Schema.Literal("access_report"),
-    at: Schema.String,
-    openers: Schema.Array(Schema.String),
-    listed: Schema.Array(Schema.String),
+    reason: Schema.Literals(["not_in_list", "read_only", "list_unconfirmed"]),
   }),
 ]);
 export type KeyLinkUp = typeof KeyLinkUp.Type;
 /** Why the Mate refused a ticket (`ticket_refused`). */
 export type TicketRefusal = Extract<KeyLinkUp, { readonly type: "ticket_refused" }>["reason"];
-/** The Mate's own access list as it reports it to HQ (`access_report`). */
-export type AccessReport = Omit<Extract<KeyLinkUp, { readonly type: "access_report" }>, "type">;
 
 export const KeyLinkDown = Schema.Union([
   AutoUpdatePolicyDown,
