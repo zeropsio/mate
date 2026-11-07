@@ -34,12 +34,19 @@ export async function endSessionCheck(drivers: ScenarioDrivers) {
 export const handoverCount = (drivers: ScenarioDrivers) =>
   drivers.zerops.requests.get("GET /authorize-app") ?? 0;
 
-/** The browser's member-list reads stay unanswered until the case explicitly releases them. */
+/**
+ * The browser's member-list reads stay unanswered until the case explicitly releases them; HQ's own
+ * read with the organisation's read token (`mate-hq-read`) is answered.
+ */
 export function holdMemberList(drivers: ScenarioDrivers) {
   const held = Promise.withResolvers<void>();
   let released = false;
   drivers.zerops.handlers.push(async (request) => {
-    if (/^\/api\/rest\/public\/client\/[^/]+\/user\/list$/u.test(request.url.pathname))
+    const bearer = request.headers.authorization?.replace(/^Bearer /u, "");
+    if (
+      /^\/api\/rest\/public\/client\/[^/]+\/user\/list$/u.test(request.url.pathname) &&
+      (bearer === undefined || drivers.zerops.world.tokens.get(bearer)?.name !== "mate-hq-read")
+    )
       await held.promise;
     return undefined;
   });
