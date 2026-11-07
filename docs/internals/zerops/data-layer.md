@@ -62,7 +62,8 @@ organization pushes nothing, so it is heard only at the next read of their membe
 
 Record an operation and its identity before sending. Acceptance, reflection in observed facts and
 completion are separate states. An accepted operation retains its observation demand after the
-originating surface closes. Operation predicates stay pure; adapters and executors own remote I/O.
+originating surface closes. A write whose answer names the value as it stands after it commits
+that answer, ordered after every read begun before it, and reads nothing again. Operation predicates stay pure; adapters and executors own remote I/O.
 What a surface offers is decided by one pure rule per verb, mirrored from the owner that enforces
 it: verbs HQ answers in `packages/shared/src/zeropsPermissions.ts`, Zerops' own writes beside their
 domain in `packages/client-runtime/src/zerops` (team roles in `teamRoles.ts`, project access in

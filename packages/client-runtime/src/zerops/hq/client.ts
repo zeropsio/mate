@@ -611,11 +611,14 @@ export interface HqApi {
   /** The person's active Git password metadata; passwords are returned only on issue. */
   /** Reads metadata only; provisioning records authority separately. */
   readonly observeCredential?: (projectId: string) => Promise<ObserveCredential>;
-  /** Binds the verified person establishing the native ZCP key; no hash reconnects an existing Mate. */
+  /**
+   * Binds the verified person establishing the native ZCP key; no hash reconnects an existing Mate.
+   * HQ answers the observe metadata as it stands after it (mate-hq spec/protocol.md §S16c).
+   */
   readonly establishZcpAuthorization?: (
     projectId: string,
     context: { readonly keyHash?: string },
-  ) => Promise<void>;
+  ) => Promise<ObserveCredential>;
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
   readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
   readonly revokeGitCredential: (appId: string, id: string) => Promise<void>;
@@ -1994,18 +1997,19 @@ export function makeHqApi(input: {
       decoded(ObserveCredential)(
         await authorized(`/api/mates/${encodeURIComponent(projectId)}/observe-credential`),
       ),
-    establishZcpAuthorization: async (projectId, context) => {
-      await authorized(
-        `/api/mates/${encodeURIComponent(projectId)}/zcp-authorization`,
-        {
-          method: "POST",
-          body: JSON.stringify(
-            await withAccess(context.keyHash === undefined ? {} : { keyHash: context.keyHash }),
-          ),
-        },
-        true,
-      );
-    },
+    establishZcpAuthorization: async (projectId, context) =>
+      decoded(ObserveCredential)(
+        await authorized(
+          `/api/mates/${encodeURIComponent(projectId)}/zcp-authorization`,
+          {
+            method: "POST",
+            body: JSON.stringify(
+              await withAccess(context.keyHash === undefined ? {} : { keyHash: context.keyHash }),
+            ),
+          },
+          true,
+        ),
+      ),
     gitCredentials: async (appId) =>
       (
         await readGitCredentialList(

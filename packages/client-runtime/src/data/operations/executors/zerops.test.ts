@@ -226,6 +226,7 @@ it.effect.each([
                   code: "forbidden",
                   message: "HQ refused ZCP authorization",
                 });
+              return { authorized: false, userId: null, expiresAt: null };
             },
           };
         },
