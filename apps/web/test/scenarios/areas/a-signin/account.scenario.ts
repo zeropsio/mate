@@ -58,12 +58,19 @@ describe("A: sign-in, session and organizations", () => {
           // The application keeps its id: the colleague renames it by its first name each time.
           yield* s.when.hq.colleague.renamesProject("Shop", `Shop ${load}`);
           yield* s.then.menu.row(`Shop ${load}`).appears();
+          // HQ names people by user id only (model rule 5): the client reads the organization's
+          // member list for their names once per page load, shared by every view, and never again
+          // for a change HQ tells it. The first load and each reload so far are load + 2 loads.
+          const loads = load + 2;
+          yield* Effect.promise(() =>
+            s.drivers.zerops.waitForRequest("GET /client/ORG/user/list", loads, "personal"),
+          );
           expect(
             s.drivers.zerops.requestsByCredential
               .get("personal")
               ?.get("GET /client/ORG/user/list") ?? 0,
-            "ASSERTION: the shared HQ needs no browser member-list verification",
-          ).toBe(0);
+            "ASSERTION: each page load reads the member list once, for people's names",
+          ).toBe(loads);
         }
         expect(mints(), "Two reloads mint no further door token").toBe(first);
         yield* retainedAuthorization();
