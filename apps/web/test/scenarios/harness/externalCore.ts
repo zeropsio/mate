@@ -136,7 +136,7 @@ const heldWaitClock = Effect.gen(function* () {
 
 /**
  * The command owns the Core; its readiness line means HTTP is active and names the Core's
- * database (as its owner) and the wait clock it honours. It also takes one control command per
+ * database (as its owner), the wait clock it honours and each instance's own origin. It also takes one control command per
  * stdin line and answers each with one line (`{"done":…}` or `{"error":…}`): `stop` ends the Core's
  * process, `start` launches it again on the same origin and database, `start-new-build` as a
  * redeployed Core.
@@ -188,21 +188,39 @@ export const startExternalCore = (
         // The readiness waiter and finalizer both observe this promise, even on early exit.
         void exit.catch(() => {});
         const lines = NodeReadline.createInterface({ input: child.stdout });
-        const ready = new Promise<{ origin: string; database: string }>((resolve, reject) => {
+        const ready = new Promise<{
+          origin: string;
+          database: string;
+          instances: ReadonlyArray<string>;
+        }>((resolve, reject) => {
           lines.once("line", (line) => {
             try {
               const message = decodeJson(line) as {
                 origin?: unknown;
                 database?: unknown;
                 clock?: unknown;
+                instances?: unknown;
               };
-              if (typeof message.origin !== "string") throw new Error("origin is missing");
-              const origin = new URL(message.origin);
-              if (origin.protocol !== "http:") throw new Error("origin must use HTTP");
+              const httpOrigin = (value: unknown, what: string) => {
+                if (typeof value !== "string") throw new Error(`${what} is missing`);
+                const url = new URL(value);
+                if (url.protocol !== "http:") throw new Error(`${what} must use HTTP`);
+                return url.origin;
+              };
+              const origin = httpOrigin(message.origin, "origin");
               if (typeof message.database !== "string") throw new Error("database is missing");
               if (message.clock !== clock)
                 throw new Error("the Core does not honour HQ_TEST_WAIT_CLOCK_FILE");
-              resolve({ origin: origin.origin, database: message.database });
+              if (!Array.isArray(message.instances)) throw new Error("instances are missing");
+              const instances = (message.instances as unknown[]).map((instance, index) =>
+                httpOrigin(
+                  typeof instance === "object" && instance !== null && "origin" in instance
+                    ? instance.origin
+                    : undefined,
+                  `instance ${index}'s origin`,
+                ),
+              );
+              resolve({ origin, database: message.database, instances });
             } catch (error) {
               reject(new Error(`External Core readiness line is invalid: ${String(error)}`));
             }
@@ -263,11 +281,13 @@ export const startExternalCore = (
       }),
       ({ stop }) => stop,
     );
-    const { origin, database } = yield* Effect.promise(() =>
+    const { origin, database, instances } = yield* Effect.promise(() =>
       deadline(process.ready, "External Core readiness"),
     );
     return {
       origin,
+      /** Each Core instance's own origin, in index order; `origin` is the one in front of them. */
+      instances,
       /** The Core's database as its owner, for a case's held row state. */
       url: database,
       call: makeHttpCall(new URL(origin).host),
