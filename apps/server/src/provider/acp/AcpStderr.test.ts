@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vite-plus/test";
-import * as Effect from "effect/Effect";
-import * as Stream from "effect/Stream";
 
 import {
   ACP_STDERR_TAIL_MAX_CHARS,
@@ -8,12 +6,8 @@ import {
   sanitizeAcpStderrExcerpt,
 } from "./AcpStderr.ts";
 
-const stderrChunk = (text: string) =>
-  Array.from(
-    Effect.runSync(
-      Stream.make(new TextEncoder().encode(text)).pipe(Stream.decodeText(), Stream.runCollect),
-    ),
-  ).join("");
+// Stderr arrives as bytes from the child; decode them the way the transport does.
+const stderrChunk = (text: string) => new TextDecoder().decode(new TextEncoder().encode(text));
 
 describe("AcpStderr", () => {
   it("keeps a bounded tail of stderr chunks", () => {
