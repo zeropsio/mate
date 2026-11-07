@@ -10,9 +10,10 @@
  *
  * Pure: the member list, each place's grants and whose each Mate is arrive read.
  */
-import type {
-  ProjectAccessChange,
-  ProjectAccessRole,
+import {
+  mayChangeAccess,
+  type ProjectAccessChange,
+  type ProjectAccessRole,
 } from "@t3tools/client-runtime/zerops/projectAccess";
 import { isTokenMember } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
@@ -234,9 +235,9 @@ export function accessTable(input: ProjectPeopleInput): AccessTableView {
     const face = memberFace(member, input.pictures);
     const pending = isPending(member);
     const self = viewer !== undefined && member.id === viewer.membershipId;
-    // An admin changes no owner's or other admin's access: Zerops refuses those writes.
     const changeable =
-      editable && (roleAtLeast(viewer.roleCode, "OWNER") || self || !roleAtLeast(role, "ADMIN"));
+      viewer !== undefined &&
+      mayChangeAccess({ viewerRole: viewer.roleCode, memberRole: role, self });
     const base = defaultLevel(role);
     const cells = columns.map((column): AccessCell => {
       const owned =

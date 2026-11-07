@@ -11,7 +11,7 @@
  */
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
+import { mayChangeAccess } from "@t3tools/client-runtime/zerops/projectAccess";
 import { Trash2Icon } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -96,11 +96,8 @@ export function TeamMemberView({
 }) {
   const roleEditable = actions !== undefined && person.change !== null;
   const memberRole = person.membership.roleCode;
-  // An owner changes anyone's access, an admin anyone below admin and their own.
   const accessEditable =
-    actions !== undefined &&
-    roleAtLeast(viewerRole, "ADMIN") &&
-    (roleAtLeast(viewerRole, "OWNER") || person.you || !roleAtLeast(memberRole, "ADMIN"));
+    actions !== undefined && mayChangeAccess({ viewerRole, memberRole, self: person.you });
 
   const [membership, setMembership] = useState(person.membership);
   const role = usePress();

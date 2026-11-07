@@ -50,6 +50,10 @@ and waits for changed input, changed access or an explicit retry.
 Record an operation and its identity before sending. Acceptance, reflection in observed facts and
 completion are separate states. An accepted operation retains its observation demand after the
 originating surface closes. Operation predicates stay pure; adapters and executors own remote I/O.
+What a surface offers is decided by one pure rule per verb, mirrored from the owner that enforces
+it: verbs HQ answers in `packages/shared/src/zeropsPermissions.ts`, Zerops' own writes beside their
+domain in `packages/client-runtime/src/zerops` (team roles in `teamRoles.ts`, project access in
+`projectAccess.ts`). Surfaces call the rule, never restate it; the owner's refusal at the write wins.
 
 Resolve a lost answer by its original request identity, handle or uniquely attributable owner
 evidence. Never blindly repeat a write that may have been accepted. A disappearing process or an

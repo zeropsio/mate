@@ -13,9 +13,10 @@
 import type { ProjectGrantsRead } from "@t3tools/client-runtime/data";
 import { zeropsRoleWords, type ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { appAccessActions, type AppProjects } from "@t3tools/client-runtime/zerops/appAccess";
-import type {
-  ProjectAccessChange,
-  ProjectAccessRole,
+import {
+  mayChangeAccess,
+  type ProjectAccessChange,
+  type ProjectAccessRole,
 } from "@t3tools/client-runtime/zerops/projectAccess";
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
@@ -575,8 +576,8 @@ const REMOVE_OVERRIDE: DefaultAccessAction = { choice: "remove", label: "Remove 
  * hold, where landing back on their role's own level reads *Remove override*; *Hide this project*
  * for someone who works on or sees every project — never an owner or admin, whom Zerops keeps every
  * project visible to; and *Remove override* on its own where no entry
- * lands back on their role's level. `null` where the viewer may change none of it: not an owner
- * or admin, or an admin looking at another owner or admin (Zerops refuses those writes).
+ * lands back on their role's level. `null` where the viewer may change none of it
+ * (`mayChangeAccess`).
  */
 export function defaultAccessMenu(input: {
   readonly viewerRole: string | undefined;
@@ -588,13 +589,7 @@ export function defaultAccessMenu(input: {
   /** Whether they hold a grant of their own here. */
   readonly override: boolean;
 }): ReadonlyArray<DefaultAccessAction> | null {
-  if (!roleAtLeast(input.viewerRole, "ADMIN")) return null;
-  if (
-    !roleAtLeast(input.viewerRole, "OWNER") &&
-    !input.self &&
-    roleAtLeast(input.memberRole, "ADMIN")
-  )
-    return null;
+  if (!mayChangeAccess(input)) return null;
   const base = levelOf(input.memberRole);
   const offer = (level: "full" | "read"): ReadonlyArray<DefaultAccessAction> =>
     input.held === level
