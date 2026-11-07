@@ -90,8 +90,8 @@ export interface RunningHq extends Omit<RunningLink, "revalidate" | "renew" | "r
   readonly compare: (ask: CompareAsk) => Promise<CompareResponse>;
   /** Tells HQ the reader saw these results of a Mate. */
   readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => void;
-  /** The person's role on a project changed: HQ's refused scopes of it are asked again. */
-  readonly roleChanged: (projectId: string) => void;
+  /** The person's access moved on these projects, or their membership alone: HQ reads again. */
+  readonly accessChanged: (projects: ReadonlyArray<string>) => void;
 }
 
 /** A comparison asked of an application's repository, by its name: git's `base..head`. */
@@ -122,7 +122,7 @@ export function startHqNavigation(options: {
         Effect.catch(link.compare(ask), (fault) => Effect.die(new Error(fault.message))),
       ),
     seen: (projectId, resultIds) => void Effect.runFork(link.seen(projectId, resultIds)),
-    roleChanged: link.roleChanged,
+    accessChanged: link.accessChanged,
     rewire: link.rewire,
     stop: () => {
       link.stop();
@@ -246,11 +246,12 @@ export interface AccountObservation {
   /** The person's "try again" on one detail of the organization shown. */
   readonly retryDetail: (demand: DetailDemand) => void;
   /**
-   * The person's role on a project of the organization shown changed in its live Zerops data
-   * (`followMateRoles`): what its HQ refused of that project is asked again. A re-door is no
-   * role change and lifts no refusal.
+   * The person's access moved in the live Zerops data of the organization shown, on these
+   * projects or on their membership alone (`followAccessChanges`): its HQ reads again the
+   * navigation and what it holds of those projects, a refusal among them asked again. A re-door
+   * is no access change and lifts no refusal.
    */
-  readonly roleChanged: (projectId: string) => void;
+  readonly accessChanged: (projects: ReadonlyArray<string>) => void;
   /**
    * The person's view may have changed in this organization (`topic: "inventory"`): its Zerops
    * listing is read again while it is the one shown; another organization's is read when shown.
@@ -506,7 +507,7 @@ export function observeAccount(options: {
       if (familySpec(demand.family).scope.source === "hq") hq?.retryDetail(demand);
       else shown?.link.retryDetail(demand);
     },
-    roleChanged: (projectId) => hq?.roleChanged(projectId),
+    accessChanged: (projects) => hq?.accessChanged(projects),
     rereadListing: (orgId) => {
       if (shown?.orgId === orgId) shown.link.reread();
     },

@@ -21,7 +21,7 @@ import { graceOver, liveProjects, projectValue, zeropsVersion } from "../__fixtu
 import { membershipInputs } from "../__fixtures__/membership.ts";
 import { projectsScope } from "../families/project.ts";
 import { accountReadsAtom } from "../reads.ts";
-import { followMateRoles } from "../../zerops/account/mateRoles.ts";
+import { followAccessChanges } from "../../zerops/account/accessChanges.ts";
 import {
   hqFixtureWire,
   HQ_FIXTURE_ACCESS_TOKEN,
@@ -929,7 +929,7 @@ describe("hqNavigationLink", () => {
         link.demandDetail({ family: "hqAppDetail", ownerId: "shop" });
         link.demandDetail({ family: "hqAppDetail", ownerId: "cafe" });
         yield* settle;
-        const stopRoles = followMateRoles(registry, link.roleChanged);
+        const stopRoles = followAccessChanges(registry, link.accessChanged);
         const refusedScopes = [
           { kind: "app-detail", appId: "shop" },
           { kind: "attention", projectId: "ada", health: "apart" },
@@ -1223,7 +1223,7 @@ describe("Protected HQ scopes are asked with the person's token", () => {
         expect(phase(store, hqMateScope(ORG, "ada"))).toBe("refused");
         expect(phase(store, hqAppDetailScope(ORG, "shop"))).toBe("refused");
         const before = fixture.sent.length;
-        link.roleChanged("ada");
+        link.accessChanged(["ada"]);
         yield* settle;
         const reasked = subscribesOf(fixture, before);
         expect(

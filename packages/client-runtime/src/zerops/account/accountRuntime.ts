@@ -19,7 +19,7 @@ import {
   type AccountEnvironmentPorts,
   type AccountEnvironments,
 } from "./environments.ts";
-import { followMateRoles } from "./mateRoles.ts";
+import { followAccessChanges } from "./accessChanges.ts";
 import { makeStops, type Stops } from "./stops.ts";
 export type { Stops } from "./stops.ts";
 export type {
@@ -88,8 +88,10 @@ export const makeAccountRuntime = Effect.fnUntraced(function* (
       built.dispose();
     }),
   );
-  // The person's role on a Mate moving in Zerops' own data asks a Mate refused to them again.
-  const stopFollowingRoles = followMateRoles(ports.atomRegistry, built.roleChanged);
+  // The person's access to a project moving in Zerops' own data asks its Mate refused to them again.
+  const stopFollowingRoles = followAccessChanges(ports.atomRegistry, (projects) => {
+    for (const projectId of projects) built.roleChanged(projectId);
+  });
   yield* Scope.addFinalizer(scope, Effect.sync(stopFollowingRoles));
   const subscription = yield* invalidations.subscribe.pipe(Scope.provide(scope));
   yield* PubSub.take(subscription).pipe(

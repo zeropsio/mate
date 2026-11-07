@@ -47,6 +47,14 @@ that holds may be bounded by that connection's liveness instead: a source still 
 slow, not down, said as slow and never asked again meanwhile. A definitive refusal stops automatic recovery
 and waits for changed input, changed access or an explicit retry.
 
+Changed access is heard in one place, `packages/client-runtime/src/zerops/account/accessChanges.ts`:
+the person's membership and their effective role on each project, as the client's own Zerops socket
+keeps them in the store. HQ filters each read by the projects the person's token reaches and reads
+only when asked, so a move between two readings has HQ read again (`retry`) the navigation, each
+organization-wide scope and each held scope of the moved projects, and the Mate adapter ask a Mate
+it refused again. A Zerops frame that moves nothing of the person's asks nothing. A removal from the
+organization pushes nothing, so it is heard only at the next read of their membership.
+
 ## Writes and evidence
 
 Record an operation and its identity before sending. Acceptance, reflection in observed facts and

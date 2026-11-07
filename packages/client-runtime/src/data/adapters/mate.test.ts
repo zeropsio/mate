@@ -14,7 +14,7 @@ import { linkKeys } from "../model.ts";
 import { streamOf } from "../reducer.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { mateLink, mateLinks } from "../projections/mateLinks.ts";
-import { followMateRoles } from "../../zerops/account/mateRoles.ts";
+import { followAccessChanges } from "../../zerops/account/accessChanges.ts";
 import { liveProjects } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
@@ -404,7 +404,9 @@ describe("makeMateAdapter", () => {
     });
     for (const input of [...liveProjects("org", [{ id: "p1" }]), ...membershipInputs("READ_ONLY")])
       store.dispatch(input);
-    const stop = followMateRoles(registry, adapter.roleChanged);
+    const stop = followAccessChanges(registry, (projects) => {
+      for (const projectId of projects) adapter.roleChanged(projectId);
+    });
     adapter.setTargets([target("p1")]);
     adapter.setDemand("route", ["p1:zcp"]);
     await flush();

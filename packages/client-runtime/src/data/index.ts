@@ -93,7 +93,7 @@ export {
   type ZeropsPrincipalVerdict,
   type ZeropsSessionCalls,
 } from "../zerops/data/zeropsSession.ts";
-export { followMateRoles } from "../zerops/account/mateRoles.ts";
+export { followAccessChanges } from "../zerops/account/accessChanges.ts";
 export { finishGoneProjects } from "./goneProjects.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { makeBuildLogTransport } from "./adapters/buildLog.ts";
