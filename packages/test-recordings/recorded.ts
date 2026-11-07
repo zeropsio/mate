@@ -12,6 +12,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { HqGithubView } from "@t3tools/shared/hqGithub";
+import { HqRefusal } from "@t3tools/shared/hqProblems";
 import {
   HqNavigationProject,
   HqScopeChanged,
@@ -27,6 +28,7 @@ const schemas = {
   "scope-error": HqScopeFailure,
   "scope-changed": HqScopeChanged,
   "GET /api/org/github": HqGithubView,
+  "POST /api/org/github/installations/:id/suspend": HqRefusal,
 } as const;
 
 /** A `$provenance.schema` this consumer decodes. */
