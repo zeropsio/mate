@@ -1242,10 +1242,18 @@ export function makeHqApi(input: {
       const token = await held;
       if (!unproven.has(held)) await renewIfDue(token);
       try {
-        // Git browsing authenticates the person and the HQ session in separate headers.
+        // Git browsing authenticates the person and the HQ session in separate headers. Any other
+        // read carries the person's Zerops access token beside the session: HQ serves its own data
+        // of a project only where Zerops lists that project to this token now.
+        const method = (init.method ?? "GET").toUpperCase();
         const headers: Record<string, string> = browse
           ? { "X-HQ-Session": token, Authorization: `Bearer ${(await input.accessToken()).token}` }
-          : { Authorization: `Bearer ${token}` };
+          : method === "GET" || method === "HEAD"
+            ? {
+                Authorization: `Bearer ${token}`,
+                "X-Zerops-Access-Token": (await input.accessToken()).token,
+              }
+            : { Authorization: `Bearer ${token}` };
         if ((write || browse) && input.isCurrent?.() === false)
           throw new HqError({
             kind: "refused",
