@@ -2087,6 +2087,30 @@ it("L2 runs owned scenario-driver units through their existing project before sc
   }
 });
 
+// witness: scripts/gate-changed.ts | "test/e-env/vitest.config.ts", → "test/scenarios/vitest.config.ts",
+it("L2 runs owned environment source consumers under the config that includes them", () => {
+  const path = "apps/web/test/scenarios/areas/e-env/environmentSources.test.tsx";
+  const file = NodePath.join(repositoryFixture, path);
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.appendFileSync(file, "\nexport const l2EnvironmentWitness = true;\n");
+    const lines = fixtureStages();
+    const consumers = lines.find((line) =>
+      line.startsWith("related environment source consumers:"),
+    );
+    expect(
+      consumers,
+      "ASSERTION: an edited environment source consumer must run under its own config",
+    ).toContain("vp test run --config test/e-env/vitest.config.ts");
+    expect(consumers).toContain("test/scenarios/areas/e-env/environmentSources.test.tsx");
+    expect(lines.find((line) => line.startsWith("related @t3tools/web:")) ?? "").not.toContain(
+      "test/scenarios/areas/e-env/environmentSources.test.tsx",
+    );
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
+});
+
 it.each([
   ["a depth-2 importer", 'import "./bridge.ts";', 'import "./owner.ts";'],
   ["a mock-only reader", 'vi.mock("./owner.ts", () => ({}));', "export {};"],

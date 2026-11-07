@@ -18,14 +18,18 @@ const writable = (directory: string): boolean => {
 };
 
 /**
- * Points `TMPDIR` at the RAM disk when its temp root is present and writable, so a run's
- * `os.tmpdir()` scratch stays off the indexed system disk. Absent (CI, Linux, other machines),
- * `TMPDIR` is left alone. Called by the Vite configs, so every test worker inherits it.
+ * Uses an explicitly selected test directory, otherwise the writable RAM disk, so a run's
+ * `os.tmpdir()` scratch stays off the indexed system disk. Without either, `TMPDIR` is left alone.
+ * Called by the Vite configs, so every test worker inherits it.
  */
 export function useTestScratchRoot(
   env: NodeJS.ProcessEnv,
   isWritable: (directory: string) => boolean = writable,
 ): void {
+  if (env["MATE_TEST_TMPDIR"]) {
+    env["TMPDIR"] = env["MATE_TEST_TMPDIR"];
+    return;
+  }
   if (isWritable(TEST_RAMDISK_TMPDIR)) env["TMPDIR"] = TEST_RAMDISK_TMPDIR;
 }
 
