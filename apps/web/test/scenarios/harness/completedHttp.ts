@@ -26,13 +26,39 @@ export function completedHttp(
     if (pending.size === 0 && awaitingCommit === undefined)
       for (const resolve of waiters) resolve();
   };
-  const committed = ({ frame }: { frame: { parentId?: string } }) => {
+  /** The committed main document, and the document each request on the navigation client came from. */
+  let mainDocument: { frameId: string; loaderId: string } | undefined;
+  const issuedIn = new Map<string | undefined, { frameId: string | undefined; loaderId: string }>();
+  // Puppeteer's runtime id is CDP's request id; its public types omit it.
+  const cdpId = (request: HTTPRequest) =>
+    "id" in request && typeof request.id === "string" ? request.id : undefined;
+  const sent = (event: { requestId: string; frameId?: string; loaderId: string }) =>
+    issuedIn.set(event.requestId, { frameId: event.frameId, loaderId: event.loaderId });
+  // Chrome neither finishes nor fails a replaced document's request. Puppeteer can surface one after
+  // the commit (an intercepted CORS request pauses once its preflight returns), past the commit's sweep.
+  const ofReplacedDocument = (request: HTTPRequest) => {
+    if (mainDocument === undefined || request.client !== navigationClient) return false;
+    const issued = issuedIn.get(cdpId(request));
+    // Unrecorded on the navigation client: sent before this drain subscribed, so before the commit.
+    if (issued === undefined) return true;
+    return issued.frameId === mainDocument.frameId && issued.loaderId !== mainDocument.loaderId;
+  };
+  const committed = ({ frame }: { frame: { id: string; loaderId: string; parentId?: string } }) => {
     if (frame.parentId !== undefined) return;
+    mainDocument = { frameId: frame.id, loaderId: frame.loaderId };
     for (const resolve of rendererWaiters) resolve();
     awaitingCommit = undefined;
     // This native receipt excludes same-document navigation. Only replacement abandons old bodies.
-    for (const request of pending) if (!isMainNavigation(request)) pending.delete(request);
+    for (const request of pending)
+      if (!isMainNavigation(request)) {
+        pending.delete(request);
+        issuedIn.delete(cdpId(request));
+      }
     notifyIfDrained();
+  };
+  const unsubscribe = () => {
+    navigationClient?.off("Page.frameNavigated", committed);
+    navigationClient?.off("Network.requestWillBeSent", sent);
   };
   const asked = (request: HTTPRequest) => {
     const navigation = isMainNavigation(request);
@@ -41,15 +67,23 @@ export function completedHttp(
       for (const resolve of rendererWaiters) resolve();
     }
     if (navigation && navigationClient !== request.client) {
-      navigationClient?.off("Page.frameNavigated", committed);
+      unsubscribe();
       navigationClient = request.client;
       navigationClient.on("Page.frameNavigated", committed);
+      navigationClient.on("Network.requestWillBeSent", sent);
     }
     // Navigation's body remains a barrier even for a platform-only HTTP filter.
-    if (navigation || includes(request)) pending.add(request);
+    if (!navigation && !includes(request)) return;
+    pending.add(request);
+    // Puppeteer may emit the request from its own listener of the event that records its document.
+    if (!navigation)
+      queueMicrotask(() => {
+        if (ofReplacedDocument(request)) answered(request);
+      });
   };
   const answered = (request: HTTPRequest) => {
     pending.delete(request);
+    issuedIn.delete(cdpId(request));
     notifyIfDrained();
   };
   page.on("request", asked);
@@ -60,7 +94,7 @@ export function completedHttp(
   };
   page.on("requestfailed", failed);
   const close = () => {
-    navigationClient?.off("Page.frameNavigated", committed);
+    unsubscribe();
     page.off("request", asked);
     page.off("requestfinished", answered);
     page.off("requestfailed", failed);
