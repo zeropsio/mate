@@ -15,6 +15,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 import { readHqRef } from "../../../../../scripts/hq-ref.ts";
+import { hqConnection } from "../fakes/hqConnection.ts";
 import type { FakeWorld } from "./fakeWorld.ts";
 import { deadline } from "./http.ts";
 import { startExternalCore, type GithubAddress } from "./externalCore.ts";
@@ -79,6 +80,9 @@ export const openScenarioNavigation = (
     return socket;
   });
 
+/** Test HQ instances behind the one origin, as production's balancer serves HQ. */
+const HQ_INSTANCES = 2;
+
 export function startScenarioCore(zeropsHttp: {
   baseUrl: string;
   world: FakeWorld;
@@ -94,7 +98,13 @@ export function startScenarioCore(zeropsHttp: {
       );
     const root = NodeURL.fileURLToPath(new URL("../../../../../", import.meta.url));
     const expected = readHqRef(root);
-    const core = yield* startExternalCore(command, zeropsHttp);
+    const core = yield* startExternalCore(`${command} --instances ${HQ_INSTANCES}`, zeropsHttp);
+    if (core.instances.length !== HQ_INSTANCES)
+      return yield* Effect.die(
+        new Error(
+          `mate-hq preflight: scenarios run against ${HQ_INSTANCES} HQ instances; its readiness line reports ${core.instances.length}`,
+        ),
+      );
     const health = yield* core.call("GET", "/health");
     const actual =
       typeof health.body === "object" &&
@@ -144,3 +154,36 @@ export function startScenarioCore(zeropsHttp: {
 }
 
 export type ScenarioCore = Effect.Success<ReturnType<typeof startScenarioCore>>;
+
+/** Where the browser reaches HQ; a scenario routes it to the origin in front of the instances. */
+const HQ_ADDRESS = "https://hqzone.prg1-zerops.zone";
+
+/**
+ * Runs `look` once per HQ instance while the browser reaches HQ through that instance alone, then
+ * through the front again. A look that opens a fresh browser context shows only what its
+ * instance answered.
+ */
+export const throughEachHqInstance = <E, R>(
+  s: {
+    readonly drivers: {
+      readonly core: ScenarioCore;
+      readonly routes: Record<string, string>;
+      readonly cleanup: Array<() => Promise<void>>;
+    };
+    readonly web: { readonly setRoutes: () => Promise<void> };
+  },
+  look: (instance: number) => Effect.Effect<void, E, R>,
+) =>
+  Effect.gen(function* () {
+    const front = s.drivers.routes[HQ_ADDRESS]!;
+    for (const [index, origin] of s.drivers.core.instances.entries()) {
+      // The look's pages keep their sockets on it until the scenario ends.
+      const direct = yield* Effect.promise(() => hqConnection(origin));
+      s.drivers.cleanup.push(direct.close);
+      s.drivers.routes[HQ_ADDRESS] = direct.origin;
+      yield* Effect.promise(s.web.setRoutes);
+      yield* look(index);
+    }
+    s.drivers.routes[HQ_ADDRESS] = front;
+    yield* Effect.promise(s.web.setRoutes);
+  });

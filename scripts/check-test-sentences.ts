@@ -158,6 +158,8 @@ export interface TestCase {
   readonly witnesses: ReadonlyArray<string>;
   readonly suite: boolean;
   readonly line: number;
+  /** The first titles of the suites it is declared in, outermost first. */
+  readonly within: ReadonlyArray<string>;
 }
 
 const witnessPrefix = /^\s*witness: /u;
@@ -227,14 +229,19 @@ export function collectTestCases(source: string, file: string): TestCase[] {
   };
   const cases: TestCase[] = [];
   // A describe table's witness covers every case declared inside it.
-  const visit = (value: unknown, inherited: ReadonlyArray<string>): void => {
+  const visit = (
+    value: unknown,
+    inherited: ReadonlyArray<string>,
+    within: ReadonlyArray<string>,
+  ): void => {
     if (Array.isArray(value)) {
-      for (const child of value) visit(child, inherited);
+      for (const child of value) visit(child, inherited, within);
       return;
     }
     const node = record(value);
     if (!node) return;
     let scope = inherited;
+    let suites = within;
     const title =
       node.type === "CallExpression" && testCallee(node.callee) && !curriedModifier(node.callee)
         ? stringValue(Array.isArray(node.arguments) ? node.arguments[0] : undefined)
@@ -256,12 +263,14 @@ export function collectTestCases(source: string, file: string): TestCase[] {
         witnesses: [...own, ...inherited],
         suite,
         line: lineOf(Number(node.start)) + 1,
+        within,
       });
       if (suite && parameterized) scope = [...own, ...inherited];
+      if (suite) suites = [...within, title];
     }
-    for (const child of Object.values(node)) visit(child, scope);
+    for (const child of Object.values(node)) visit(child, scope, suites);
   };
-  visit(program, []);
+  visit(program, [], []);
   return cases;
 }
 

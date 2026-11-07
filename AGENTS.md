@@ -150,6 +150,8 @@ To answer a question, go to the home:
 - `apps/web/src/components/ui` exports own their look: pick a `variant`/`size`, never restyle with
   `className`, never add a `t3code/no-restyle` exception. If none fits, generic looks get a variant;
   feature-specific looks stay in the feature. Layout classes belong on the parent.
+- Browser scenarios run against two test HQ instances behind one origin; per-area caps in
+  `apps/web/test/scenarios/budget.json`, raised only by the owner.
 - Owner-reported visual regressions get a geometry witness in the `owner-reported layout regressions`
   scenario suite, in the fix's change.
 - Important invariants get deterministic checks with an exception ledger that may only shrink.

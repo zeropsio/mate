@@ -59,17 +59,21 @@ it.effect(
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ commit: ${JSON.stringify(actual)} }));
       });
-      server.listen(0, "127.0.0.1", () => process.stdout.write(JSON.stringify({
-        origin: "http://127.0.0.1:" + server.address().port,
-        database: "postgres://127.0.0.1/stub",
-        clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
-      }) + "\\n"));
+      server.listen(0, "127.0.0.1", () => {
+        const origin = "http://127.0.0.1:" + server.address().port;
+        process.stdout.write(JSON.stringify({
+          origin,
+          database: "postgres://127.0.0.1/stub",
+          instances: [{ origin }, { origin }],
+          clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
+        }) + "\\n");
+      });
       process.stdin.resume();
       process.stdin.once("end", () => server.close());
     `;
       yield* Effect.acquireRelease(
         Effect.sync(() =>
-          vi.stubEnv("MATE_HQ_TEST_COMMAND", `${quote(process.execPath)} -e ${quote(script)}`),
+          vi.stubEnv("MATE_HQ_TEST_COMMAND", `${quote(process.execPath)} -e ${quote(script)} --`),
         ),
         () => Effect.sync(() => vi.unstubAllEnvs()),
       );
@@ -95,6 +99,7 @@ it.effect.each(["EPERM", "ESRCH"])(
         process.stdout.write(JSON.stringify({
           origin: "http://127.0.0.1:1",
           database: String(process.pid),
+          instances: [{ origin: "http://127.0.0.1:1" }],
           clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
         }) + "\\n");
         process.stdin.resume();
@@ -143,10 +148,13 @@ it.effect.each([0, 23])(
         res.end(JSON.stringify({ api: process.env.HQ_ZEROPS_API }));
       });
       server.listen(0, "127.0.0.1", () => {
-        // The readiness line of scripts/test-hq.ts: its database and the wait clock it honours.
+        // The readiness line of scripts/test-hq.ts: its database, its one instance and the wait
+        // clock it honours.
+        const origin = "http://127.0.0.1:" + server.address().port;
         process.stdout.write(JSON.stringify({
-          origin: "http://127.0.0.1:" + server.address().port,
+          origin,
           database: "postgres://127.0.0.1/stub",
+          instances: [{ origin }],
           clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
         }) + "\\n");
       });
@@ -204,6 +212,7 @@ it.effect("external Core calls survive the server ending an idle connection with
       process.stdout.write(JSON.stringify({
           origin: ${JSON.stringify(origin)},
           database: "postgres://127.0.0.1/stub",
+          instances: [{ origin: ${JSON.stringify(origin)} }],
           clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
         }) + "\\n");
       process.stdin.resume();
@@ -272,9 +281,11 @@ it.effect("a scenario's external Core leaves no process behind when it is stoppe
         .unref();
       const server = http.createServer();
       server.listen(0, "127.0.0.1", () => {
+        const origin = "http://127.0.0.1:" + server.address().port;
         process.stdout.write(JSON.stringify({
-          origin: "http://127.0.0.1:" + server.address().port,
+          origin,
           database: "postgres://127.0.0.1/stub",
+          instances: [{ origin }],
           clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
         }) + "\\n");
       });
