@@ -32,8 +32,8 @@ export const HqGithubRepository = Schema.Struct({
 });
 export type HqGithubRepository = typeof HqGithubRepository.Type;
 
-/** Where the app is installed, as GitHub answered HQ's read: an account and the repositories it may reach there. */
-export const HqGithubReadInstallation = Schema.Struct({
+/** Where the app is installed: an account and the repositories it may reach there. */
+export const HqGithubInstallation = Schema.Struct({
   id: Schema.Number,
   account: Schema.String,
   accountType: Schema.Literals(["Organization", "User"]),
@@ -49,18 +49,6 @@ export const HqGithubReadInstallation = Schema.Struct({
   /** GitHub's page to change which repositories it reaches. */
   manageUrl: Schema.String,
 });
-export type HqGithubReadInstallation = typeof HqGithubReadInstallation.Type;
-
-/** An installation GitHub did not answer about at HQ's read: it exists, and nothing else is known. */
-export const HqGithubUnreadInstallation = Schema.Struct({
-  id: Schema.Number,
-  state: Schema.Literal("unknown"),
-});
-
-export const HqGithubInstallation = Schema.Union([
-  HqGithubReadInstallation,
-  HqGithubUnreadInstallation,
-]);
 export type HqGithubInstallation = typeof HqGithubInstallation.Type;
 
 export const HqGithubView = Schema.Union([

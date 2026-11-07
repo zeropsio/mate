@@ -29,8 +29,6 @@ export type GitMirrorApp =
         readonly account: string;
         readonly repositories: ReadonlyArray<string>;
       }>;
-      /** Its installations GitHub did not answer about: their repositories are not listed. */
-      readonly unanswered?: number;
     }
   | { readonly kind: "none" }
   | { readonly kind: "unknown" };
@@ -69,17 +67,6 @@ export function waitingAccount(
 /** What the person is told of an account installed but waiting. */
 export const waitingWords = (account: string) =>
   `${account} waits for an admin's OK in Settings › Automation.`;
-
-/** Said beside the app's repositories while GitHub did not answer about some of its installations. */
-export function unansweredWords(
-  app: Extract<GitMirrorApp, { readonly kind: "connected" }>,
-): string | null {
-  const count = app.unanswered ?? 0;
-  if (count === 0) return null;
-  return count === 1
-    ? `GitHub didn't answer about one installation of ${app.name}, so its repositories aren't listed. Check again in a moment.`
-    : `GitHub didn't answer about ${count} installations of ${app.name}, so their repositories aren't listed. Check again in a moment.`;
-}
 
 /** `owner/name` of a GitHub address, as the app's repositories name it; null for any other. */
 export function githubName(url: string): string | null {

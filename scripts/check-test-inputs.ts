@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off -- host Git guard.
 /**
- * Wire-shaped test input comes from a recording (`recorded(schema, name, edit?)` from
+ * Wire-shaped test input comes from a recording (`recorded(name, edit?)` from
  * `@t3tools/test-recordings`), not from a literal a test types as a contract: in test and
  * `__fixtures__` files, `as T`, `as unknown as T`, `satisfies T` and a `: T` annotation on an object
  * literal, where T is imported from a contract module below, may only grow fewer than at the base.
@@ -143,7 +143,7 @@ export function checkTestInputs(root: string, { base }: { readonly base?: string
   }
   if (after <= before) return [];
   return [
-    `Test input typed as a contract grew from ${before} to ${after} in the changed files; build it with recorded(schema, name, edit?) from @t3tools/test-recordings instead.`,
+    `Test input typed as a contract grew from ${before} to ${after} in the changed files; build it with recorded(name, edit?) from @t3tools/test-recordings instead.`,
     ...grown.map((site) => `  ${site}`),
   ];
 }

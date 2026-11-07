@@ -84,7 +84,7 @@ describe("Test input guard", () => {
     it("a new contract cast in a test file fails against the base, naming where", () => {
       write("b.test.ts", cast);
       expect(checkTestInputs(root, { base: "base" })).toEqual([
-        "Test input typed as a contract grew from 0 to 1 in the changed files; build it with recorded(schema, name, edit?) from @t3tools/test-recordings instead.",
+        "Test input typed as a contract grew from 0 to 1 in the changed files; build it with recorded(name, edit?) from @t3tools/test-recordings instead.",
         "  b.test.ts:2:18 (as)",
       ]);
     });

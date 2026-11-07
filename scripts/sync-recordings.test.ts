@@ -9,8 +9,8 @@ const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "sync-recordin
 afterAll(() => NodeFS.rmSync(scratch, { recursive: true, force: true }));
 
 // A recording as mate-hq's recorder writes it: its own key order and spacing, kept byte for byte.
-const recording = (producer: string, name: string, schema = "navigation project:<id>") =>
-  `{\n  "$provenance": {\n    "producer": "${producer}",\n    "revision": "r1",\n    "via": "a.test.ts",\n    "schema": "${schema}"\n  },\n  "value": {"name":  "${name}"}\n}\n`;
+const recording = (producer: string, name: string) =>
+  `{\n  "$provenance": {\n    "producer": "${producer}",\n    "revision": "r1",\n    "via": "a.test.ts",\n    "schema": "navigation project:<id>"\n  },\n  "value": {"name":  "${name}"}\n}\n`;
 
 const checkout = (name: string, files: Record<string, string>) => {
   const recordings = NodePath.join(scratch, name, "conformance", "recordings");
@@ -30,38 +30,9 @@ describe("sync-recordings", () => {
 
     const synced = syncRecordings(checkout("copy", { "kept.json": kept }), target);
 
-    expect(synced).toEqual({
-      producer: "mate-hq",
-      copied: ["kept.json"],
-      skipped: [],
-      removed: ["gone.json"],
-    });
+    expect(synced).toEqual({ producer: "mate-hq", copied: ["kept.json"], removed: ["gone.json"] });
     expect(NodeFS.readdirSync(NodePath.join(target, "mate-hq"))).toEqual(["kept.json"]);
     expect(NodeFS.readFileSync(NodePath.join(target, "mate-hq", "kept.json"), "utf8")).toBe(kept);
-  });
-
-  // witness: scripts/sync-recordings.ts | for (const name of skipped) texts.delete(name); →
-  it("keeps no recording of a wire nothing here consumes", () => {
-    const target = NodePath.join(scratch, "consumer-target");
-    NodeFS.mkdirSync(NodePath.join(target, "mate-hq"), { recursive: true });
-    NodeFS.writeFileSync(
-      NodePath.join(target, "mate-hq", "chat-link.linked.json"),
-      recording("mate-hq", "x", "POST /api/chat-links HqChatLink"),
-    );
-    const synced = syncRecordings(
-      checkout("consumer", {
-        "chat-link.linked.json": recording("mate-hq", "linked", "POST /api/chat-links HqChatLink"),
-        "kept.json": recording("mate-hq", "kept"),
-      }),
-      target,
-    );
-    expect(synced).toEqual({
-      producer: "mate-hq",
-      copied: ["kept.json"],
-      skipped: ["chat-link.linked.json"],
-      removed: ["chat-link.linked.json"],
-    });
-    expect(NodeFS.readdirSync(NodePath.join(target, "mate-hq"))).toEqual(["kept.json"]);
   });
 
   // witness: scripts/sync-recordings.ts | if (named.size !== 1) → if (named.size === 0)

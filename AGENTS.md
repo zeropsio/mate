@@ -124,10 +124,9 @@ To answer a question, go to the home:
 - Test admission and removal: OWNER.md Testing. `scripts/check-test-sentences.ts` enforces
   witness lines and `Drops-test`/`Drops-test-file` trailers; `scripts/witness-replay.ts <file>`
   replays a file's witnesses.
-- Wire-shaped test input: `recorded(<schema>, <name>, edit?)` from `packages/test-recordings` (HQ
-  from mate-hq conformance; written only by `scripts/sync-recordings.ts`, which keeps only the
-  schemas z3 consumes). Casts and annotations to contract types in tests only decrease
-  (`scripts/check-test-inputs.ts`).
+- Wire-shaped test input: `recorded(<name>, edit?)` from `packages/test-recordings` (HQ from mate-hq
+  conformance; written only by `scripts/sync-recordings.ts`). Casts and annotations to contract types
+  in tests only decrease (`scripts/check-test-inputs.ts`).
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.
 - Paragraph-sized doc entries are list items, never table rows.

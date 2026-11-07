@@ -235,12 +235,8 @@ export function GithubAppView({
             {section.installations.map((installation) => (
               <li className="flex items-center gap-1.5 text-xs" key={installation.id}>
                 <span className="text-foreground">{installation.line}</span>
-                {installation.manageUrl === null ? null : (
-                  <>
-                    <span className="text-muted-foreground">·</span>
-                    <OutLink href={installation.manageUrl}>Manage on GitHub</OutLink>
-                  </>
-                )}
+                <span className="text-muted-foreground">·</span>
+                <OutLink href={installation.manageUrl}>Manage on GitHub</OutLink>
                 {installation.suspended && section.manage && section.installTrip ? (
                   <>
                     <span className="text-muted-foreground">·</span>

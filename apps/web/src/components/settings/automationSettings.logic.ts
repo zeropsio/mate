@@ -7,7 +7,6 @@ import type { SettingValue } from "@t3tools/client-runtime/data";
 import type {
   HqGithubInstallation,
   HqGithubManifestView,
-  HqGithubReadInstallation,
   HqGithubView,
 } from "@t3tools/shared/hqGithub";
 
@@ -36,8 +35,7 @@ export type GithubSection =
       readonly installations: ReadonlyArray<{
         readonly id: number;
         readonly line: string;
-        /** GitHub's page for it; `null` for one GitHub did not answer about. */
-        readonly manageUrl: string | null;
+        readonly manageUrl: string;
         readonly suspended: boolean;
       }>;
       /**
@@ -138,13 +136,11 @@ export function githubSealLine(
 
 /**
  * Where an installation stands: what HQ says, or for an HQ that predates the guard, accepted
- * unless GitHub suspended it — that HQ acts on every installation it lists. `unknown`: GitHub did
- * not answer about it at HQ's read.
+ * unless GitHub suspended it — that HQ acts on every installation it lists.
  */
 export function installationStanding(
-  installation: HqGithubInstallation,
-): "accepted" | "waiting" | "suspended" | "unknown" {
-  if (installation.state === "unknown") return "unknown";
+  installation: Pick<HqGithubInstallation, "suspended" | "state">,
+): "accepted" | "waiting" | "suspended" {
   if (installation.suspended) return "suspended";
   return installation.state ?? "accepted";
 }
@@ -167,7 +163,7 @@ function makePublicAt(view: Extract<HqGithubView, { readonly state: "connected" 
 
 /** Where the app is installed, in a line: "acme · 3 repositories". */
 export function installationLine(
-  installation: Pick<HqGithubReadInstallation, "account" | "repositorySelection" | "repositories">,
+  installation: Pick<HqGithubInstallation, "account" | "repositorySelection" | "repositories">,
 ): string {
   const reach =
     installation.repositorySelection === "all"
@@ -200,35 +196,22 @@ export function githubSection(setting: SettingValue<HqGithubView>, admin: boolea
         installUrl: view.installUrl,
         installations: view.installations
           .filter((installation) => installationStanding(installation) !== "waiting")
-          .map((installation) =>
-            installation.state === "unknown"
-              ? {
-                  id: installation.id,
-                  line: `Installation ${installation.id} · GitHub didn't answer about it`,
-                  manageUrl: null,
-                  suspended: false,
-                }
-              : {
-                  id: installation.id,
-                  line:
-                    installationStanding(installation) === "suspended"
-                      ? `${installation.account} · suspended`
-                      : installationLine(installation),
-                  manageUrl: installation.manageUrl,
-                  suspended: installationStanding(installation) === "suspended",
-                },
-          ),
-        waiting: view.installations.flatMap((installation) =>
-          installation.state !== "unknown" && installationStanding(installation) === "waiting"
-            ? [
-                {
-                  id: installation.id,
-                  account: installation.account,
-                  repositories: installation.repositories.map((repository) => repository.fullName),
-                },
-              ]
-            : [],
-        ),
+          .map((installation) => ({
+            id: installation.id,
+            line:
+              installationStanding(installation) === "suspended"
+                ? `${installation.account} · suspended`
+                : installationLine(installation),
+            manageUrl: installation.manageUrl,
+            suspended: installationStanding(installation) === "suspended",
+          })),
+        waiting: view.installations
+          .filter((installation) => installationStanding(installation) === "waiting")
+          .map((installation) => ({
+            id: installation.id,
+            account: installation.account,
+            repositories: installation.repositories.map((repository) => repository.fullName),
+          })),
         privateTo: view.public === false ? { owner: view.owner, ...makePublicAt(view) } : null,
         installTrip: view.public !== undefined,
         manage: admin,
@@ -337,15 +320,9 @@ export function appRepositories(view: HqGithubView | null): ReadonlyArray<string
   const names = new Set<string>();
   // Only where Mate acts: never a suspended installation's, nor one still waiting for an OK.
   for (const installation of view.installations)
-    if (installation.state !== "unknown" && installationStanding(installation) === "accepted")
+    if (installationStanding(installation) === "accepted")
       for (const repository of installation.repositories) names.add(repository.fullName);
   return [...names].toSorted((a, b) => a.localeCompare(b));
-}
-
-/** How many of the app's installations GitHub did not answer about, as every picker says them. */
-export function unansweredInstallations(view: HqGithubView | null): number {
-  if (view === null || view.state !== "connected") return 0;
-  return view.installations.filter((installation) => installation.state === "unknown").length;
 }
 
 /** The app's name as the mirror dialog says it: GitHub's, else its slug. */

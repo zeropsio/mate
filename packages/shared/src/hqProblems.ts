@@ -1,5 +1,4 @@
-/** HQ's structured finding and the refusal body that carries it, unchanged through their transports. */
-import * as Effect from "effect/Effect";
+/** HQ's structured finding, carried unchanged through its existing transports. */
 import * as Schema from "effect/Schema";
 
 export const HqProblem = Schema.Struct({
@@ -40,25 +39,6 @@ export const HqProblem = Schema.Struct({
   ),
 });
 export type HqProblem = typeof HqProblem.Type;
-
-/** A refusal's added field, absent where HQ sent something else there: the refusal still stands. */
-const added = <S extends Schema.Top>(field: S) =>
-  Schema.optionalKey(field.pipe(Schema.catchDecoding(() => Effect.succeedNone)));
-
-/**
- * The body of a request HQ refused (`4xx`/`5xx`): `{code}` or `{code,reason}`, with what some
- * refusals add (mate-hq spec/protocol.md). A body without a `code` is no refusal of HQ's.
- */
-export const HqRefusal = Schema.Struct({
-  code: Schema.String,
-  reason: added(Schema.String),
-  /** Where a hand-over stopped (`handover_unfinished`). */
-  phase: added(Schema.String),
-  /** A counterpart's own words (`git_probe_refused`, GitHub's refusal behind `github_unavailable`). */
-  message: added(Schema.String),
-  problems: added(Schema.Array(HqProblem)),
-});
-export type HqRefusal = typeof HqRefusal.Type;
 
 /** The verdict belongs to one exact group head; absent on older HQs. */
 export const HqRecipeValidation = Schema.Struct({

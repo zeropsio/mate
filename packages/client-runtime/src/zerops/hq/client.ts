@@ -1,5 +1,5 @@
 import { ObserveCredential } from "./observeCredential.ts";
-import { type HqProblem, HqRefusal } from "@t3tools/shared/hqProblems";
+import { HqProblem } from "@t3tools/shared/hqProblems";
 import type { KeptGitAnswer } from "@t3tools/contracts";
 import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
@@ -744,13 +744,22 @@ export const HQ_WRITE_UNCERTAIN =
 const uncertain = () =>
   new HqError({ kind: "uncertain", code: "uncertain", message: HQ_WRITE_UNCERTAIN });
 
-/** HQ's refusal as its body says it, and the body as JSON; a body that is not HQ's names none. */
-function said(text: string): { readonly refusal: HqRefusal | undefined; readonly body: unknown } {
+/** HQ's refusal evidence; a body that is not HQ's JSON names none. */
+function said(text: string): {
+  readonly code?: unknown;
+  readonly problems?: unknown;
+  readonly reason?: unknown;
+  readonly phase?: unknown;
+  readonly message?: unknown;
+  readonly repository?: unknown;
+  readonly applicationName?: unknown;
+  readonly environments?: unknown;
+} {
   try {
     const body: unknown = JSON.parse(text);
-    return { refusal: Option.getOrUndefined(decodeRefusal(body)), body };
+    return typeof body === "object" && body !== null ? body : { code: undefined };
   } catch {
-    return { refusal: undefined, body: undefined };
+    return { code: undefined };
   }
 }
 
@@ -758,17 +767,17 @@ function said(text: string): { readonly refusal: HqRefusal | undefined; readonly
 const WROTE_NOTHING_ZEROPS = "zerops_unanswered";
 
 const isRemoteRefusal = Schema.is(HqRemoteRefusal);
-const decodeRefusal = Schema.decodeUnknownOption(HqRefusal);
 
 async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
-  const { refusal, body } = said(await response.text());
-  const problems = refusal?.problems;
-  const code = refusal?.code ?? `http_${response.status}`;
+  const body = said(await response.text());
+  const decodedProblems = Schema.decodeUnknownOption(Schema.Array(HqProblem))(body.problems);
+  const problems = Option.getOrUndefined(decodedProblems);
+  const code = typeof body.code === "string" ? body.code : `http_${response.status}`;
   // ProbeRefused owns the host-specific remedy; other refusals keep the client's wording.
   const probeMessage =
     code === "git_probe_refused"
-      ? refusal?.message !== undefined && refusal.message.trim().length > 0
-        ? refusal.message
+      ? typeof body.message === "string" && body.message.trim().length > 0
+        ? body.message
         : "Mate could not verify repository access; check the repository address and token settings, then try again."
       : undefined;
   if (response.status >= 500 || response.status === 429) {
@@ -781,19 +790,19 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
         probeMessage ??
         (code === WROTE_NOTHING_ZEROPS
           ? ZEROPS_UNANSWERED
-          : code === "zerops_unavailable" && refusal?.reason === "no_credential"
+          : code === "zerops_unavailable" && body.reason === "no_credential"
             ? ZEROPS_NO_CREDENTIAL
             : "HQ is not answering right now."),
     });
   }
-  const reason = refusal?.reason;
+  const reason = typeof body.reason === "string" ? body.reason : undefined;
   // GitHub refused what HQ asked it for the person (resuming an installation its account
   // suspended): its own words say why.
   const githubSaid =
     reason === "github_unavailable" &&
-    refusal?.message !== undefined &&
-    refusal.message.trim().length > 0
-      ? `GitHub refused: ${refusal.message.trim()}`
+    typeof body.message === "string" &&
+    body.message.trim().length > 0
+      ? `GitHub refused: ${body.message.trim()}`
       : undefined;
   return new HqError({
     kind: "refused",
@@ -807,7 +816,7 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
       hqRefusalWords({
         code,
         reason,
-        ...(refusal?.phase !== undefined ? { phase: refusal.phase } : {}),
+        ...(typeof body.phase === "string" ? { phase: body.phase } : {}),
         gitSetup,
         ...(isRemoteRefusal(body) ? { remote: body } : {}),
       }),
