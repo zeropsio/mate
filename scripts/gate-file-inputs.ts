@@ -279,6 +279,10 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   ],
   "scripts/update-release-package-versions.test.ts": [],
   "scripts/vitest-tmp.test.ts": ["patches/vitest@*.patch"],
+  "scripts/witness-replay.test.ts": [
+    "apps/server/src/spi/serverCommandReadiness.test.ts",
+    "scripts/fixtures/witness-replay/**",
+  ],
 };
 
 // Inspect calls, not source text: comments and scripts held in strings are not filesystem reads.
