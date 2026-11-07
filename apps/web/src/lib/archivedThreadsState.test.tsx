@@ -1,69 +1,57 @@
+// @vitest-environment happy-dom
+
 import { RegistryContext } from "@effect/atom-react";
+import * as accountData from "@t3tools/client-runtime/data";
 import { makeAccountStore, type AccountStore } from "@t3tools/client-runtime/data";
+import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
 import { EnvironmentId, type OrchestrationShellSnapshot } from "@t3tools/contracts";
-import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
+import * as Effect from "effect/Effect";
+import { Atom, AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { environmentPresentations } from "../state/presentation";
+import { AccountStoreContext } from "../zerops/accountData";
+import { closeAccountLifetime, openAccountLifetime } from "../zerops/accountLifetime";
 import { useArchivedThreadSnapshots } from "./archivedThreadsState";
 
 const OPEN = EnvironmentId.make("open-mate");
 const PARKED = EnvironmentId.make("parked-mate");
-const fixture = vi.hoisted(() => ({
-  asked: [] as unknown[],
-  store: null as AccountStore | null,
-  close: new Set<() => void>(),
-}));
-vi.mock("../state/presentation", async () => {
-  const { Atom: Atoms } = await import("effect/reactivity");
-  return {
-    environmentPresentations: {
-      presentationsAtom: Atoms.make(
-        new Map([
-          ["open-mate", { connection: { phase: "connected" } }],
-          ["parked-mate", { connection: { phase: "available" } }],
-        ]),
-      ),
-    },
-  };
-});
-vi.mock("../connection/runtime", () => ({
-  connectionAtomRuntime: { atom: () => Atom.make(AsyncResult.success({})) },
-}));
-vi.mock("../zerops/ZeropsAccountData", () => ({ useAccountStoreForAdapters: () => fixture.store }));
-vi.mock("../zerops/accountLifetime", () => ({
-  onAccountLifetimeClose: (close: () => void) => {
-    fixture.close.add(close);
-    return () => fixture.close.delete(close);
-  },
-}));
-vi.mock("@t3tools/client-runtime/data", async (original) => {
-  const actual = await original<typeof import("@t3tools/client-runtime/data")>();
-  const Effect = await import("effect/Effect");
-  return {
-    ...actual,
-    makeArchiveWire: () => ({
-      read: (environmentId: EnvironmentId) =>
-        Effect.sync(() => {
-          fixture.asked.push(environmentId);
-          return {
-            snapshotSequence: 1,
-            updatedAt: "2026-10-07T00:00:00Z",
-            projects: [],
-            threads: [],
-          } satisfies OrchestrationShellSnapshot;
-        }),
-    }),
-  };
+const fixture = { asked: [] as unknown[], store: null as AccountStore | null };
+let previousPresentations: typeof environmentPresentations.presentationsAtom;
+let registry: ReturnType<typeof AtomRegistry.make>;
+beforeEach(() => {
+  previousPresentations = environmentPresentations.presentationsAtom;
+  environmentPresentations.presentationsAtom = Atom.make(
+    new Map([
+      [OPEN, { connection: { phase: "connected" } } as EnvironmentPresentation],
+      [PARKED, { connection: { phase: "available" } } as EnvironmentPresentation],
+    ]),
+  );
+  openAccountLifetime("archive-reader");
+  vi.spyOn(accountData, "makeArchiveWire").mockReturnValue({
+    read: (environmentId) =>
+      Effect.sync(() => {
+        fixture.asked.push(environmentId);
+        return {
+          snapshotSequence: 1,
+          updatedAt: "2026-10-07T00:00:00Z",
+          projects: [],
+          threads: [],
+        } satisfies OrchestrationShellSnapshot;
+      }),
+  });
 });
 const mounted: ReactTestRenderer[] = [];
-afterEach(() => {
+afterEach(async () => {
   for (const renderer of mounted.splice(0)) act(() => renderer.unmount());
-  act(() => {
-    for (const close of fixture.close) close();
-  });
+  await act(() => closeAccountLifetime());
+  fixture.store?.close();
+  registry.dispose();
   fixture.store = null;
   fixture.asked = [];
+  environmentPresentations.presentationsAtom = previousPresentations;
+  vi.restoreAllMocks();
 });
 function Probe({ environmentIds }: { environmentIds: ReadonlyArray<EnvironmentId> }) {
   const read = useArchivedThreadSnapshots(environmentIds);
@@ -73,13 +61,15 @@ function Probe({ environmentIds }: { environmentIds: ReadonlyArray<EnvironmentId
 }
 describe("useArchivedThreadSnapshots", () => {
   it("reads archived chats only from the Mates this browser is connected to, and retains them on remount", async () => {
-    const registry = AtomRegistry.make();
+    registry = AtomRegistry.make();
     fixture.store = makeAccountStore(registry);
     const ids = [OPEN, PARKED];
     const render = () =>
       create(
         <RegistryContext.Provider value={registry}>
-          <Probe environmentIds={ids} />
+          <AccountStoreContext.Provider value={fixture.store}>
+            <Probe environmentIds={ids} />
+          </AccountStoreContext.Provider>
         </RegistryContext.Provider>,
       );
     await act(async () => {

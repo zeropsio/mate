@@ -17,6 +17,14 @@ import {
 } from "@t3tools/client-runtime/data/fixtures";
 import { markupDom } from "../../../test/markupDom";
 import { olderNavigation } from "~/zerops/__fixtures__/olderNavigation";
+import * as sessionContext from "~/zerops/sessionContext";
+import * as projectFlows from "~/zerops/projectFlows";
+import * as collapsedProjects from "~/zerops/collapsedProjects";
+import * as nowClock from "~/zerops/useNowMs";
+import * as crew from "~/zerops/crew/useCrew";
+import * as accountForge from "~/zerops/accountForge";
+import * as mateOwners from "~/zerops/useZeropsMateOwners";
+import * as menuReadings from "~/zerops/useMenuMateReadings";
 import {
   buildZeropsGroupTree,
   groupFlow,
@@ -37,7 +45,7 @@ import {
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { heldCandidates, type CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import { act, act as act_, type ReactElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { AtomRegistry } from "effect/reactivity";
@@ -101,74 +109,17 @@ const stored = vi.hoisted(() => ({
 }));
 /** What each stop runs, as the platform says it, for the tests that draw it. */
 const stops = vi.hoisted(() => ({ deployments: new Map<string, unknown>() }));
-vi.mock("~/zerops/projectFlows", async (original) => ({
-  ...(await original<typeof import("~/zerops/projectFlows")>()),
-  useStopDeploymentsShown: () => stops.deployments,
-}));
-vi.mock("~/zerops/collapsedProjects", async (original) => ({
-  ...(await original<typeof import("~/zerops/collapsedProjects")>()),
-  readCollapsedProjects: () => stored.collapsed,
-  writeCollapsedProjects: (collapsed: ReadonlySet<string>) => {
-    stored.written = collapsed;
-  },
-  readOpenedProjects: () => stored.opened,
-  writeOpenedProjects: (opened: ReadonlySet<string>) => {
-    stored.writtenOpened = opened;
-  },
-}));
-// A crew's faces open their chats through the router, which a menu drawn
-// here has none of.
-vi.mock("@tanstack/react-router", async (original) => ({
-  ...(await original<typeof import("@tanstack/react-router")>()),
-  useNavigate: () => () => undefined,
-}));
 // The shared minute clock, where a test sets it: the menu's coming-up windows close on it. The
 // real one's timer has no window to run on in a menu drawn here.
 const clock = vi.hoisted(() => ({ ms: undefined as number | undefined }));
-vi.mock("~/zerops/useNowMs", async (original) => ({
-  ...(await original<typeof import("~/zerops/useNowMs")>()),
-  useNowMs: () => clock.ms ?? Date.now(),
-}));
 // The crew HQ holds of each Mate, by its project, where a test says one: none otherwise.
 const hqCrews = vi.hoisted(() => new Map<string, unknown>());
-vi.mock("~/zerops/crew/useCrew", async (original) => ({
-  ...(await original<typeof import("~/zerops/crew/useCrew")>()),
-  useMateCrew: (projectId: string | null) =>
-    (projectId === null ? undefined : hqCrews.get(projectId)) ?? {
-      status: null,
-      crew: null,
-      logins: {},
-      current: false,
-      environmentId: undefined,
-    },
-}));
 // The stops a drawn surface holds the deployment demand of, by project id.
 const demandedStops = vi.hoisted(() => new Set<string>());
-vi.mock("~/zerops/accountForge", async (original) => {
-  const actual = await original<typeof import("~/zerops/accountForge")>();
-  return {
-    ...actual,
-    useStopDeploymentDemand: (project: ProjectRef | null) => {
-      actual.useStopDeploymentDemand(project);
-      if (project !== null) demandedStops.add(project.projectId);
-    },
-  };
-});
 // Who is looking: nobody signed in to Zerops unless a test says whom.
 const session = vi.hoisted(() => ({
   viewer: undefined as string | undefined,
   role: undefined as string | undefined,
-}));
-vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
-  ...(await original<typeof import("~/zerops/ZeropsSessionProvider")>()),
-  useZeropsSession: () => ({ status: "signed-in", activeOrganization: { id: "org-1" } }),
-  useZeropsSessionOptional: () =>
-    session.viewer === undefined
-      ? null
-      : {
-          user: { id: session.viewer },
-          activeOrganization: { id: "org", roleCode: session.role, status: "ACTIVE" },
-        },
 }));
 // Whom each Mate waits on, as HQ says it (`waitsOnViewer`): the viewer who signed its agent in.
 const signerOf = vi.hoisted(() => new Map<string, string>());
@@ -177,11 +128,61 @@ const signerOf = vi.hoisted(() => new Map<string, string>());
 const hqSigners = vi.hoisted(() => ({ said: true }));
 // The Mates HQ names an owner of (`ownerUserId`).
 const ownedBy = vi.hoisted(() => new Set<string>());
-vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
-  ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
-  useWaitsOnViewer: () => (projectId: string) =>
-    session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
-  useHqProjectPerson: (projectId: string) => {
+const { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
+const withRouter = (element: ReactElement) => (
+  <RouterContextProvider router={router}>{element}</RouterContextProvider>
+);
+const renderToStaticMarkup = (element: ReactElement) => renderMarkup(withRouter(element));
+
+beforeEach(() => {
+  vi.spyOn(router, "navigate").mockResolvedValue(undefined);
+  vi.spyOn(projectFlows, "useStopDeploymentsShown").mockImplementation(
+    () => stops.deployments as ReturnType<typeof projectFlows.useStopDeploymentsShown>,
+  );
+  vi.spyOn(collapsedProjects, "readCollapsedProjects").mockImplementation(() => stored.collapsed);
+  vi.spyOn(collapsedProjects, "writeCollapsedProjects").mockImplementation((collapsed) => {
+    stored.written = collapsed;
+  });
+  vi.spyOn(collapsedProjects, "readOpenedProjects").mockImplementation(() => stored.opened);
+  vi.spyOn(collapsedProjects, "writeOpenedProjects").mockImplementation((opened) => {
+    stored.writtenOpened = opened;
+  });
+  vi.spyOn(nowClock, "useNowMs").mockImplementation(() => clock.ms ?? Date.now());
+  vi.spyOn(crew, "useMateCrew").mockImplementation(
+    (projectId) =>
+      ((projectId === null ? undefined : hqCrews.get(projectId)) ?? {
+        status: null,
+        crew: null,
+        logins: {},
+        current: false,
+        environmentId: undefined,
+      }) as ReturnType<typeof crew.useMateCrew>,
+  );
+  const demandStop = accountForge.useStopDeploymentDemand;
+  vi.spyOn(accountForge, "useStopDeploymentDemand").mockImplementation((project) => {
+    demandStop(project);
+    if (project !== null) demandedStops.add(project.projectId);
+  });
+  vi.spyOn(sessionContext, "useZeropsSession").mockReturnValue({
+    status: "signed-in",
+    activeOrganization: { id: "org-1" },
+  } as ReturnType<typeof sessionContext.useZeropsSession>);
+  vi.spyOn(sessionContext, "useZeropsSessionOptional").mockImplementation(
+    () =>
+      (session.viewer === undefined
+        ? null
+        : {
+            user: { id: session.viewer },
+            activeOrganization: { id: "org", roleCode: session.role, status: "ACTIVE" },
+          }) as ReturnType<typeof sessionContext.useZeropsSessionOptional>,
+  );
+  vi.spyOn(mateOwners, "useWaitsOnViewer").mockImplementation(
+    () => (projectId: string) =>
+      session.viewer !== undefined && signerOf.get(projectId) === session.viewer,
+  );
+  vi.spyOn(mateOwners, "useHqProjectPerson").mockImplementation((projectId) => {
     if (!hqSigners.said) return undefined;
     const signer = signerOf.get(projectId);
     const signers = signer === undefined ? {} : { "claude-code": signer };
@@ -191,14 +192,10 @@ vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
       waitsOnViewer: session.viewer !== undefined && signer === session.viewer,
       signedInNow: signers,
       everSignedIn: signers,
-    };
-  },
-}));
-// HQ has heard every Mate here: its overview is live, so its row may speak of a sign-in.
-vi.mock("~/zerops/useMenuMateReadings", async (original) => ({
-  ...(await original<typeof import("~/zerops/useMenuMateReadings")>()),
-  useMateOverviewInHq: () => "live",
-}));
+    } as unknown as ReturnType<typeof mateOwners.useHqProjectPerson>;
+  });
+  vi.spyOn(menuReadings, "useMateOverviewInHq").mockReturnValue("live");
+});
 afterEach(() => {
   stops.deployments = new Map();
   // A tree left mounted would answer the next test's asks of the one menu.
@@ -400,11 +397,19 @@ function mount(element: ReactElement): ReactTestRenderer {
   const noDom = Object.fromEntries(
     ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
   );
-  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
+  vi.stubGlobal(
+    "window",
+    Object.assign(new EventTarget(), noDom, {
+      setTimeout,
+      clearTimeout,
+      setInterval,
+      clearInterval,
+    }),
+  );
   for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
   let tree: ReactTestRenderer | undefined;
   act(() => {
-    tree = create(element);
+    tree = create(withRouter(element));
   });
   mountedTrees.push(tree!);
   return tree!;
@@ -2747,7 +2752,7 @@ describe("production and the stages are the project's places, behind its globe",
     expect(foundStops()).toEqual([]);
     expect([...demandedStops].toSorted()).toEqual(["crm-prod", "crm-stage"]);
     act(() => {
-      mounted.update(drawn([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)]));
+      mounted.update(withRouter(drawn([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)])));
     });
     expect(foundStops()?.map(({ word }) => word)).toEqual([
       "Stage main, healthy",
@@ -2933,7 +2938,7 @@ describe("a group of Mates folded to its row", () => {
   };
   const reSort = (mounted: ReactTestRenderer, colleague: string) => {
     act(() => {
-      mounted.update(tree({ getOwner: owners([colleague]) }));
+      mounted.update(withRouter(tree({ getOwner: owners([colleague]) })));
     });
   };
 
@@ -3276,7 +3281,9 @@ describe("a group of Mates folded to its row", () => {
     const mounted = mount(drawn(CRM_DEV, restingActivity(told)));
     session.viewer = "u-ada";
     act(() => {
-      mounted.update(drawn(mine(CRM_DEV_CONNECTED), { ...read, kind: "input", face: "needs" }));
+      mounted.update(
+        withRouter(drawn(mine(CRM_DEV_CONNECTED), { ...read, kind: "input", face: "needs" })),
+      );
     });
     const face = clusterOf(mounted).find(({ key }) => key === "crm-dev");
     expect(face?.state).toBe("needs");
@@ -3391,13 +3398,13 @@ describe("a group of Mates folded to its row", () => {
     // Its conversation opens: the route names it, and its Mate is the one open.
     const opened = { activeProjectId: "crm-dev", activeConversation: "env:crm-dev/thread" };
     act(() => {
-      mounted.update(tree(opened));
+      mounted.update(withRouter(tree(opened)));
     });
     expect(mates(mounted)).toHaveLength(2);
     expect(stored.writtenOpened).toEqual(new Set(["aaa"]));
     press(mounted, "sidebar-project");
     act(() => {
-      mounted.update(tree(opened));
+      mounted.update(withRouter(tree(opened)));
     });
     expect(mates(mounted)).toHaveLength(0);
   });
@@ -3407,7 +3414,7 @@ describe("a group of Mates folded to its row", () => {
     const mounted = mount(tree({ ...reloaded, activeProjectId: null }));
     expect(mates(mounted)).toHaveLength(0);
     act(() => {
-      mounted.update(tree({ ...reloaded, activeProjectId: "crm-dev" }));
+      mounted.update(withRouter(tree({ ...reloaded, activeProjectId: "crm-dev" })));
     });
     expect(mates(mounted)).toHaveLength(0);
     expect(surface(mounted, "sidebar-project").props["aria-current"]).toBe("true");
@@ -5081,7 +5088,7 @@ describe("one project order, the person's", () => {
     />
   );
   afterEach(() => {
-    vi.restoreAllMocks();
+    if (vi.isMockFunction(Date.now)) vi.mocked(Date.now).mockRestore();
     setLocalStorageItem(PROJECT_ORDER_STORAGE_KEY, "newest", ProjectOrderSchema);
     setLocalStorageItem(PROJECT_CUSTOM_ORDER_STORAGE_KEY, [], ProjectCustomOrderSchema);
   });
@@ -5108,7 +5115,11 @@ describe("one project order, the person's", () => {
     const tree = mount(menu((candidate) => read(candidate === LINKS_MATE ? now : now - week - 1)));
     expect(mountedIds(tree)).toEqual(["aaa", "links"]);
     clock.mockReturnValue(now + week + 1);
-    act(() => tree.update(menu((candidate) => read(candidate === CRM_DEV ? now + week + 1 : now))));
+    act(() =>
+      tree.update(
+        withRouter(menu((candidate) => read(candidate === CRM_DEV ? now + week + 1 : now))),
+      ),
+    );
     expect(mountedIds(tree)).toEqual(["aaa", "links"]);
   });
 

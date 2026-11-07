@@ -8,9 +8,6 @@ import {
   type ProjectServices,
 } from "@t3tools/client-runtime/data";
 import { appAtomRegistry } from "../rpc/atomRegistry";
-beforeEach(() => {
-  appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
-});
 import { acquireHqPressLease as pressHold } from "@t3tools/client-runtime/data";
 import {
   type EnvironmentCreationPlatform,
@@ -21,7 +18,7 @@ import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { ownerAtAdd, type ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { RunToEnd } from "@t3tools/client-runtime/data";
 import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
   beginPress,
@@ -44,7 +41,7 @@ import {
   type MatePress,
   type PressInputs,
 } from "./matePress";
-import { accountHqApi } from "./accountHq";
+import * as accountHq from "./accountHq";
 import { mateArrivalNotice } from "./mateNoticeVoice";
 import type { LockManagerLike } from "./mateLocks";
 
@@ -110,7 +107,8 @@ function fakeRun(writes: Readonly<Record<string, FakeWrite | undefined>>): RunTo
 }
 
 /** The HQ `accountHq` stands in for here, as the account's HQ writes reach it. */
-const hqApi = () => accountHqApi({} as never, "org-acme", { projectId: "hq", address: "" });
+const hqApi = () =>
+  accountHq.accountHqApi({} as never, "org-acme", { projectId: "hq", address: "" });
 
 /** A press's operations over a fake run; HQ's navigation records no environment here. */
 const operationsOf = (run: RunToEnd): PressInputs["operations"] => ({
@@ -150,44 +148,63 @@ function withOperation<K extends OperationIntent["kind"]>(
 }
 
 /** What HQ heard of the press: each record and attach it was asked to write. */
-const hq = vi.hoisted(() => ({
+const hq = {
   calls: null as Array<string> | null,
   /** What HQ answers every attach with, where it takes none. */
   attachFailure: null as Error | null,
-}));
-vi.mock("./accountHq", () => ({
-  accountHqApi: () => ({
-    bindBirth: async () => undefined,
-    attachProject: async (
-      appId: string,
-      attach: {
-        readonly mate?: {
-          readonly face: string;
-          readonly standUp?: boolean;
-          readonly serviceId?: string;
-        };
-        readonly birth?: string;
-      },
-    ) => {
-      if (hq.attachFailure !== null) {
-        hq.calls?.push("attach failed");
-        throw hq.attachFailure;
-      }
-      hq.calls?.push(
-        `attach ${appId}${attach.mate?.serviceId === undefined ? "" : ` as ${attach.mate.serviceId}`}${attach.birth === undefined ? "" : ` closing ${attach.birth}`}${attach.mate?.standUp === true ? " asking its stand-up" : ""}`,
-      );
+};
+const hqFixture = {
+  bindBirth: async () => undefined,
+  attachProject: async (
+    appId: string,
+    attach: {
+      readonly mate?: {
+        readonly face: string;
+        readonly standUp?: boolean;
+        readonly serviceId?: string;
+      };
+      readonly birth?: string;
     },
-    createMate: async (mate: {
-      readonly face: string;
-      readonly standUp?: boolean;
-      readonly serviceId?: string;
-    }) => {
-      hq.calls?.push(
-        `record ${mate.face}${mate.serviceId === undefined ? "" : ` as ${mate.serviceId}`}${mate.standUp === true ? " asking its stand-up" : ""}`,
-      );
-    },
-  }),
-}));
+  ) => {
+    if (hq.attachFailure !== null) {
+      hq.calls?.push("attach failed");
+      throw hq.attachFailure;
+    }
+    hq.calls?.push(
+      `attach ${appId}${attach.mate?.serviceId === undefined ? "" : ` as ${attach.mate.serviceId}`}${attach.birth === undefined ? "" : ` closing ${attach.birth}`}${attach.mate?.standUp === true ? " asking its stand-up" : ""}`,
+    );
+  },
+  createMate: async (mate: {
+    readonly face: string;
+    readonly standUp?: boolean;
+    readonly serviceId?: string;
+  }) => {
+    hq.calls?.push(
+      `record ${mate.face}${mate.serviceId === undefined ? "" : ` as ${mate.serviceId}`}${mate.standUp === true ? " asking its stand-up" : ""}`,
+    );
+  },
+} as unknown as ReturnType<typeof accountHq.accountHqApi>;
+
+const currentAccount = () => ({
+  store: appAtomRegistry.get(creationPressStoreAtom),
+  reads: appAtomRegistry.get(accountReadsAtom),
+});
+let previousAccount: ReturnType<typeof currentAccount>;
+let pressStore: AccountStore;
+beforeEach(() => {
+  previousAccount = currentAccount();
+  pressStore = makeAccountStore(appAtomRegistry);
+  appAtomRegistry.set(creationPressStoreAtom, pressStore);
+  vi.spyOn(accountHq, "accountHqApi").mockReturnValue(hqFixture);
+});
+afterEach(() => {
+  appAtomRegistry.set(creationPressStoreAtom, previousAccount.store);
+  appAtomRegistry.set(accountReadsAtom, previousAccount.reads);
+  pressStore.close();
+  hq.calls = null;
+  hq.attachFailure = null;
+  vi.restoreAllMocks();
+});
 
 // Finish setup drawn as the Add dialog draws a press, then a clear end (live, 2026-10-01: Hugo's
 // view went "could not be added", "isn't running", "coming up", and never said it was done).

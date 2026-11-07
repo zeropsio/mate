@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * *Add automated Mates* asks how many, proposes who they are, says what they do and what happens
  * next — and asks nobody's access: automated Mates belong to the organization.
@@ -52,12 +53,6 @@ afterEach(() => {
 
 function mount(element: ReactElement): ReactTestRenderer {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  // Each name's die has a tooltip, which listens on `window` once mounted; there is no DOM here.
-  const noDom = Object.fromEntries(
-    ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
-  );
-  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
-  for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
   let tree: ReactTestRenderer | undefined;
   act(() => {
     tree = create(element);

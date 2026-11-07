@@ -3,14 +3,20 @@ import { EnvironmentId, TurnId } from "@t3tools/contracts";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import { act, type ReactNode } from "react";
+import { act, Fragment, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import * as activity from "../../zerops/activity/useProjectActivity";
+import * as buildLog from "../../zerops/activity/useBuildLog";
+import * as feeds from "../../zerops/useZeropsFeeds";
+import * as session from "../../zerops/sessionContext";
+import * as highlightedTokens from "./HighlightedTokens";
 import type { WorkLogEntry } from "../../session-logic";
 import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimeline.logic";
 import { RunChat } from "./RunChat";
 import { SLOT_HOLD_MS } from "./liveSlot.logic";
+import { forgetRunFolds } from "./runCard.logic";
 import { stepOf } from "./workSteps.logic";
 import { at as fixtureAt, operation } from "./conversationFixtures";
 import {
@@ -20,11 +26,12 @@ import {
   type TimelineRowSharedState,
 } from "./timelineContext";
 
+const dialog = await import("~/components/ui/dialog");
 // The account store, faked where the card's hooks read it: what it holds of
 // the project's processes, whether a card asked it to read the project, which
 // builds' logs were read and their lines. Everything above it — the card's
 // hooks, the line, the slot, the plop — is the real path.
-const store = vi.hoisted(() => ({
+const store = {
   processes: [] as ReadonlyArray<unknown>,
   /** Whether a card asks the store to read the project, as of the last draw. */
   reading: false,
@@ -37,82 +44,77 @@ const store = vi.hoisted(() => ({
   failure: undefined as string | undefined,
   /** The dev service's subdomain, where the topology knows one. */
   subdomainUrl: undefined as string | undefined,
-}));
+};
 
-vi.mock("../../zerops/activity/useProjectActivity", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../zerops/activity/useProjectActivity")>();
+function installTestDoubles() {
+  // These operation tests read the command text, not asynchronous syntax colors.
+  vi.spyOn(highlightedTokens, "HighlightedTokens").mockImplementation(({ code }) => [
+    <Fragment key="code">{code}</Fragment>,
+  ]);
   const read = (projectId: string | null) =>
     projectId === null
-      ? actual.EMPTY_PROJECT_ACTIVITY_SNAPSHOT
-      : {
+      ? activity.EMPTY_PROJECT_ACTIVITY_SNAPSHOT
+      : ({
           processes: store.processes,
           live: true,
           processHistory: store.history,
           ...(store.failure === undefined ? {} : { unavailableReason: store.failure }),
-        };
+        } as unknown as ReturnType<typeof activity.useProjectActivityRead>);
   const demand = (projectId: string | null) => {
     if (projectId !== null) store.reading = true;
   };
-  return {
-    ...actual,
-    useProjectActivityRead: read,
-    useProjectActivityDemand: demand,
-    useProjectActivity: (projectId: string | null) => {
-      demand(projectId);
-      return read(projectId);
-    },
-  };
-});
+  vi.spyOn(activity, "useProjectActivityRead").mockImplementation(read);
+  vi.spyOn(activity, "useProjectActivityDemand").mockImplementation(demand);
+  vi.spyOn(activity, "useProjectActivity").mockImplementation((projectId) => {
+    demand(projectId);
+    return read(projectId);
+  });
+  vi.spyOn(buildLog, "useBuildLog").mockImplementation(({ query, live }) => {
+    if (query === null)
+      return { lines: [], status: "idle" } as ReturnType<typeof buildLog.useBuildLog>;
+    store.logReads.add(query.appVersionId!);
+    return { lines: live ? store.logLines : [], status: live ? "live" : "ended" } as ReturnType<
+      typeof buildLog.useBuildLog
+    >;
+  });
+  vi.spyOn(feeds, "useZeropsBrowserStream").mockReturnValue(undefined);
+  vi.spyOn(feeds, "useZeropsTopology").mockImplementation(
+    () =>
+      ({
+        project: { id: "proj-7", name: "orchard" },
+        services: [
+          {
+            hostname: "appdev",
+            serviceId: "svc-app",
+            typeName: "Node.js",
+            routes: [],
+            ...(store.subdomainUrl === undefined ? {} : { subdomainUrl: store.subdomainUrl }),
+          },
+          { hostname: "apidev", serviceId: "svc-api", typeName: "Go", routes: [] },
+        ],
+        warnings: [],
+        usageRead: true,
+      }) as unknown as ReturnType<typeof feeds.useZeropsTopology>,
+  );
+  vi.spyOn(session, "useZeropsSessionOptional").mockReturnValue({
+    status: "signed-in",
+  } as ReturnType<typeof session.useZeropsSessionOptional>);
 
-vi.mock("../../zerops/activity/useBuildLog", () => ({
-  useBuildLog: ({ query, live }: { query: { appVersionId: string } | null; live: boolean }) => {
-    if (query === null) return { lines: [], status: "idle" };
-    store.logReads.add(query.appVersionId);
-    return { lines: live ? store.logLines : [], status: live ? "live" : "ended" };
-  },
-}));
-
-vi.mock("../../zerops/useZeropsFeeds", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../zerops/useZeropsFeeds")>();
-  return {
-    ...actual,
-    useZeropsBrowserStream: () => undefined,
-    useZeropsTopology: () => ({
-      project: { id: "proj-7", name: "orchard" },
-      services: [
-        {
-          hostname: "appdev",
-          serviceId: "svc-app",
-          typeName: "Node.js",
-          routes: [],
-          ...(store.subdomainUrl === undefined ? {} : { subdomainUrl: store.subdomainUrl }),
-        },
-        { hostname: "apidev", serviceId: "svc-api", typeName: "Go", routes: [] },
-      ],
-      warnings: [],
-      usageRead: true,
-    }),
-  };
-});
-
-vi.mock("../../zerops/sessionContext", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../zerops/sessionContext")>();
-  return { ...actual, useZeropsSessionOptional: () => ({ status: "signed-in" }) };
-});
-
-// The whole log's dialog, drawn in place: what is open is there to count.
-vi.mock("~/components/ui/dialog", () => {
-  const Pass = ({ children }: { children?: ReactNode }) => <>{children}</>;
-  return {
-    Dialog: ({ open, children }: { open: boolean; children?: ReactNode }) =>
-      open ? <div data-dialog-open="">{children}</div> : null,
-    DialogDescription: Pass,
-    DialogHeader: Pass,
-    DialogPanel: Pass,
-    DialogPopup: Pass,
-    DialogTitle: Pass,
-  };
-});
+  // The whole log's dialog, drawn in place: what is open is there to count.
+  vi.spyOn(dialog, "Dialog").mockImplementation((({
+    open,
+    children,
+  }: {
+    open: boolean;
+    children: ReactNode;
+  }) =>
+    open ? <div data-dialog-open="">{children}</div> : null) as unknown as typeof dialog.Dialog);
+  vi.spyOn(dialog, "DialogDescription").mockImplementation(({ children }) => <>{children}</>);
+  vi.spyOn(dialog, "DialogHeader").mockImplementation(({ children }) => <>{children}</>);
+  vi.spyOn(dialog, "DialogPanel").mockImplementation(({ children }) => <>{children}</>);
+  vi.spyOn(dialog, "DialogPopup").mockImplementation(({ children }) => <>{children}</>);
+  vi.spyOn(dialog, "DialogTitle").mockImplementation(({ children }) => <>{children}</>);
+}
 
 const LOG_LINES = ["> npm ci", "added 212 packages", "> npm run build"].map((text, index) => ({
   id: `line-${index}`,
@@ -292,6 +294,8 @@ describe("RunChat — an operation's card, read from the account store", () => {
   const saved = { resize: globalThis.ResizeObserver, frame: globalThis.requestAnimationFrame };
   const drawn: ReactTestRenderer[] = [];
   beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    installTestDoubles();
     globalThis.ResizeObserver = class {
       observe() {}
       disconnect() {}
@@ -316,9 +320,12 @@ describe("RunChat — an operation's card, read from the account store", () => {
     act(() => {
       for (const renderer of drawn.splice(0)) renderer.unmount();
     });
+    forgetRunFolds(SHARED.routeThreadKey);
     globalThis.ResizeObserver = saved.resize;
     globalThis.requestAnimationFrame = saved.frame;
     vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   const mount = (row: RecordRow) => {

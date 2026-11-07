@@ -5,11 +5,14 @@ import {
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import * as Schema from "effect/Schema";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { AgentsPanel } from "./AgentsPanel";
 
-vi.mock("~/zerops/useZeropsMates", () => ({ useKnownMate: () => undefined }));
+beforeEach(async () => {
+  vi.spyOn(await import("~/zerops/useZeropsMates"), "useKnownMate").mockReturnValue(undefined);
+});
+afterEach(() => vi.restoreAllMocks());
 
 const decodeActivity = Schema.decodeUnknownSync(OrchestrationThreadActivity);
 

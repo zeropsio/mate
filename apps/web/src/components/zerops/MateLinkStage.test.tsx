@@ -1,15 +1,19 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
-import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-const detail = vi.hoisted(() => ({ failure: null as null | { message: string } }));
-vi.mock("~/state/entities", () => ({ useThreadDetail: () => false }));
-vi.mock("~/zerops/accountEnvironments", () => ({
-  useMateDetailRead: () => ({ failure: detail.failure, again: () => undefined }),
-  useTryMateAgain: () => () => undefined,
-}));
+import * as entities from "~/state/entities";
+import * as environments from "~/zerops/accountEnvironments";
+import * as mates from "~/zerops/useZeropsMates";
+import * as readings from "~/zerops/useMenuMateReadings";
+import * as voice from "~/zerops/mateVoiceContext";
+import * as route from "./RouteStandIn";
+import * as comingPage from "./ZeropsMateComingPage";
+import * as link from "./MateLinkLine";
+import * as emptyState from "./ZeropsMateEmptyState";
+
+const detail = { failure: null as null | { message: string } };
 const QUILL = {
   name: "Quill",
   tint: "slate",
@@ -18,55 +22,55 @@ const QUILL = {
   projectUrl: "https://app.example.test/project",
   connected: false,
 } as const;
-const who = vi.hoisted(() => ({ at: { kind: "unknown" } as { kind: string; mate?: unknown } }));
-vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMate: () => who.at }));
-const told = vi.hoisted(() => ({ projectId: "", activity: undefined as unknown }));
-vi.mock("~/zerops/useMenuMateReadings", () => ({
-  useToldActivity: (projectId: string) =>
-    projectId === told.projectId ? told.activity : undefined,
-}));
-vi.mock("~/zerops/mateVoiceContext", () => ({ useMateVoice: () => ({ surface: "none" }) }));
-vi.mock("./RouteStandIn", () => ({ RouteStandIn: () => <textarea data-stand-in="" /> }));
-vi.mock("./ZeropsMateComingPage", () => ({
-  MateComingFrame: (props: { header: ReactNode; composer?: ReactNode; children: ReactNode }) => (
+const who = { at: { kind: "unknown" } as { kind: string; mate?: unknown } };
+const told = { projectId: "", activity: undefined as unknown };
+
+beforeEach(() => {
+  vi.spyOn(entities, "useThreadDetail").mockReturnValue(false as never);
+  vi.spyOn(environments, "useMateDetailRead").mockImplementation(() => ({
+    failure: detail.failure,
+    again: () => undefined,
+  }));
+  vi.spyOn(environments, "useTryMateAgain").mockReturnValue(() => undefined);
+  vi.spyOn(mates, "useZeropsMate").mockImplementation(
+    () => who.at as ReturnType<typeof mates.useZeropsMate>,
+  );
+  vi.spyOn(readings, "useToldActivity").mockImplementation((projectId) =>
+    projectId === told.projectId
+      ? (told.activity as ReturnType<typeof readings.useToldActivity>)
+      : undefined,
+  );
+  vi.spyOn(voice, "useMateVoice").mockReturnValue({ surface: "none" });
+  vi.spyOn(route, "RouteStandIn").mockImplementation(() => <textarea data-stand-in="" />);
+  vi.spyOn(comingPage, "MateComingFrame").mockImplementation((props) => (
     <main>
       <header>{props.header}</header>
       {props.children}
       {props.composer}
     </main>
-  ),
-  MateComingHeader: ({ mate }: { mate: { name: string } }) => <h1>{mate.name}</h1>,
-}));
-vi.mock("./MateLinkLine", () => ({
-  MateLinkLine: (props: {
-    onTryNow?: () => void;
-    projectUrl?: string;
-    voice: { text: string };
-  }) => (
+  ));
+  vi.spyOn(comingPage, "MateComingHeader").mockImplementation(({ mate }) => <h1>{mate.name}</h1>);
+  vi.spyOn(link, "MateLinkLine").mockImplementation((props) => (
     <div data-line={props.voice.text} data-project-url={props.projectUrl ?? ""}>
       {props.onTryNow === undefined ? null : <button>Try now</button>}
     </div>
-  ),
-  MateLinkProcesses: () => <ol data-processes="" />,
-}));
-vi.mock("./ZeropsMateEmptyState", () => ({
-  MateConnectionState: (props: { headline: string; secondary: string }) => (
+  ));
+  vi.spyOn(link, "MateLinkProcesses").mockImplementation(() => <ol data-processes="" />);
+  vi.spyOn(emptyState, "MateConnectionState").mockImplementation((props) => (
     <section>
       <h2>{props.headline}</h2>
       <p>{props.secondary}</p>
     </section>
-  ),
-  MateEmptyStateView: (props: {
-    mate: { name: string } | null;
-    coming: { below: ReactNode; headline?: string; sentence?: string } | null;
-  }) => (
+  ));
+  vi.spyOn(emptyState, "MateEmptyStateView").mockImplementation((props) => (
     <section data-empty-state={props.mate === null ? "unnamed" : props.mate.name}>
       <h2>{props.coming?.headline}</h2>
       <p>{props.coming?.sentence}</p>
       {props.coming?.below}
     </section>
-  ),
-}));
+  ));
+});
+afterEach(() => vi.restoreAllMocks());
 
 import { MateOpeningView, MateLinkStage } from "./MateLinkStage";
 

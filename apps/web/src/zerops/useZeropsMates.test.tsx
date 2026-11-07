@@ -10,10 +10,11 @@ import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
 import { Atom, type AtomRegistry } from "effect/reactivity";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { heldCandidateRowsAtom } from "./useZeropsCandidates";
 import { projectTopologyViewAtom, environmentProjectsAtom } from "../state/zerops";
+import { environmentPresentations } from "../state/presentation";
 import { zeropsSessionAtom } from "../state/zerops";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { organization, project } from "./__fixtures__/platformData";
@@ -23,14 +24,12 @@ import { zeropsEnvironmentNamesAtom } from "./useZeropsEnvironmentNames";
 import { zeropsMatesAtom } from "./useZeropsMates";
 import { writeMateMemory } from "./mateIdentityMemory";
 
-const environments = vi.hoisted(() => ({
-  atom: null as unknown as Atom.Writable<ReadonlyMap<string, unknown>>,
-}));
+const environments = Atom.make<ReadonlyMap<EnvironmentId, EnvironmentPresentation>>(new Map());
+let previousPresentations: typeof environmentPresentations.presentationsAtom;
 
-vi.mock("../state/presentation", async () => {
-  const { Atom } = await import("effect/reactivity");
-  environments.atom = Atom.make<ReadonlyMap<string, unknown>>(new Map());
-  return { environmentPresentations: { presentationsAtom: environments.atom } };
+beforeEach(() => {
+  previousPresentations = environmentPresentations.presentationsAtom;
+  environmentPresentations.presentationsAtom = environments;
 });
 
 const FEN = EnvironmentId.make("environment-fen");
@@ -111,8 +110,8 @@ const whoLivesAt = (registry: AtomRegistry.AtomRegistry, environmentId: Environm
 function openAccount(userId: string) {
   openAccountLifetime(userId);
   appAtomRegistry.set(
-    environments.atom,
-    new Map<string, unknown>([
+    environments,
+    new Map<EnvironmentId, EnvironmentPresentation>([
       [FEN, registered({ url: `${FEN_ORIGIN}/mate`, zerops: { projectId: owner.projectId } })],
       [
         ELSEWHERE,
@@ -128,6 +127,7 @@ function openAccount(userId: string) {
 
 afterEach(() => {
   closeAccountLifetime();
+  environmentPresentations.presentationsAtom = previousPresentations;
   vi.unstubAllGlobals();
 });
 

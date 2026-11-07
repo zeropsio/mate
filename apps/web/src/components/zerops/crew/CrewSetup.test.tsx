@@ -2,28 +2,16 @@ import { EnvironmentId, ProviderInstanceId } from "@t3tools/contracts";
 import { parseBrief, renderCrewHome, type CrewDefinition } from "@t3tools/shared/crewHome";
 import { crewFromProposal } from "@t3tools/shared/crewTemplates";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { accountLocalStorage } from "~/zerops/accountLifetime";
 import type { UseCrewCommand } from "~/zerops/crew/useCrewCommand";
 
 import { CrewSetup } from "./CrewSetup";
 import type { CrewProposeWith } from "./CrewSetup.logic";
 
 // The signed-in account's storage, in memory: what a closed tab left behind.
-const stored = vi.hoisted(() => new Map<string, string>());
-vi.mock("~/zerops/accountLifetime", async (original) => ({
-  ...(await original<typeof import("~/zerops/accountLifetime")>()),
-  accountLocalStorage: {
-    getItem: (key: string) => stored.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      stored.set(key, value);
-      return true;
-    },
-    removeItem: (key: string) => {
-      stored.delete(key);
-    },
-  },
-}));
+const stored = new Map<string, string>();
 
 const ENVIRONMENT = EnvironmentId.make("environment-nova");
 const NOVA = { name: "Nova", tint: "amber" as const };
@@ -101,7 +89,18 @@ const text = (html: string) =>
 const count = (haystack: string, needle: string) => haystack.split(needle).length - 1;
 
 describe("CrewSetup", () => {
-  beforeEach(() => stored.clear());
+  beforeEach(() => {
+    stored.clear();
+    vi.spyOn(accountLocalStorage, "getItem").mockImplementation((key) => stored.get(key) ?? null);
+    vi.spyOn(accountLocalStorage, "setItem").mockImplementation((key, value) => {
+      stored.set(key, value);
+      return true;
+    });
+    vi.spyOn(accountLocalStorage, "removeItem").mockImplementation((key) => {
+      stored.delete(key);
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
 
   it("brings back the goal written before the page closed", () => {
     stored.set(

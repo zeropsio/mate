@@ -1,8 +1,7 @@
 import { AtomRegistry } from "effect/reactivity";
+import { RegistryContext } from "@effect/atom-react";
 import { accountReadsAtom, makeAccountStore } from "@t3tools/client-runtime/data";
 import { liveZerops, ORG, zeropsVersion } from "@t3tools/client-runtime/data/fixtures";
-import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
-import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { EnvironmentId } from "@t3tools/contracts";
 import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -23,23 +22,17 @@ import { TestNode } from "./__fixtures__/testDom";
 import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { zeropsSessionAtom } from "../state/zerops";
+import { ZeropsSessionContext } from "./sessionContext";
+import { ZeropsDataContext } from "./zeropsDataContext";
+import { InventoryContext, type Inventory } from "./inventoryContext";
+import { AccountDataContext, type AccountData } from "./ZeropsAccountData";
 import {
   allCandidateListingAtom,
   authenticatedZeropsOrigins,
   useZeropsCandidates,
   withZeropsConnection,
 } from "./useZeropsCandidates";
-
-const candidateSource = vi.hoisted(() => ({
-  rows: (_registry: AtomRegistry.AtomRegistry, _rows: Shown<ReadonlyArray<CandidateRow>>) => {},
-}));
-vi.mock("../state/zerops", async (importOriginal) => {
-  const original = await importOriginal<object>();
-  const { Atom } = await import("effect/reactivity");
-  const rows = Atom.make<Shown<ReadonlyArray<CandidateRow>>>({ state: "unread", waitingFor: null });
-  candidateSource.rows = (registry, value) => registry.set(rows, value);
-  return { ...original, mateRowsAtom: rows, zeropsEnvironmentsAtom: Atom.make([]) };
-});
 
 const organizationRef = (organizationId: string): OrganizationRef => ({
   kind: "organization",
@@ -50,31 +43,7 @@ const organizationRef = (organizationId: string): OrganizationRef => ({
   organizationId: ZeropsOrganizationId.make(organizationId),
 });
 
-vi.mock("./ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({
-    activeOrganization: { id: "org-1" },
-    organizationStatus: "selected",
-    status: "signed-in",
-  }),
-}));
-vi.mock("./zeropsDataContext", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useZeropsData: () => ({ organizationRef }),
-}));
-const account = vi.hoisted(() => ({ retry: vi.fn() }));
-vi.mock("./ZeropsAccountData", () => ({
-  useAccountDataOptional: () => ({ retry: account.retry }),
-}));
-vi.mock("./inventoryContext", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useZeropsInventory: () => ({
-    projects: [],
-    services: new Map(),
-    projectRefs: new Map(),
-    isLoading: false,
-    error: null,
-  }),
-}));
+const account = { retry: vi.fn() };
 
 afterEach(() => {
   closeAccountLifetime();
@@ -125,6 +94,7 @@ describe("allCandidateListingAtom public access", () => {
         running: [],
         projects: [{ ...PROJECT }],
         services: [
+          { ...SERVICE, projectId: PROJECT.id },
           {
             id: "app",
             projectId: PROJECT.id,
@@ -137,61 +107,69 @@ describe("allCandidateListingAtom public access", () => {
       registry.set(accountReadsAtom, {
         data: store.data,
         orgId: ORG,
+        viewer: { id: ORG, name: "Organization", membershipId: "member", roleCode: "ADMIN" },
         demandDetail: () => () => {},
         renewHeld: () => {},
       });
-      candidateSource.rows(registry, {
-        state: "known",
-        value: [READY],
-        coverage: "complete",
-        asOf: { ordinal: 1, atMs: 0 },
-        freshness: { kind: "live" },
+      registry.set(zeropsSessionAtom, {
+        status: "signed-in",
+        organizationStatus: "selected",
+        activeOrganization: organizationRef(ORG),
       });
       const stop = registry.mount(allCandidateListingAtom);
-      const candidate = () => {
-        const listing = registry.get(allCandidateListingAtom);
-        expect(listing.state).toBe("known");
-        if (listing.state !== "known") throw new Error("Expected the recorded candidate listing");
-        return listing.value[0]!;
-      };
-      expect(candidate().addressPending).toBeUndefined();
-      expect(candidate().routes).toBeUndefined();
-      const scope = `zerops:${ORG}:routings` as const;
-      for (const event of [
-        { kind: "demand", demanded: true },
-        { kind: "attempt" },
-        { kind: "handshake" },
-      ] as const)
-        store.dispatch({ kind: "stream", key: scope, now: 0, event });
-      store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
-      store.dispatch({
-        kind: "baseline-commit",
-        scope,
-        generation: 1,
-        via: "zerops-realtime",
-        members: routing ? ["public-route"] : [],
-        rows: routing
-          ? [
-              {
-                family: "publicRouting",
-                id: "public-route",
-                revision: zeropsVersion(1),
-                value: {
-                  projectId: PROJECT.id,
-                  isSynced: synced,
-                  sslEnabled: true,
-                  domains: [{ domainName: "stage.example.com" }],
-                  locations: [{ path: "/", port: 80, serviceStackId: "app" }],
+      try {
+        const candidate = () => {
+          const listing = registry.get(allCandidateListingAtom);
+          expect(listing.state).toBe("known");
+          if (listing.state !== "known") throw new Error("Expected the recorded candidate listing");
+          return listing.value[0]!;
+        };
+        expect(candidate().addressPending).toBeUndefined();
+        expect(candidate().routes).toBeUndefined();
+        const scope = `zerops:${ORG}:routings` as const;
+        for (const event of [
+          { kind: "demand", demanded: true },
+          { kind: "attempt" },
+          { kind: "handshake" },
+        ] as const)
+          store.dispatch({ kind: "stream", key: scope, now: 0, event });
+        store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+        store.dispatch({
+          kind: "baseline-commit",
+          scope,
+          generation: 1,
+          via: "zerops-realtime",
+          members: routing ? ["public-route"] : [],
+          rows: routing
+            ? [
+                {
+                  family: "publicRouting",
+                  id: "public-route",
+                  revision: zeropsVersion(1),
+                  value: {
+                    projectId: PROJECT.id,
+                    isSynced: synced,
+                    sslEnabled: true,
+                    domains: [{ domainName: "stage.example.com" }],
+                    locations: [{ path: "/", port: 80, serviceStackId: "app" }],
+                  },
                 },
-              },
-            ]
-          : [],
-      });
-      store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
-      expect(candidate().addressPending).toBe(pending);
-      expect(candidate().routes?.map(({ url }) => url)).toEqual(urls);
-      stop();
-      registry.dispose();
+              ]
+            : [],
+        });
+        store.dispatch({
+          kind: "stream",
+          key: scope,
+          now: 0,
+          event: { kind: "baseline-committed" },
+        });
+        expect(candidate().addressPending).toBe(pending);
+        expect(candidate().routes?.map(({ url }) => url)).toEqual(urls);
+      } finally {
+        stop();
+        store.close();
+        registry.dispose();
+      }
     },
   );
 });
@@ -340,8 +318,45 @@ describe("useZeropsCandidates", () => {
       return null;
     }
     const root = createRoot(document.createElement("div") as unknown as Element);
+    const registry = AtomRegistry.make();
     try {
-      act(() => root.render(createElement(Header)));
+      const session = {
+        activeOrganization: { id: "org-1" },
+        organizationStatus: "selected",
+        status: "signed-in",
+      } as React.ContextType<typeof ZeropsSessionContext>;
+      const inventory = {
+        projects: [],
+        services: new Map(),
+        projectRefs: new Map(),
+        isLoading: false,
+        error: null,
+      } as unknown as Inventory;
+      act(() =>
+        root.render(
+          createElement(
+            RegistryContext.Provider,
+            { value: registry },
+            createElement(
+              ZeropsSessionContext.Provider,
+              { value: session },
+              createElement(
+                ZeropsDataContext.Provider,
+                { value: { organizationRef } as React.ContextType<typeof ZeropsDataContext> },
+                createElement(
+                  InventoryContext.Provider,
+                  { value: inventory },
+                  createElement(
+                    AccountDataContext.Provider,
+                    { value: account as unknown as AccountData },
+                    createElement(Header),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
       refresh();
       await act(() => vi.advanceTimersByTimeAsync(INVALIDATION_COALESCE_MS));
       expect(account.retry).toHaveBeenCalledTimes(1);
@@ -350,6 +365,7 @@ describe("useZeropsCandidates", () => {
       stop();
       bus.close();
       act(() => root.unmount());
+      registry.dispose();
     }
   });
 });

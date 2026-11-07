@@ -1,12 +1,18 @@
-import type * as NodeWorkerThreads from "node:worker_threads";
+import * as NodeWorkerThreads from "node:worker_threads";
 import { FileRenderer, getSharedHighlighter, type FileContents } from "@pierre/diffs";
 import { useWorkerPool, type CodeViewProps } from "@pierre/diffs/react";
 import { WorkerPoolManager, type WorkerRequest, type WorkerResponse } from "@pierre/diffs/worker";
-import { act, useEffect, useState } from "react";
+import { act, useEffect, useState, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-const testState = vi.hoisted(() => ({
+import * as theme from "../../hooks/useTheme";
+import { StyledDiffCodeView } from "./StyledDiffCodeView";
+
+const diffsReact = await import("@pierre/diffs/react");
+vi.mock("@pierre/diffs/worker/worker.js?worker", () => import("./diffWorker.test-fixture"));
+
+const testState = {
   workers: [] as NodeWorkerThreads.Worker[],
   terminations: [] as Promise<number>[],
   requests: [] as WorkerRequest[],
@@ -16,23 +22,16 @@ const testState = vi.hoisted(() => ({
   holdInitialization: false,
   heldResponses: [] as (() => void)[],
   onInitializationHeld: undefined as (() => void) | undefined,
-}));
+};
 
-vi.mock("../../hooks/useTheme", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
+// Adapt only the transport. Pierre's real worker loads its WASM and produces every response.
+class TestWorker {
+  worker: NodeWorkerThreads.Worker;
 
-vi.mock("@pierre/diffs/worker/worker.js?worker", async () => {
-  const { Worker } = await import("node:worker_threads");
-  const moduleUrl = import.meta.resolve("@pierre/diffs/worker/worker.js");
-
-  // Adapt only the transport. Pierre's real worker loads its WASM and produces every response.
-  return {
-    default: class {
-      worker: NodeWorkerThreads.Worker;
-
-      constructor() {
-        if (testState.failWorkers) throw new Error("Worker creation failed");
-        this.worker = new Worker(
-          `const { parentPort, workerData } = require("node:worker_threads");
+  constructor() {
+    if (testState.failWorkers) throw new Error("Worker creation failed");
+    this.worker = new NodeWorkerThreads.Worker(
+      `const { parentPort, workerData } = require("node:worker_threads");
            globalThis.self = {
              addEventListener(type, listener) {
                if (type === "message") parentPort.on("message", data => listener({ data }));
@@ -41,56 +40,47 @@ vi.mock("@pierre/diffs/worker/worker.js?worker", async () => {
            };
            globalThis.postMessage = data => parentPort.postMessage(data);
            import(workerData.moduleUrl);`,
-          { eval: true, workerData: { moduleUrl }, execArgv: [] },
-        );
-        testState.workers.push(this.worker);
-      }
-
-      addEventListener(
-        type: "message" | "error",
-        listener: (event: { data: WorkerResponse } | Error) => void,
-      ) {
-        if (type === "error") {
-          this.worker.on("error", listener);
-          return;
-        }
-        this.worker.on("message", (data: WorkerResponse) => {
-          const deliver = () => listener({ data });
-          if (
-            testState.holdInitialization &&
-            data.type === "success" &&
-            data.requestType === "initialize"
-          ) {
-            testState.heldResponses.push(deliver);
-            if (testState.heldResponses.length === 2) testState.onInitializationHeld?.();
-          } else {
-            deliver();
-          }
-        });
-      }
-
-      postMessage(message: WorkerRequest) {
-        testState.requests.push(message);
-        this.worker.postMessage(message, []);
-      }
-
-      terminate() {
-        testState.terminations.push(this.worker.terminate());
-      }
-    },
-  };
-});
-
-vi.mock("@pierre/diffs/react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@pierre/diffs/react")>()),
-  CodeView: (props: CodeViewProps) => {
-    return props.items?.map((item) =>
-      item.type === "file" ? <FileOutput key={item.id} file={item.file} /> : null,
+      {
+        eval: true,
+        workerData: { moduleUrl: import.meta.resolve("@pierre/diffs/worker/worker.js") },
+        execArgv: [],
+      },
     );
-  },
-}));
+    testState.workers.push(this.worker);
+  }
 
-import { StyledDiffCodeView } from "./StyledDiffCodeView";
+  addEventListener(
+    type: "message" | "error",
+    listener: (event: { data: WorkerResponse } | Error) => void,
+  ) {
+    if (type === "error") {
+      this.worker.on("error", listener);
+      return;
+    }
+    this.worker.on("message", (data: WorkerResponse) => {
+      const deliver = () => listener({ data });
+      if (
+        testState.holdInitialization &&
+        data.type === "success" &&
+        data.requestType === "initialize"
+      ) {
+        testState.heldResponses.push(deliver);
+        if (testState.heldResponses.length === 2) testState.onInitializationHeld?.();
+      } else {
+        deliver();
+      }
+    });
+  }
+
+  postMessage(message: WorkerRequest) {
+    testState.requests.push(message);
+    this.worker.postMessage(message, []);
+  }
+
+  terminate() {
+    testState.terminations.push(this.worker.terminate());
+  }
+}
 
 function FileOutput({ file }: { file: FileContents }) {
   const pool = useWorkerPool();
@@ -149,6 +139,18 @@ describe("code-view worker lifecycle", () => {
       setImmediate(() => callback(0)),
     );
     vi.stubGlobal("cancelAnimationFrame", clearImmediate);
+    vi.spyOn(theme, "useTheme").mockReturnValue({ resolvedTheme: "dark" } as ReturnType<
+      typeof theme.useTheme
+    >);
+    vi.stubGlobal("Worker", TestWorker);
+    const codeView = diffsReact.CodeView as unknown as {
+      render: (props: CodeViewProps) => ReactNode;
+    };
+    vi.spyOn(codeView, "render").mockImplementation((props) =>
+      props.items?.map((item) =>
+        item.type === "file" ? <FileOutput key={item.id} file={item.file} /> : null,
+      ),
+    );
     const initialize = WorkerPoolManager.prototype.initialize;
     vi.spyOn(WorkerPoolManager.prototype, "initialize").mockImplementation(function (
       this: WorkerPoolManager,
@@ -250,6 +252,7 @@ describe("code-view worker lifecycle", () => {
     });
     const pool = [...testState.pools.keys()][0]!;
     const pending = testState.pools.get(pool)!;
+    expect(testState.workers).toHaveLength(2);
     await held;
     expect(pool.isInitialized()).toBe(false);
     expect(testState.pools.size).toBe(1);

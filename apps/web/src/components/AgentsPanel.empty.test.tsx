@@ -4,13 +4,19 @@ import {
   foldSubagentActivities,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { renderToStaticMarkup } from "react-dom/server";
-import { expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
 import { AgentsPanel } from "./AgentsPanel";
 
-vi.mock("~/zerops/useZeropsMates", () => ({
-  useKnownMate: () => ({ name: "Nova", shape: "round", tint: "coral" }),
-}));
+beforeEach(async () => {
+  const mates = await import("~/zerops/useZeropsMates");
+  vi.spyOn(mates, "useKnownMate").mockReturnValue({
+    name: "Nova",
+    shape: "squircle",
+    tint: "coral",
+  } as ReturnType<typeof mates.useKnownMate>);
+});
+afterEach(() => vi.restoreAllMocks());
 
 it("before any helper, Helpers says the Mate starts them by its name", () => {
   const html = renderToStaticMarkup(

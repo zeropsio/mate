@@ -3,6 +3,7 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
 import { useHqMateRefusal } from "./useHqMateRefusal";
+import * as accountData from "./ZeropsAccountData";
 
 const state = vi.hoisted(() => ({
   account: null as {
@@ -13,10 +14,6 @@ const state = vi.hoisted(() => ({
     }) => () => void;
   } | null,
 }));
-vi.mock("./ZeropsAccountData", () => ({
-  useAccountDataOptional: () => state.account,
-}));
-
 let tree: ReactTestRenderer | undefined;
 function Probe({ projectId }: { readonly projectId: string }) {
   useHqMateRefusal(projectId);
@@ -32,10 +29,14 @@ async function render(projectId: string) {
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   state.account = null;
+  vi.spyOn(accountData, "useAccountDataOptional").mockImplementation(
+    () => state.account as ReturnType<typeof accountData.useAccountDataOptional>,
+  );
 });
 afterEach(async () => {
   await act(async () => tree?.unmount());
   tree = undefined;
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 

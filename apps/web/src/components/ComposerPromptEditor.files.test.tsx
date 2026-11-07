@@ -3,8 +3,7 @@
  * placeholder of its own, matched by order to the draft's files, and the
  * editor reports the files it holds in the order they sit.
  */
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $getRoot, $isElementNode, type LexicalEditor } from "lexical";
+import { $getRoot, $isElementNode } from "lexical";
 import { act, createRef } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -14,6 +13,7 @@ import { INLINE_FILE_PLACEHOLDER as F } from "../lib/composerFiles";
 import { INLINE_PICTURE_PLACEHOLDER as P } from "../lib/composerPictures";
 import type { ComposerFileView } from "./chat/ComposerFile";
 import type { ComposerPictureView } from "./chat/ComposerPicture";
+import { getLexicalEditor, resetLexicalEditor } from "./ComposerPromptEditor.test-fixture";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./ComposerPromptEditor";
 
 vi.mock("./chat/FileTagChip", () => ({
@@ -25,12 +25,8 @@ vi.mock("./chat/ComposerPendingTerminalContexts", () => ({
 }));
 vi.mock("./chat/AssistantCitationChip", () => ({ AssistantCitationChip: () => null }));
 
-let lexicalEditor: LexicalEditor;
-vi.mock("@lexical/react/LexicalPlainTextPlugin", () => ({
-  PlainTextPlugin: function HeadlessEditor() {
-    [lexicalEditor] = useLexicalComposerContext();
-    return null;
-  },
+vi.mock("@lexical/react/LexicalPlainTextPlugin", async () => ({
+  PlainTextPlugin: (await import("./ComposerPromptEditor.test-fixture")).HeadlessEditor,
 }));
 
 let renderer: ReactTestRenderer | undefined;
@@ -95,11 +91,13 @@ async function render(
 }
 
 function nodeTypes(): string[] {
-  return lexicalEditor.getEditorState().read(() => {
-    const paragraph = $getRoot().getFirstChildOrThrow();
-    if (!$isElementNode(paragraph)) throw new Error("Expected a composer paragraph");
-    return paragraph.getChildren().map((node) => node.getType());
-  });
+  return getLexicalEditor()
+    .getEditorState()
+    .read(() => {
+      const paragraph = $getRoot().getFirstChildOrThrow();
+      if (!$isElementNode(paragraph)) throw new Error("Expected a composer paragraph");
+      return paragraph.getChildren().map((node) => node.getType());
+    });
 }
 
 beforeEach(() => {
@@ -111,6 +109,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => renderer?.unmount());
   renderer = undefined;
+  resetLexicalEditor();
   vi.unstubAllGlobals();
 });
 
@@ -159,7 +158,7 @@ describe("files in the composer's text", () => {
   it("reports the files left when one is removed from the text", async () => {
     await render(`a${F}b${F}`, [], [file("a", 1), file("b", 2)]);
     await act(() => {
-      lexicalEditor.update(
+      getLexicalEditor().update(
         () => {
           const paragraph = $getRoot().getFirstChildOrThrow();
           if (!$isElementNode(paragraph)) return;

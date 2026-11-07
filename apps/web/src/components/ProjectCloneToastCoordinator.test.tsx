@@ -2,7 +2,7 @@ import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account
 import type { EnvironmentId, ProjectCloneSnapshot, ProjectId } from "@t3tools/contracts";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { ProjectCloneToastCoordinator } from "./ProjectCloneToastCoordinator";
@@ -39,7 +39,11 @@ vi.mock("@tanstack/react-router", () => ({
   useRouter: () => ({ state: { matches: [] }, navigate: async () => {} }),
 }));
 vi.mock("../hooks/useHandleNewThread", () => ({ useNewThreadHandler: () => async () => {} }));
-vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => async () => ({}) }));
+beforeEach(async () => {
+  const commands = await import("../state/use-atom-command");
+  vi.spyOn(commands, "useAtomCommand").mockImplementation((() =>
+    async () => ({})) as unknown as typeof commands.useAtomCommand);
+});
 
 const mounted: ReactTestRenderer[] = [];
 

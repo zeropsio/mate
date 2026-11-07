@@ -1,11 +1,12 @@
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $copyNode, $getRoot, $isElementNode, PASTE_COMMAND, type LexicalEditor } from "lexical";
+import { $copyNode, $getRoot, $isElementNode, PASTE_COMMAND } from "lexical";
 import { act, createRef } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { collapseExpandedComposerCursor } from "../composer-logic";
 import { ComposerPromptEditor, type ComposerPromptEditorHandle } from "./ComposerPromptEditor";
+
+import { getLexicalEditor, resetLexicalEditor } from "./ComposerPromptEditor.test-fixture";
 
 vi.mock("./chat/FileTagChip", () => ({
   FILE_TAG_CHIP_CLASS_NAME: "",
@@ -16,14 +17,8 @@ vi.mock("./chat/ComposerPendingTerminalContexts", () => ({
 }));
 vi.mock("./chat/AssistantCitationChip", () => ({ AssistantCitationChip: () => null }));
 
-let lexicalEditor: LexicalEditor;
-// Keep the real composer, registered nodes, updates, and snapshot API. Only the
-// DOM view is omitted so Lexical runs headlessly in this component test.
-vi.mock("@lexical/react/LexicalPlainTextPlugin", () => ({
-  PlainTextPlugin: function HeadlessEditor() {
-    [lexicalEditor] = useLexicalComposerContext();
-    return null;
-  },
+vi.mock("@lexical/react/LexicalPlainTextPlugin", async () => ({
+  PlainTextPlugin: (await import("./ComposerPromptEditor.test-fixture")).HeadlessEditor,
 }));
 
 let renderer: ReactTestRenderer | undefined;
@@ -81,6 +76,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => renderer?.unmount());
   renderer = undefined;
+  resetLexicalEditor();
   vi.unstubAllGlobals();
 });
 
@@ -106,7 +102,11 @@ describe("composer mention serialization", () => {
         expandedCursor: prompt.length,
       });
       if (prompt === "@README.md control") {
-        expect(lexicalEditor.getEditorState().read(() => $firstMention().isInline())).toBe(true);
+        expect(
+          getLexicalEditor()
+            .getEditorState()
+            .read(() => $firstMention().isInline()),
+        ).toBe(true);
       }
     }
   });
@@ -114,10 +114,12 @@ describe("composer mention serialization", () => {
   it("preserves source when Lexical clones the mention and reloads exported state", async () => {
     const prompt = '@"docs/雪 👋.md" remains a chip';
     await renderPrompt(prompt);
-    const originalKey = lexicalEditor.getEditorState().read(() => $firstMention().getKey());
+    const originalKey = getLexicalEditor()
+      .getEditorState()
+      .read(() => $firstMention().getKey());
 
     await act(() => {
-      lexicalEditor.update(
+      getLexicalEditor().update(
         () => {
           const mention = $firstMention();
           mention.replace($copyNode(mention));
@@ -125,25 +127,31 @@ describe("composer mention serialization", () => {
         { discrete: true },
       );
     });
-    expect(lexicalEditor.getEditorState().read(() => $firstMention().getKey())).not.toBe(
-      originalKey,
-    );
+    expect(
+      getLexicalEditor()
+        .getEditorState()
+        .read(() => $firstMention().getKey()),
+    ).not.toBe(originalKey);
     expect(editorRef.current?.readSnapshot().value).toBe(prompt);
-    const exportedState = lexicalEditor.getEditorState().toJSON();
+    const exportedState = getLexicalEditor().getEditorState().toJSON();
 
     await renderPrompt("");
     await act(() => {
-      lexicalEditor.setEditorState(lexicalEditor.parseEditorState(exportedState));
+      getLexicalEditor().setEditorState(getLexicalEditor().parseEditorState(exportedState));
     });
     expect(editorRef.current?.readSnapshot().value).toBe(prompt);
-    expect(lexicalEditor.getEditorState().read(() => $firstMention().isInline())).toBe(true);
+    expect(
+      getLexicalEditor()
+        .getEditorState()
+        .read(() => $firstMention().isInline()),
+    ).toBe(true);
   });
 
   it("keeps canonical serialization when importing legacy mention JSON without source", async () => {
     await renderPrompt("");
     await act(() => {
-      lexicalEditor.setEditorState(
-        lexicalEditor.parseEditorState(
+      getLexicalEditor().setEditorState(
+        getLexicalEditor().parseEditorState(
           JSON.stringify({
             root: {
               type: "root",
@@ -161,7 +169,11 @@ describe("composer mention serialization", () => {
       );
     });
     expect(editorRef.current?.readSnapshot().value).toBe("[README.md](README.md)");
-    expect(lexicalEditor.getEditorState().read(() => $firstMention().isInline())).toBe(true);
+    expect(
+      getLexicalEditor()
+        .getEditorState()
+        .read(() => $firstMention().isInline()),
+    ).toBe(true);
   });
 
   it("still serializes a newly inserted mention canonically", async () => {
@@ -169,16 +181,20 @@ describe("composer mention serialization", () => {
     await renderPrompt("");
     const event = new TestClipboardEvent("@README.md ");
     await act(() => {
-      lexicalEditor.update(
+      getLexicalEditor().update(
         () => {
           $getRoot().selectEnd();
-          lexicalEditor.dispatchCommand(PASTE_COMMAND, event as ClipboardEvent);
+          getLexicalEditor().dispatchCommand(PASTE_COMMAND, event as ClipboardEvent);
         },
         { discrete: true },
       );
     });
     expect(event.defaultPrevented).toBe(true);
     expect(editorRef.current?.readSnapshot().value).toBe("[README.md](README.md) ");
-    expect(lexicalEditor.getEditorState().read(() => $firstMention().isInline())).toBe(true);
+    expect(
+      getLexicalEditor()
+        .getEditorState()
+        .read(() => $firstMention().isInline()),
+    ).toBe(true);
   });
 });

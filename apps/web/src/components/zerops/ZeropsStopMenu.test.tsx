@@ -3,23 +3,36 @@ import type { StopView } from "@t3tools/client-runtime/zerops/flow";
 import { cloneElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { act, create } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
 
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
+const menuParts = await import("../ui/menu");
 
 // The popup stands in a portal, and the unit suite has no document to put it
 // in: every menu part renders in place, so the markup is what the popup holds.
-vi.mock("../ui/menu", () => ({
-  Menu: ({ children }: { children: ReactNode }) => children,
-  MenuPopup: ({ children }: { children: ReactNode }) => children,
-  MenuGroup: (props: Record<string, unknown>) => <div {...props} />,
-  MenuGroupLabel: ({ children }: { children: ReactNode }) => <div>{children}</div>,
-  MenuSeparator: () => <hr />,
-  MenuTrigger: (props: Record<string, unknown>) => <button type="button" {...props} />,
-  MenuItem: ({
+beforeEach(() => {
+  vi.spyOn(menuParts, "Menu").mockImplementation(
+    (({ children }: { children: ReactNode }) => children) as typeof menuParts.Menu,
+  );
+  vi.spyOn(menuParts, "MenuPopup").mockImplementation(
+    (({ children }: { children: ReactNode }) => children) as typeof menuParts.MenuPopup,
+  );
+  vi.spyOn(menuParts, "MenuGroup").mockImplementation(((props: Record<string, unknown>) => (
+    <div {...props} />
+  )) as typeof menuParts.MenuGroup);
+  vi.spyOn(menuParts, "MenuGroupLabel").mockImplementation((({
+    children,
+  }: {
+    children: ReactNode;
+  }) => <div>{children}</div>) as typeof menuParts.MenuGroupLabel);
+  vi.spyOn(menuParts, "MenuSeparator").mockImplementation(() => <hr />);
+  vi.spyOn(menuParts, "MenuTrigger").mockImplementation(((props: Record<string, unknown>) => (
+    <button type="button" {...props} />
+  )) as typeof menuParts.MenuTrigger);
+  vi.spyOn(menuParts, "MenuItem").mockImplementation((({
     children,
     disabled,
     onClick,
@@ -36,8 +49,16 @@ vi.mock("../ui/menu", () => ({
       </div>
     ) : (
       cloneElement(render, undefined, children)
-    ),
-}));
+    )) as typeof menuParts.MenuItem);
+});
+const mounted = new Set<ReturnType<typeof create>>();
+afterEach(() => {
+  act(() => {
+    for (const tree of mounted) tree.unmount();
+  });
+  mounted.clear();
+  vi.restoreAllMocks();
+});
 
 const STOP: StopView = {
   tone: "good",
@@ -175,11 +196,19 @@ describe("ZeropsStopMenu's Addresses", () => {
           element
         ),
       );
+      mounted.add(tree);
     });
     const items = tree!.root.findAll(
       (node) => node.type === "div" && node.children.includes("Addresses"),
     );
-    return { items, unmount: () => act(() => tree!.unmount()) };
+    return {
+      items,
+      unmount: () =>
+        act(() => {
+          tree!.unmount();
+          mounted.delete(tree!);
+        }),
+    };
   };
 
   it.each([

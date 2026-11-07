@@ -7,7 +7,7 @@ import type { PersonaTemplate } from "@t3tools/shared/personaTemplates";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestInstance } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { OrgPersonaTemplatesView } from "~/zerops/usePersonaTemplates";
 import { PersonaTemplatesView } from "./PersonaTemplatesSettings";
@@ -58,6 +58,14 @@ const shown = (read: Partial<OrgPersonaTemplatesView> = {}, write = IDLE) =>
     .trim();
 
 let mounted: ReturnType<typeof create> | undefined;
+const frames: FrameRequestCallback[] = [];
+const flushFrames = () => {
+  for (const frame of frames.splice(0)) frame(0);
+};
+beforeEach(() => {
+  vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => frames.push(frame));
+  vi.stubGlobal("cancelAnimationFrame", () => undefined);
+});
 function mount(element: React.ReactElement) {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   act(() => {
@@ -68,6 +76,8 @@ function mount(element: React.ReactElement) {
 afterEach(() => {
   if (mounted !== undefined) act(() => mounted!.unmount());
   mounted = undefined;
+  act(flushFrames);
+  vi.unstubAllGlobals();
 });
 const text = (node: ReactTestInstance): string =>
   node.children.map((child) => (typeof child === "string" ? child : text(child))).join("");
@@ -176,6 +186,7 @@ describe("an organization's persona templates in Settings", () => {
     act(() =>
       tree.root.find((node) => node.type === "textarea").props.onChange(typed("x".repeat(3001))),
     );
+    act(flushFrames);
     expect(button(tree, "Save").props.disabled).toBe(true);
     expect(JSON.stringify(tree.toJSON())).toContain("Instructions have at most 3,000 characters.");
   });
