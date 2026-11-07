@@ -1703,7 +1703,13 @@ export function selectGateSteps(
   const driverUnits = ownedUnits.filter((file) =>
     file.startsWith("apps/web/test/scenarios/fakes/"),
   );
-  const consumerUnits = ownedUnits.filter((file) => !driverUnits.includes(file));
+  // Only test/e-env's config (PostgreSQL, serial files) includes these; CI runs them through it too.
+  const environmentSourceUnits = ownedUnits.filter((file) =>
+    file.startsWith("apps/web/test/scenarios/areas/e-env/"),
+  );
+  const consumerUnits = ownedUnits.filter(
+    (file) => !driverUnits.includes(file) && !environmentSourceUnits.includes(file),
+  );
   const consumers = [
     { directory: ".", name: "root tests", typecheck: false },
     ...relatedTestPackages(workspace),
@@ -1728,6 +1734,19 @@ export function selectGateSteps(
         ],
       });
   }
+  if (environmentSourceUnits.length)
+    steps.push({
+      name: "related environment source consumers",
+      cwd: "apps/web",
+      command: "vp",
+      args: [
+        "test",
+        "run",
+        "--config",
+        "test/e-env/vitest.config.ts",
+        ...environmentSourceUnits.map((file) => NodePath.posix.relative("apps/web", file)),
+      ],
+    });
   if (driverUnits.length)
     steps.push({
       name: "related scenario-driver units",

@@ -27,6 +27,15 @@ describe("the test scratch root", () => {
     expect(env["TMPDIR"]).toBe(after);
   });
 
+  it("an explicit test scratch directory takes precedence over the shared RAM disk", () => {
+    const env: NodeJS.ProcessEnv = {
+      MATE_TEST_TMPDIR: "/work/scratch",
+      TMPDIR: "/system/tmp",
+    };
+    useTestScratchRoot(env, () => true);
+    expect(env["TMPDIR"]).toBe("/work/scratch");
+  });
+
   it.each([
     { present: true, root: "/Volumes/mate-test" },
     { present: false, root: undefined },
