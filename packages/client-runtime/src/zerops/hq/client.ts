@@ -821,12 +821,13 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
 
 /**
  * HQ's answer as the call's outcome. A write HQ failed on its way (`5xx`) may have landed — but
- * a `503` writes nothing (mate-hq spec/protocol.md), so HQ is simply not answering right now.
+ * for one refused because Zerops did not answer its roles (`zerops_unanswered`), which writes
+ * nothing.
  */
 async function answered(response: Response, write: boolean, gitSetup = false): Promise<Response> {
   if (response.ok) return response;
   const error = await errorOf(response, gitSetup);
-  if (write && response.status >= 500 && response.status !== 503) {
+  if (write && response.status >= 500 && error.code !== WROTE_NOTHING_ZEROPS) {
     throw uncertain();
   }
   throw error;
