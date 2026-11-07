@@ -5,7 +5,12 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { parse } from "yaml";
 import { expect, it } from "vite-plus/test";
-import { blameMatrices, blameSelection, stateSmokeMatrix } from "./ci-blame.ts";
+import {
+  blameMatrices,
+  blameSelection,
+  ciSelectionManifest,
+  stateSmokeMatrix,
+} from "./ci-blame.ts";
 import { stateSmokePlan } from "./state-smoke.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
@@ -106,6 +111,31 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(
       [1, 2, 3].map((shard) => ({ shard, total: 3 })),
     );
     expect(selection.selected).not.toContain("chat_scenarios");
+  },
+);
+
+// witness: scripts/ci-blame.ts | event === "workflow_dispatch" || ref.startsWith("refs/heads/kh-bisect/"); → true;
+it.each([
+  ["refs/heads/main", "push"],
+  ["refs/heads/kh-next", "push"],
+  ["refs/pull/1/merge", "pull_request"],
+])(
+  "Decision: a %s %s runs lint, typecheck and build only; test suites wait for a manual dispatch",
+  (ref, event) => {
+    const checks = [
+      "changes",
+      "check",
+      "check_build",
+      "check_guards",
+      "check_types",
+      "mobile_native_static_analysis",
+      "release_smoke",
+    ];
+    expect(ciSelectionManifest(ref, undefined, undefined, event).jobs.sort()).toEqual(checks);
+    expect(
+      ciSelectionManifest(ref, undefined, undefined, "workflow_dispatch").jobs,
+      "ASSERTION: a manual dispatch runs every test suite",
+    ).toEqual(expect.arrayContaining(["state_smoke", "test", "test_web", "test_server"]));
   },
 );
 

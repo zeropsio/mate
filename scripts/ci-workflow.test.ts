@@ -410,14 +410,16 @@ it("Decision: Signal never blocks merge, promotion or release; the blocking tier
   });
 });
 
-it("Decision: no Signal run starts from a kh-next push or a pull request; a nightly main run and a manual dispatch are the only starts.", () => {
+// witness: .github/workflows/signal.yml | workflow_dispatch: → push:
+it("Decision: no Signal run starts from a push, a pull request or a schedule; a manual dispatch is the only start.", () => {
   const signal = parse(
     NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
   );
-  expect(signal.on).toEqual({ schedule: [{ cron: "0 2 * * *" }], workflow_dispatch: null });
+  expect(signal.on).toEqual({ workflow_dispatch: null });
 });
 
-it("Signal compares each nightly run with the previous completed nightly classification on main", () => {
+// witness: .github/workflows/signal.yml | --event workflow_dispatch --status completed → --event schedule --status completed
+it("Signal compares each run with the previous completed manual run's classification on main", () => {
   const signal = parse(
     NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
   );
@@ -427,12 +429,12 @@ it("Signal compares each nightly run with the previous completed nightly classif
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "signal-previous-"));
   try {
     const runs = [
-      { databaseId: 104, conclusion: "success", headBranch: "main", event: "schedule" },
-      { databaseId: 103, conclusion: "failure", headBranch: "main", event: "workflow_dispatch" },
-      { databaseId: 102, conclusion: "failure", headBranch: "kh-next", event: "push" },
-      { databaseId: 101, conclusion: "cancelled", headBranch: "main", event: "schedule" },
-      { databaseId: 100, conclusion: "failure", headBranch: "main", event: "schedule" },
-      { databaseId: 99, conclusion: "success", headBranch: "main", event: "schedule" },
+      { databaseId: 104, conclusion: "success", headBranch: "main", event: "workflow_dispatch" },
+      { databaseId: 103, conclusion: "failure", headBranch: "main", event: "schedule" },
+      { databaseId: 102, conclusion: "failure", headBranch: "kh-next", event: "workflow_dispatch" },
+      { databaseId: 101, conclusion: "cancelled", headBranch: "main", event: "workflow_dispatch" },
+      { databaseId: 100, conclusion: "failure", headBranch: "main", event: "workflow_dispatch" },
+      { databaseId: 99, conclusion: "success", headBranch: "main", event: "workflow_dispatch" },
     ];
     NodeFS.writeFileSync(NodePath.join(directory, "runs.json"), JSON.stringify(runs));
     NodeFS.writeFileSync(
@@ -473,7 +475,6 @@ fi
     });
     expect(result.status, result.stderr).toBe(0);
     expect(NodeFS.readFileSync(selected, "utf8")).toBe("100");
-    expect(previous.if).toBe("${{ github.event_name == 'schedule' }}");
   } finally {
     NodeFS.rmSync(directory, { recursive: true, force: true });
   }
@@ -510,7 +511,7 @@ const selectionSha = "0123456789012345678901234567890123456789";
 const selectionEnv = {
   GITHUB_SHA: selectionSha,
   MATE_CI_SELECTION: JSON.stringify(
-    ciSelectionManifest("refs/heads/main", selectionSha, undefined),
+    ciSelectionManifest("refs/heads/main", selectionSha, undefined, "workflow_dispatch"),
   ),
 };
 const copySelectionRunner = (directory: string) => {

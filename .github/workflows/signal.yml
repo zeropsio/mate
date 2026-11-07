@@ -1,14 +1,13 @@
 name: Signal
 run-name: Signal · ${{ github.ref_name }}
 
+# Browser scenarios run only when someone dispatches this workflow; no push or schedule starts it.
 on:
-  schedule:
-    - cron: "0 2 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
-  # The classifier reads the previous nightly run's classification.
+  # The classifier reads the previous manual run's classification.
   actions: read
 
 env:
@@ -351,18 +350,17 @@ jobs:
           path: signal-reports
           merge-multiple: true
 
-      - name: Download the previous nightly classification
-        if: ${{ github.event_name == 'schedule' }}
+      - name: Download the previous manual run's classification
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           # A listing that fails compares nothing this run; it never fails Classify on its own.
           previous=$(gh run list -R "$GITHUB_REPOSITORY" --workflow signal.yml --branch main \
-            --event schedule --status completed -L 30 --json databaseId,conclusion \
+            --event workflow_dispatch --status completed -L 30 --json databaseId,conclusion \
             --jq "[.[] | select(.databaseId < $GITHUB_RUN_ID and (.conclusion == \"success\" or .conclusion == \"failure\"))][0].databaseId // empty" || true)
           if [ -z "$previous" ] || ! gh run download "$previous" -R "$GITHUB_REPOSITORY" -n signal-failures -D signal-previous; then
-            echo "::notice title=Signal::No previous nightly classification to compare"
+            echo "::notice title=Signal::No previous manual run classification to compare"
           fi
 
       - name: Rerun only failed tests once on this commit and classify

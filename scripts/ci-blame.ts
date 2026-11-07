@@ -28,6 +28,17 @@ const jobNames = {
   mobile_native_static_analysis: "Mobile Native Static Analysis",
 };
 export const checkJobIds = ["check", "check_guards", "check_types", "check_build"] as const;
+// Test suites run only when someone asks for them: a manual dispatch or a kh-bisect manifest.
+const testJobIds = new Set([
+  "state_smoke",
+  "test",
+  "test_packages",
+  "test_scripts",
+  "test_client_runtime",
+  "test_web",
+  "test_server",
+  "test_mobile",
+]);
 type MatrixJob = keyof typeof blameMatrices;
 const stateSmokeContext = /^State Smoke ([1-9]\d*)$/u;
 
@@ -110,14 +121,18 @@ export function ciSelectionManifest(
   ref: string,
   candidate: string | undefined,
   manifest: string | undefined,
+  event: string,
 ) {
   const selection = blameSelection(ref, manifest);
+  const testsRequested = event === "workflow_dispatch" || ref.startsWith("refs/heads/kh-bisect/");
   return {
     version: 1 as const,
     context: "ci" as const,
     candidate: candidate || null,
     ref,
-    jobs: selection.selected,
+    jobs: testsRequested
+      ? selection.selected
+      : selection.selected.filter((job) => !testJobIds.has(job)),
     blame: selection.narrowed,
     matrices: selection.matrices,
     stateSmokeShards: selection.stateSmokeShards,
@@ -264,6 +279,7 @@ if (
       process.env.GITHUB_REF ?? "",
       process.env.GITHUB_SHA,
       manifest,
+      process.env.GITHUB_EVENT_NAME ?? "",
     );
     const outputs = [
       `selection_manifest=${JSON.stringify(selection)}`,
