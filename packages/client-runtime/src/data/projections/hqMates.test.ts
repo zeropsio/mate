@@ -68,7 +68,7 @@ describe("keyed HQ Mate readers", () => {
   it("a targeted Chief refusal names its owner without listing their Chief", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
-    seedHqNavigation(store, "org", { mates: {}, people: { "u-karlos": { name: "Karlos" } } });
+    seedHqNavigation(store, "org", { mates: {} });
     const refusal = store.data.project(hqMateRefusal, key("hidden-chief"));
     const seen: unknown[] = [];
     const stop = registry.subscribe(refusal, () => seen.push(registry.get(refusal)), {
@@ -121,35 +121,6 @@ describe("keyed HQ Mate readers", () => {
     expect(registry.get(store.data.project(hqMateOverview, key("hidden-chief")))).toBeNull();
     expect([...store.state().memberships.get(placementsScope("org"))!.members.keys()]).toEqual([]);
     stop();
-    registry.dispose();
-  });
-
-  // witness: packages/client-runtime/src/data/projections/hqMates.ts | const byId = people.get(reason)?.name; → const byId = undefined;
-  it("a Chief refusal giving its owner's Zerops user id names them from the organization's member list, and somebody it does not hold as another person", () => {
-    const registry = AtomRegistry.make();
-    const store = makeAccountStore(registry);
-    seedHqNavigation(store, "org", { mates: {}, people: { "u-karlos": { name: "Karlos" } } });
-    const refuse = (projectId: string, reason: string) =>
-      store.dispatch({
-        kind: "stream",
-        key: hqMateScope("org", projectId),
-        now: 100,
-        event: {
-          kind: "fault",
-          jitter: 0,
-          fault: { outcome: "definitive-refusal", code: "chief_owner_required", message: reason },
-        },
-      });
-    refuse("karlos-chief", "u-karlos");
-    refuse("stranger-chief", "u-stranger");
-    expect(registry.get(store.data.project(hqMateRefusal, key("karlos-chief")))).toEqual({
-      kind: "refused-role",
-      chiefOwnerName: "Karlos",
-    });
-    expect(registry.get(store.data.project(hqMateRefusal, key("stranger-chief")))).toEqual({
-      kind: "refused-role",
-      chiefOwnerName: "another person",
-    });
     registry.dispose();
   });
 

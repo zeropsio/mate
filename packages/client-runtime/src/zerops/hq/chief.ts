@@ -10,8 +10,8 @@
  * - `PUT /api/proposals/:id` → one decision, then once how an approval ended: `decision` is
  *   written once, `outcome` once after `approved`, and anything else is HQ's `409`.
  * - `POST /api/reveals` → `204` once HQ recorded, in the organization's activity, that the person
- *   was shown a hidden value of the project, never the value; the service's hostname and the
- *   variable's name it is sent only an older HQ keeps (mate-hq `spec/protocol.md`, "Activity").
+ *   was shown a hidden value: the project, the service's hostname and the variable's name, never
+ *   the value (mate-hq `spec/protocol.md`, "Activity").
  *
  * @module hq/chief
  */

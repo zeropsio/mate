@@ -15,6 +15,7 @@ import {
   HqNavigationMate,
   HqNavigationPress,
   HqPersonFacts,
+  HqNavigationPerson,
   HqNavigationProject,
 } from "./hqStream.ts";
 
@@ -189,6 +190,7 @@ it.each(["forbidden", "zerops_refused", "scope_not_found"])(
 );
 
 const readFacts = Schema.decodeUnknownSync(HqPersonFacts);
+const readPerson = Schema.decodeUnknownSync(HqNavigationPerson);
 it("defines person ownership separately from who the Mate waits on", () => {
   const facts = {
     mine: true,
@@ -197,6 +199,8 @@ it("defines person ownership separately from who the Mate waits on", () => {
     unseen: 0,
   };
   expect(readFacts(facts)).toEqual(facts);
+  const person = { name: "Ada", clientUserId: "client-user", avatarUrl: null };
+  expect(readPerson(person)).toEqual(person);
 });
 
 it.each(

@@ -16,7 +16,6 @@ import type { MateProjectKey } from "./mateAttention.ts";
 import { sameValue } from "./equal.ts";
 import { liveOrHeld } from "../streamMachine.ts";
 import { scopeSlow } from "./freshness.ts";
-import { zeropsPeople } from "./zeropsPeople.ts";
 
 export interface HqMatesRead {
   readonly mates: Readonly<Record<string, MateLiveView>>;
@@ -159,19 +158,6 @@ export const hqMateOverview: Projection<MateProjectKey, MateLiveView | null> = {
   equals: sameValue,
 };
 
-/**
- * The person HQ names as a Chief's owner: HQ gives their Zerops user id (an older HQ their
- * name), and the organization's member list names them; somebody it does not hold is
- * "another person".
- */
-function chiefOwnerName(read: ProjectionReads, orgId: string, reason: string): string {
-  const people = zeropsPeople(read, orgId);
-  const byId = people.get(reason)?.name;
-  if (byId !== undefined) return byId;
-  for (const { name } of people.values()) if (name === reason) return name;
-  return "another person";
-}
-
 /** A targeted HQ refusal names an inaccessible Chief without adding it to personal navigation. */
 export const hqMateRefusal: Projection<
   MateProjectKey,
@@ -182,7 +168,7 @@ export const hqMateRefusal: Projection<
   derive: (read, { orgId, projectId }) => {
     const stream = read.stream(hqMateScope(orgId, projectId));
     return stream.phase === "refused" && stream.fault?.code === "chief_owner_required"
-      ? { kind: "refused-role", chiefOwnerName: chiefOwnerName(read, orgId, stream.fault.message) }
+      ? { kind: "refused-role", chiefOwnerName: stream.fault.message }
       : null;
   },
   equals: sameValue,

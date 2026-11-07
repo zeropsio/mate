@@ -93,21 +93,18 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
 
   /** The page's account epochs only grow, across tests too: the mint budget is fenced by them. */
   let epoch = 0;
-  /**
-   * A load's client: each load builds its own; every HQ read and door carries its access token.
-   * Its doors are the ones HQ was asked through since it loaded.
-   */
+  /** A load's client: each load builds its own, and reads the access token for every door. */
   const load = () => {
-    const start = calls.length;
+    let mints = 0;
     epoch += 1;
     const client = {
       accountEpoch: epoch,
-      accessToken: async () => ({ token: "access" }),
+      accessToken: async () => {
+        mints += 1;
+        return { token: "access" };
+      },
     } as unknown as ZeropsApiClient;
-    return {
-      client,
-      doors: () => calls.slice(start).filter(({ path }) => path === "/api/door").length,
-    };
+    return { client, doors: () => mints };
   };
 
   it("a press shares its account's named stream and session across reconnects, but not another tab's", async () => {
