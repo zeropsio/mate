@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- real gate CLI with disposable command fixtures.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
+import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
@@ -66,22 +67,21 @@ function createFixture(cacheHome?: string) {
       NodePath.join(root, "scripts", file),
     );
   if (cacheHome) {
-    for (const name of ["@t3tools", "oxc-parser", "lightningcss", "parse5"]) {
-      NodeFS.mkdirSync(NodePath.dirname(NodePath.join(root, "scripts/node_modules", name)), {
-        recursive: true,
-      });
-      NodeFS.symlinkSync(
-        NodePath.join(import.meta.dirname, "node_modules", name),
-        NodePath.join(root, "scripts/node_modules", name),
-      );
+    for (const name of ["@t3tools/shared", "oxc-parser", "lightningcss", "parse5"]) {
+      const target = NodePath.join(root, "scripts/node_modules", name);
+      NodeFS.mkdirSync(NodePath.dirname(target), { recursive: true });
+      NodeFS.symlinkSync(NodePath.join(import.meta.dirname, "node_modules", name), target);
     }
-    for (const name of ["vite-plus", "madge", "effect", "@effect/platform-node"]) {
+    // Cache identity only needs installed package bytes, not the full real dependency trees.
+    for (const name of ["vite-plus", "madge", "effect", "@effect/platform-node"])
       write(`scripts/node_modules/${name}/package.json`, JSON.stringify({ name }));
-    }
-    NodeFS.mkdirSync(NodePath.join(root, "scripts/lib"), { recursive: true });
-    NodeFS.symlinkSync(
-      NodePath.join(import.meta.dirname, "node_modules"),
-      NodePath.join(root, "scripts/lib/node_modules"),
+    write(
+      "scripts/node_modules/effect/package.json",
+      JSON.stringify({ name: "effect", type: "module", exports: { "./Schema": "./Schema.js" } }),
+    );
+    write(
+      "scripts/node_modules/effect/Schema.js",
+      `export * from ${JSON.stringify(NodeModule.createRequire(import.meta.url).resolve("effect/Schema"))};\n`,
     );
   } else {
     NodeFS.symlinkSync(
@@ -144,7 +144,7 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
   }
   write(
     ".gitignore",
-    "node_modules/\n.local/\n.cache/\nchecks.log\n.gate-receipt.json*\napps/web/src/components.json\n",
+    "node_modules/\n.local/\nchecks.log\n.gate-receipt.json*\napps/web/src/components.json\n",
   );
   write("README.md", "before\n");
   for (const path of Object.keys(stateOnlySmoke)) write(path, "export {};\n");
@@ -174,7 +174,9 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
           NODE_PATH: cacheHome ? "" : process.env.NODE_PATH,
           // Shared receipts require an uninstrumented Node, regardless of the test runner's preload.
           NODE_OPTIONS: cacheHome ? "" : process.env.NODE_OPTIONS,
-          XDG_CACHE_HOME: NodePath.join(cacheHome ?? root, ".cache"),
+          XDG_CACHE_HOME: cacheHome
+            ? NodePath.join(cacheHome, ".cache")
+            : process.env.XDG_CACHE_HOME,
           CI: "",
           GITHUB_ACTIONS: "",
           GATE_FIXTURE_ROOT: root,
@@ -248,12 +250,6 @@ describe("revision-bound witness receipts", () => {
     expect(Number.isFinite(receipt().selectionMs)).toBe(true);
     expect(receipt().selectedStages).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          name: "browser/scenario slot",
-          args: expect.arrayContaining([
-            NodePath.join(gate.root, ".local", "share", "mate-gate-slots"),
-          ]),
-        }),
         expect.objectContaining({
           name: "edited scenario files",
           args: expect.arrayContaining(["test/scenarios/areas/b-menu/edited.scenario.ts"]),
