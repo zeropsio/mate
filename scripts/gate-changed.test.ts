@@ -1729,7 +1729,7 @@ it("a lane editing a unit test replays its new witnesses before the test stages;
   const unit = "apps/server/src/spi/serverCommandReadiness.test.ts";
   const scenario = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
   const lines = (path: string) =>
-    selectGateSteps(repositoryGraph, {
+    selectGateSteps(repositoryGraph(), {
       comparison: "HEAD",
       existing: [path],
       paths: [path],
