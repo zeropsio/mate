@@ -123,6 +123,16 @@ describe("mutation cull", () => {
     expect(mutateEntries("src/check.ts", source, new Set())).toEqual(["src/check.ts"]);
   });
 
+  // Two runs of chatList.ts: the same mutants and kills, listed in the order each run finished them.
+  // witness: scripts/mutation-cull.ts | mutantId(a).localeCompare(mutantId(b)), → 0,
+  it("names the same witness whatever order Stryker's report lists the mutants in", () => {
+    const table = (name: string) => {
+      const report = recorded(name);
+      return classifyTests(reportTests(report), reportMutants(report));
+    };
+    expect(table("chatList.run-b.stryker.json")).toEqual(table("chatList.run-a.stryker.json"));
+  });
+
   // relaySigning.ts's isRecord guard loops past Stryker's hit limit in dpop.test.ts and fails an assertion in
   // relaySigning.test.ts; the main run saw only the limit.
   const timedOut = recorded("relaySigning.stryker.json");

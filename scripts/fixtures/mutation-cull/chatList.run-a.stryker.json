@@ -1,0 +1,334 @@
+{
+  "$provenance": {
+    "producer": "StrykerJS 10.1.1 via scripts/mutation-cull.ts",
+    "revision": "a91a2ebf9724a71c49261bbcb936b539ab088eef",
+    "source": "packages/shared/src/chatList.ts",
+    "schema": "mutation-testing-report-schema 1.0"
+  },
+  "schemaVersion": "1.0",
+  "files": {
+    "packages/shared/src/chatList.ts": {
+      "language": "typescript",
+      "mutants": [
+        {
+          "id": "13",
+          "mutatorName": "BlockStatement",
+          "replacement": "{}",
+          "status": "NoCoverage",
+          "static": false,
+          "coveredBy": [],
+          "location": { "end": { "column": 6, "line": 26 }, "start": { "column": 29, "line": 24 } }
+        },
+        {
+          "id": "4",
+          "mutatorName": "BlockStatement",
+          "replacement": "{}",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 0.5105840000000015,
+          "coveredBy": ["4"],
+          "location": { "end": { "column": 4, "line": 20 }, "start": { "column": 26, "line": 18 } }
+        },
+        {
+          "id": "2",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 0.9130830000000074,
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 24, "line": 18 }, "start": { "column": 7, "line": 18 } }
+        },
+        {
+          "id": "3",
+          "mutatorName": "EqualityOperator",
+          "replacement": "anchorId !== null",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.2790840000000046,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 24, "line": 18 }, "start": { "column": 7, "line": 18 } }
+        },
+        {
+          "id": "1",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.241375000000012,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 24, "line": 18 }, "start": { "column": 7, "line": 18 } }
+        },
+        {
+          "id": "0",
+          "mutatorName": "BlockStatement",
+          "replacement": "{}",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.235500000000002,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 2, "line": 42 }, "start": { "column": 41, "line": 17 } }
+        },
+        {
+          "id": "5",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.277584999999995,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 43, "line": 22 }, "start": { "column": 23, "line": 22 } }
+        },
+        {
+          "id": "6",
+          "mutatorName": "EqualityOperator",
+          "replacement": "index <= items.length",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 0.9167500000000004,
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 43, "line": 22 }, "start": { "column": 23, "line": 22 } }
+        },
+        {
+          "id": "8",
+          "mutatorName": "AssignmentOperator",
+          "replacement": "index -= 1",
+          "statusReason": "Hit limit reached (101/100)",
+          "status": "Timeout",
+          "static": false,
+          "duration": 65,
+          "coveredBy": ["3"],
+          "location": { "end": { "column": 55, "line": 22 }, "start": { "column": 45, "line": 22 } }
+        },
+        {
+          "id": "7",
+          "mutatorName": "EqualityOperator",
+          "replacement": "index >= items.length",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.4703759999999946,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 43, "line": 22 }, "start": { "column": 23, "line": 22 } }
+        },
+        {
+          "id": "9",
+          "mutatorName": "BlockStatement",
+          "replacement": "{}",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.2907920000000033,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 4, "line": 39 }, "start": { "column": 57, "line": 22 } }
+        },
+        {
+          "id": "10",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.231207000000005,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 27, "line": 24 }, "start": { "column": 9, "line": 24 } }
+        },
+        {
+          "id": "12",
+          "mutatorName": "EqualityOperator",
+          "replacement": "item !== undefined",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.346831999999999,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 27, "line": 24 }, "start": { "column": 9, "line": 24 } }
+        },
+        {
+          "id": "15",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: 1, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.0073759999999865,
+          "killedBy": ["3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 30, "line": 29 }, "start": { "column": 9, "line": 29 } }
+        },
+        {
+          "id": "17",
+          "mutatorName": "BlockStatement",
+          "replacement": "{}",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: 1, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 1,
+          "duration": 1.6258750000000006,
+          "killedBy": ["3"],
+          "coveredBy": ["3"],
+          "location": { "end": { "column": 6, "line": 31 }, "start": { "column": 32, "line": 29 } }
+        },
+        {
+          "id": "14",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.2899169999999955,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 30, "line": 29 }, "start": { "column": 9, "line": 29 } }
+        },
+        {
+          "id": "16",
+          "mutatorName": "EqualityOperator",
+          "replacement": "itemAnchorId !== null",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.2353339999999946,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 30, "line": 29 }, "start": { "column": 9, "line": 29 } }
+        },
+        {
+          "id": "11",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "status": "Survived",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 0.9450829999999897,
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 27, "line": 24 }, "start": { "column": 9, "line": 24 } }
+        },
+        {
+          "id": "18",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "statusReason": "expected { anchorIndex: +0, anchorOffset: 16 } to be undefined",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.094166999999999,
+          "killedBy": ["2", "4"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 37, "line": 33 }, "start": { "column": 12, "line": 33 } }
+        },
+        {
+          "id": "20",
+          "mutatorName": "EqualityOperator",
+          "replacement": "itemAnchorId !== anchorId",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.489666999999997,
+          "killedBy": ["0", "1", "2", "3", "4"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 37, "line": 33 }, "start": { "column": 12, "line": 33 } }
+        },
+        {
+          "id": "21",
+          "mutatorName": "ObjectLiteral",
+          "replacement": "{}",
+          "statusReason": "expected {} to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 3,
+          "duration": 2.801916999999996,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "3"],
+          "location": { "end": { "column": 10, "line": 37 }, "start": { "column": 9, "line": 34 } }
+        },
+        {
+          "id": "19",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "statusReason": "expected undefined to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 5,
+          "duration": 2.2394159999999914,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "2", "3", "4"],
+          "location": { "end": { "column": 37, "line": 33 }, "start": { "column": 12, "line": 33 } }
+        },
+        {
+          "id": "22",
+          "mutatorName": "LogicalOperator",
+          "replacement": "options.anchorOffset && CHAT_LIST_ANCHOR_OFFSET",
+          "statusReason": "expected { anchorIndex: +0, …(1) } to deeply equal { anchorIndex: +0, anchorOffset: 16 }",
+          "status": "Killed",
+          "static": false,
+          "testsCompleted": 3,
+          "duration": 2.7974999999999994,
+          "killedBy": ["0", "1", "3"],
+          "coveredBy": ["0", "1", "3"],
+          "location": { "end": { "column": 72, "line": 36 }, "start": { "column": 25, "line": 36 } }
+        }
+      ],
+      "source": "export const CHAT_LIST_ANCHOR_OFFSET = 16;\n\nexport interface ChatListAnchoredEndSpace {\n  readonly anchorIndex: number;\n  readonly anchorOffset: number;\n}\n\nexport interface ChatListAnchorOptions {\n  readonly anchorOffset?: number;\n}\n\nexport function resolveChatListAnchoredEndSpace<Item, AnchorId>(\n  items: ReadonlyArray<Item>,\n  anchorId: AnchorId | null,\n  getAnchorId: (item: Item) => AnchorId | null,\n  options: ChatListAnchorOptions = {},\n): ChatListAnchoredEndSpace | undefined {\n  if (anchorId === null) {\n    return undefined;\n  }\n\n  for (let index = 0; index < items.length; index += 1) {\n    const item = items[index];\n    if (item === undefined) {\n      continue;\n    }\n\n    const itemAnchorId = getAnchorId(item);\n    if (itemAnchorId === null) {\n      continue;\n    }\n\n    return itemAnchorId === anchorId\n      ? {\n          anchorIndex: index,\n          anchorOffset: options.anchorOffset ?? CHAT_LIST_ANCHOR_OFFSET,\n        }\n      : undefined;\n  }\n\n  return undefined;\n}\n"
+    }
+  },
+  "testFiles": {
+    "packages/shared/src/chatList.test.ts": {
+      "tests": [
+        {
+          "id": "0",
+          "name": "resolveChatListAnchoredEndSpace > anchors only the first eligible row",
+          "location": { "start": { "column": 3, "line": 19 } }
+        },
+        {
+          "id": "1",
+          "name": "resolveChatListAnchoredEndSpace > allows a surface to keep the anchor below its own header",
+          "location": { "start": { "column": 3, "line": 26 } }
+        },
+        {
+          "id": "2",
+          "name": "resolveChatListAnchoredEndSpace > does not reserve end space for later eligible rows",
+          "location": { "start": { "column": 3, "line": 37 } }
+        },
+        {
+          "id": "3",
+          "name": "resolveChatListAnchoredEndSpace > skips ineligible rows before the first anchor",
+          "location": { "start": { "column": 3, "line": 41 } }
+        },
+        {
+          "id": "4",
+          "name": "resolveChatListAnchoredEndSpace > ignores ineligible rows and missing anchors",
+          "location": { "start": { "column": 3, "line": 48 } }
+        }
+      ],
+      "source": "import { describe, expect, it } from \"vite-plus/test\";\n\nimport { CHAT_LIST_ANCHOR_OFFSET, resolveChatListAnchoredEndSpace } from \"./chatList.js\";\n\ninterface Row {\n  readonly id: string;\n  readonly anchorable: boolean;\n}\n\nconst rows: ReadonlyArray<Row> = [\n  { id: \"first\", anchorable: true },\n  { id: \"ignored\", anchorable: false },\n  { id: \"latest\", anchorable: true },\n];\n\nconst getAnchorId = (row: Row) => (row.anchorable ? row.id : null);\n\ndescribe(\"resolveChatListAnchoredEndSpace\", () => {\n  it(\"anchors only the first eligible row\", () => {\n    expect(resolveChatListAnchoredEndSpace(rows, \"first\", getAnchorId)).toEqual({\n      anchorIndex: 0,\n      anchorOffset: CHAT_LIST_ANCHOR_OFFSET,\n    });\n  });\n\n  it(\"allows a surface to keep the anchor below its own header\", () => {\n    expect(\n      resolveChatListAnchoredEndSpace(rows, \"first\", getAnchorId, {\n        anchorOffset: 132,\n      }),\n    ).toEqual({\n      anchorIndex: 0,\n      anchorOffset: 132,\n    });\n  });\n\n  it(\"does not reserve end space for later eligible rows\", () => {\n    expect(resolveChatListAnchoredEndSpace(rows, \"latest\", getAnchorId)).toBeUndefined();\n  });\n\n  it(\"skips ineligible rows before the first anchor\", () => {\n    expect(resolveChatListAnchoredEndSpace(rows.slice(1), \"latest\", getAnchorId)).toEqual({\n      anchorIndex: 1,\n      anchorOffset: CHAT_LIST_ANCHOR_OFFSET,\n    });\n  });\n\n  it(\"ignores ineligible rows and missing anchors\", () => {\n    expect(resolveChatListAnchoredEndSpace(rows, \"ignored\", getAnchorId)).toBeUndefined();\n    expect(resolveChatListAnchoredEndSpace(rows, \"missing\", getAnchorId)).toBeUndefined();\n    expect(resolveChatListAnchoredEndSpace(rows, null, getAnchorId)).toBeUndefined();\n  });\n});\n"
+    }
+  }
+}

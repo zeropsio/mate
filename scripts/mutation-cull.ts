@@ -244,7 +244,7 @@ export const witnessLine = (mutant: Mutant): string =>
  * cost is the number of mutants a test covers or kills (deterministic, unlike its run time); ties go to the
  * earlier test.
  * KILLS: the rest; its witness is the killed mutant with the fewest killers, a logic mutant before a string
- * literal one (a changed string is a copy check), then the shortest original text.
+ * literal one (a changed string is a copy check), then the shortest original text, then the first in the file.
  * The reason column carries the facts an agent needs: kill, unique-kill and coverage counts, whether a minimal
  * set of killing tests (greedy set cover, pruned) needs it, and how many covered mutants no test kills.
  */
@@ -342,7 +342,12 @@ export function classifyTests(tests: readonly TestCase[], mutants: readonly Muta
         (a, b) =>
           killers.get(mutantId(a))! - killers.get(mutantId(b))! ||
           Number(isString(a)) - Number(isString(b)) ||
-          a.original.length - b.original.length,
+          a.original.length - b.original.length ||
+          // Stryker lists a file's mutants in the order they finished, so ties go by position.
+          a.file.localeCompare(b.file) ||
+          a.line - b.line ||
+          a.column - b.column ||
+          mutantId(a).localeCompare(mutantId(b)),
       )[0]!;
     return {
       test,
