@@ -1,47 +1,21 @@
 import type { AgentUsageRead } from "@t3tools/client-runtime/data";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { beforeEach, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import { UsageDay } from "@t3tools/contracts";
 import { recordedReport, statistics } from "./usageTestFixtures";
-const source = vi.hoisted(() => ({
+const source = {
   read: { kind: "reading" } as AgentUsageRead,
   retry: vi.fn(),
   periodRead: null as AgentUsageRead | null,
-}));
-vi.mock("../../zerops/usePlatformCapabilities", () => ({
-  usePlatformCapabilities: () => ({ manageOrganization: true }),
-}));
-vi.mock("../../zerops/ZeropsSessionProvider", () => ({
-  useZeropsSessionOptional: () => ({ user: { id: "viewer" } }),
-}));
-vi.mock("../../zerops/ZeropsAccountData", () => ({
-  useAccountDataOptional: () => ({ orgId: "org", retryDetail: source.retry }),
-  useDetailDemand: vi.fn(),
-  useProjection: (_projection: unknown, key: { owner: string } | null) =>
-    key !== null && JSON.parse(key.owner).groupBy === "day" && source.periodRead !== null
-      ? source.periodRead
-      : source.read,
-}));
-vi.mock("../ui/dialog", () => ({
-  Dialog: "div",
-  DialogDescription: "p",
-  DialogFooter: "footer",
-  DialogHeader: "header",
-  DialogPanel: "main",
-  DialogPopup: "div",
-  DialogTitle: "h2",
-}));
-vi.mock("../ui/button", () => ({ InlineButton: "button" }));
-vi.mock("./UsageShareBar", () => ({
-  UsageShareBar: ({ label }: { label: string }) => <span>{label}</span>,
-}));
+};
 import { UsageModelDialog } from "./UsageModelDialog";
 import { usageReportView } from "../../state/usage";
 const report = recordedReport({
   groups: [{ ...recordedReport().groups[0]!, provider: "claude", model: "claude-opus-5-5[1m]" }],
 });
 const model = usageReportView(report, report).models[0]!;
+const trees: ReactTestRenderer[] = [];
 function render(shownModel = model) {
   let tree: ReactTestRenderer;
   act(() => {
@@ -67,12 +41,58 @@ function render(shownModel = model) {
       />,
     );
   });
+  trees.push(tree!);
   return tree!;
 }
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   source.retry.mockClear();
   source.periodRead = null;
+  const account = await import("../../zerops/accountData");
+  const session = await import("../../zerops/sessionContext");
+  const capabilities = await import("../../zerops/usePlatformCapabilities");
+  const dialog = await import("../ui/dialog");
+  const buttons = await import("../ui/button");
+  const share = await import("./UsageShareBar");
+  vi.spyOn(account, "useAccountDataOptional").mockReturnValue({
+    orgId: "org",
+    retryDetail: source.retry,
+  } as unknown as ReturnType<typeof account.useAccountDataOptional>);
+  vi.spyOn(account, "useDetailDemand").mockImplementation(() => {});
+  vi.spyOn(account, "useProjection").mockImplementation(((
+    _projection: unknown,
+    key: { owner: string } | null,
+  ) =>
+    key !== null && JSON.parse(key.owner).groupBy === "day" && source.periodRead !== null
+      ? source.periodRead
+      : source.read) as typeof account.useProjection);
+  vi.spyOn(session, "useZeropsSessionOptional").mockReturnValue({
+    user: { id: "viewer" },
+  } as unknown as ReturnType<typeof session.useZeropsSessionOptional>);
+  vi.spyOn(capabilities, "usePlatformCapabilities").mockReturnValue({
+    manageOrganization: true,
+  } as ReturnType<typeof capabilities.usePlatformCapabilities>);
+  const content = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
+  vi.spyOn(dialog, "Dialog").mockImplementation(content as typeof dialog.Dialog);
+  vi.spyOn(dialog, "DialogPopup").mockImplementation(content as typeof dialog.DialogPopup);
+  vi.spyOn(dialog, "DialogDescription").mockImplementation(
+    content as typeof dialog.DialogDescription,
+  );
+  vi.spyOn(dialog, "DialogFooter").mockImplementation(content as typeof dialog.DialogFooter);
+  vi.spyOn(dialog, "DialogHeader").mockImplementation(content as typeof dialog.DialogHeader);
+  vi.spyOn(dialog, "DialogPanel").mockImplementation(content as typeof dialog.DialogPanel);
+  vi.spyOn(dialog, "DialogTitle").mockImplementation(content as typeof dialog.DialogTitle);
+  vi.spyOn(buttons, "InlineButton").mockImplementation((({ children, ...props }) => (
+    <button {...props}>{children}</button>
+  )) as typeof buttons.InlineButton);
+  vi.spyOn(share, "UsageShareBar").mockImplementation(({ label }) => <span>{label}</span>);
+});
+afterEach(() => {
+  act(() => {
+    for (const tree of trees.splice(0)) tree.unmount();
+  });
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 it.each([
   { name: "pending", read: { kind: "reading" } as AgentUsageRead, text: "Reading model usage…" },

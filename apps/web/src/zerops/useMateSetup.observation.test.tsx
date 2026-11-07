@@ -2,19 +2,16 @@ import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/reactivity";
 import { makeAccountStore } from "@t3tools/client-runtime/data";
 import { STREAM_POLICY } from "@t3tools/client-runtime/data";
-const account = vi.hoisted(() => ({
+import * as mateSetup from "@t3tools/client-runtime/zerops/mateSetup";
+const account = {
   store: null as import("@t3tools/client-runtime/data").AccountStore | null,
-}));
-vi.mock("./ZeropsAccountData", () => ({
-  useAccountStoreForAdapters: () => account.store,
-  useAccountDataOptional: () => ({ orgId: "org-1" }),
-}));
+};
 import { act, createElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { AccountDataContext, AccountStoreContext, type AccountData } from "./accountData";
 
-const source = vi.hoisted(() => ({ read: vi.fn() }));
-vi.mock("@t3tools/client-runtime/zerops/mateSetup", () => ({ readMateSetup: source.read }));
+const source = { read: vi.fn() };
 import { refreshMateSetup, useMateSetup, type MateSetupObserved } from "./useMateSetup";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 
@@ -22,9 +19,22 @@ let registry: ReturnType<typeof AtomRegistry.make>;
 beforeEach(() => {
   registry = AtomRegistry.make();
   account.store = makeAccountStore(registry);
+  vi.spyOn(mateSetup, "readMateSetup").mockImplementation(source.read);
 });
 function viewWithAccount(element: React.ReactNode) {
-  return createElement(RegistryContext.Provider, { value: registry }, element);
+  return createElement(
+    RegistryContext.Provider,
+    { value: registry },
+    createElement(
+      AccountStoreContext.Provider,
+      { value: account.store },
+      createElement(
+        AccountDataContext.Provider,
+        { value: { orgId: "org-1" } as AccountData },
+        element,
+      ),
+    ),
+  );
 }
 const trees: ReactTestRenderer[] = [];
 afterEach(async () => {
@@ -35,6 +45,7 @@ afterEach(async () => {
   account.store?.close();
   registry.dispose();
   source.read.mockReset();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 

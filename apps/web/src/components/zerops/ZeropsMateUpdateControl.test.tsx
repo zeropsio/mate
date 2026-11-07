@@ -8,10 +8,14 @@ import { EnvironmentId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { MateUpdateState } from "../../zerops/mateUpdate";
 import type { ZeropsMateUpdateView } from "./ZeropsMateUpdateControl";
+import * as environments from "../../state/environments";
+import * as mateUpdates from "../../zerops/useMateUpdate";
+import * as matePermissions from "../../zerops/useMateReadOnly";
+import * as confirmDialog from "../../confirmDialog";
 
 const environmentState = vi.hoisted(() => ({
   environment: undefined as
@@ -43,13 +47,6 @@ const mateUpdateState = vi.hoisted<{
   checked: undefined,
 }));
 
-vi.mock("../../state/environments", () => ({
-  useEnvironment: () =>
-    environmentState.environment === undefined
-      ? null
-      : { serverConfig: { environment: environmentState.environment } },
-}));
-
 const verbs = vi.hoisted(() => ({
   update: vi.fn(),
   check: vi.fn(),
@@ -57,25 +54,8 @@ const verbs = vi.hoisted(() => ({
   confirm: vi.fn(),
 }));
 
-vi.mock("../../zerops/useMateUpdate", () => ({
-  useMateUpdate: () => ({
-    state: mateUpdateState.state,
-    update: verbs.update,
-    checked: mateUpdateState.checked,
-    check: verbs.check,
-  }),
-}));
-
 /** Whether the viewer may update the Mate: its owner, or an admin of its project. */
 const viewer = vi.hoisted(() => ({ mayUpdate: true }));
-
-vi.mock("../../zerops/useMateReadOnly", () => ({
-  useMayUpdateMate: () => viewer.mayUpdate,
-}));
-
-vi.mock("../../confirmDialog", () => ({
-  requestConfirmDialog: verbs.confirm,
-}));
 
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 
@@ -131,13 +111,33 @@ function render() {
 
 describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §2.9, MU-2)", () => {
   beforeEach(() => {
+    environmentState.environment = undefined;
     mateUpdateState.state = { phase: "idle" };
     mateUpdateState.checked = undefined;
     verbs.update.mockReset();
     verbs.check.mockReset();
     verbs.confirm.mockReset();
     viewer.mayUpdate = true;
+    vi.spyOn(environments, "useEnvironment").mockImplementation(() =>
+      environmentState.environment === undefined
+        ? null
+        : ({ serverConfig: { environment: environmentState.environment } } as unknown as ReturnType<
+            typeof environments.useEnvironment
+          >),
+    );
+    vi.spyOn(mateUpdates, "useMateUpdate").mockImplementation(
+      () =>
+        ({
+          state: mateUpdateState.state,
+          update: verbs.update,
+          checked: mateUpdateState.checked,
+          check: verbs.check,
+        }) as unknown as ReturnType<typeof mateUpdates.useMateUpdate>,
+    );
+    vi.spyOn(matePermissions, "useMayUpdateMate").mockImplementation(() => viewer.mayUpdate);
+    vi.spyOn(confirmDialog, "requestConfirmDialog").mockImplementation(verbs.confirm);
   });
+  afterEach(() => vi.restoreAllMocks());
 
   it("renders nothing before the environment's descriptor has been read", () => {
     environmentState.environment = undefined;
@@ -334,7 +334,8 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
       restart: { needed: true, why: "zcp 9.226.0 is out" },
     };
-    const store = makeAccountStore(AtomRegistry.make());
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
     const host = makeMateUpdates({
       store,
       wire: {
@@ -344,9 +345,15 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       isCurrent: () => true,
       makeId: () => "request-1",
     });
-    await host.check(ENVIRONMENT_ID);
-    const projected = mateUpdate.derive(readsOfState(store.state()), ENVIRONMENT_ID);
-    host.close();
+    let projected: ReturnType<typeof mateUpdate.derive>;
+    try {
+      await host.check(ENVIRONMENT_ID);
+      projected = mateUpdate.derive(readsOfState(store.state()), ENVIRONMENT_ID);
+    } finally {
+      host.close();
+      store.close();
+      registry.dispose();
+    }
     mateUpdateState.state = projected.state;
     mateUpdateState.checked = projected.checked;
     environmentState.environment = {

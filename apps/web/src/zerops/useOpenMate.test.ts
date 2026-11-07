@@ -3,12 +3,20 @@ import { EnvironmentId, ProjectId, ThreadId, type ScopedThreadRef } from "@t3too
 import { act, createElement as h } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { RouterContextProvider, type AnyRouter } from "@tanstack/react-router";
 
+import * as newThread from "../hooks/useHandleNewThread";
+import * as environmentTargets from "../routes/-environmentTargets";
+import * as entities from "../state/entities";
 import { markMateDeleting, settleDeletingMates } from "./deletingMates";
 import { takeMateConversation } from "./mateOpening";
+import * as presses from "./matePress";
+import * as menuReadings from "./useMenuMateReadings";
 import { useOpenMate, type OpenMate } from "./useOpenMate";
+import * as candidates from "./useZeropsCandidates";
 
 const ENVIRONMENT = EnvironmentId.make("env-fen");
+const routeFixture = () => ({ options: {}, navigate: app.navigate }) as unknown as AnyRouter;
 
 /** A conversation as the Mate's environment lists it. */
 const shell = (id: string) => ({
@@ -44,39 +52,6 @@ const app = vi.hoisted(() => ({
   toldMain: undefined as ScopedThreadRef | undefined,
 }));
 
-vi.mock("@tanstack/react-router", () => ({
-  useRouter: () => ({ navigate: app.navigate }),
-}));
-vi.mock("../routes/-environmentTargets", () => ({
-  useEnvironmentLinks: () => ({
-    linkTarget: () => (app.reachable ? ENVIRONMENT : undefined),
-    mateLink: () => ({ key: undefined, environmentId: undefined, reachability: null }),
-  }),
-}));
-vi.mock("../state/entities", () => ({
-  useThreadShells: () => app.threads,
-  readThreadShells: () => app.threadsLater,
-  useProjects: () => app.projects,
-}));
-vi.mock("./useZeropsCandidates", () => ({
-  useZeropsDetailCandidates: () => ({ listing: app.listing }),
-}));
-vi.mock("./useMenuMateReadings", () => ({
-  useHqMainChats: () => () => app.toldMain,
-}));
-vi.mock("./matePress", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useMatePresses: () => app.births,
-}));
-vi.mock("../hooks/useHandleNewThread", () => ({
-  useNewThreadHandler:
-    () =>
-    async (...args: ReadonlyArray<unknown>) => {
-      app.newThreadCalls(...args);
-      return app.newThread;
-    },
-}));
-
 const CANDIDATE = {
   key: "fen:zcp",
   project: { id: "project-fen", name: "Acme Docs - Fen", status: "ACTIVE", tagList: [] },
@@ -96,7 +71,7 @@ async function openFen(
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   let tree: ReturnType<typeof create> | undefined;
   act(() => {
-    tree = create(h(Harness));
+    tree = create(h(RouterContextProvider, { router: routeFixture(), children: h(Harness) }));
   });
   await act(async () => {
     opens.at(-1)?.(candidate, (conversation) => {
@@ -122,8 +97,39 @@ beforeEach(() => {
   app.projects = [{ id: ProjectId.make("project-fen"), environmentId: ENVIRONMENT }];
   app.listing = { state: "unread", waitingFor: null };
   app.toldMain = undefined;
+  vi.spyOn(environmentTargets, "useEnvironmentLinks").mockImplementation(
+    () =>
+      ({
+        linkTarget: () => (app.reachable ? ENVIRONMENT : undefined),
+        mateLink: () => ({ key: undefined, environmentId: undefined, reachability: null }),
+      }) as unknown as ReturnType<typeof environmentTargets.useEnvironmentLinks>,
+  );
+  vi.spyOn(entities, "useThreadShells").mockImplementation(
+    () => app.threads as ReturnType<typeof entities.useThreadShells>,
+  );
+  vi.spyOn(entities, "readThreadShells").mockImplementation(
+    () => app.threadsLater as ReturnType<typeof entities.readThreadShells>,
+  );
+  vi.spyOn(entities, "useProjects").mockImplementation(
+    () => app.projects as ReturnType<typeof entities.useProjects>,
+  );
+  vi.spyOn(candidates, "useZeropsDetailCandidates").mockImplementation(
+    () => ({ listing: app.listing }) as ReturnType<typeof candidates.useZeropsDetailCandidates>,
+  );
+  vi.spyOn(menuReadings, "useHqMainChats").mockImplementation(() => () => app.toldMain);
+  vi.spyOn(presses, "useMatePresses").mockImplementation(
+    () => app.births as ReturnType<typeof presses.useMatePresses>,
+  );
+  vi.spyOn(newThread, "useNewThreadHandler").mockImplementation(
+    () =>
+      (async (...args: ReadonlyArray<unknown>) => {
+        app.newThreadCalls(...args);
+        return app.newThread;
+      }) as unknown as ReturnType<typeof newThread.useNewThreadHandler>,
+  );
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   settleDeletingMates(new Set());
   takeMateConversation("project-fen");
@@ -224,12 +230,14 @@ describe("useOpenMate — a Mate whose conversation cannot be opened yet", () =>
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     let tree: ReturnType<typeof create> | undefined;
     act(() => {
-      tree = create(h(Harness));
+      tree = create(h(RouterContextProvider, { router: routeFixture(), children: h(Harness) }));
     });
     await act(async () => opens.at(-1)?.(CANDIDATE, earlier));
     app.reachable = true;
     app.threads = [shell("thread-main")];
-    act(() => tree?.update(h(Harness)));
+    act(() =>
+      tree?.update(h(RouterContextProvider, { router: routeFixture(), children: h(Harness) })),
+    );
     await act(async () => opens.at(-1)?.(CANDIDATE));
     act(() => tree?.unmount());
 

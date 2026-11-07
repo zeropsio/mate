@@ -1,9 +1,11 @@
 import { EnvironmentId } from "@t3tools/contracts";
-import { AtomRegistry } from "effect/reactivity";
+import { AsyncResult, AtomRegistry } from "effect/reactivity";
 import { act, createElement, StrictMode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { makeAccountStore } from "@t3tools/client-runtime/data";
+import { RegistryContext } from "@effect/atom-react";
+import * as accountAdapters from "@t3tools/client-runtime/data";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
   makeBrowserFrameDemand,
@@ -13,18 +15,6 @@ import {
 } from "./browserStreamLinks.tsx";
 
 const adapters = vi.hoisted(() => ({ start: vi.fn((_options: unknown) => ({ stop: vi.fn() })) }));
-vi.mock("@effect/atom-react", async () => {
-  const { AsyncResult } = await import("effect/reactivity");
-  const resolved = AsyncResult.success({});
-  return { useAtomValue: () => resolved };
-});
-vi.mock("../connection/runtime", () => ({ connectionAtomRuntime: { atom: () => ({}) } }));
-vi.mock("./ZeropsAccountData", () => ({ useProjection: () => undefined }));
-vi.mock("@t3tools/client-runtime/data", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@t3tools/client-runtime/data")>()),
-  makeMateBrowserFrameWire: () => ({}),
-  startMateBrowserFrames: adapters.start,
-}));
 const ENV = EnvironmentId.make("mate");
 
 describe("account browser stream demand", () => {
@@ -67,6 +57,12 @@ describe("browser demands with an already resolved registry", () => {
   beforeEach(() => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(accountAdapters, "makeMateBrowserFrameWire").mockReturnValue(
+      {} as ReturnType<typeof accountAdapters.makeMateBrowserFrameWire>,
+    );
+    vi.spyOn(accountAdapters, "startMateBrowserFrames").mockImplementation(
+      adapters.start as unknown as typeof accountAdapters.startMateBrowserFrames,
+    );
     adapters.start.mockClear();
     openAccountLifetime("browser-test");
   });
@@ -87,6 +83,10 @@ describe("browser demands with an already resolved registry", () => {
   )("$name restarts after StrictMode cleanup and stops on $end", async ({ views, end }) => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
+    const reader = AtomRegistry.make();
+    const resolved = AsyncResult.success({});
+    vi.spyOn(reader, "get").mockImplementation((() => resolved) as typeof reader.get);
+    vi.spyOn(reader, "subscribe").mockImplementation(() => () => {});
     let tree: ReactTestRenderer | undefined;
     try {
       await act(async () => {
@@ -94,10 +94,14 @@ describe("browser demands with an already resolved registry", () => {
           createElement(
             StrictMode,
             null,
-            createElement(MateBrowserFrames, {
-              store,
-              children: views.map((View, key) => createElement(View, { key })),
-            }),
+            createElement(
+              RegistryContext.Provider,
+              { value: reader },
+              createElement(MateBrowserFrames, {
+                store,
+                children: views.map((View, key) => createElement(View, { key })),
+              }),
+            ),
           ),
         );
       });
@@ -114,6 +118,7 @@ describe("browser demands with an already resolved registry", () => {
       await act(async () => tree?.unmount());
       store.close();
       registry.dispose();
+      reader.dispose();
     }
   });
 });

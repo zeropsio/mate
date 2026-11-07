@@ -1,6 +1,6 @@
 import { act, createElement } from "react";
-import { create } from "react-test-renderer";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { create, type ReactTestRenderer } from "react-test-renderer";
+import { describe, expect, it } from "vite-plus/test";
 
 import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/reactivity";
@@ -17,10 +17,8 @@ import {
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { accountReadsAtom, makeAccountStore } from "@t3tools/client-runtime/data";
 import { seedHqProjectPeople } from "@t3tools/client-runtime/data/fixtures";
-
-vi.mock("./ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({ activeOrganization: { id: "org-1" }, user: { id: "u-eva" } }),
-}));
+import { ZeropsSessionContext } from "./sessionContext";
+import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
 describe("zeropsMateOwnerOf", () => {
   // HQ names the person and sends their platform picture.
@@ -74,18 +72,35 @@ describe("useZeropsMateOwners", () => {
       owners.push([ownerOf(candidate("p-vera")), ownerOf(candidate("p-lone"))]);
       return null;
     }
-    await act(async () => {
-      create(createElement(RegistryContext.Provider, { value: registry }, createElement(Probe)));
-    });
-    expect(owners.at(-1)).toEqual([
-      {
-        name: "Eva Dvořák",
-        initials: "ED",
-        avatarUrl: "https://storage.example.test/eva.jpg",
-        isViewer: true,
-      },
-      undefined,
-    ]);
+    let tree: ReactTestRenderer | undefined;
+    const session = {
+      activeOrganization: { id: "org-1" },
+      user: { id: "u-eva" },
+    } as ZeropsSessionValue;
+    try {
+      await act(async () => {
+        tree = create(
+          createElement(
+            RegistryContext.Provider,
+            { value: registry },
+            createElement(ZeropsSessionContext.Provider, { value: session }, createElement(Probe)),
+          ),
+        );
+      });
+      expect(owners.at(-1)).toEqual([
+        {
+          name: "Eva Dvořák",
+          initials: "ED",
+          avatarUrl: "https://storage.example.test/eva.jpg",
+          isViewer: true,
+        },
+        undefined,
+      ]);
+    } finally {
+      await act(async () => tree?.unmount());
+      store.close();
+      registry.dispose();
+    }
   });
 });
 

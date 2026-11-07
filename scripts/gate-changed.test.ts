@@ -2087,6 +2087,7 @@ it("L2 runs owned scenario-driver units through their existing project before sc
   }
 });
 
+// witness: scripts/gate-changed.ts | "test/e-env/vitest.config.ts", → "test/scenarios/vitest.config.ts",
 it("L2 runs owned environment source consumers under the config that includes them", () => {
   const path = "apps/web/test/scenarios/areas/e-env/environmentSources.test.tsx";
   const file = NodePath.join(repositoryFixture, path);

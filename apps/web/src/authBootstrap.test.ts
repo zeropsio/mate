@@ -101,6 +101,7 @@ describe("resolveInitialServerAuthGateState", () => {
     __resetServerAuthBootstrapForTests();
     __setPrimaryHttpRunnerForTests();
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
     vi.restoreAllMocks();
   });

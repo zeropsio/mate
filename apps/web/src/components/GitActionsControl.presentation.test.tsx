@@ -13,10 +13,6 @@ vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => () => {} }));
 vi.mock("../editorPreferences", () => ({ useOpenInPreferredEditor: () => () => {} }));
 vi.mock("../state/entities", () => ({ useThreadShell: () => null }));
-vi.mock("../composerDraftStore", () => ({
-  useComposerDraftStore: (select: (store: unknown) => unknown) =>
-    select({ getDraftThreadByRef: () => null, setDraftThreadContext: () => {} }),
-}));
 vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => async () => {} }));
 vi.mock("../lib/sourceControlActions", () => ({
   useGitStackedAction: () => async () => {},

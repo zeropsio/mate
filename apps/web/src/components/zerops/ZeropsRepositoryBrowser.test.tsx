@@ -1,38 +1,57 @@
 // @vitest-environment happy-dom
 import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
+import { LegendList } from "@legendapp/list/react";
 import { defaultParseSearch } from "@tanstack/react-router";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ComponentProps, ReactNode } from "react";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import { ZeropsRepositoryBrowser } from "./ZeropsRepositoryBrowser";
+import * as gitBrowse from "~/zerops/useGitBrowse";
 
 beforeAll(() => vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true));
 afterAll(() => vi.unstubAllGlobals());
 
-const held = vi.hoisted(() => ({
+const held = {
   /** Each read's view by which read it is; the home read is the frame's. */
   views: {} as Record<string, unknown>,
   asked: [] as Array<{ readonly read: string; readonly params: unknown }>,
-}));
-vi.mock("~/zerops/useGitBrowse", () => {
+};
+const mounted = new Map<Root, HTMLElement>();
+beforeEach(() => {
   const viewOf = (request: { readonly read: string; readonly params: unknown }) => {
     held.asked.push({ read: request.read, params: request.params });
     return held.views[request.read] ?? { state: "unread", busy: false };
   };
-  return {
-    useGitBrowse: (request: { readonly read: string; readonly params: unknown }) => ({
-      view: viewOf(request),
-      again: () => undefined,
-    }),
-    // The frame holds the folder or file its page draws.
-    useGitBrowseReads: (
-      requests: ReadonlyArray<{ readonly read: string; readonly params: unknown }>,
-    ) => ({
-      views: requests.map(viewOf),
-      again: () => undefined,
-    }),
+  vi.spyOn(gitBrowse, "useGitBrowse").mockImplementation(((request: {
+    readonly read: string;
+    readonly params: unknown;
+  }) => ({
+    view: viewOf(request),
+    again: () => undefined,
+  })) as unknown as typeof gitBrowse.useGitBrowse);
+  // The frame holds the folder or file its page draws.
+  vi.spyOn(gitBrowse, "useGitBrowseReads").mockImplementation(((
+    requests: ReadonlyArray<{ readonly read: string; readonly params: unknown }>,
+  ) => ({
+    views: requests.map(viewOf),
+    again: () => undefined,
+  })) as unknown as typeof gitBrowse.useGitBrowseReads);
+  const list = LegendList as unknown as {
+    type: { render: (props: { readonly ListFooterComponent?: ReactNode }) => ReactNode };
   };
+  vi.spyOn(list.type, "render").mockImplementation((props) => (
+    <div>{props.ListFooterComponent}</div>
+  ));
 });
 vi.mock("./gitBrowser/GitTreeSidebar", () => ({ GitTreeSidebar: () => null }));
 vi.mock("@pierre/diffs/react", () => ({
@@ -41,11 +60,6 @@ vi.mock("@pierre/diffs/react", () => ({
 }));
 vi.mock("~/components/DiffWorkerPoolProvider", () => ({
   DiffWorkerPoolProvider: ({ children }: { children: ReactNode }) => children,
-}));
-vi.mock("@legendapp/list/react", () => ({
-  LegendList: (props: { readonly ListFooterComponent?: ReactNode }) => (
-    <div>{props.ListFooterComponent}</div>
-  ),
 }));
 vi.mock("./ZeropsGitCredentials", () => ({
   ZeropsGitCredentials: () => <p>Clone address</p>,
@@ -75,6 +89,7 @@ async function browser(
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
+  mounted.set(root, host);
   const draw = () =>
     root.render(
       <ZeropsRepositoryBrowser
@@ -99,6 +114,7 @@ async function browser(
     close: async () => {
       await act(async () => root.unmount());
       host.remove();
+      mounted.delete(root);
     },
   };
 }
@@ -208,7 +224,15 @@ const knownHome = (readme: { readonly path: string; readonly content: string } |
     readme: readme === null ? null : { ...readme, truncated: false },
   },
 });
-afterEach(() => {
+afterEach(async () => {
+  await act(async () => {
+    for (const [root, host] of mounted) {
+      root.unmount();
+      host.remove();
+    }
+  });
+  mounted.clear();
+  vi.restoreAllMocks();
   held.views = {};
   held.asked = [];
 });

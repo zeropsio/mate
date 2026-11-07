@@ -21,19 +21,7 @@ const NOT_READ: HqAppDetailRead = {
   live: false,
   reconnecting: false,
 };
-const held = vi.hoisted(() => ({ detail: undefined as unknown, asked: [] as Array<unknown> }));
-vi.mock("./useHqAppDetail", () => ({
-  useHqAppDetail: (appId: string | null) => {
-    held.asked.push(appId);
-    return held.detail;
-  },
-}));
-vi.mock("../state/zerops", () => ({
-  hqNavigationAtom: {},
-  hqDown: () => false,
-}));
-vi.mock("@effect/atom-react", () => ({ useAtomValue: () => ({}) }));
-vi.mock("./ZeropsAccountData", () => ({ useAccountDataOptional: () => null }));
+const held = { detail: NOT_READ, asked: [] as Array<unknown> };
 
 let tree: ReactTestRenderer | undefined;
 let seen: GroupRecipe | undefined;
@@ -49,13 +37,23 @@ const render = async (detail: HqAppDetailRead, enabled = true) => {
   return seen!;
 };
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   held.asked = [];
+  const details = await import("./useHqAppDetail");
+  const account = await import("./ZeropsAccountData");
+  const zerops = await import("../state/zerops");
+  vi.spyOn(details, "useHqAppDetail").mockImplementation((appId) => {
+    held.asked.push(appId);
+    return held.detail;
+  });
+  vi.spyOn(account, "useAccountDataOptional").mockReturnValue(null);
+  vi.spyOn(zerops, "hqDown").mockReturnValue(false);
 });
 afterEach(async () => {
   await act(async () => tree?.unmount());
   tree = undefined;
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 

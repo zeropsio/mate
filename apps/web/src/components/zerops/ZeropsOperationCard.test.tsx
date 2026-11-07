@@ -17,35 +17,10 @@ import {
 import { readPipeline } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { cloneElement, type ReactElement, type ReactNode } from "react";
+import { useRightPanelStore } from "../../rightPanelStore";
 
-const panelTestState = vi.hoisted(() => ({
-  onOpen: null as (() => void) | null,
-  open: vi.fn(),
-}));
-
-vi.mock("~/components/ui/tooltip", async (importOriginal) => {
-  const React = await import("react");
-  const original = await importOriginal<typeof import("~/components/ui/tooltip")>();
-  return {
-    ...original,
-    TooltipTrigger: ({
-      children,
-      render,
-    }: {
-      readonly children: React.ReactNode;
-      readonly render: React.ReactElement<{ readonly onClick?: () => void }>;
-    }) => {
-      panelTestState.onOpen = render.props.onClick ?? null;
-      return React.cloneElement(render, undefined, children);
-    },
-  };
-});
-
-vi.mock("../../rightPanelStore", () => ({
-  useRightPanelStore: {
-    getState: () => ({ open: panelTestState.open }),
-  },
-}));
+const tooltip = await import("~/components/ui/tooltip");
 
 import { formatWorkDuration } from "../chat/conversation.logic";
 import { ZeropsOperationCard, type ObservedRegion } from "./ZeropsOperationCard";
@@ -1028,13 +1003,30 @@ describe("ZeropsOperationCard — browser", () => {
   });
 
   it("clicking an empty frame opens the Browser panel", () => {
-    panelTestState.onOpen = null;
-    panelTestState.open.mockClear();
-    renderToStaticMarkup(<ZeropsOperationCard operation={operation} threadRef={THREAD_REF} />);
-    const onOpen = panelTestState.onOpen as (() => void) | null;
-    expect(onOpen).not.toBeNull();
-    (onOpen as () => void)();
-    expect(panelTestState.open).toHaveBeenCalledWith(THREAD_REF, "browser");
+    let onOpen: (() => void) | null = null;
+    const open = vi.fn();
+    vi.spyOn(tooltip, "TooltipTrigger").mockImplementation((({
+      children,
+      render,
+    }: {
+      readonly children: ReactNode;
+      readonly render: ReactElement<{ readonly onClick?: () => void }>;
+    }) => {
+      onOpen = render.props.onClick ?? null;
+      return cloneElement(render, undefined, children);
+    }) as unknown as typeof tooltip.TooltipTrigger);
+    vi.spyOn(useRightPanelStore, "getState").mockReturnValue({
+      ...useRightPanelStore.getState(),
+      open,
+    });
+    try {
+      renderToStaticMarkup(<ZeropsOperationCard operation={operation} threadRef={THREAD_REF} />);
+      expect(onOpen).not.toBeNull();
+      (onOpen as unknown as () => void)();
+      expect(open).toHaveBeenCalledWith(THREAD_REF, "browser");
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });
 

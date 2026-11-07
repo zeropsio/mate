@@ -1,67 +1,30 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
-import { DEFAULT_SERVER_SETTINGS, EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import type { AnyRouter } from "@tanstack/react-router";
 
 const ENVIRONMENT = EnvironmentId.make("environment-1");
 
-const state = vi.hoisted(() => ({
+const state = {
   servers: new Map<string, { readonly environment: { readonly zerops?: unknown } }>(),
   navigate: vi.fn(async (_to: { readonly to: string }) => {}),
   latestUserMessageAt: "2026-09-01T10:00:00.000Z" as string | null,
-}));
-
-vi.mock("@tanstack/react-router", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
-  useRouter: () => ({ state: { matches: [] }, navigate: state.navigate }),
-}));
-
-// The environment already holds one conversation; nobody has archived it. Whether anybody has
-// spoken into it is the row's.
-vi.mock("../state/entities", () => ({
-  readEnvironmentAllowsWorktrees: () => false,
-  readThreadShell: () => null,
-  readThreadShells: () => [
-    {
-      id: "thread-existing",
-      environmentId: "environment-1",
-      archivedAt: null,
-      pinnedAt: null,
-      latestUserMessageAt: state.latestUserMessageAt,
-      updatedAt: "2026-09-01T10:00:00.000Z",
-      createdAt: "2026-09-01T09:00:00.000Z",
-    },
-  ],
-  useProjects: () => [],
-}));
-
-vi.mock("../state/server", async (importOriginal) => {
-  const { Atom } = await import("effect/reactivity");
-  return {
-    ...(await importOriginal<typeof import("../state/server")>()),
-    primaryServerSettingsAtom: Atom.make(DEFAULT_SERVER_SETTINGS),
-  };
-});
-
-vi.mock("../state/zerops", () => ({}));
-
-// No list read yet: only a server that runs outside Zerops is known to hold nobody.
-vi.mock("../zerops/useZeropsMates", () => ({
-  useZeropsMateDirectory: () =>
-    new Map(
-      [...state.servers].flatMap(([environmentId, server]) =>
-        server.environment.zerops === undefined ? [[environmentId, null] as const] : [],
-      ),
-    ),
-}));
-
-vi.mock("./useSettings", () => ({ useClientSettings: () => ({}) }));
+};
 
 import { useComposerDraftStore } from "../composerDraftStore";
 import { bindAccountEnvironments } from "../zerops/accountEnvironments";
 import { closeAccountLifetime, openAccountLifetime } from "../zerops/accountLifetime";
 import { useNewThreadHandler } from "./useHandleNewThread";
+
+const { RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = {
+  options: {},
+  state: { matches: [] },
+  navigate: state.navigate,
+} as unknown as AnyRouter;
 
 type NewThreadHandler = ReturnType<typeof useNewThreadHandler>;
 
@@ -72,15 +35,52 @@ function Probe({ receive }: { readonly receive: (handler: NewThreadHandler) => v
 
 function captureHandler(): NewThreadHandler {
   const handlers: NewThreadHandler[] = [];
-  renderToStaticMarkup(<Probe receive={(handler) => handlers.push(handler)} />);
+  renderToStaticMarkup(
+    <RouterContextProvider router={router}>
+      <Probe receive={(handler) => handlers.push(handler)} />
+    </RouterContextProvider>,
+  );
   return handlers[0]!;
 }
 
 describe("New thread before the candidate list is read", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     state.servers.clear();
     state.navigate.mockClear();
     state.latestUserMessageAt = "2026-09-01T10:00:00.000Z";
+    const entities = await import("../state/entities");
+    const mates = await import("../zerops/useZeropsMates");
+    const settings = await import("./useSettings");
+    vi.spyOn(entities, "readEnvironmentAllowsWorktrees").mockReturnValue(false);
+    vi.spyOn(entities, "readThreadShell").mockReturnValue(null);
+    // The environment already holds one conversation; nobody has archived it.
+    vi.spyOn(entities, "readThreadShells").mockImplementation(
+      () =>
+        [
+          {
+            id: "thread-existing",
+            environmentId: "environment-1",
+            archivedAt: null,
+            pinnedAt: null,
+            latestUserMessageAt: state.latestUserMessageAt,
+            updatedAt: "2026-09-01T10:00:00.000Z",
+            createdAt: "2026-09-01T09:00:00.000Z",
+          },
+        ] as unknown as ReturnType<typeof entities.readThreadShells>,
+    );
+    vi.spyOn(entities, "useProjects").mockReturnValue([]);
+    // No list read yet: a server outside Zerops is known to hold nobody.
+    vi.spyOn(mates, "useZeropsMateDirectory").mockImplementation(
+      () =>
+        new Map(
+          [...state.servers].flatMap(([environmentId, server]) =>
+            server.environment.zerops === undefined ? [[environmentId, null] as const] : [],
+          ),
+        ) as unknown as ReturnType<typeof mates.useZeropsMateDirectory>,
+    );
+    vi.spyOn(settings, "useClientSettings").mockImplementation(
+      (() => ({})) as typeof settings.useClientSettings,
+    );
   });
 
   it.each<{
@@ -109,6 +109,7 @@ describe("New thread before the candidate list is read", () => {
 
   afterEach(() => {
     closeAccountLifetime();
+    vi.restoreAllMocks();
   });
 
   it("opens a Mate's conversation nobody has spoken into on an empty composer", async () => {

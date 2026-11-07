@@ -2,7 +2,20 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import * as menuReadings from "~/zerops/useMenuMateReadings";
+import * as owners from "~/zerops/useZeropsMateOwners";
+import * as deleting from "~/zerops/deletingMates";
+import * as moments from "~/zerops/useMateMoments";
+import * as clock from "~/zerops/useNowMs";
+import * as settings from "~/hooks/useSettings";
+import * as ask from "~/zerops/useAskMate";
+import * as fix from "~/zerops/fixRequest";
+import * as review from "~/zerops/review";
+import * as agentActivity from "~/zerops/useZeropsAgentActivity";
+import * as sessionProvider from "~/zerops/ZeropsSessionProvider";
+import * as mateWrite from "~/zerops/useMateWrite";
 
 const linked = vi.hoisted(() => ({ value: false }));
 // Whose Mate it is, as HQ's people name it, and who is looking.
@@ -15,46 +28,49 @@ const people = vi.hoisted(() => ({
 }));
 const session = vi.hoisted(() => ({ value: null as { user: { id: string } } | null }));
 
-// The menu row's own reads, as a card reads them for the same Mate.
-vi.mock("~/zerops/useMenuMateReadings", () => ({
-  useMateLinkedInHq: () => linked.value,
-  useMateOverviewInHq: () => "live",
-  useMateOfflineSince: () => undefined,
-  useMateAwayNow: () => 0,
-}));
-vi.mock("~/zerops/useZeropsMateOwners", async (original) => ({
-  ...(await original<typeof import("~/zerops/useZeropsMateOwners")>()),
-  useHqProjectPerson: () => people.value,
-}));
-vi.mock("~/zerops/deletingMates", () => ({
-  useDeletingMates: () => new Set<string>(),
-  mateDeleting: () => false,
-}));
-vi.mock("~/zerops/useMateMoments", () => ({
-  useMateFaceWatch: () => ({
-    restarting: false,
-    updating: false,
-    watched: { backs: 0, moved: undefined, arrived: undefined },
-  }),
-}));
-vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0, useSecondsNowMs: () => 0 }));
-vi.mock("~/hooks/useSettings", () => ({
-  useClientSettings: (select: (settings: { timestampFormat: string }) => unknown) =>
-    select({ timestampFormat: "locale" }),
-}));
-vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => () => {} }));
-vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => () => {} }));
-vi.mock("~/zerops/review", () => ({ useOpenReview: () => () => {} }));
 const activityReading = vi.hoisted(() => ({
   value: undefined as import("~/zerops/agentActivity").ZeropsAgentActivity | undefined,
 }));
-vi.mock("~/zerops/useZeropsAgentActivity", () => ({
-  useProjectMateActivity: () => activityReading.value,
-}));
-vi.mock("~/zerops/ZeropsSessionProvider", () => ({
-  useZeropsSessionOptional: () => session.value,
-}));
-vi.mock("~/zerops/useMateWrite", () => ({ useMateWrite: () => ({ requests: {} }) }));
+
+// The menu row's own reads, as a card reads them for the same Mate.
+beforeEach(() => {
+  vi.spyOn(menuReadings, "useMateLinkedInHq").mockImplementation(() => linked.value);
+  vi.spyOn(menuReadings, "useMateOverviewInHq").mockReturnValue("live");
+  vi.spyOn(menuReadings, "useMateOfflineSince").mockReturnValue(undefined);
+  vi.spyOn(menuReadings, "useMateAwayNow").mockReturnValue(0);
+  vi.spyOn(owners, "useHqProjectPerson").mockImplementation(
+    () => people.value as unknown as ReturnType<typeof owners.useHqProjectPerson>,
+  );
+  vi.spyOn(deleting, "useDeletingMates").mockReturnValue(new Set());
+  vi.spyOn(deleting, "mateDeleting").mockReturnValue(false);
+  vi.spyOn(moments, "useMateFaceWatch").mockReturnValue({
+    restarting: false,
+    updating: false,
+    watched: { backs: 0, moved: undefined, arrived: undefined },
+  });
+  vi.spyOn(clock, "useNowMs").mockReturnValue(0);
+  vi.spyOn(clock, "useSecondsNowMs").mockReturnValue(0);
+  vi.spyOn(settings, "useClientSettings").mockImplementation(((
+    select: (settings: { timestampFormat: string }) => unknown,
+  ) => select({ timestampFormat: "locale" })) as unknown as typeof settings.useClientSettings);
+  vi.spyOn(ask, "useAskMate").mockReturnValue(() => {});
+  vi.spyOn(fix, "useAskMateToFix").mockReturnValue(() => {});
+  vi.spyOn(review, "useOpenReview").mockReturnValue(() => {});
+  vi.spyOn(agentActivity, "useProjectMateActivity").mockImplementation(() => activityReading.value);
+  vi.spyOn(sessionProvider, "useZeropsSessionOptional").mockImplementation(
+    () => session.value as ReturnType<typeof sessionProvider.useZeropsSessionOptional>,
+  );
+  vi.spyOn(mateWrite, "useMateWrite").mockReturnValue({ requests: {} } as ReturnType<
+    typeof mateWrite.useMateWrite
+  >);
+});
+afterEach(() => {
+  linked.value = false;
+  people.value = { waitsOnViewer: true, owner: null };
+  session.value = null;
+  activityReading.value = undefined;
+  vi.restoreAllMocks();
+});
 
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
