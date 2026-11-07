@@ -95,6 +95,17 @@ export const reachabilityCountsDown = (verdict: Reachability | null): boolean =>
 export const isTerminalReachability = (verdict: Reachability): boolean =>
   TERMINAL.has(verdict.kind);
 
+/**
+ * Whether the verdict has no words of its own for a route still opening its conversation: its
+ * presence being resolved, or a connect under way that the person can neither see paused nor act
+ * on. The opening says these as its own line, and the route's deadline bounds them.
+ */
+export const opensQuietly = (verdict: Reachability): boolean =>
+  verdict.kind === "resolving" ||
+  (verdict.kind === "connecting" &&
+    verdict.waitingOn !== "visible" &&
+    verdict.waitingOn !== "mate-link");
+
 /** Whether a link to this target is still worth offering: everything but gone and replaced. */
 export const environmentLinkable = (verdict: Reachability): boolean =>
   verdict.kind !== "gone" && verdict.kind !== "replaced";

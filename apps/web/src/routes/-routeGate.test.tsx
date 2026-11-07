@@ -68,6 +68,7 @@ function gateFor(
   });
   return {
     gate,
+    environmentId: null,
     phrase: routeGatePhrase(gate, { nowMs: 0, mateName: "shop" }),
     conversation,
     voice,

@@ -16,6 +16,7 @@ import { knownPresentation } from "../knowledge/presentation.ts";
 import type { EnvironmentMachine } from "./environmentMachine.ts";
 import {
   isTerminalReachability,
+  opensQuietly,
   reachabilityPhrase,
   type Reachability,
   type ReachabilityAction,
@@ -49,6 +50,18 @@ export type RouteHqWait =
       readonly overdue: boolean;
     };
 
+/**
+ * Why a route's opening ended without its conversation, once the wait for it outlasted its
+ * deadline or its absence was read (`openingEndPhrase`).
+ */
+export type OpeningEnd =
+  /** The route's environment is known, and its Mate has not answered with the conversation. */
+  | "not-answering"
+  /** Nothing has named the route's environment. */
+  | "not-found"
+  /** The Mate's whole list of conversations, or the server, says it is not there. */
+  | "missing";
+
 export type RouteTarget =
   | { readonly kind: "unresolved"; readonly discovery: RouteDiscovery }
   /** Only HQ can name the environment, and what the wait says of HQ meanwhile. */
@@ -57,7 +70,33 @@ export type RouteTarget =
       readonly kind: "resolved";
       readonly reachability: Reachability;
       readonly content: RouteContent;
-    };
+    }
+  /** The route's deadline passed on a wait with no words of its own (`routeTargetPastDeadline`). */
+  | { readonly kind: "overdue"; readonly end: OpeningEnd };
+
+/**
+ * Whether the route's deadline runs for this target: while it would wait for its environment to
+ * be found, or hold its opening over a verdict with no words of its own (`opensQuietly`) and
+ * nothing to show. Every other wait says its cause with its verbs.
+ */
+export function routeDeadlineRuns(target: RouteTarget | null): boolean {
+  if (target === null || target.kind === "overdue") return false;
+  if (target.kind === "unresolved")
+    return target.discovery === "pending" || target.discovery === "hq";
+  return target.content === "empty" && opensQuietly(target.reachability);
+}
+
+/**
+ * The target once the route's deadline passed: a quiet wait ends, saying why; HQ's own waits say
+ * their overdue words (`RouteHqWait`), and every other target stands.
+ */
+export function routeTargetPastDeadline(target: RouteTarget): RouteTarget {
+  if (target.kind === "unresolved")
+    return target.discovery === "pending" ? { kind: "overdue", end: "not-found" } : target;
+  return target.kind === "resolved" && routeDeadlineRuns(target)
+    ? { kind: "overdue", end: "not-answering" }
+    : target;
+}
 
 export type RouteGate =
   /** RG1, RG7, RG9: the route's own view, with the verdict as a banner when it has words. */
@@ -77,6 +116,8 @@ export type RouteGate =
     }
   /** A5: nothing named the environment, and no organization is chosen yet. */
   | { readonly kind: "choose-organization" }
+  /** The route's opening ended without its conversation, saying why (`openingEndPhrase`). */
+  | { readonly kind: "ended"; readonly end: OpeningEnd }
   /** RG3 when no project holds the environment (null), RG4–RG6 with the terminal verdict. */
   | { readonly kind: "unavailable"; readonly reachability: Reachability | null };
 
@@ -85,6 +126,7 @@ const OUTLET: RouteGate = { kind: "outlet", banner: null, composer: "enabled" };
 /** DESIGN §4.8's rows for the route's target; null when the route targets no environment (RG1). */
 export function selectRouteGate(target: RouteTarget | null): RouteGate {
   if (target === null) return OUTLET;
+  if (target.kind === "overdue") return { kind: "ended", end: target.end };
   if (target.kind === "unresolved") {
     switch (target.discovery) {
       case "pending":
@@ -158,10 +200,31 @@ export function routeGatePhrase(
         text: "Choose an organization to open this conversation.",
         actions: ["choose-organization"],
       };
+    case "ended":
+      return openingEndPhrase(gate.end);
     case "unavailable":
       return gate.reachability === null
         ? { text: "This conversation isn't in your Zerops projects.", actions: ["go-to-projects"] }
         : reachabilityPhrase(gate.reachability, context);
+  }
+}
+
+/**
+ * What an opening that ended without its conversation says, wherever it ended — the route gate or
+ * the thread route: its cause, the way back to the projects, and asking again where the
+ * conversation may still come.
+ */
+export function openingEndPhrase(end: OpeningEnd): RouteGatePhrase {
+  switch (end) {
+    case "not-answering":
+      return { text: "This Mate isn't answering.", actions: ["try-again", "go-to-projects"] };
+    case "not-found":
+      return {
+        text: "This conversation hasn't been found yet.",
+        actions: ["try-again", "go-to-projects"],
+      };
+    case "missing":
+      return { text: "This conversation is no longer available.", actions: ["go-to-projects"] };
   }
 }
 

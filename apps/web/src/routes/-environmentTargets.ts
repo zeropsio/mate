@@ -13,7 +13,9 @@ import {
   environmentLinkable,
   mateLink,
   resolveEnvironment,
+  routeDeadlineRuns,
   routePreviewAtom,
+  routeTargetPastDeadline,
   selectConversation,
   type ConversationAccess,
   type ConversationView,
@@ -329,19 +331,18 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           organization: ORGANIZATION[organizationStatus],
           content,
         });
-  // The route waits on HQ while, but for the deadline, it would wait unresolved with HQ naming
-  // nothing; the listings' patience is that deadline. Resolving, saying the conversation is
-  // absent, or leaving the route ends the wait and clears its window.
+  // The route's one deadline, the listings' patience: it runs while, but for it, the route would
+  // wait without end (`routeDeadlineRuns`) — on HQ to name its environment, on the environment to
+  // be found, or on a Mate's quiet verdict over nothing to show. Past it HQ's waits say so and a
+  // quiet wait ends, saying why (`routeTargetPastDeadline`). Resolving, a verdict with words,
+  // saying the conversation is absent, or leaving the route ends the wait and clears its window.
   const waiting = targetOf(false);
   const overdue = usePatienceSpent(
-    hqProject === null &&
-      waiting?.kind === "unresolved" &&
-      (waiting.discovery === "pending" || waiting.discovery === "hq")
-      ? routeKey
-      : null,
+    routeDeadlineRuns(waiting) ? routeKey : null,
     STILL_READING_PATIENCE_MS,
   );
-  const target = overdue ? targetOf(true) : waiting;
+  const pastDeadline = overdue ? targetOf(true) : null;
+  const target = pastDeadline === null ? waiting : routeTargetPastDeadline(pastDeadline);
   // The absence the route says on HQ's answer, held while the route stays on this environment.
   if (
     hqProject === null &&

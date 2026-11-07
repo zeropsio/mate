@@ -305,6 +305,7 @@ function SignedInRootRouteView() {
               <RouteGateView
                 gate={gate}
                 phrase={gatePhrase}
+                environmentId={routeEnvironment}
                 projectId={projectUnavailable ? null : gateInputs.projectId}
                 recoveryPhrase={recoveryPhrase}
                 projectUnavailable={projectUnavailable}
