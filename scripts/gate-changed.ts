@@ -1145,9 +1145,11 @@ function stageHashes(
         let trailers = "";
         if (stage.name === "check touched files") {
           files.push(...inventory.filter((path) => path.startsWith("oxlint-plugin-t3code/")));
-        } else if (stage.name.startsWith("typecheck ")) {
+        } else if (stage.name.startsWith("typecheck ") || stage.name === "build server bundle") {
           const owners = new Set(
-            graph.workspace.filter((pkg) => pkg.directory === stage.cwd).map((pkg) => pkg.name),
+            stage.name === "build server bundle"
+              ? bundlePackages
+              : graph.workspace.filter((pkg) => pkg.directory === stage.cwd).map((pkg) => pkg.name),
           );
           for (const name of owners)
             graph.workspace
@@ -1162,7 +1164,7 @@ function stageHashes(
             ),
           );
           // Root-configured scenario/oracle typechecks have an explicit project path.
-          if (!stage.cwd)
+          if (!stage.cwd && stage.name !== "build server bundle")
             files.push(
               ...inventory.filter(
                 (path) => path.startsWith("apps/web/") || path.startsWith("packages/"),
@@ -1593,6 +1595,8 @@ export function affectedScenarioFiles(
   return inventory;
 }
 
+const bundlePackages = ["t3", "@t3tools/web"];
+
 export function selectGateSteps(
   graph: ReturnType<typeof buildGateGraph>,
   {
@@ -1602,6 +1606,7 @@ export function selectGateSteps(
     inventory,
     smokeFiles,
     slots,
+    tests,
     withScenarios = false,
   }: {
     readonly comparison: string;
@@ -1610,6 +1615,8 @@ export function selectGateSteps(
     readonly inventory: ReadonlyArray<string>;
     readonly smokeFiles: ReadonlyArray<string>;
     readonly slots: number;
+    /** Test suites and test machinery run only when asked (`--tests`); lint, typecheck and build always. */
+    readonly tests: boolean;
     readonly withScenarios?: boolean;
   },
 ) {
@@ -1629,12 +1636,14 @@ export function selectGateSteps(
     command: "node",
     args: ["scripts/check-runtime-cycles.ts", "--base", comparison],
   });
-  steps.push({
-    name: "test sentence retention",
-    command: "node",
-    args: ["scripts/check-test-sentences.ts", "--base", comparison],
-  });
+  if (tests)
+    steps.push({
+      name: "test sentence retention",
+      command: "node",
+      args: ["scripts/check-test-sentences.ts", "--base", comparison],
+    });
   if (
+    tests &&
     paths.some(
       (path) =>
         scenarioCapInput(path) ||
@@ -1651,13 +1660,13 @@ export function selectGateSteps(
   const clockScan = paths.some((path) =>
     [testClockLedger, "scripts/check-test-clock.ts"].includes(path),
   );
-  if (clockScan || clockFiles.length)
+  if (tests && (clockScan || clockFiles.length))
     steps.push({
       name: "test clock ratchet",
       command: "node",
       args: ["scripts/check-test-clock.ts", "--base", comparison, ...(clockScan ? [] : clockFiles)],
     });
-  if (paths.some((path) => testInputFile(path) || path === "scripts/check-test-inputs.ts"))
+  if (tests && paths.some((path) => testInputFile(path) || path === "scripts/check-test-inputs.ts"))
     steps.push({
       name: "test input ratchet",
       command: "node",
@@ -1669,7 +1678,7 @@ export function selectGateSteps(
       command: "vp",
       args: ["check", "--no-error-on-unmatched-pattern", ...existing],
     });
-  if (paths.length)
+  if (tests && paths.length)
     steps.push({
       name: "repository invariants",
       command: "vp",
@@ -1708,6 +1717,14 @@ export function selectGateSteps(
         "apps/web/test/scenarios/tsconfig.json",
       ],
     });
+  // The hosted product bundle: the server build builds the web client first.
+  if (packages.some((pkg) => bundlePackages.includes(pkg.name)))
+    steps.push({
+      name: "build server bundle",
+      command: "vp",
+      args: ["run", "--filter", "t3", "build"],
+    });
+  if (!tests) return { steps, ownedUnits: [], selectedScenarios: [] };
   // Explicit owned files avoid Vitest's manifest/lockfile fallback to full suites.
   const manifestPaths = new Set(paths.filter(packageManifest));
   // A lockfile has no package-local owner. It never promotes the entire workspace's units;
@@ -1893,7 +1910,9 @@ export function stageEnvironment(root: string, stage?: GateStage): NodeJS.Proces
 export async function runGate(root: string, args: ReadonlyArray<string>): Promise<number> {
   if (args.includes("--help")) {
     console.log(
-      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--with-scenarios] [--scenarios <file...>]\n" +
+      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--tests] [--with-scenarios] [--scenarios <file...>]\n" +
+        "Default: lint, typecheck and build of the changed packages. Tests run only when the owner asks:\n" +
+        "--tests adds test suites and test machinery; --with-scenarios and --scenarios imply it.\n" +
         "GATE_SLOTS: positive integer, default 3. Machine-wide slots for browser/scenario stages.\n" +
         `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
     );
@@ -1908,6 +1927,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
   const slots = gateSlotCount();
   const verbose = args.includes("--verbose");
   const withScenarios = args.includes("--with-scenarios") || args.includes("--scenarios");
+  const tests = withScenarios || args.includes("--tests");
   let base = "origin/main";
   const namedScenarios: string[] = [];
   for (let index = 0; index < args.length; index++) {
@@ -1917,6 +1937,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       arg === "--force" ||
       arg === "--full" ||
       arg === "--verbose" ||
+      arg === "--tests" ||
       arg === "--with-scenarios"
     )
       continue;
@@ -1931,7 +1952,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       if (namedScenarios.length === start) throw new Error("--scenarios needs scenario file paths");
     } else {
       throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--with-scenarios] [--scenarios <file...>]",
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--tests] [--with-scenarios] [--scenarios <file...>]",
       );
     }
   }
@@ -1972,44 +1993,47 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     inventory,
     smokeFiles,
     slots,
+    tests,
     withScenarios,
   });
   const selectedFiles = new Set(selectedFilesForGate);
   const related = new Set(selectedScenarios.map(({ file }) => file));
   const overflow = new Set(overflowScenarios.map(({ file }) => file));
-  const omittedWitnesses: OmittedWitness[] = [
-    ...graph.scenarios
-      .filter((file) => !selectedFiles.has(file))
-      .sort()
-      .map((file): OmittedWitness => ({
-        file,
-        kind: "scenario",
-        reason: overflow.has(file)
-          ? withScenarios
-            ? "cap"
-            : "opt-out"
-          : related.has(file)
-            ? "opt-out"
-            : "unrelated",
-      })),
-    ...(!withScenarios
-      ? smokeFiles
+  const omittedWitnesses: OmittedWitness[] = !tests
+    ? []
+    : [
+        ...graph.scenarios
           .filter((file) => !selectedFiles.has(file))
+          .sort()
           .map((file): OmittedWitness => ({
             file,
-            kind: "smoke",
-            reason: "opt-out",
-            cases: stateOnlySmoke[file as keyof typeof stateOnlySmoke],
-          }))
-      : []),
-  ];
+            kind: "scenario",
+            reason: overflow.has(file)
+              ? withScenarios
+                ? "cap"
+                : "opt-out"
+              : related.has(file)
+                ? "opt-out"
+                : "unrelated",
+          })),
+        ...(!withScenarios
+          ? smokeFiles
+              .filter((file) => !selectedFiles.has(file))
+              .map((file): OmittedWitness => ({
+                file,
+                kind: "smoke",
+                reason: "opt-out",
+                cases: stateOnlySmoke[file as keyof typeof stateOnlySmoke],
+              }))
+          : []),
+      ];
   // Unrelated inventory is recorded, but it is not an affected omission.
   const affectedOmissions = omittedWitnesses.filter(({ reason }) => reason !== "unrelated").length;
   const selectionMs = Number(process.hrtime.bigint() - selectionStarted) / 1_000_000;
   const reportOmissions = () => {
     if (affectedOmissions) console.log(`${affectedOmissions} affected witnesses omitted`);
   };
-  if (verbose || args.includes("--list")) {
+  if (tests && (verbose || args.includes("--list"))) {
     console.log(
       `Scenario files: ${inventory.length}; reason: ${selectionPaths.length || namedScenarios.length ? "edited files, explicit --scenarios or import graph" : "documentation/comments only"}`,
     );
@@ -2024,11 +2048,13 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         ].join("; ")}`,
       );
   }
-  console.log(
-    `Related scenario cap: ${relatedScenarioLimit}; selected ${selectedScenarios.length}; overflow ${overflowScenarios.length} (deferred, no full-suite fallback)`,
-  );
-  for (const { file, distance } of overflowScenarios)
-    console.log(`Deferred scenario ${file}; import graph distance ${distance}`);
+  if (tests) {
+    console.log(
+      `Related scenario cap: ${relatedScenarioLimit}; selected ${selectedScenarios.length}; overflow ${overflowScenarios.length} (deferred, no full-suite fallback)`,
+    );
+    for (const { file, distance } of overflowScenarios)
+      console.log(`Deferred scenario ${file}; import graph distance ${distance}`);
+  } else console.log("Tests not selected: lint, typecheck and build only (--tests runs them).");
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);

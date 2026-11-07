@@ -32,6 +32,7 @@ const planOutputs = (args: ReadonlyArray<string>) => {
       "refs/heads/kh-next",
       "0123456789012345678901234567890123456789",
       undefined,
+      "workflow_dispatch",
     ),
   );
   try {

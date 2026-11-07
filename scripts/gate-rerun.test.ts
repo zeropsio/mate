@@ -159,7 +159,7 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
   const run = (args: string[] = [], fail = "") => {
     const result = NodeChildProcess.spawnSync(
       process.execPath,
-      ["scripts/gate-changed.ts", "--base", "base", ...args],
+      ["scripts/gate-changed.ts", "--tests", "--base", "base", ...args],
       {
         cwd: root,
         encoding: "utf8",
