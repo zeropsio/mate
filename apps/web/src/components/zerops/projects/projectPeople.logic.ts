@@ -22,6 +22,7 @@ import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/ma
 import {
   asOrgRole,
   isMateKind,
+  effectiveRole,
   roleAtLeast,
   ZEROPS_ACTIVE_MEMBER_STATUS,
   type RoleProjectKind,
@@ -339,7 +340,7 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
     const grantOf = (projectId: string) =>
       input.grants[projectId]?.grants?.find(({ clientUserId }) => clientUserId === member.id)
         ?.roleCode;
-    const roleOn = (projectId: string) => asOrgRole(grantOf(projectId) ?? role);
+    const roleOn = (projectId: string) => effectiveRole(grantOf(projectId), role);
     // Whose a Mate is, as HQ records it: never a Zerops OWNER override, which is only a role.
     const owned = input.projects.flatMap(({ projectId, kind }) =>
       isMateKind(kind) && userId !== undefined && input.owners[projectId] === userId
