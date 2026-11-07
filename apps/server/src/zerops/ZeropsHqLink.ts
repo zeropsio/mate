@@ -762,6 +762,7 @@ export const HQ_AUTO_UPDATE_VERIFY_BUDGET = Duration.seconds(5);
 /** Where a Mate's overview is read from: the services the link's layer finds, by what it reads. */
 export interface OverviewSources {
   readonly lastSigners?: Effect.Effect<Readonly<Record<string, string>>>;
+  readonly signedAt?: Effect.Effect<Readonly<Record<string, string>>>;
   readonly environmentId: OverviewIdentity["environmentId"];
   readonly serverVersion: string;
   readonly providers?: {
@@ -833,6 +834,7 @@ export const mateOverviewFeed = (
         threads: yield* sources.threads,
         auth: combineAgentAuth(snapshot, extras, logins),
         ...(sources.lastSigners === undefined ? {} : { lastSigners: yield* sources.lastSigners }),
+        ...(sources.signedAt === undefined ? {} : { signedAt: yield* sources.signedAt }),
         crew: yield* Ref.get(crew),
         ...(sources.conversations === undefined
           ? {}
@@ -905,6 +907,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         agentAuth: yield* ZeropsAgentAuth,
         agentLogin: yield* ZeropsAgentLogin,
         lastSigners: signIns.lastSigners,
+        signedAt: signIns.signedAt,
         logins: yield* ZeropsLogins,
         update: yield* ZeropsMateUpdate,
         domainEvents: chats.domainEvents,
