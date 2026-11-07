@@ -32,8 +32,15 @@ export const verifyHqContract = () =>
     const owner = yield* personDoor(core, "owner");
     const reader = yield* personDoor(core, "reader");
     const dev = yield* personDoor(core, "dev");
-    // Every role's sign-in only identifies the person; HQ reads nothing else of Zerops at the door.
-    for (const token of ["personal", "personal-reader", "personal-dev"]) {
+    // An Owner's sign-in also mints the organisation's read token HQ keeps; other roles only identify.
+    NodeAssert.deepEqual(
+      [...fake.requestsByCredential.get("personal")!.entries()],
+      [
+        ["GET /user/info", 1],
+        ["POST /client/ORG/integration-token", 1],
+      ],
+    );
+    for (const token of ["personal-reader", "personal-dev"]) {
       NodeAssert.deepEqual(
         [...fake.requestsByCredential.get(token)!.entries()],
         [["GET /user/info", 1]],
