@@ -352,7 +352,7 @@ it("the lane gate lists its chosen comparison and stops on unapproved test remov
     const run = (extra: string[]) =>
       NodeChildProcess.spawnSync(
         process.execPath,
-        ["scripts/gate-changed.ts", "--base", base, ...extra],
+        ["scripts/gate-changed.ts", "--tests", "--base", base, ...extra],
         { cwd: root, encoding: "utf8" },
       );
     const listed = run(["--list"]);

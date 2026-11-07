@@ -486,6 +486,7 @@ if (import.meta.main) {
               inventory: [],
               smokeFiles: [],
               slots: gateSlotCount(),
+              tests: true,
             }).ownedUnits,
         }
       : {}),
