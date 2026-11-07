@@ -33,7 +33,8 @@ needs it; share demand and release it at the last holder. Forgetting returns rel
 unknown; it never claims deletion. The last release forgets detail unless its family declares it
 kept for reuse (a return, a remount, a sampled freshness); the account's end forgets the rest.
 Losing a link is not a release. Use the source's realtime
-contract where available. A sampled source declares its demand and freshness policy centrally;
+contract where available. A request stays within the source's per-request bounds, declared once
+beside its wire schema; a longer list goes as several requests. A sampled source declares its demand and freshness policy centrally;
 components never add independent fetch, polling or recovery loops.
 
 Projections are pure functions over keyed facts, source coverage, access and operations. Surfaces
