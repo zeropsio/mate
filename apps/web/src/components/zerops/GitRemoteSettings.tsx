@@ -29,6 +29,7 @@ import {
   mirrorLeadLine,
   mirrorStateLine,
   type GitMirrorApp,
+  unansweredWords,
   waitingWords,
 } from "./gitMirror.logic";
 
@@ -457,7 +458,7 @@ function Remote({
       !editing ? (
         app.repositories.length === 0 ? (
           <div className="grid gap-1">
-            {(app.waiting ?? []).length === 0 ? (
+            {(app.waiting ?? []).length === 0 && unansweredWords(app) === null ? (
               <p className="rv-note">
                 {app.name} reaches no repository yet.{" "}
                 <GithubInstallOffer admin={admin} app={app} onInstall={onInstall ?? (() => {})}>
@@ -779,7 +780,10 @@ function Remote({
   );
 }
 
-/** Each account the app is installed on that waits for an admin's OK, said once each. */
+/**
+ * Each account the app is installed on that waits for an admin's OK, said once each, and the
+ * installations GitHub did not answer about.
+ */
 function WaitingAccounts({
   app,
   admin,
@@ -802,6 +806,7 @@ function WaitingAccounts({
           ) : null}
         </p>
       ))}
+      {unansweredWords(app) === null ? null : <p className="rv-note">{unansweredWords(app)}</p>}
     </>
   );
 }

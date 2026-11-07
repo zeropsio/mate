@@ -17,7 +17,13 @@ import {
   DialogTitle,
 } from "../../ui/dialog";
 import { gitRemoteLabel } from "../GitDeliveryStatus";
-import { githubName, mirrorGateLine, type GitMirrorApp, waitingWords } from "../gitMirror.logic";
+import {
+  githubName,
+  mirrorGateLine,
+  type GitMirrorApp,
+  unansweredWords,
+  waitingWords,
+} from "../gitMirror.logic";
 import { GithubInstallOffer } from "../GithubInstallOffer";
 import { type OriginAsk, originAddress, originMountStep } from "./originAsk.logic";
 
@@ -133,7 +139,9 @@ export function OriginGithubSheet({
           ) : step.kind === "not-reached" ? (
             <div className="flex flex-wrap items-center gap-2">
               <p className="rv-note">
-                {step.name} doesn't reach {githubName(ask.url) ?? address} yet.{" "}
+                {app !== null && app.kind === "connected" && unansweredWords(app) !== null
+                  ? unansweredWords(app)
+                  : `${step.name} doesn't reach ${githubName(ask.url) ?? address} yet.`}{" "}
                 {app !== null && app.kind === "connected" ? (
                   <GithubInstallOffer admin={admin} app={app} onInstall={onInstall}>
                     Add it on GitHub

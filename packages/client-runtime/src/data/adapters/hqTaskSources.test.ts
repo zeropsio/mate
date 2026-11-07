@@ -638,7 +638,7 @@ describe("the organization's GitHub app", () => {
         held = {
           ...held,
           installations: held.installations.map((installation) =>
-            installation.id === id
+            installation.id === id && installation.state !== "unknown"
               ? { ...installation, state, suspended: state === "suspended" }
               : installation,
           ),
