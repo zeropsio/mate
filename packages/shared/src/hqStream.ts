@@ -323,10 +323,6 @@ export const HqNavigationMate = Schema.Struct({
   face: Schema.String,
   madeBy: Schema.NullOr(Schema.String),
   standupRequestedBy: Schema.NullOr(Schema.String),
-  /** Still sent by HQ; no client reads it since a birth is one import. */
-  setupMarker: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
-  /** Still sent by older HQ builds; no client reads it. */
-  keyWider: Schema.optionalKey(Schema.Boolean),
   birthId: Schema.optionalKey(Schema.String),
   /** The accepted setup import, retained after its browser press ends. */
   importProcessId: Schema.optionalKey(Schema.String),
