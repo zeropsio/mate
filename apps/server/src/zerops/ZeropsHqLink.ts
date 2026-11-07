@@ -38,7 +38,9 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   stands; a link superseded by the Mate's own newer one (`4409`) is expected.
  *
  * A link that closes or never opens is tried again after a growing wait; one superseded (`4409`)
- * after the shortest. HQ is reached over IPv6 only, and the link is kept until it closes.
+ * after the shortest. A refused key (`4401`, `4403`) is HQ's answer to that key in that project's
+ * state, so the Mate dials again only once its env store changed (`ZeropsMateKey.changedSince`) or
+ * {@link REFUSAL_REASK} passed. HQ is reached over IPv6 only, and the link is kept until it closes.
  *
  * @module ZeropsHqLink
  */
@@ -67,6 +69,7 @@ import {
   type TicketRefusal,
   KEY_UNRESOLVED,
   MATE_OVERVIEW_EVERY_MS,
+  MATE_REFUSAL_REASK_MS,
   MateLinkClosed,
   type MateOverview,
   type MateOverviewSections,
@@ -111,7 +114,7 @@ import { makeChangesFile } from "./ZeropsChangesFile.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
 import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
 import { ZeropsObserveCredentialFile } from "./ZeropsObserveCredentialFile.ts";
-import { ZeropsMateKey } from "./ZeropsMateKey.ts";
+import { ZeropsMateKey, type ZeropsMateKeyReader } from "./ZeropsMateKey.ts";
 import type { ZeropsKeyRefusal } from "./ZeropsKeyRefusal.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsTasks } from "./ZeropsTasks.ts";
@@ -232,6 +235,8 @@ export interface ZeropsHqLinkOptions {
   /** The project's key as it stands now, read afresh for every dial; none while there is none. */
   readonly readKey: Effect.Effect<string | undefined>;
   readonly keyRefusal?: ZeropsKeyRefusal;
+  /** When the store the key is read from changes (`ZeropsMateKey`); none: only {@link REFUSAL_REASK}. */
+  readonly keyStore?: Pick<ZeropsMateKeyReader, "revision" | "changedSince">;
   readonly connect: ConnectLinkSocket;
   /** The Mate's overview as it stands now; none when it cannot be read, tried again at the next change. */
   readonly overview: Effect.Effect<Option.Option<MateOverview>>;
@@ -386,6 +391,10 @@ export const makeZeropsHqLink = (
     const keyVerdict = yield* SubscriptionRef.make<KeyVerdict | undefined>(undefined);
     let reportedKey: string | undefined;
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
+    const keyStore = options.keyStore ?? {
+      revision: Effect.succeed(0),
+      changedSince: () => Effect.never,
+    };
     const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_OVERVIEW_EVERY_MS);
     const url = `${options.hqOrigin.replace(/^http/u, "ws").replace(/\/+$/u, "")}/api/mate/link`;
 
@@ -740,6 +749,8 @@ export const makeZeropsHqLink = (
           // A link that failed, whatever failed in it, is tried again after a growing wait: the loop
           // never ends.
           const began = yield* Clock.currentTimeMillis;
+          // The store as it stood before this link read its key.
+          const mark = yield* keyStore.revision;
           const ran = yield* runOnce.pipe(
             Effect.catchCause(() => Effect.succeed({ opened: false } as const)),
           );
@@ -754,6 +765,21 @@ export const makeZeropsHqLink = (
             yield* SubscriptionRef.update(keyVerdict, (held) =>
               "unresolved" in heard && held !== undefined && "refusal" in held ? held : heard,
             );
+          if (heard !== undefined && "refusal" in heard) {
+            // The same hello hears the same refusal: dial again once the owner may have fixed it in
+            // the store (the key, or a variable it is judged by), else after a slow re-ask for what
+            // the container cannot see (HQ holding the project again, the token edited in Zerops).
+            const spread = yield* Random.nextIntBetween(
+              0,
+              Duration.toMillis(REFUSAL_REASK) / 4 + 1,
+            );
+            yield* Effect.raceFirst(
+              keyStore.changedSince(mark),
+              Effect.sleep(Duration.sum(REFUSAL_REASK, Duration.millis(spread))),
+            );
+            attempt = 0;
+            continue;
+          }
           // Only an admitted link that stayed up, one the Mate's own newer link superseded, or one
           // HQ handed over on purpose resets the wait; a link that never gets state is a failure.
           const lived = (yield* Clock.currentTimeMillis) - began;
@@ -793,6 +819,8 @@ export const makeZeropsHqLink = (
 
 /** Time after the socket opens for HQ to admit the key and send its first state. */
 const HQ_HANDSHAKE_BUDGET = Duration.seconds(30);
+/** How long a refused key waits, with no change of its store, before the Mate asks HQ again. */
+export const REFUSAL_REASK = Duration.millis(MATE_REFUSAL_REASK_MS);
 /** How long an admitted link must stay up before the next reconnect starts from the shortest wait. */
 const LINK_STABLE_MS = 30_000;
 /**
@@ -969,6 +997,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         // Read past the cache on every dial: a key zcp rewrote is the one the next link presents.
         readKey: Effect.andThen(key.invalidate, key.read),
         ...(key.refusal === undefined ? {} : { keyRefusal: key.refusal }),
+        keyStore: key,
         connect: connectLinkSocket,
         ticket: connections.ticket,
         closeSession: connections.closeSession,

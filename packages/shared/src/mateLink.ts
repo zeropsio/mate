@@ -62,6 +62,12 @@ export const MATE_LINK_TEXT_MAX = 280;
 /** A frame's bound in UTF-8 bytes (`linkFrameBytes`), which the sender checks before it sends. */
 export const MATE_LINK_FRAME_MAX = 64 * 1024;
 export const MATE_OVERVIEW_EVERY_MS = 500;
+/**
+ * How long a Mate whose key HQ refused (close `4401`, `4403`) waits before it asks HQ again, while
+ * its env store stays put: HQ's refusal is its answer to that key, and what could change it there
+ * (HQ holding the project again, the token edited in Zerops) the container cannot see.
+ */
+export const MATE_REFUSAL_REASK_MS = 15 * 60_000;
 export const MATE_TITLE_MAX = 120;
 /** The chats an overview lists: every one that is not idle, then the newest. */
 export const MATE_OVERVIEW_THREADS_MAX = 40;
