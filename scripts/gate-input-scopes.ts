@@ -31,6 +31,14 @@ export const testClockFile = (path: string): boolean =>
   /(?:\.test\.ts|\.scenario\.ts)$|(?:^|\/)test\/scenarios\/.+\.ts$/u.test(path);
 export const testClockLedger = "scripts/test-clock-exceptions.json";
 
+// The scenario areas `scripts/check-scenario-caps.ts` caps, and the caps it reads.
+export const scenarioAreasRoot = "apps/web/test/scenarios/areas";
+export const scenarioCapsFile = "apps/web/test/scenarios/budget.json";
+/** A scenario case or a cap: what the per-area case caps count. */
+export const scenarioCapInput = (path: string): boolean =>
+  path === scenarioCapsFile ||
+  (path.startsWith(`${scenarioAreasRoot}/`) && path.endsWith(".scenario.ts"));
+
 // Test and fixture code whose wire-shaped input `scripts/check-test-inputs.ts` counts.
 export const testInputFile = (path: string): boolean =>
   !path.startsWith(".repos/") &&

@@ -12,6 +12,8 @@ import {
   guardScopePaths,
   runtimeCycleSourceRoots,
   retainedTestFile,
+  scenarioCapInput,
+  scenarioCapsFile,
   testClockFile,
   testClockLedger,
   testInputFile,
@@ -1202,6 +1204,13 @@ function stageHashes(
             ...(stage.args.length === 3 ? inventory.filter(testClockFile) : files),
           ];
           baseline = [testClockLedger];
+        } else if (stage.name === "scenario caps") {
+          // The check counts every area's scenario files, never their imports.
+          files = [
+            ...inputs.inputFiles(["scripts/check-scenario-caps.ts"], inventory),
+            scenarioCapsFile,
+            ...inventory.filter(scenarioCapInput),
+          ];
         } else if (stage.name === "test input ratchet") {
           // The check reads the changed test and fixture files (and their base), never their imports.
           files = [
@@ -1236,7 +1245,12 @@ function stageHashes(
           baseline = replayed;
         }
         if (
-          !["check touched files", "test clock ratchet", "test input ratchet"].includes(stage.name)
+          ![
+            "check touched files",
+            "test clock ratchet",
+            "test input ratchet",
+            "scenario caps",
+          ].includes(stage.name)
         )
           files = inputs.inputFiles(files, inventory);
         const command = {
@@ -1620,6 +1634,18 @@ export function selectGateSteps(
     command: "node",
     args: ["scripts/check-test-sentences.ts", "--base", comparison],
   });
+  if (
+    paths.some(
+      (path) =>
+        scenarioCapInput(path) ||
+        ["scripts/check-scenario-caps.ts", "scripts/check-test-sentences.ts"].includes(path),
+    )
+  )
+    steps.push({
+      name: "scenario caps",
+      command: "node",
+      args: ["scripts/check-scenario-caps.ts"],
+    });
   const clockFiles = paths.filter(testClockFile);
   // A ledger or check edit scans every test file; otherwise only the touched ones.
   const clockScan = paths.some((path) =>

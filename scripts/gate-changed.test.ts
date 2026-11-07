@@ -1744,6 +1744,24 @@ it("a lane editing a unit test replays its new witnesses before the test stages;
   expect(lines(scenario).some((line) => line.startsWith("witness replay:"))).toBe(false);
 });
 
+// witness: scripts/gate-changed.ts | scenarioCapInput(path) || → false ||
+it("a lane adding a scenario case runs the area caps check", () => {
+  const scenario = "apps/web/test/scenarios/areas/b-menu/reload.scenario.ts";
+  const caps = (path: string) =>
+    selectGateSteps(repositoryGraph(), {
+      comparison: "HEAD",
+      existing: [path],
+      paths: [path],
+      inventory: [scenario],
+      smokeFiles: [],
+      slots: 3,
+    })
+      .steps.filter((step) => step.name === "scenario caps")
+      .map((step) => `${step.command} ${step.args.join(" ")}`);
+  expect(caps(scenario)).toEqual(["node scripts/check-scenario-caps.ts"]);
+  expect(caps("apps/web/src/main.tsx")).toEqual([]);
+});
+
 it("the default laptop gate omits selected browser scenarios and fixed smoke", () => {
   const scenario = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
   const dependency = "apps/web/test/scenarios/areas/d-change/dsl.ts";
