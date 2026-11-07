@@ -684,16 +684,16 @@ function chatEditCli() {
   return chatEditResult;
 }
 
-const namedAdmissionResults = new Map<string, NodeChildProcess.SpawnSyncReturns<string>>();
-function namedAdmissionCli(consumer: string) {
-  const cached = namedAdmissionResults.get(consumer);
+const namedScenarioResults = new Map<string, NodeChildProcess.SpawnSyncReturns<string>>();
+function namedScenarioCli(consumer: string) {
+  const cached = namedScenarioResults.get(consumer);
   if (cached) return cached;
   const result = NodeChildProcess.spawnSync(
     process.execPath,
     ["scripts/gate-changed.ts", "--base", "HEAD", "--list", "--scenarios", consumer],
     { cwd: repositoryFixture, encoding: "utf8" },
   );
-  namedAdmissionResults.set(consumer, result);
+  namedScenarioResults.set(consumer, result);
   return result;
 }
 
@@ -830,9 +830,9 @@ it.each([
       // Rendering coverage is the builder's declaration; the app bundle is not a lane edge.
       inventory: stages.includes("C")
         ? [
-            "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
             "apps/web/test/scenarios/areas/c-mate/chat.scenario.ts",
             "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts",
+            "apps/web/test/scenarios/areas/c-mate/recovery.scenario.ts",
           ]
         : [],
       smokeFiles: Object.keys(stateOnlySmoke),
@@ -872,7 +872,7 @@ it.each([
   const edited = lines.find((line) => line.startsWith("edited scenario files:"));
   if (stages.includes("C")) {
     expect(edited).toBe(
-      "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/admission.scenario.ts test/scenarios/areas/c-mate/chat.scenario.ts test/scenarios/areas/c-mate/projects-opening.scenario.ts",
+      "edited scenario files: vp test run --config test/scenarios/vitest.config.ts test/scenarios/areas/c-mate/chat.scenario.ts test/scenarios/areas/c-mate/projects-opening.scenario.ts test/scenarios/areas/c-mate/recovery.scenario.ts",
     );
   } else expect(edited).toBeUndefined();
   if (stages.includes("A")) {
@@ -1025,23 +1025,23 @@ it("the related file graph follows reexports, cycles, lazy imports, aliases and 
 it.each([
   {
     path: "apps/web/src/components/ChatView.tsx",
-    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
   },
   {
     path: "packages/client-runtime/src/data/projections/agentAdmission.ts",
-    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
   },
   {
     path: "apps/web/test/scenarios/harness/build.ts",
-    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
   },
   {
     path: "apps/web/src/fonts.css",
-    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
   },
   {
     path: "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
-    consumer: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+    consumer: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts",
   },
   {
     path: "apps/server/src/spi/fixtures/claude/plain-text-turn.expected.json",
@@ -1055,7 +1055,7 @@ it.each([
     expect(selected).not.toContain("apps/web/test/scenarios/fakes/c-mate/chat.test.ts");
   } else {
     // The builder names the journey that renders this bundle input.
-    const result = namedAdmissionCli(consumer);
+    const result = namedScenarioCli(consumer);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain(`Scenario ${consumer}; reason: explicit --scenarios`);
     expect(result.stdout).toContain("Scenario files: 1;");
@@ -2082,6 +2082,30 @@ it("L2 runs owned scenario-driver units through their existing project before sc
       "test/scenarios/fakes/mate.test.ts",
     );
     expect(lines.some((line) => line.startsWith("edited scenario files:"))).toBe(false);
+  } finally {
+    NodeFS.writeFileSync(file, original);
+  }
+});
+
+// witness: scripts/gate-changed.ts | "test/e-env/vitest.config.ts", → "test/scenarios/vitest.config.ts",
+it("L2 runs owned environment source consumers under the config that includes them", () => {
+  const path = "apps/web/test/scenarios/areas/e-env/environmentSources.test.tsx";
+  const file = NodePath.join(repositoryFixture, path);
+  const original = NodeFS.readFileSync(file, "utf8");
+  try {
+    NodeFS.appendFileSync(file, "\nexport const l2EnvironmentWitness = true;\n");
+    const lines = fixtureStages();
+    const consumers = lines.find((line) =>
+      line.startsWith("related environment source consumers:"),
+    );
+    expect(
+      consumers,
+      "ASSERTION: an edited environment source consumer must run under its own config",
+    ).toContain("vp test run --config test/e-env/vitest.config.ts");
+    expect(consumers).toContain("test/scenarios/areas/e-env/environmentSources.test.tsx");
+    expect(lines.find((line) => line.startsWith("related @t3tools/web:")) ?? "").not.toContain(
+      "test/scenarios/areas/e-env/environmentSources.test.tsx",
+    );
   } finally {
     NodeFS.writeFileSync(file, original);
   }

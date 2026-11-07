@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "noEmit": true
+  },
+  "files": ["../scenarios/areas/e-env/environmentSources.test.tsx"],
+  "include": [
+    "../../src",
+    "../../vite.config.ts",
+    "..",
+    "../../scripts/warm-dep-cache.ts",
+    "../../../../scripts/lib/public-config.ts"
+  ],
+  "exclude": ["../scenarios", "../engine-oracle"]
+}

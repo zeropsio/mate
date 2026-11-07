@@ -15,68 +15,28 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { act } from "react";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
-import { expect, vi } from "vite-plus/test";
+import { afterEach, expect, vi } from "vite-plus/test";
 
 import type { HqStreamRequest } from "@t3tools/shared/hqStream";
 import { AccountDataContext, type AccountData } from "../../zerops/accountData";
 import { recordedReport, statistics } from "./usageTestFixtures";
-
-vi.mock("../../env", () => ({ isElectron: false }));
-vi.mock("../../hooks/useNavigateBack", () => ({ useEscapeToGoBack: () => {} }));
-vi.mock("../../zerops/useNowMs", () => ({ useNowMs: () => 1_791_331_200_000 }));
-vi.mock("../../zerops/ZeropsSessionProvider", () => ({
-  useZeropsSessionOptional: () => ({
-    user: { id: "dev" },
-    activeOrganization: { id: "org", roleCode: "DEVELOPER" },
-  }),
-}));
-vi.mock("../../zerops/useZeropsFeeds", () => ({ useEnvironmentProjectRef: () => null }));
-vi.mock("../../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
-vi.mock("@tanstack/react-router", () => ({ Link: "a", useNavigate: () => vi.fn() }));
-vi.mock("./usagePagePreferences", () => ({
-  readUsagePagePreferences: () => ({ metric: "cost", windowDays: 7 }),
-  saveUsagePagePreferences: () => {},
-}));
-vi.mock("../../zerops/useUsageEnvironmentIdentities", () => ({
-  useUsageEnvironmentIdentities: () => ({
-    identities: new Map(),
-    people: new Map(),
-    owners: "resolved",
-    listed: true,
-    baseline: "resolved",
-    projects: new Map(),
-  }),
-}));
-vi.mock("../../zerops/useTaskSourceSettings", () => ({
-  useOrgTaskSource: () => ({
-    read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
-  }),
-  useAppTaskSource: () => ({
-    read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
-  }),
-}));
-vi.mock("../ui/button", () => ({ Button: "button", InlineButton: "button" }));
-vi.mock("../ui/scroll-area", () => ({ ScrollArea: "div" }));
-vi.mock("../ui/select", () => ({
-  Select: "div",
-  SelectItem: "div",
-  SelectPopup: "div",
-  SelectTrigger: "div",
-  SelectValue: "div",
-}));
-vi.mock("../ui/sidebar", () => ({ SidebarInset: "div" }));
-vi.mock("../ui/toggle-group", () => ({ Toggle: "button", ToggleGroup: "div" }));
-vi.mock("../ui/tooltip", () => ({ Tooltip: "div", TooltipPopup: "div", TooltipTrigger: "div" }));
-vi.mock("../WorkspaceBreadcrumb", () => ({
-  WorkspaceBreadcrumb: "div",
-  WorkspaceBreadcrumbItem: "div",
-  WorkspaceBreadcrumbSeparator: "span",
-}));
-vi.mock("../WorkspacePageContainer", () => ({ WorkspacePageContainer: "main" }));
-vi.mock("../WorkspacePageHeader", () => ({ WorkspacePageHeader: "header" }));
-vi.mock("./UsageProviderChart", () => ({ UsageProviderChart: "div" }));
+import * as navigateBack from "../../hooks/useNavigateBack";
+import * as atomCommand from "../../state/use-atom-command";
+import * as sessionContext from "../../zerops/sessionContext";
+import * as feeds from "../../zerops/useZeropsFeeds";
+import * as clock from "../../zerops/useNowMs";
+import * as identities from "../../zerops/useUsageEnvironmentIdentities";
+import * as taskSettings from "../../zerops/useTaskSourceSettings";
+import * as preferences from "./usagePagePreferences";
+import * as chart from "./UsageProviderChart";
+import { stubUsageControls } from "./usagePage.test-fixture";
 
 import { UsagePage } from "./UsagePage";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const words = (node: ReactTestInstance): string =>
   node.children.map((child) => (typeof child === "string" ? child : words(child))).join("");
@@ -99,7 +59,42 @@ function ScopedUsage({
 
 it.effect("A developer sees only their own Usage, even when a bookmark names another person", () =>
   Effect.gen(function* () {
-    vi.stubGlobal("window", new EventTarget());
+    vi.stubGlobal(
+      "window",
+      Object.assign(new EventTarget(), { setTimeout, clearTimeout, setInterval, clearInterval }),
+    );
+    stubUsageControls();
+    vi.spyOn(navigateBack, "useEscapeToGoBack").mockImplementation(() => {});
+    vi.spyOn(clock, "useNowMs").mockReturnValue(1_791_331_200_000);
+    vi.spyOn(sessionContext, "useZeropsSessionOptional").mockReturnValue({
+      user: { id: "dev" },
+      activeOrganization: { id: "org", roleCode: "DEVELOPER" },
+    } as unknown as ReturnType<typeof sessionContext.useZeropsSessionOptional>);
+    vi.spyOn(feeds, "useEnvironmentProjectRef").mockReturnValue(null);
+    vi.spyOn(atomCommand, "useAtomCommand").mockReturnValue(vi.fn());
+    vi.spyOn(preferences, "readUsagePagePreferences").mockReturnValue({
+      metric: "cost",
+      windowDays: 7,
+    });
+    vi.spyOn(preferences, "saveUsagePagePreferences").mockImplementation(() => {});
+    vi.spyOn(identities, "useUsageEnvironmentIdentities").mockReturnValue({
+      identities: new Map(),
+      people: new Map(),
+      owners: "resolved",
+      listed: true,
+      baseline: "resolved",
+      projects: new Map(),
+    } as unknown as ReturnType<typeof identities.useUsageEnvironmentIdentities>);
+    const unreadTask = {
+      read: { setting: { state: "unread" }, action: { kind: "idle" }, revealed: null },
+    };
+    vi.spyOn(taskSettings, "useOrgTaskSource").mockReturnValue(
+      unreadTask as unknown as ReturnType<typeof taskSettings.useOrgTaskSource>,
+    );
+    vi.spyOn(taskSettings, "useAppTaskSource").mockReturnValue(
+      unreadTask as unknown as ReturnType<typeof taskSettings.useAppTaskSource>,
+    );
+    vi.spyOn(chart, "UsageProviderChart").mockImplementation(() => <div />);
     const fetch = vi.fn(() => Promise.reject(new Error("Unexpected network request")));
     vi.stubGlobal("fetch", fetch);
     const registry = AtomRegistry.make();
@@ -197,10 +192,11 @@ it.effect("A developer sees only their own Usage, even when a bookmark names ano
         open: () => Effect.succeed({ messages: Stream.fromQueue(messages), send }),
       },
     });
+    const demandDetail = vi.fn(observation.demandDetail);
     const account: AccountData = {
       data: store.data,
       orgId: "org",
-      demandDetail: observation.demandDetail,
+      demandDetail,
       renewHeld: observation.renewHeld,
       readDetail: observation.readDetail,
       revalidate: observation.revalidate,
@@ -235,6 +231,9 @@ it.effect("A developer sees only their own Usage, even when a bookmark names ano
         await act(async () => {
           tree = create(<ScopedUsage registry={registry} account={account} />);
         });
+        expect(
+          demandDetail.mock.calls.filter(([request]) => request.family === "agentUsage").length,
+        ).toBeGreaterThanOrEqual(4);
         await act(async () => {
           await ready;
         });
@@ -257,7 +256,6 @@ it.effect("A developer sees only their own Usage, even when a bookmark names ano
         if (tree !== undefined) act(() => tree!.unmount());
         observation.stop();
         registry.dispose();
-        vi.unstubAllGlobals();
       }
     });
   }),

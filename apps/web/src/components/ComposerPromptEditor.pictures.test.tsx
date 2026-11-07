@@ -3,8 +3,7 @@
  * placeholder, matched by order to the draft's pictures, and the editor reports
  * the pictures it holds in the order they sit.
  */
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $getRoot, $isElementNode, type LexicalEditor } from "lexical";
+import { $getRoot, $isElementNode } from "lexical";
 import { act, createRef } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -18,6 +17,8 @@ import {
   type ComposerPromptEditorHandle,
 } from "./ComposerPromptEditor";
 
+import { getLexicalEditor, resetLexicalEditor } from "./ComposerPromptEditor.test-fixture";
+
 vi.mock("./chat/FileTagChip", () => ({
   FILE_TAG_CHIP_CLASS_NAME: "",
   FileTagChipContent: () => null,
@@ -27,12 +28,8 @@ vi.mock("./chat/ComposerPendingTerminalContexts", () => ({
 }));
 vi.mock("./chat/AssistantCitationChip", () => ({ AssistantCitationChip: () => null }));
 
-let lexicalEditor: LexicalEditor;
-vi.mock("@lexical/react/LexicalPlainTextPlugin", () => ({
-  PlainTextPlugin: function HeadlessEditor() {
-    [lexicalEditor] = useLexicalComposerContext();
-    return null;
-  },
+vi.mock("@lexical/react/LexicalPlainTextPlugin", async () => ({
+  PlainTextPlugin: (await import("./ComposerPromptEditor.test-fixture")).HeadlessEditor,
 }));
 
 let renderer: ReactTestRenderer | undefined;
@@ -79,11 +76,13 @@ async function render(value: string, pictures: ReadonlyArray<ComposerPictureView
 }
 
 function nodeTypes(): string[] {
-  return lexicalEditor.getEditorState().read(() => {
-    const paragraph = $getRoot().getFirstChildOrThrow();
-    if (!$isElementNode(paragraph)) throw new Error("Expected a composer paragraph");
-    return paragraph.getChildren().map((node) => node.getType());
-  });
+  return getLexicalEditor()
+    .getEditorState()
+    .read(() => {
+      const paragraph = $getRoot().getFirstChildOrThrow();
+      if (!$isElementNode(paragraph)) throw new Error("Expected a composer paragraph");
+      return paragraph.getChildren().map((node) => node.getType());
+    });
 }
 
 beforeEach(() => {
@@ -95,6 +94,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => renderer?.unmount());
   renderer = undefined;
+  resetLexicalEditor();
   vi.unstubAllGlobals();
 });
 
@@ -142,7 +142,7 @@ describe("pictures in the composer's text", () => {
   it("reports the pictures left when one is removed from the text", async () => {
     await render(`a${P}b${P}`, [picture("one", 1), picture("two", 2)]);
     await act(() => {
-      lexicalEditor.update(
+      getLexicalEditor().update(
         () => {
           const paragraph = $getRoot().getFirstChildOrThrow();
           if (!$isElementNode(paragraph)) return;
@@ -170,7 +170,7 @@ describe("pictures in the composer's text", () => {
       );
       await render(prompt, pictures);
       await act(() => {
-        lexicalEditor.update(() => $moveComposerPicture(id, offset), { discrete: true });
+        getLexicalEditor().update(() => $moveComposerPicture(id, offset), { discrete: true });
       });
       const snapshot = editorRef.current?.readSnapshot();
       expect({ value: snapshot?.value, pictureIds: snapshot?.pictureIds }).toEqual({

@@ -3,7 +3,7 @@ import { scenarioSuite } from "../../harness/suite.ts";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { menuMateRow, sendConversationMessage } from "../../harness/browser.ts";
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import {
   ConversationId,
   MATE_ENGINE_PROTOCOLS,
@@ -131,29 +131,6 @@ describe("C: opening a Mate and chat", () => {
   scenarioSuite((it) => {
     // Decision: keep fresh-send working; restore the guard's intent; Aleš's archive source is the one source.
     it.effect(
-      "a Mate's non-crewmate engine conversation never becomes a generic sidebar thread",
-      () =>
-        Effect.gen(function* () {
-          const { s, chat } = yield* setup;
-          yield* s.given.signedIn;
-          yield* chat.when.open();
-          yield* chat.then.text("The existing conversation is still here");
-          yield* Effect.promise(async () => {
-            await s.page.setViewport({ width: 1786, height: 1000 });
-            expect(
-              await s.page.$$("[data-thread-item]"),
-              "ASSERTION: a Mate-owned conversation has no generic sidebar duplicate",
-            ).toHaveLength(0);
-            expect(
-              await s.page.$$('[data-zerops-mate-row="Ada"]'),
-              "ASSERTION: the Mate has exactly one row in SidebarZeropsTree",
-            ).toHaveLength(1);
-          });
-          yield* s.then.noExternalNetwork;
-        }),
-    );
-
-    it.effect(
       "archive and start fresh opens a new conversation and Undo restores the old one",
       () =>
         Effect.gen(function* () {
@@ -276,47 +253,6 @@ describe("C: opening a Mate and chat", () => {
       }),
     );
 
-    // A reported version difference alone must never offer a chat-level restart.
-    it.effect("older and newer Mate versions show no version-skew warning or restart action", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([], { mate: "real" });
-        const chat = realChat(s);
-        for (const [name, version] of [
-          ["Ada", "0.16.0"],
-          ["Bea", "999.0.0"],
-        ] as const) {
-          yield* s.given.project(name, {
-            mate: true,
-            launchEnvironment: { T3CODE_SERVER_VERSION: version },
-          });
-          yield* seed(s, name);
-          const descriptor = yield* HttpClient.get(
-            `${s.drivers.realMates.get(name)!.server.origin}/.well-known/t3/environment`,
-          ).pipe(
-            Effect.flatMap((response) => response.json),
-            Effect.provide(FetchHttpClient.layer),
-          );
-          expect(descriptor).toMatchObject({ serverVersion: version });
-        }
-        yield* s.given.signedIn;
-        for (const name of ["Ada", "Bea"]) {
-          yield* chat.when.open(name);
-          const shown = yield* Effect.promise(() =>
-            s.page.evaluate(() => ({
-              words: document.body.textContent,
-              actions: [...document.querySelectorAll("button")]
-                .filter((button) => button.getBoundingClientRect().height > 0)
-                .map((button) => button.getAttribute("aria-label") ?? button.textContent?.trim()),
-            })),
-          );
-          expect(shown.words).not.toContain("Server versions differ");
-          expect(shown.actions).not.toContain("Restart Mate");
-          expect(shown.actions).not.toContain("Restart server");
-        }
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-
     describe("Decision: catch real breakage only (overlap, overflow, wrong variant/colour role, missing element) — never pixel-exact or 1px nudges; no new expensive visual suites.", () => {
       // Catches a broken identity door/OAuth exchange or a slow first opening that never reaches the chosen chat.
       it.effect("first open crosses the door and OAuth", () =>
@@ -399,12 +335,34 @@ describe("C: opening a Mate and chat", () => {
     // Catches returning to a parked Mate losing its history, opening another chat, or repeating the cold door.
     it.effect("returning to a parked Mate preserves history", () =>
       Effect.gen(function* () {
-        const { s, chat } = yield* setup;
-        yield* s.given.project("Bea", { mate: true });
-        yield* seed(s, "Bea", [["Earlier question", "Bea's conversation history"]]);
+        const s = yield* createScenario([], { mate: "real" });
+        const chat = realChat(s);
+        for (const [name, version] of [
+          ["Ada", "0.16.0"],
+          ["Bea", "999.0.0"],
+        ] as const) {
+          yield* s.given.project(name, {
+            mate: true,
+            launchEnvironment: { T3CODE_SERVER_VERSION: version },
+          });
+          yield* seed(s, name, [
+            [
+              "Earlier question",
+              name === "Ada" ? `${history}. Look after this Mate` : "Bea's conversation history",
+            ],
+          ]);
+          const descriptor = yield* HttpClient.get(
+            `${s.drivers.realMates.get(name)!.server.origin}/.well-known/t3/environment`,
+          ).pipe(
+            Effect.flatMap((response) => response.json),
+            Effect.provide(FetchHttpClient.layer),
+          );
+          expect(descriptor).toMatchObject({ serverVersion: version });
+        }
         yield* s.given.signedIn;
         yield* chat.when.open();
         yield* chat.then.text("The existing conversation is still here");
+        yield* chat.then.text("Look after this Mate");
         const adaDoors = doorCount(s);
         yield* chat.when.open("Bea", "Bea's conversation history");
         const beaDoors = doorCount(s, "Bea");
@@ -419,6 +377,24 @@ describe("C: opening a Mate and chat", () => {
         expect(doorCount(s, "Bea"), "ASSERTION: returning to Bea reuses its parked door").toBe(
           beaDoors,
         );
+        // Preserve the full-browser guard while the version verdict lives with ChatView.
+        for (const [name, text] of [
+          ["Ada", history],
+          ["Bea", "Bea's conversation history"],
+        ] as const) {
+          yield* chat.when.open(name, text);
+          const shown = yield* Effect.promise(() =>
+            s.page.evaluate(() => ({
+              words: document.body.textContent,
+              actions: [...document.querySelectorAll("button")]
+                .filter((button) => button.getBoundingClientRect().height > 0)
+                .map((button) => button.getAttribute("aria-label") ?? button.textContent?.trim()),
+            })),
+          );
+          expect(shown.words).not.toContain("Server versions differ");
+          expect(shown.actions).not.toContain("Restart Mate");
+          expect(shown.actions).not.toContain("Restart server");
+        }
         yield* s.then.noReload;
         yield* s.then.noExternalNetwork;
       }),

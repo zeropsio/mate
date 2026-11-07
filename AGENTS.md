@@ -1,8 +1,8 @@
 # mate — Zerops Mate
 
 Zerops Mate is a hard fork of T3 Code: a control surface for coding agents in Zerops project
-containers. A Node WebSocket server in each container drives provider CLIs and serves the web client
-at `/mate/`; zcp installs it from this repo's GitHub release.
+containers. A Node WebSocket server in each container drives provider CLIs; zcp installs it from
+this repo's stable GitHub release. The web client is hosted separately.
 
 **Upstream.** Never `git merge` or rebase onto `upstream/main`. Before importing, porting or editing
 imported/ported zones, read and follow [`docs/internals/zerops/fork.md`](docs/internals/zerops/fork.md).
@@ -33,8 +33,9 @@ Name the tier before the first tool call. Its loop is the whole loop; no higher-
   look cropped to the surface at the reference viewport (1786 × 1000, menu at 435 px) in the report's
   theme, `vp check` the files, one commit. Nothing extra (test, harness, matrix, ledger entry,
   subagent, release) unless asked. Delete tests pinning the old class, pixel or colour; do not update them.
-- **Change** — behaviour: state, data, protocol, new control. RED → GREEN on logic (`*.logic.ts`,
-  server, runtime), targeted `vp test run`, package typecheck, one live look for UI.
+- **Change** — behaviour: state, data, protocol, new control. A witnessed case at the cheapest level
+  (OWNER.md Testing) or a named existing one, targeted `vp test run`, package typecheck, one live
+  look for UI.
 - **Pass** — a maintainer calls it a pass, or it redesigns several surfaces or lands a slice: loop below.
 
 The loop:
@@ -47,8 +48,8 @@ The loop:
   files, and the gate once more; it reuses passed stages.
 - CI runs blocking verification on `main`, `kh-next`, `kh-bisect/**` and pull requests (a newer push
   cancels older runs except on `main`; `kh-next` is the integration branch that fast-forwards `main`);
-  browser scenario shards run in the non-blocking `Signal` workflow, where a failure gets one
-  same-commit rerun to tell a flake from a regression.
+  browser scenario shards run nightly on `main` and on demand in the non-blocking `Signal`
+  workflow, where a failure gets one same-commit rerun to tell a flake from a regression.
 - Markdown tables: `vp fmt` the file before committing; unaligned rows fail CI's Check job.
 - The server is event-sourced; async flows emit typed receipts. Wait on receipts and worker drains,
   never sleeps or polling.
@@ -104,6 +105,8 @@ Before calling frontend work done, decide which apply:
 This file is a map, never a cache of facts from code, tests or other documents.
 To answer a question, go to the home:
 
+- Conceptual architecture → private `zeropsio/mate-hq`, `docs/architecture/README.md`; public
+  product contracts here and in the zcp spec remain self-contained.
 - The zcp↔mate seam → `../zcp/docs/spec-mate.md` §2.8 (sibling repo zeropsio/zcp).
 - Domain terms (Mate, HQ, application, environments, release, crew) → `docs/internals/zerops/primer.md`.
 - Runtime terms (thread, turn, decider, projector, reactor) → `docs/internals/glossary.md`.
@@ -118,10 +121,8 @@ To answer a question, go to the home:
 - `docs/` lines must hold for something not yet existing: cross-surface rule, term, zcp↔mate seam,
   platform fact. One surface/flow/component belongs in tests (title is the product sentence; one-line
   why when the owner decided against the obvious) or code. Reasons/reversals belong in the commit message.
-- Few tests, highest value, fast: a test earns its cost or goes. Delete one that pins gone behaviour,
-  duplicates another or checks trivia, with a `Drops-test: <exact title>` commit trailer
-  (`scripts/check-test-sentences.ts`) and a line why. Rewrites change input arrangement, never what a
-  kept title says; removing a behaviour itself is the owner's call.
+- Test admission and removal: OWNER.md Testing. `scripts/check-test-sentences.ts` enforces
+  witness lines and `Drops-test`/`Drops-test-file` trailers.
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.
 - Paragraph-sized doc entries are list items, never table rows.
@@ -145,8 +146,6 @@ To answer a question, go to the home:
 - `apps/web/src/components/ui` exports own their look: pick a `variant`/`size`, never restyle with
   `className`, never add a `t3code/no-restyle` exception. If none fits, generic looks get a variant;
   feature-specific looks stay in the feature. Layout classes belong on the parent.
-- Tests pin behaviour (state, data, protocol, guards, render output, click effects), never class
-  strings, pixels or colours; the owner judges looks by eye. Backend behaviour ships with focused tests.
 - Owner-reported visual regressions get a geometry witness in the `owner-reported layout regressions`
   scenario suite, in the fix's change.
 - Important invariants get deterministic checks with an exception ledger that may only shrink.

@@ -1,28 +1,37 @@
 import type { ZeropsAgentAuth, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { EnvironmentId } from "@t3tools/contracts";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { useMateReadOnly } from "./useMateReadOnly";
+import * as owners from "./useZeropsMateOwners";
+import * as feeds from "./useZeropsFeeds";
+import * as session from "./ZeropsSessionProvider";
 
-const facts = vi.hoisted(() => ({
+const facts = {
   read: undefined as Known<ZeropsAgentAuthSnapshot> | undefined,
   viewerSubject: undefined as string | undefined,
   owner: undefined as { readonly userId: string; readonly name: string } | undefined,
-}));
-vi.mock("./useZeropsMateOwners", async (actual) => ({
-  ...(await actual<typeof import("./useZeropsMateOwners")>()),
-  useHqProjectPerson: () => (facts.owner === undefined ? undefined : { owner: facts.owner }),
-}));
-vi.mock("./useZeropsFeeds", () => ({
-  useZeropsAgentAuth: () => facts.read,
-  useEnvironmentProjectRef: () => null,
-}));
-vi.mock("./ZeropsSessionProvider", () => ({
-  useZeropsSessionOptional: () => ({ user: { id: facts.viewerSubject } }),
-}));
+};
+beforeEach(() => {
+  vi.spyOn(owners, "useHqProjectPerson").mockImplementation(
+    () =>
+      (facts.owner === undefined ? undefined : { owner: facts.owner }) as ReturnType<
+        typeof owners.useHqProjectPerson
+      >,
+  );
+  vi.spyOn(feeds, "useEnvironmentProjectRef").mockReturnValue(null);
+  vi.spyOn(feeds, "useZeropsAgentAuth").mockImplementation(() => facts.read);
+  vi.spyOn(session, "useZeropsSessionOptional").mockImplementation(
+    () =>
+      ({ user: { id: facts.viewerSubject } }) as ReturnType<
+        typeof session.useZeropsSessionOptional
+      >,
+  );
+});
+afterEach(() => vi.restoreAllMocks());
 
 function Reader() {
   return String(useMateReadOnly(EnvironmentId.make("rig")));

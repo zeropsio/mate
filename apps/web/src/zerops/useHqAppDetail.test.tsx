@@ -8,29 +8,23 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
+import * as accountData from "./ZeropsAccountData";
 
-const holds = vi.hoisted(() => ({
+const holds = {
   /** Each hold held now, as `family owner`. */
   held: [] as Array<string>,
   /** Every hold taken, in order. */
   taken: [] as Array<string>,
-}));
-vi.mock("./ZeropsAccountData", () => {
-  const data = {
-    orgId: "org-1",
-    demandDetail: (demand: { readonly family: string; readonly ownerId: string }) => {
-      const name = `${demand.family} ${demand.ownerId}`;
-      holds.held.push(name);
-      holds.taken.push(name);
-      return () => void holds.held.splice(holds.held.indexOf(name), 1);
-    },
-  };
-  return {
-    useAccountDataOptional: () => data,
-    useAccountOrgId: () => data.orgId,
-    useProjection: () => ({}),
-  };
-});
+};
+const data = {
+  orgId: "org-1",
+  demandDetail: (demand: { readonly family: string; readonly ownerId: string }) => {
+    const name = `${demand.family} ${demand.ownerId}`;
+    holds.held.push(name);
+    holds.taken.push(name);
+    return () => void holds.held.splice(holds.held.indexOf(name), 1);
+  },
+};
 
 function Probe({ appIds }: { readonly appIds: ReadonlyArray<string> }) {
   useHqAppDetailHold(appIds);
@@ -49,10 +43,18 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   holds.held = [];
   holds.taken = [];
+  vi.spyOn(accountData, "useAccountDataOptional").mockReturnValue(
+    data as unknown as ReturnType<typeof accountData.useAccountDataOptional>,
+  );
+  vi.spyOn(accountData, "useAccountOrgId").mockReturnValue(data.orgId);
+  vi.spyOn(accountData, "useProjection").mockImplementation(
+    (() => ({})) as typeof accountData.useProjection,
+  );
 });
 afterEach(async () => {
   await act(async () => tree?.unmount());
   tree = undefined;
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 

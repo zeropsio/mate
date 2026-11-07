@@ -386,7 +386,7 @@ async function main(): Promise<void> {
     const failures = classifyFailures(initial, rerun, run);
     NodeFS.writeFileSync("signal-failures.json", JSON.stringify(failures, null, 2) + "\n");
     console.log(`Signal classified ${failures.length} original test failures`);
-    // The previous kh-next run's classification, when the workflow fetched one.
+    // The previous nightly run's classification, when the workflow fetched one.
     const previous = process.env.MATE_SIGNAL_PREVIOUS;
     if (previous !== undefined && NodeFS.existsSync(previous)) {
       const reds = standingReds(
@@ -395,8 +395,8 @@ async function main(): Promise<void> {
       );
       for (const red of reds) signalEvidence("Standing red", red.title, red.file);
       if (reds.length)
-        throw new Error(`Signal: ${reds.length} tests fail-fail on two consecutive kh-next runs`);
-    } else console.log("Signal has no previous kh-next classification to compare");
+        throw new Error(`Signal: ${reds.length} tests fail-fail on two consecutive nightly runs`);
+    } else console.log("Signal has no previous nightly classification to compare");
     if (infrastructure.length) process.exitCode = 1;
     if (killed.length)
       throw new Error(`Signal: shards ${killed.join(", ")} ended without writing their report`);

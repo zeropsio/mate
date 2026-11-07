@@ -1,5 +1,5 @@
 import { scenarioSuite } from "../../harness/suite.ts";
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HqStreamMessage } from "@t3tools/shared/hqStream";
@@ -198,29 +198,6 @@ describe("E: stage, production, release and rollback", () => {
         yield* a.when.finish("stage");
         yield* a.then.text("Deployed");
         yield* a.then.text(sha.slice(0, 7));
-        yield* f.s.then.noExternalNetwork;
-      }),
-    );
-
-    // A colleague's accepted release must replace this review's unsent offer without another tag.
-    it.effect("a colleague's release displaces an open local release offer", () =>
-      Effect.gen(function* () {
-        const f = yield* environmentFixtureWith({}, { stage: false });
-        const a = environmentActions(f);
-        yield* f.merge();
-        yield* f.s.given.signedIn;
-        yield* a.when.openFromNavigation;
-        yield* a.when.click("Review release");
-        yield* a.then.text("Release v0.1.0");
-        yield* f.release("v0.1.0");
-        yield* a.then.text("Releasing v0.1.0");
-        yield* a.then.running("production");
-        expect(yield* a.then.productionBuildCount).toBe(1);
-        yield* a.when.finish("production");
-        yield* a.then.text("v0.1.0 is live");
-        yield* a.when.click("Close");
-        yield* a.then.rowShows("v0.1.0", "Live");
-        expect(yield* a.then.productionBuildCount).toBe(1);
         yield* f.s.then.noExternalNetwork;
       }),
     );

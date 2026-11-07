@@ -7,7 +7,7 @@ import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import { act, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 const FEN = EnvironmentId.make("env-fen");
 
@@ -24,7 +24,6 @@ vi.mock("~/routes/-environmentTargets", async (original) => ({
   ...(await original<typeof import("~/routes/-environmentTargets")>()),
   useEnvironmentReachability: () => null,
 }));
-vi.mock("~/state/entities", () => ({ useThreadShells: () => state.shells }));
 vi.mock("~/uiStateStore", () => ({
   useUiStateStore: (select: (value: { threadLastVisitedAtById: object }) => unknown) =>
     select({ threadLastVisitedAtById: {} }),
@@ -205,12 +204,17 @@ function tooltips(html: string): ReadonlyArray<string> {
   );
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   state.shells = [];
   state.mate = true;
   state.view = null;
   state.hqCrew = null;
+  const entities = await import("~/state/entities");
+  vi.spyOn(entities, "useThreadShells").mockImplementation(
+    () => state.shells as ReturnType<typeof entities.useThreadShells>,
+  );
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe("ConversationStrip", () => {
   it.each([false, true])(

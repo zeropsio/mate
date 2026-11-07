@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it } from "vite-plus/test";
+// @vitest-environment happy-dom
+import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { removeLocalStorageItem } from "./hooks/useLocalStorage";
 import {
@@ -6,10 +7,16 @@ import {
   isProviderUpdateNotificationDismissed,
   PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY,
 } from "./providerUpdateDismissal";
+import { closeAccountLifetime, openAccountLifetime } from "./zerops/accountLifetime";
 
 describe("providerUpdateDismissal", () => {
   beforeEach(() => {
+    openAccountLifetime("provider-dismissal-test");
     removeLocalStorageItem(PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY);
+  });
+  afterEach(async () => {
+    removeLocalStorageItem(PROVIDER_UPDATE_DISMISSALS_STORAGE_KEY);
+    await closeAccountLifetime();
   });
 
   it("persists provider update dismissals by notification key", () => {

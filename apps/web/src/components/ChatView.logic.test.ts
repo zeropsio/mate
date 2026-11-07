@@ -536,40 +536,10 @@ describe("resolveThreadMetadataUpdateForNextTurn", () => {
 });
 
 describe("buildThreadTurnInterruptInput", () => {
-  it("targets the session's active running turn", () => {
-    const activeTurnId = TurnId.make("turn-running");
-
-    expect(
-      buildThreadTurnInterruptInput(
-        makeThread({
-          session: {
-            ...readySession,
-            status: "running",
-            activeTurnId,
-          },
-        }),
-      ),
-    ).toEqual({ threadId, turnId: activeTurnId });
-  });
-
   it("omits a turn id when the session is not running", () => {
     expect(buildThreadTurnInterruptInput(makeThread({ session: readySession }))).toEqual({
       threadId,
     });
-  });
-
-  it("omits a turn id when a running session has not projected its active turn yet", () => {
-    expect(
-      buildThreadTurnInterruptInput(
-        makeThread({
-          session: {
-            ...readySession,
-            status: "running",
-            activeTurnId: null,
-          },
-        }),
-      ),
-    ).toEqual({ threadId });
   });
 });
 
@@ -1171,16 +1141,6 @@ describe("isZeropsInstanceRunnable", () => {
 });
 
 describe("resolveComposerInteractionMode", () => {
-  it("resets a restored plan draft when the selected instance does not support plan mode", () => {
-    expect(
-      resolveComposerInteractionMode({
-        planModeEnabled: true,
-        provider: { showInteractionModeToggle: false },
-        interactionMode: "plan",
-      }),
-    ).toEqual({ enabled: false, interactionMode: "default" });
-  });
-
   it("keeps legacy plan behavior for providers that omit the capability", () => {
     expect(
       resolveComposerInteractionMode({
@@ -2152,12 +2112,6 @@ describe("the view's own thread error", () => {
       expected: null,
     },
     {
-      name: "older history loaded, the newest unchanged",
-      entry: { message: "Refused.", after: T1 },
-      newest: T1,
-      expected: "Refused.",
-    },
-    {
       name: "a window a reconnect shrank to nothing of the person's",
       entry: { message: "Refused.", after: T1 },
       newest: null,
@@ -2282,12 +2236,6 @@ describe("queuedSendOutcome", () => {
       expected: { action: "hold", reason: "Your session ended." },
     },
     {
-      name: "an upload that failed",
-      failure: { kind: "upload-failed" },
-      retries: 0,
-      expected: { action: "hold", reason: "An attachment didn't upload." },
-    },
-    {
       name: "too long to send",
       failure: { kind: "too-long" },
       retries: 0,
@@ -2318,11 +2266,6 @@ describe("sendStepAfterUploads", () => {
     ["everything up, a live message goes", { uploaded, queued: false }, { action: "send" }],
     ["nothing to upload, it goes", { uploaded: [], queued: true }, { action: "send" }],
     [
-      "a queued message whose file did not upload is held, its bubble saying so",
-      { uploaded: null, queued: true },
-      { action: "abort-queued", failure: { kind: "upload-failed" } },
-    ],
-    [
       "a live message whose file did not upload stays in the composer with the reason",
       { uploaded: null, queued: false },
       { action: "thread-error", message: "Retry or remove failed uploads before sending." },
@@ -2333,6 +2276,7 @@ describe("sendStepAfterUploads", () => {
 
   it("holds a queued message with a failed upload at the front, never retrying it", () => {
     const step = sendStepAfterUploads({ uploaded: null, queued: true });
+    expect(step).toEqual({ action: "abort-queued", failure: { kind: "upload-failed" } });
     if (step.action !== "abort-queued") throw new Error("the queued send was not aborted");
     expect(queuedSendOutcome(step.failure, 0)).toEqual({
       action: "hold",

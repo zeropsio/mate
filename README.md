@@ -13,19 +13,18 @@ below.
 
 Every Zerops project already runs a `zcp` container: Ubuntu, a shell, the project's code, and
 Claude Code + Codex already installed and authorized. So the Zerops Mate server runs **inside that
-container**, under `/mate/`, and its released client is the web bundle served there: a user signs in
-with their own Zerops account and reaches the container directly, no pairing code and no shared
-container secret. The agent sits next to the code — file operations are local, work survives
-closing your laptop — and it already has the platform in its hands: the `zerops_*` MCP tools
+container**. The separately hosted web client lets a user sign in with their own Zerops account
+and connect to the container without a pairing code or shared container secret. The agent sits next
+to the code — file operations are local, work survives closing your laptop — and it already has the platform in its hands: the `zerops_*` MCP tools
 (deploy, logs, import, scale, env, subdomain…) that make this different from a generic agent GUI.
 
 ```
-  browser                                     zcp container (one per Zerops project)
+  hosted web client                          zcp container (one per Zerops project)
  ┌──────────────────────────┐                ┌─────────────────────────────────────┐
- │  Mate client              │   signs in    │  Mate server, served at /mate/      │
- │  threads, approvals,      │◄──────────────►  spawns `claude` / `codex` ──► the  │
- │  diffs, terminal          │  with Zerops   │  zcp MCP tools; /var/www, git, term │
- └──────────────────────────┘   identity     └─────────────────────────────────────┘
+ │  threads, approvals,      │◄──────────────►│  Mate server, proxied at /mate/     │
+ │  diffs, terminal          │                │  spawns `claude` / `codex` and uses │
+ │  Zerops sign-in           │                │  zcp MCP tools; /var/www, git, term │
+ └──────────────────────────┘                └─────────────────────────────────────┘
 ```
 
 ## What runs where
@@ -33,8 +32,9 @@ closing your laptop — and it already has the platform in its hands: the `zerop
 - **Sign-in is a Zerops identity, not a pairing code.** The door checks project membership and
   mints a session; there is no code to copy and no secret shared out of band. Design:
   `../zcp/docs/spec-mate.md` §3.
-- **zcp installs the pinned GitHub release at boot** and supervises it as `zerops@mate`. Nginx
-  publishes the bundled web client at `/mate/` on the container's public origin. Delivery:
+- **zcp tracks the latest stable GitHub release**, checks compatibility before installation, and
+  supervises the server as `zerops@mate`. Nginx proxies the server API and WebSocket at `/mate/`; the web client is hosted
+  separately at https://mate.zerops.io. Delivery:
   `../zcp/docs/spec-mate.md` §2.
 - **The agent's leverage is the `zerops_*` MCP toolset** already wired into the container. That
   toolset lives in `zcp`, not here — Zerops Mate is the client and the harness around it.
@@ -47,7 +47,7 @@ Releases are published on [GitHub](https://github.com/zeropsio/mate/releases). T
 reports `mate v0.1.0`.
 
 Nothing is published to npm under the `zerops-mate` name. Zerops users do not install the tarball
-themselves because zcp owns the pinned installation. The fork does not currently publish desktop
+themselves because zcp owns the installation. The fork does not currently publish desktop
 or mobile clients; package-manager builds with the upstream T3 Code name are not Zerops Mate releases.
 
 ## What is Zerops-specific here
@@ -65,8 +65,10 @@ imported, ported, owned, or deleted, and why — is `docs/internals/zerops/fork.
   decision, the zones, what was kept and what was deleted, how work gets done, upstream intake.
 - `../zcp/docs/spec-mate.md` — the design spec: the envelope on the wire, delivery, the door, client
   flow, the Zerops-aware client, git.
-- [`docs/internals/zerops/`](docs/internals/zerops/) — the measured-facts ledger
-  (`verified.md`, `questions.md`, `hacks.md`, `map.md`, `poc-findings.md`) and `intake.md`.
+- [`docs/internals/zerops/verified.md`](docs/internals/zerops/verified.md) — measured platform
+  assumptions; [`intake.md`](docs/internals/zerops/intake.md) covers upstream intake.
+- Private `zeropsio/mate-hq`, `docs/architecture/README.md` — conceptual architecture. Public
+  product contracts in this repository and the zcp spec remain self-contained.
 
 ## Delivering a dev build
 

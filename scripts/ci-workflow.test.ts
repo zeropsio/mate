@@ -367,10 +367,6 @@ it("Decision: Signal never blocks merge, promotion or release; the blocking tier
     "utf8",
   );
   expect(signal.name).toBe("Signal");
-  expect(signal.on).toEqual({
-    pull_request: ci.on.pull_request,
-    push: { branches: ["kh-next", "kh-bisect/signal-**"] },
-  });
   expect(
     ci.jobs.chat_scenarios,
     "ASSERTION: browser shards cannot affect the blocking CI verdict",
@@ -411,6 +407,75 @@ it("Decision: Signal never blocks merge, promotion or release; the blocking tier
     path: "signal-failures.json",
     "if-no-files-found": "error",
   });
+});
+
+it("Decision: no Signal run starts from a kh-next push or a pull request; a nightly main run and a manual dispatch are the only starts.", () => {
+  const signal = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
+  );
+  expect(signal.on).toEqual({ schedule: [{ cron: "0 2 * * *" }], workflow_dispatch: null });
+});
+
+it("Signal compares each nightly run with the previous completed nightly classification on main", () => {
+  const signal = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
+  );
+  const previous = signal.jobs.classify.steps.find((step: { run?: string }) =>
+    step.run?.includes("gh run list"),
+  );
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "signal-previous-"));
+  try {
+    const runs = [
+      { databaseId: 104, conclusion: "success", headBranch: "main", event: "schedule" },
+      { databaseId: 103, conclusion: "failure", headBranch: "main", event: "workflow_dispatch" },
+      { databaseId: 102, conclusion: "failure", headBranch: "kh-next", event: "push" },
+      { databaseId: 101, conclusion: "cancelled", headBranch: "main", event: "schedule" },
+      { databaseId: 100, conclusion: "failure", headBranch: "main", event: "schedule" },
+      { databaseId: 99, conclusion: "success", headBranch: "main", event: "schedule" },
+    ];
+    NodeFS.writeFileSync(NodePath.join(directory, "runs.json"), JSON.stringify(runs));
+    NodeFS.writeFileSync(
+      NodePath.join(directory, "gh"),
+      `#!/usr/bin/env bash
+set -eu
+if [[ "$1 $2" == 'run list' ]]; then
+  branch= event= filter=
+  while (( $# )); do
+    case "$1" in
+      --branch) branch=$2; shift ;;
+      --event) event=$2; shift ;;
+      --jq) filter=$2; shift ;;
+    esac
+    shift
+  done
+  jq --arg branch "$branch" --arg event "$event" '[.[] | select(.headBranch == $branch and .event == $event)]' "$SIGNAL_RUNS" | jq -r "$filter"
+elif [[ "$1 $2" == 'run download' ]]; then
+  printf '%s' "$3" > "$SIGNAL_SELECTED"
+else
+  exit 1
+fi
+`,
+      { mode: 0o755 },
+    );
+    const selected = NodePath.join(directory, "selected");
+    const result = NodeChildProcess.spawnSync("bash", ["-eu", "-c", previous.run], {
+      cwd: directory,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${directory}${NodePath.delimiter}${process.env.PATH}`,
+        GITHUB_REPOSITORY: "zeropsio/mate",
+        GITHUB_RUN_ID: "104",
+        SIGNAL_RUNS: NodePath.join(directory, "runs.json"),
+        SIGNAL_SELECTED: selected,
+      },
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(NodeFS.readFileSync(selected, "utf8")).toBe("100");
+    expect(previous.if).toBe("${{ github.event_name == 'schedule' }}");
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 it("Decision: supersede pending main runs; never cancel a running deploy", () => {
@@ -1068,7 +1133,6 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
   const journeys = parse(
     NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
   ).jobs.chat_scenarios as (typeof jobs)[string];
-  expect(build.needs, "ASSERTION: the bundle waits only on the tree receipt").toBe("verification");
   expect(
     build.steps
       .filter(
@@ -2240,38 +2304,33 @@ it("CI and local Check validate every workflow with pinned actionlint", () => {
   expect(manifest.devDependencies["github-actionlint"]).toBe("1.7.12");
 });
 
-it.each(["ci", "signal"])(
-  "Decision: a diag ref never costs more than one live CI run, and Signal runs on diag refs only by name (%s)",
-  (name) => {
-    const workflow = parse(
-      NodeFS.readFileSync(NodePath.join(root, `.github/workflows/${name}.yml`), "utf8"),
-    );
+it("Decision: a diag ref never costs more than one live CI run", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  expect(
+    workflow.concurrency.group,
+    "ASSERTION: every workflow/ref owns one cancellation group",
+  ).toBe("ci-${{ github.ref }}");
+  const expression = workflow.concurrency["cancel-in-progress"].slice(3, -2);
+  for (const [ref, event, cancels] of [
+    ["refs/heads/main", "push", false],
+    ["refs/heads/kh-next", "push", true],
+    ["refs/heads/kh-bisect/diag-ci-diag-economy", "push", true],
+    ["refs/heads/kh-bisect/signal-ci-diag-economy", "push", true],
+    ["refs/pull/42/merge", "pull_request", true],
+  ]) {
     expect(
-      workflow.concurrency.group,
-      "ASSERTION: every workflow/ref owns one cancellation group",
-    ).toBe(name + "-${{ github.ref }}");
-    const expression = workflow.concurrency["cancel-in-progress"].slice(3, -2);
-    for (const [ref, event, cancels] of [
-      ["refs/heads/main", "push", false],
-      ["refs/heads/kh-next", "push", name === "ci"],
-      ["refs/heads/kh-bisect/diag-ci-diag-economy", "push", true],
-      ["refs/heads/kh-bisect/signal-ci-diag-economy", "push", true],
-      ["refs/pull/42/merge", "pull_request", true],
-    ]) {
-      expect(
-        NodeVM.runInNewContext(expression, {
-          github: { ref, event_name: event },
-          startsWith: (value: string, prefix: string) => value.startsWith(prefix),
-        }),
-        `ASSERTION: ${name} cancellation for ${ref} must be ${cancels}`,
-      ).toBe(cancels);
-    }
-    expect(workflow.on.push.branches).toEqual(
-      name === "ci" ? ["main", "kh-next", "kh-bisect/**"] : ["kh-next", "kh-bisect/signal-**"],
-    );
-    expect(workflow.on.pull_request).toBeNull();
-  },
-);
+      NodeVM.runInNewContext(expression, {
+        github: { ref, event_name: event },
+        startsWith: (value: string, prefix: string) => value.startsWith(prefix),
+      }),
+      `ASSERTION: CI cancellation for ${ref} must be ${cancels}`,
+    ).toBe(cancels);
+  }
+  expect(workflow.on.push.branches).toEqual(["main", "kh-next", "kh-bisect/**"]);
+  expect(workflow.on.pull_request).toBeNull();
+});
 
 it("Decision: CI publishes its total budget and bounds scenario and classify process groups inside their jobs", () => {
   const source = NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8");
@@ -2286,11 +2345,11 @@ it("Decision: CI publishes its total budget and bounds scenario and classify pro
     jobs[id]!["timeout-minutes"] +
     Math.max(0, ...[jobs[id]!.needs ?? []].flat().map((need) => pathBudget(jobs, need)));
   expect(source).toContain("Blocking CI <= 33 min");
-  expect(source).toContain("Signal <= 41 min");
+  expect(source).toContain("Signal <= 38 min");
   expect(
     Math.max(...Object.keys(ci.jobs).map((id) => pathBudget(ci.jobs, id))),
   ).toBeLessThanOrEqual(33);
-  expect(pathBudget(signal.jobs, "classify")).toBeLessThanOrEqual(41);
+  expect(pathBudget(signal.jobs, "classify")).toBeLessThanOrEqual(38);
   for (const [job, name] of [
     [ci.jobs.state_smoke, "Certify sign-in, fixed smoke and affected scenarios"],
     [signal.jobs.chat_scenarios, "Record this shard's test evidence"],
@@ -2643,18 +2702,16 @@ const fullJobs = {
 };
 const reusedJobs = {
   "ci.yml": [{ name: "Check", conclusion: "skipped" }],
-  "signal.yml": [{ name: "Classify original failures", conclusion: "skipped" }],
 };
 
 /** Runs a workflow's real verdict step for a kh-next push whose checkout has `tree`. */
 function khNextVerdict(
-  workflow: "ci.yml" | "signal.yml",
   tree: string,
   runs: Partial<Record<"ci.yml" | "signal.yml", { id: number }[]>>,
   jobs: Record<number, { name: string; conclusion: string }[]> = {},
 ) {
   const step = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows", workflow), "utf8"),
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   ).jobs.verification.steps.find((candidate: { id?: string }) => candidate.id === "verdict");
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tree-verdict-"));
   try {
@@ -2726,7 +2783,6 @@ it("Decision: A kh-next push whose tree already has a successful kh-next CI run 
   const reuse = { ...recordedRuns.ciGreen, id: 41108850991 };
   for (const runs of [[recordedRuns.ciGreen], [reuse, recordedRuns.ciGreen]]) {
     const verdict = khNextVerdict(
-      "ci.yml",
       recordedTree,
       { "ci.yml": runs },
       {
@@ -2743,7 +2799,6 @@ it("Decision: A kh-next push whose tree already has a successful kh-next CI run 
   }
   expect(
     khNextVerdict(
-      "ci.yml",
       recordedTree,
       { "ci.yml": [{ ...recordedRuns.ciGreen, id: 1 }] },
       {
@@ -2754,47 +2809,17 @@ it("Decision: A kh-next push whose tree already has a successful kh-next CI run 
   ).toBe("skip=false\n");
 });
 
-it("Decision: A kh-next push whose tree already has a successful kh-next Signal run skips Signal's bundle and scenario shards.", () => {
+it("Signal runs its bundle and shards without reusing an earlier tree's verification", () => {
   const signal = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/signal.yml"), "utf8"),
   );
-  const verdict = khNextVerdict(
-    "signal.yml",
-    recordedTree,
-    { "signal.yml": [recordedRuns.signalGreen] },
-    { [recordedRuns.signalGreen.id]: fullJobs["signal.yml"] },
-  );
-  expect(verdict.output, "ASSERTION: the re-pushed tree reuses kh-next's green Signal").toBe(
-    "skip=true\n",
-  );
-  expect(signal.jobs.chat_bundle.needs).toBe("verification");
-  expect(signal.jobs.verification.outputs.skip).toBe("${{ steps.verdict.outputs.skip }}");
-  const bundleRuns = (skip: string) =>
-    NodeChildProcess.spawnSync(
-      "bash",
-      [
-        "-c",
-        `[[ ${signal.jobs.chat_bundle.if
-          .replace(/^\$\{\{\s*|\s*\}\}$/gu, "")
-          .replaceAll("!cancelled()", "true == true")
-          .replaceAll("needs.verification.outputs.skip", `'${skip}'`)} ]]`,
-      ],
-      { encoding: "utf8" },
-    ).status === 0;
-  expect(bundleRuns("true"), "ASSERTION: a verified tree builds no bundle").toBe(false);
-  expect(bundleRuns("false"), "ASSERTION: an unverified tree builds the bundle").toBe(true);
-  expect(
-    bundleRuns(""),
-    "ASSERTION: pull requests and diagnostics, which skip the receipt, build the bundle",
-  ).toBe(true);
-  expect(signal.jobs.verification.if).toBe(
-    "${{ github.event_name == 'push' && github.ref == 'refs/heads/kh-next' }}",
-  );
+  expect(signal.jobs.verification).toBeUndefined();
+  expect(signal.jobs.chat_bundle.needs).toBeUndefined();
+  expect(signal.jobs.chat_bundle.if).toBeUndefined();
   expect(
     signal.jobs.chat_scenarios,
-    "ASSERTION: shards are skipped with the bundle they need",
+    "ASSERTION: shards depend on the bundle they need",
   ).toMatchObject({ needs: "chat_bundle" });
-  // An implicit success() also requires every skipped ancestor, the receipt of a pull request too.
   const shardsRun = (bundle: string) =>
     signal.jobs.chat_scenarios.if !== undefined &&
     NodeChildProcess.spawnSync(
@@ -2808,84 +2833,40 @@ it("Decision: A kh-next push whose tree already has a successful kh-next Signal 
       ],
       { encoding: "utf8" },
     ).status === 0;
-  expect(shardsRun("skipped"), "ASSERTION: a verified tree runs no shard").toBe(false);
-  expect(
-    shardsRun("success"),
-    "ASSERTION: pull requests and diagnostics, which skip the receipt, run every shard",
-  ).toBe(true);
+  expect(shardsRun("skipped"), "ASSERTION: a skipped bundle runs no shard").toBe(false);
+  expect(shardsRun("success"), "ASSERTION: a successful bundle runs every shard").toBe(true);
   expect(signal.jobs.classify.if).toContain("needs.chat_bundle.result == 'success'");
 });
 
 it("Decision: A tree without a successful run of the same workflow is always tested in full; a red or cancelled run is never reused.", () => {
   const cases = [
     {
-      workflow: "ci.yml" as const,
       runs: { "ci.yml": [recordedRuns.ciRed] },
       jobs: { [recordedRuns.ciRed.id]: fullJobs["ci.yml"] },
       tree: recordedRuns.ciRed.head_commit.tree_id,
       why: "a red CI run of the tree, whose Check passed, is no verdict",
     },
     {
-      workflow: "ci.yml" as const,
       runs: { "ci.yml": [{ ...recordedRuns.ciGreen, conclusion: "cancelled" }] },
       jobs: { [recordedRuns.ciGreen.id]: fullJobs["ci.yml"] },
       tree: recordedTree,
       why: "a cancelled CI run of the tree is no verdict",
     },
     {
-      workflow: "ci.yml" as const,
       runs: { "ci.yml": [recordedRuns.ciGreen] },
       jobs: { [recordedRuns.ciGreen.id]: fullJobs["ci.yml"] },
       tree: "unknown-tree",
       why: "a green CI run of another tree is no verdict",
     },
     {
-      workflow: "ci.yml" as const,
       runs: { "signal.yml": [recordedRuns.signalGreen] },
       jobs: { [recordedRuns.signalGreen.id]: fullJobs["signal.yml"] },
       tree: recordedTree,
       why: "a green Signal run is no CI verdict",
     },
-    {
-      workflow: "signal.yml" as const,
-      runs: { "signal.yml": [{ ...recordedRuns.signalGreen, conclusion: "failure" }] },
-      jobs: { [recordedRuns.signalGreen.id]: fullJobs["signal.yml"] },
-      tree: recordedTree,
-      why: "a red Signal run of the tree is no verdict",
-    },
-    {
-      workflow: "signal.yml" as const,
-      runs: { "signal.yml": [{ ...recordedRuns.signalGreen, conclusion: "cancelled" }] },
-      jobs: { [recordedRuns.signalGreen.id]: fullJobs["signal.yml"] },
-      tree: recordedTree,
-      why: "a cancelled Signal run of the tree is no verdict",
-    },
-    {
-      workflow: "signal.yml" as const,
-      runs: { "signal.yml": [recordedRuns.signalGreen] },
-      jobs: { [recordedRuns.signalGreen.id]: fullJobs["signal.yml"] },
-      tree: "unknown-tree",
-      why: "a green Signal run of another tree is no verdict",
-    },
-    {
-      workflow: "signal.yml" as const,
-      runs: { "ci.yml": [recordedRuns.ciGreen] },
-      jobs: { [recordedRuns.ciGreen.id]: fullJobs["ci.yml"] },
-      tree: recordedTree,
-      why: "a green CI run is no Signal verdict",
-    },
-    {
-      workflow: "signal.yml" as const,
-      runs: { "signal.yml": [recordedRuns.signalGreen] },
-      jobs: { [recordedRuns.signalGreen.id]: reusedJobs["signal.yml"] },
-      tree: recordedTree,
-      why: "a Signal run that itself reused is no verification",
-    },
   ];
-  for (const { workflow, runs, jobs, tree, why } of cases)
-    expect(khNextVerdict(workflow, tree, runs, jobs).output, `ASSERTION: ${why}`).toBe(
-      "skip=false\n",
-    );
+  for (const { runs, jobs, tree, why } of cases)
+    expect(khNextVerdict(tree, runs, jobs).output, `ASSERTION: ${why}`).toBe("skip=false\n");
 });
 
 it("Decision: a step that waits on GitHub has its own timeout and leaves setup and tests their execution budget", () => {

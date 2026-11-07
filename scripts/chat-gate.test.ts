@@ -316,7 +316,7 @@ it("the gate reads each scenario project's journeys as the scenario config runs 
 it.each([
   { path: "apps/web/test/scenarios/areas/c-mate/engine-page.scenario.ts", ids: ["C", "types"] },
   { path: "apps/web/test/scenarios/areas/c-mate/engine-secret.scenario.ts", ids: ["C", "types"] },
-  { path: "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts", ids: ["C", "types"] },
+  { path: "apps/web/test/scenarios/areas/c-mate/recovery.scenario.ts", ids: ["C", "types"] },
 ])("a changed scenario runs under the project that runs it: $path", ({ path, ids }) => {
   const root = NodePath.resolve(import.meta.dirname, "..");
   const stages = selectLaneChatStages([path], [path], root);
@@ -431,7 +431,7 @@ it("lane file selection keeps the affected C journey without expanding siblings"
   );
   expect(result.status, result.stderr).toBe(0);
   expect(result.stdout.split(file.slice("apps/web/".length))).toHaveLength(2);
-  expect(result.stdout).not.toContain("admission.scenario.ts");
+  expect(result.stdout).not.toContain("recovery.scenario.ts");
   expect(result.stdout).toContain("--project scenarios ");
   expect(result.stdout).toContain("reason: explicit related files");
 });
@@ -442,7 +442,7 @@ it.each([
     "--stages",
     "E",
     "--files",
-    JSON.stringify(["apps/web/test/scenarios/areas/c-mate/admission.scenario.ts"]),
+    JSON.stringify(["apps/web/test/scenarios/areas/c-mate/recovery.scenario.ts"]),
   ],
   ["--stages", "A", "--files", JSON.stringify(["apps/server/src/spi/replay/missing.test.ts"])],
 ])("invalid lane file selection fails before running a command (%s)", (...args) => {

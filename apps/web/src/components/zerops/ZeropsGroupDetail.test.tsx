@@ -38,16 +38,21 @@ import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { Window } from "happy-dom";
-import { act, type ReactNode } from "react";
+import { act, type ReactElement, type ReactNode } from "react";
 import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/reactivity";
 import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+import * as projectFlows from "~/zerops/projectFlows";
+import * as projectActivity from "~/zerops/activity/useProjectActivity";
+import * as sessionContext from "~/zerops/sessionContext";
+import * as accountHq from "~/zerops/accountHq";
+import * as nowClock from "~/zerops/useNowMs";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import type { CanonicalHqStructure } from "@t3tools/client-runtime/zerops/hq";
-import { create, type ReactTestRenderer } from "react-test-renderer";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { create as createTree, type ReactTestRenderer } from "react-test-renderer";
+import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
@@ -74,54 +79,63 @@ const platform = vi.hoisted(() => ({
   projectReads: [] as Array<string>,
   navigation: [] as Array<unknown>,
 }));
-vi.mock("~/zerops/activity/useProjectActivity", async (original) => {
-  const activity = await original<typeof import("~/zerops/activity/useProjectActivity")>();
-  return {
-    ...activity,
-    useProjectActivityRead: () => activity.EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
-  };
-});
-vi.mock("~/zerops/projectFlows", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useStopDeploymentsShown: () => platform.deployments,
-  useProjectFlows: (...args: unknown[]) => {
+const { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
+const withRouter = (element: ReactNode) => (
+  <RouterContextProvider router={router}>{element}</RouterContextProvider>
+);
+const renderToStaticMarkup = (element: ReactNode) => renderMarkup(withRouter(element));
+const create = (element: ReactElement) => createTree(withRouter(element));
+
+// Render the popup in place so the stop page's project link is visible in SSR.
+const menuParts = await import("../ui/menu");
+beforeEach(() => {
+  vi.spyOn(projectActivity, "useProjectActivityRead").mockReturnValue(
+    projectActivity.EMPTY_PROJECT_ACTIVITY_SNAPSHOT,
+  );
+  vi.spyOn(sessionContext, "useZeropsSession").mockReturnValue({
+    status: "signed-in",
+    activeOrganization: { id: "org" },
+  } as ReturnType<typeof sessionContext.useZeropsSession>);
+  vi.spyOn(accountHq, "configuredHq").mockReturnValue({
+    projectId: "hq",
+    address: "https://hq.test",
+  } as ReturnType<typeof accountHq.configuredHq>);
+  vi.spyOn(nowClock, "useNowMs").mockReturnValue(NOW);
+  vi.spyOn(router, "navigate").mockImplementation((target) => {
+    platform.navigation.push(
+      Object.fromEntries(
+        Object.entries(target).filter(([key, value]) => key !== "from" || value !== undefined),
+      ),
+    );
+    return Promise.resolve();
+  });
+  vi.spyOn(projectFlows, "useStopDeploymentsShown").mockImplementation(
+    () => platform.deployments as ReturnType<typeof projectFlows.useStopDeploymentsShown>,
+  );
+  vi.spyOn(projectFlows, "useProjectFlows").mockImplementation((...args) => {
     if (platform.routeWitness) {
       platform.projectReads.push("project/service/log/version/token consumer");
       throw new Error("Project reads reached before target dispatch");
     }
     throw new Error(`Unexpected flow read: ${String(args)}`);
-  },
-}));
-vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
-  ...(await original<typeof import("~/zerops/ZeropsSessionProvider")>()),
-  useZeropsSession: () => ({ status: "signed-in", activeOrganization: { id: "org" } }),
-}));
-vi.mock("~/zerops/accountHq", () => ({
-  configuredHq: () => ({ projectId: "hq", address: "https://hq.test" }),
-}));
-vi.mock("~/zerops/useNowMs", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useNowMs: () => NOW,
-}));
-
-vi.mock("@tanstack/react-router", async (actual) => {
-  const { createElement } = await import("react");
-  return {
-    ...(await actual<typeof import("@tanstack/react-router")>()),
-    // Standing alone, the frame's bar carries the lockup as a link home.
-    Link: ({ to, ...props }: React.ComponentProps<"a"> & { to: string }) =>
-      createElement("a", { href: to, ...props }),
-    useNavigate: () => (target: unknown) => {
-      platform.navigation.push(target);
-    },
-  };
+  });
+  vi.spyOn(menuParts, "MenuPopup").mockImplementation(
+    (({ children }: { children: ReactNode }) => children) as typeof menuParts.MenuPopup,
+  );
 });
-
-// Render the popup in place so the stop page's project link is visible in SSR.
-vi.mock("../ui/menu", async (actual) => ({
-  ...(await actual<typeof import("../ui/menu")>()),
-  MenuPopup: ({ children }: { children: ReactNode }) => children,
-}));
+const mountedTrees = new Set<ReactTestRenderer>();
+const mountedRegistries = new Set<ReturnType<typeof AtomRegistry.make>>();
+afterEach(() => {
+  act(() => {
+    for (const tree of mountedTrees) tree.unmount();
+  });
+  mountedTrees.clear();
+  for (const registry of mountedRegistries) registry.dispose();
+  mountedRegistries.clear();
+  vi.restoreAllMocks();
+});
 
 const CHECKING = "Checking your access to this project…";
 
@@ -1773,6 +1787,7 @@ describe("environment route target dispatch", () => {
     "The environment route resolves its target before observing a Zerops project.",
     (kind) => {
       const registry = AtomRegistry.make();
+      mountedRegistries.add(registry);
       const id = HqEnvironmentId.make("environment-without-project");
       const structure = {
         apps: [
@@ -1832,6 +1847,7 @@ describe("environment route target dispatch", () => {
               </AccountDataContext.Provider>
             </RegistryContext.Provider>,
           );
+          mountedTrees.add(mounted);
         });
       } catch (cause) {
         failure = cause;
@@ -1905,7 +1921,9 @@ describe("environment route target dispatch", () => {
       expect(platform.projectReads).toEqual([]);
       expect(requests.filter((family) => family !== "hqAppDetail")).toEqual([]);
       act(() => mounted?.unmount());
+      if (mounted !== undefined) mountedTrees.delete(mounted);
       registry.dispose();
+      mountedRegistries.delete(registry);
     },
   );
 });
@@ -1918,6 +1936,7 @@ it("Environment navigation keeps its identity when the target's project name cha
   };
   const open = (name: string) => {
     const registry = AtomRegistry.make();
+    mountedRegistries.add(registry);
     const store = mountRoster(registry, "org", [
       { id: target.projectId, name: `Shop - ${name}`, status: "ACTIVE" },
     ]);
@@ -1987,6 +2006,7 @@ it("Environment navigation keeps its identity when the target's project name cha
           />
         </RegistryContext.Provider>,
       );
+      mountedTrees.add(mounted);
     });
     const button = mounted.root
       .findAllByType("button")
@@ -1994,7 +2014,9 @@ it("Environment navigation keeps its identity when the target's project name cha
     expect(button).toBeDefined();
     act(() => button!.props.onClick());
     act(() => mounted.unmount());
+    mountedTrees.delete(mounted);
     registry.dispose();
+    mountedRegistries.delete(registry);
   };
   platform.navigation = [];
   open("Original project name");
@@ -2196,10 +2218,12 @@ it("A runtime stop opens its recorded environment identity and keeps an unrecord
     mounted = create(
       <ZeropsRuntimeStops stops={stops} deployments={new Map()} onOpen={(id) => opened.push(id)} />,
     );
+    mountedTrees.add(mounted);
   });
   act(() => {
     for (const button of mounted.root.findAllByType("button")) button.props.onClick();
   });
   expect(opened).toEqual(["environment-stage", "unregistered-stage"]);
   act(() => mounted.unmount());
+  mountedTrees.delete(mounted);
 });

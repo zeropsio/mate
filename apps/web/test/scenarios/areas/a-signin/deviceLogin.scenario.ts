@@ -1,6 +1,7 @@
 import { scenarioSuite } from "../../harness/suite.ts";
 import { beforeAll, describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import { deviceLoginDist } from "../../harness/deviceLoginBundle.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { recordStep } from "../../harness/lastStep.ts";
@@ -10,6 +11,16 @@ import { account, historyAddresses, vault, zeropsWindow } from "./dsl.ts";
 /** The device-login build, once `beforeAll` has it. */
 let dist = "";
 const deviceLoginScenario = () => createScenario([installSignIn], { signIn: "device-login", dist });
+
+/** Advance the platform's one-second poll only after the person's answer reaches Zerops. */
+const signInAfterAnswer = (s: Effect.Success<ReturnType<typeof deviceLoginScenario>>) =>
+  Effect.gen(function* () {
+    yield* Effect.promise(() => s.clock.install());
+    const signIn = yield* Effect.forkChild(s.given.signedIn);
+    yield* Effect.promise(() => s.drivers.zerops.waitForRequest("POST /authorize-login"));
+    yield* Effect.promise(() => s.clock.advanceStepped(1_000));
+    yield* Fiber.join(signIn);
+  });
 
 describe("A: sign-in through the Zerops window", () => {
   beforeAll(async () => {
@@ -33,7 +44,7 @@ describe("A: sign-in through the Zerops window", () => {
             doors.push(response.status());
         });
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
+        yield* signInAfterAnswer(s);
         const consent = yield* zeropsWindow(s).lastConsentPage;
         expect(consent.searchParams.get("display")).toBe("popup");
         expect(consent.searchParams.has("intent")).toBe(false);
@@ -57,8 +68,10 @@ describe("A: sign-in through the Zerops window", () => {
       Effect.gen(function* () {
         const s = yield* deviceLoginScenario();
         const window = zeropsWindow(s);
+        yield* Effect.promise(() => s.clock.install());
         yield* Effect.promise(() => s.page.goto(s.web.origin));
         yield* window.answers(yield* window.opens("Create one on Zerops"), "Approve");
+        yield* Effect.promise(() => s.clock.advanceStepped(1_000));
         const consent = yield* window.lastConsentPage;
         expect(consent.searchParams.get("intent")).toBe("register");
         expect(consent.searchParams.get("display")).toBe("popup");
@@ -86,10 +99,13 @@ describe("A: sign-in through the Zerops window", () => {
         const s = yield* deviceLoginScenario();
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         const window = zeropsWindow(s);
+        yield* Effect.promise(() => s.clock.install());
         yield* Effect.promise(() => s.page.goto(s.web.origin));
         yield* window.answers(yield* window.opens("Continue with your Zerops account"), "Deny");
+        yield* Effect.promise(() => s.clock.advanceStepped(1_000));
         yield* window.says("Sign-in was cancelled.");
         yield* window.answers(yield* window.opens("Try again"), "Approve");
+        yield* Effect.promise(() => s.clock.advanceStepped(1_000));
         yield* account(s.page).showsPerson("owner");
         yield* s.then.menu.row("Shop").appears();
         yield* s.then.noExternalNetwork;
@@ -128,6 +144,7 @@ describe("A: sign-in through the Zerops window", () => {
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         const window = zeropsWindow(s);
         s.web.setPerson(s.page, "personal");
+        yield* Effect.promise(() => s.clock.install());
         yield* Effect.promise(() => s.page.goto(s.web.origin));
         yield* window.blocksPopups;
         yield* Effect.promise(() =>
@@ -146,7 +163,9 @@ describe("A: sign-in through the Zerops window", () => {
         s.web.setPerson(tab, "personal");
         yield* Effect.promise(() => tab.goto(link));
         yield* Effect.promise(() => tab.locator('::-p-aria(Approve[role="button"])').click());
+        yield* Effect.promise(() => s.drivers.zerops.waitForRequest("POST /authorize-login"));
         yield* Effect.promise(() => s.page.bringToFront());
+        yield* Effect.promise(() => s.clock.advanceStepped(1_000));
         yield* account(s.page).showsPerson("owner");
         yield* s.then.menu.row("Shop").appears();
         yield* s.then.noExternalNetwork;
@@ -198,7 +217,7 @@ describe("A: sign-in through the Zerops window", () => {
       Effect.gen(function* () {
         const s = yield* deviceLoginScenario();
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
-        yield* s.given.signedIn;
+        yield* signInAfterAnswer(s);
         yield* s.then.menu.row("Shop").appears();
         const [session] = s.drivers.zerops.deviceLogin.sessions;
         const b = yield* s.given.browserActor({ context: s.page.browserContext() });

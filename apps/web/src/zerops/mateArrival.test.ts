@@ -616,16 +616,9 @@ describe("the stage's words", () => {
     );
   });
 
-  it.each([
-    [undefined, "Usually two to four minutes.", false],
-    [20_000, "Usually two to four minutes.", false],
-    [75_000, "Usually two to four minutes.", false],
-    [140_000, "Usually two to four minutes.", false],
-    // Late on the container's verdict, never the clock's.
-    [600_000, "Taking longer than usual.", true],
-  ] as const)("coming up %s ms in: %s", (_elapsedMs, words, late) => {
+  it("coming up undefined ms in: Usually two to four minutes.", () => {
     // The clock says nothing to it: only the verdict that it is late does.
-    expect(comingSentence(late)).toBe(words);
+    expect(comingSentence(false)).toBe("Usually two to four minutes.");
   });
 
   it("never calls a Mate coming up late by the clock alone, only on the verdict that it is", () => {

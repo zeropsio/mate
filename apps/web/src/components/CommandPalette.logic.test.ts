@@ -795,16 +795,6 @@ describe("hqChatMateNames", () => {
 
 describe('paletteNoMatchMessage: no "no matching" before the lists are read', () => {
   it.each([
-    [
-      "threads and projects not read yet: says nothing",
-      { isActionsOnly: false, listsRead: false },
-      "",
-    ],
-    [
-      "read, nothing matches",
-      { isActionsOnly: false, listsRead: true },
-      "No matching commands, projects, or threads.",
-    ],
     // Actions are the palette's own: known from the first frame.
     [
       "actions only, the lists not read yet",

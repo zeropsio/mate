@@ -20,7 +20,6 @@ import * as Schema from "effect/Schema";
 
 import {
   buildClaudeCapabilitiesProbeQueryOptions,
-  CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES,
   probeClaudeCapabilities,
   probeClaudeWorkspaceSnapshot,
 } from "./ClaudeProvider.ts";
@@ -46,7 +45,7 @@ it("isolates Claude capability probes without dropping workspace setting sources
   assert.deepEqual(options.mcpServers, {});
   assert.equal(options.strictMcpConfig, true);
   assert.equal(options.cwd, "/workspace/project");
-  assert.deepEqual(options.settingSources, [...CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES]);
+  assert.deepEqual(options.settingSources, ["user", "project", "local"]);
   assert.deepEqual(options.settings, { disableAllHooks: true });
   assert.deepEqual(options.allowedTools, []);
   assert.equal(options.persistSession, false);

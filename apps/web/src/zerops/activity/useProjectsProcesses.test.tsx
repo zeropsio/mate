@@ -15,6 +15,8 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { Inventory } from "../inventoryContext";
+import * as inventoryContext from "../inventoryContext";
+import * as accountData from "../ZeropsAccountData";
 import { useProjectsProcesses } from "./useProjectsProcesses";
 
 const organization = {
@@ -31,37 +33,22 @@ const ref = (projectId: string): ProjectRef => ({
   projectId: ZeropsProjectId.make(projectId),
 });
 
-const leases = vi.hoisted(() => ({
+const leases = {
   /** Each hold held now, as `listing project`. */
   held: [] as Array<string>,
   /** Every hold taken, in order. */
   taken: [] as Array<string>,
-}));
-vi.mock("../ZeropsAccountData", () => {
-  // The account's data layer: one object for the account's life, as the real one is.
-  const data = {
-    orgId: "org-1",
-    demandDetail: (demand: { readonly listing?: string; readonly ownerId: string }) => {
-      const name = `${demand.listing} ${demand.ownerId}`;
-      leases.held.push(name);
-      leases.taken.push(name);
-      return () => void leases.held.splice(leases.held.indexOf(name), 1);
-    },
-  };
-  return {
-    useAccountDataOptional: () => data,
-    useAccountOrgId: () => data.orgId,
-    useProjection: () => ({}),
-  };
-});
-vi.mock("../inventoryContext", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  useZeropsInventory: () =>
-    ({
-      projectRefs: new Map(["p-ada", "p-cy"].map((id) => [projectKeyOf(ref(id)), ref(id)])),
-      authority: new Map(),
-    }) as unknown as Inventory,
-}));
+};
+// The account's data layer: one object for the account's life, as the real one is.
+const data = {
+  orgId: "org-1",
+  demandDetail: (demand: { readonly listing?: string; readonly ownerId: string }) => {
+    const name = `${demand.listing} ${demand.ownerId}`;
+    leases.held.push(name);
+    leases.taken.push(name);
+    return () => void leases.held.splice(leases.held.indexOf(name), 1);
+  },
+};
 
 function Probe({ projectIds }: { readonly projectIds: ReadonlyArray<string> }) {
   useProjectsProcesses(projectIds);
@@ -80,10 +67,22 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   leases.held = [];
   leases.taken = [];
+  vi.spyOn(accountData, "useAccountDataOptional").mockReturnValue(
+    data as unknown as ReturnType<typeof accountData.useAccountDataOptional>,
+  );
+  vi.spyOn(accountData, "useAccountOrgId").mockReturnValue(data.orgId);
+  vi.spyOn(accountData, "useProjection").mockImplementation(
+    (() => ({})) as typeof accountData.useProjection,
+  );
+  vi.spyOn(inventoryContext, "useZeropsInventory").mockReturnValue({
+    projectRefs: new Map(["p-ada", "p-cy"].map((id) => [projectKeyOf(ref(id)), ref(id)])),
+    authority: new Map(),
+  } as unknown as Inventory);
 });
 afterEach(async () => {
   await act(async () => tree?.unmount());
   tree = undefined;
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 

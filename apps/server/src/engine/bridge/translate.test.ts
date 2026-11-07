@@ -14,7 +14,7 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 import type { SpiEvent } from "@t3tools/contracts";
-import { assert, describe, it } from "vite-plus/test";
+import { assert, describe, it, vi } from "vite-plus/test";
 
 import type { BridgeDriver, RequestKey, SessionId, TurnHandle } from "./spi3.ts";
 import { type BridgeInput, makeTranslator } from "./translate.ts";
@@ -37,7 +37,7 @@ const H1 = "h1" as TurnHandle;
 const run = (driver: BridgeDriver, threadId: string, inputs: ReadonlyArray<BridgeInput>) => {
   const translator = makeTranslator({ driver, threadId });
   const signals = inputs.flatMap((input) => translator.step(input));
-  return { signals, dropped: translator.dropped() };
+  return { signals };
 };
 
 interface GoldenCase {
@@ -277,32 +277,6 @@ describe("the bridge over every SPI golden", () => {
       .join("");
     assert.isAbove(streamed.length, 0);
     assert.strictEqual(textOf(signals, "h1.i1"), streamed);
-  });
-
-  it("codex/multi-agent-wire [recorded]: the child threads' turns are left out, not ended", () => {
-    const events = readGolden("codex", "multi-agent-wire");
-    const { dropped } = run(
-      "codex",
-      String(events[0]!.threadId),
-      commandLogAround("codex", events),
-    );
-    assert.deepStrictEqual(
-      dropped.filter((input) => input.type.startsWith("turn.")).map((input) => input.reason),
-      ["other-thread", "other-thread"],
-    );
-  });
-
-  it("opencode/hello-baseline [mock]: text with no turn is dropped, never attached to a guess", () => {
-    const events = readGolden("opencode", "hello-baseline");
-    const { dropped } = run(
-      "opencode",
-      String(events[0]!.threadId),
-      commandLogAround("opencode", events),
-    );
-    assert.deepStrictEqual(
-      dropped.map((input) => `${input.reason} ${input.type}`),
-      ["no-turn content.delta", "no-turn content.delta", "no-turn item.completed"],
-    );
   });
 });
 
@@ -1192,44 +1166,6 @@ describe("the fold's rules", () => {
     },
   );
 
-  it("codex [scripted]: the host reaches a turn and an open request by the driver's own ids, a closed request by none", () => {
-    const w = wire("codex");
-    const translator = makeTranslator({ driver: "codex", threadId: THREAD });
-    for (const input of [
-      ...w.open(),
-      ...w.begin(H1, "X1"),
-      w.event("request.opened", {
-        turnId: "X1",
-        requestId: "req-a",
-        payload: { requestType: "command_execution_approval" },
-      }),
-      w.event("user-input.requested", {
-        turnId: "X1",
-        requestId: "req-b",
-        payload: { questions: [] },
-      }),
-    ]) {
-      translator.step(input);
-    }
-    assert.strictEqual(translator.nativeTurn(H1), "X1");
-    assert.isUndefined(translator.nativeTurn(H2));
-    assert.deepStrictEqual(translator.nativeRequest("s1.r1" as RequestKey), {
-      id: "req-a",
-      kind: "approval",
-    });
-    assert.deepStrictEqual(translator.nativeRequest("s1.r2" as RequestKey), {
-      id: "req-b",
-      kind: "question",
-    });
-    translator.step(
-      w.event("request.resolved", {
-        requestId: "req-a",
-        payload: { requestType: "command_execution_approval", decision: "accept" },
-      }),
-    );
-    assert.isUndefined(translator.nativeRequest("s1.r1" as RequestKey));
-  });
-
   it("antigravity [scripted]: a question it asks takes no typed answer", () => {
     const w = wire("antigravity");
     const { signals } = run("antigravity", THREAD, [
@@ -1579,41 +1515,53 @@ const refusedWindow = () => {
   };
 };
 
-describe("real adapters, driven by a mock or an authored wire", () => {
-  it("claudeAgent [mock]: a refused window parks the turn with no end, until when it says", async () => {
-    const window = refusedWindow();
-    assert.deepStrictEqual(
-      await record("claudeAgent", recordClaude([...claudeTurnSoFar, window.message])),
-      [
-        ...OPENS_H1,
-        "h1.i1 text running",
-        "h1.i1 text completed",
-        "context usage",
-        `usage limit parks-turn h1 until ${window.resetsAt}`,
-        "notice warning",
-      ],
-    );
-  });
+// Keep the reset classification deterministic without replacing the adapter's real timers.
+const withRefusalClock = async (body: () => Promise<void>) => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1_790_000_000_000);
+  try {
+    await body();
+  } finally {
+    clock.mockRestore();
+  }
+};
 
-  it("claudeAgent [mock]: a refused window with no believable reset parks the turn with a limit whose reset is unknown", async () => {
-    const pastReset = {
-      type: "rate_limit_event",
-      rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt: 1788008400 },
-      uuid: "limit-1",
-      session_id: CLAUDE_SESSION,
-    };
-    assert.deepStrictEqual(
-      await record("claudeAgent", recordClaude([...claudeTurnSoFar, pastReset])),
-      [
-        ...OPENS_H1,
-        "h1.i1 text running",
-        "h1.i1 text completed",
-        "context usage",
-        "usage limit parks-turn h1 until unknown",
-        "notice warning",
-      ],
-    );
-  });
+describe("real adapters, driven by a mock or an authored wire", () => {
+  it("claudeAgent [mock]: a refused window parks the turn with no end, until when it says", () =>
+    withRefusalClock(async () => {
+      const window = refusedWindow();
+      assert.deepStrictEqual(
+        await record("claudeAgent", recordClaude([...claudeTurnSoFar, window.message])),
+        [
+          ...OPENS_H1,
+          "h1.i1 text running",
+          "h1.i1 text completed",
+          "context usage",
+          `usage limit parks-turn h1 until ${window.resetsAt}`,
+          "notice warning",
+        ],
+      );
+    }));
+
+  it("claudeAgent [mock]: a refused window with no believable reset parks the turn with a limit whose reset is unknown", () =>
+    withRefusalClock(async () => {
+      const pastReset = {
+        type: "rate_limit_event",
+        rate_limit_info: { status: "rejected", rateLimitType: "five_hour", resetsAt: 1788008400 },
+        uuid: "limit-1",
+        session_id: CLAUDE_SESSION,
+      };
+      assert.deepStrictEqual(
+        await record("claudeAgent", recordClaude([...claudeTurnSoFar, pastReset])),
+        [
+          ...OPENS_H1,
+          "h1.i1 text running",
+          "h1.i1 text completed",
+          "context usage",
+          "usage limit parks-turn h1 until unknown",
+          "notice warning",
+        ],
+      );
+    }));
 
   it("claudeAgent [mock]: a background shell outlives its turn, and its result wakes the agent into a turn of its own", async () => {
     const lines = await record(

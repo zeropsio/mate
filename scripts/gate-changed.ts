@@ -14,6 +14,7 @@ import {
   retainedTestFile,
   testClockFile,
   testClockLedger,
+  witnessOwners,
 } from "./gate-input-scopes.ts";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
 import { staleDependencies } from "./gate-installed-dependencies.ts";
@@ -827,7 +828,7 @@ async function laneSnapshot(root: string, comparison: string) {
       .filter((path) => path && !path.startsWith(".gate-receipt.json")),
     trailers: log
       .split("\n")
-      .filter((line) => line.startsWith("Drops-test:"))
+      .filter((line) => line.startsWith("Drops-test:") || line.startsWith("Drops-test-file:"))
       .sort()
       .join("\n"),
   };
@@ -1119,6 +1120,7 @@ function stageHashes(
     return hash.digest("hex");
   };
   const laneTests = paths.filter((path) => retainedTestFile.test(path));
+  const tracked = new Set(inventory);
   return Object.fromEntries(
     stages
       .filter((stage) => !stage.slot)
@@ -1199,7 +1201,12 @@ function stageHashes(
           ];
           baseline = [testClockLedger];
         } else if (stage.name === "test sentence retention") {
-          files.push(...laneTests);
+          // Witnesses tie lane tests to their owners and untouched tests to touched owners.
+          const touched = new Set(paths);
+          files.push(...paths);
+          for (const [test, owners] of witnessOwners(root))
+            if (touched.has(test)) files.push(...[...owners].filter((owner) => tracked.has(owner)));
+            else if ([...owners].some((owner) => touched.has(owner))) files.push(test);
           baseline = laneTests;
           trailers = laneTrailers;
         }
@@ -1677,7 +1684,13 @@ export function selectGateSteps(
   const driverUnits = ownedUnits.filter((file) =>
     file.startsWith("apps/web/test/scenarios/fakes/"),
   );
-  const consumerUnits = ownedUnits.filter((file) => !driverUnits.includes(file));
+  // Only test/e-env's config (PostgreSQL, serial files) includes these; CI runs them through it too.
+  const environmentSourceUnits = ownedUnits.filter((file) =>
+    file.startsWith("apps/web/test/scenarios/areas/e-env/"),
+  );
+  const consumerUnits = ownedUnits.filter(
+    (file) => !driverUnits.includes(file) && !environmentSourceUnits.includes(file),
+  );
   const consumers = [
     { directory: ".", name: "root tests", typecheck: false },
     ...relatedTestPackages(workspace),
@@ -1702,6 +1715,19 @@ export function selectGateSteps(
         ],
       });
   }
+  if (environmentSourceUnits.length)
+    steps.push({
+      name: "related environment source consumers",
+      cwd: "apps/web",
+      command: "vp",
+      args: [
+        "test",
+        "run",
+        "--config",
+        "test/e-env/vitest.config.ts",
+        ...environmentSourceUnits.map((file) => NodePath.posix.relative("apps/web", file)),
+      ],
+    });
   if (driverUnits.length)
     steps.push({
       name: "related scenario-driver units",

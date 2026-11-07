@@ -447,6 +447,16 @@ describe("the keys model's link", () => {
     chief: { projectId: "P_CHIEF" },
   };
 
+  it("preserves the registered Chief opener including null and absence", () => {
+    for (const extra of [{}, { chiefOpenerUserId: null }, { chiefOpenerUserId: "U1" }]) {
+      const mate = { ...self, ...extra };
+      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate }));
+      expect(
+        decoded._tag === "Success" && decoded.value.type === "state" && decoded.value.mate,
+      ).toEqual(mate);
+    }
+  });
+
   it("Decision: HQ's state and self read decode without closedOff or signers; signers come only from their own frame", () => {
     // The unplaced Mate's self record, as link.go and ReadMateChanges build it.
     const mate = {

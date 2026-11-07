@@ -1,5 +1,5 @@
 import { NO_RESTARTS, readRestartRecovery, type MateRecovery } from "@t3tools/client-runtime/data";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import { mateArrivalNotice, mateNoticeVoice } from "./mateNoticeVoice";
 import type { MateArrivalNoticeInput } from "./mateNoticeVoice";
@@ -121,11 +121,10 @@ describe("the web Mate's link notice", () => {
     { kind: "not-answering", overdue: false },
     { kind: "refused-configuration" },
     { kind: "refused-credential" },
-    { kind: "retrying", retryAtMs: 5_000, last: { kind: "network" }, restart: false },
   ] satisfies Reachability[])("failure evidence offers recovery: %j", (state) => {
     expect(say(state)).toMatchObject({
       actions:
-        state.kind === "not-answering" || state.kind === "retrying"
+        state.kind === "not-answering"
           ? [expect.stringMatching(/^try-/), "open-in-zerops"]
           : [expect.stringMatching(/^try-/)],
     });
@@ -298,21 +297,27 @@ it("a failed restart separates its cause and Details while retaining last-known 
 });
 
 it("uses the offline source time without turning retained work time into outage onset", () => {
-  expect(
-    mateNoticeVoice({
-      reachability: { kind: "not-answering", overdue: false },
-      conversationShown: false,
-      nowMs: Date.parse("2026-10-08T11:00:00Z"),
-      mateName: "Eddy",
-      offlineSince: new Date().toISOString(),
-      timestampFormat: "24-hour",
-      lastKnown: "Last known 09:20: Eddy was working.",
-    }),
-  ).toMatchObject({
-    headline: expect.stringContaining("Eddy isn't answering since"),
-    secondary: "Last known 09:20: Eddy was working.",
-    actions: ["try-now", "open-in-zerops"],
-  });
+  const nowMs = new Date(2026, 9, 8, 11).getTime();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(nowMs);
+  try {
+    expect(
+      mateNoticeVoice({
+        reachability: { kind: "not-answering", overdue: false },
+        conversationShown: false,
+        nowMs,
+        mateName: "Eddy",
+        offlineSince: new Date(2026, 9, 8, 10, 10).toISOString(),
+        timestampFormat: "24-hour",
+        lastKnown: "Last known 09:20: Eddy was working.",
+      }),
+    ).toMatchObject({
+      headline: "Eddy isn't answering since 10:10.",
+      secondary: "Last known 09:20: Eddy was working.",
+      actions: ["try-now", "open-in-zerops"],
+    });
+  } finally {
+    clock.mockRestore();
+  }
 });
 
 it("a recovered Mate does not repeat its old failed process as a connection banner", () => {

@@ -1,13 +1,27 @@
-import type * as React from "react";
+import * as React from "react";
 import { act } from "react";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-const detailHolds = vi.hoisted(() => new Map<string, number>());
-vi.mock("~/zerops/ZeropsAccountData", () => ({
-  // Outside an account: a card has no detail to wait for, and paints at once.
-  useAccountOrgId: () => null,
-  useProjection: () => ({}),
-  useAccountDataOptional: () => ({
+import * as accountData from "~/zerops/ZeropsAccountData";
+import * as clock from "~/zerops/useNowMs";
+import * as stopReadAgain from "../StopReadAgain";
+
+const tooltip = await import("~/components/ui/tooltip");
+const popover = await import("~/components/ui/popover");
+const detailHolds = new Map<string, number>();
+const mounted: ReactTestRenderer[] = [];
+const Open = React.createContext<{ open: boolean; set: (open: boolean) => void }>({
+  open: false,
+  set: () => {},
+});
+
+beforeEach(() => {
+  vi.spyOn(accountData, "useAccountOrgId").mockReturnValue(null);
+  vi.spyOn(accountData, "useProjection").mockImplementation(
+    (() => ({})) as typeof accountData.useProjection,
+  );
+  vi.spyOn(accountData, "useAccountDataOptional").mockReturnValue({
     demandDetail: ({ ownerId }: { readonly ownerId: string }) => {
       detailHolds.set(ownerId, (detailHolds.get(ownerId) ?? 0) + 1);
       return () => {
@@ -16,87 +30,61 @@ vi.mock("~/zerops/ZeropsAccountData", () => ({
         else detailHolds.set(ownerId, remaining);
       };
     },
-  }),
-}));
-
-vi.mock("@tanstack/react-router", async () => {
-  const { createElement } = await import("react");
-  return {
-    Link: ({
-      to,
-      params = {},
-      ...props
-    }: React.ComponentProps<"a"> & { to: string; params?: Record<string, string> }) =>
-      createElement("a", {
-        href: to.replace(/\$(\w+)/gu, (_, key: string) => params[key] ?? ""),
-        ...props,
-      }),
-  };
+  } as unknown as ReturnType<typeof accountData.useAccountDataOptional>);
+  vi.spyOn(clock, "useNowMs").mockReturnValue(0);
+  vi.spyOn(clock, "useSecondsNowMs").mockReturnValue(0);
+  // Node renders draw a tooltip's trigger but not its hover popup.
+  vi.spyOn(tooltip, "Tooltip").mockImplementation((({
+    children,
+  }: {
+    readonly children: React.ReactNode;
+  }) => <>{children}</>) as typeof tooltip.Tooltip);
+  vi.spyOn(tooltip, "TooltipTrigger").mockImplementation((({
+    children,
+    render,
+  }: {
+    readonly children: React.ReactNode;
+    readonly render: React.ReactElement;
+  }) => React.cloneElement(render, undefined, children)) as typeof tooltip.TooltipTrigger);
+  vi.spyOn(tooltip, "TooltipPopup").mockImplementation(() => <></>);
+  vi.spyOn(stopReadAgain, "StopReadAgain").mockImplementation(({ projectId }) => (
+    <i data-test-again={projectId} />
+  ));
+  // The controlled popover is drawn in place so its open and close remain observable.
+  vi.spyOn(popover, "Popover").mockImplementation((({
+    children,
+    open,
+    onOpenChange,
+  }: {
+    readonly children: React.ReactNode;
+    readonly open: boolean;
+    readonly onOpenChange: (open: boolean) => void;
+  }) => (
+    <Open.Provider value={{ open, set: onOpenChange }}>{children}</Open.Provider>
+  )) as typeof popover.Popover);
+  vi.spyOn(popover, "PopoverTrigger").mockImplementation((({
+    children,
+    render,
+  }: {
+    readonly children: React.ReactNode;
+    readonly render: React.ReactElement;
+  }) => {
+    const { open, set } = React.useContext(Open);
+    return React.cloneElement(render, { onClick: () => set(!open) } as never, children);
+  }) as typeof popover.PopoverTrigger);
+  vi.spyOn(popover, "PopoverPopup").mockImplementation((({
+    children,
+  }: {
+    readonly children: React.ReactNode;
+  }) => (React.useContext(Open).open ? <>{children}</> : null)) as typeof popover.PopoverPopup);
 });
-
-// Base UI's tooltip reads `window` as it mounts, which a node render has none of: the trigger
-// draws what it renders, and the hover it opens is not drawn.
-vi.mock("~/components/ui/tooltip", async () => {
-  const { cloneElement, Fragment, createElement } = await import("react");
-  return {
-    Tooltip: ({ children }: { readonly children: React.ReactNode }) =>
-      createElement(Fragment, null, children),
-    TooltipTrigger: ({
-      children,
-      render,
-    }: {
-      readonly children: React.ReactNode;
-      readonly render: React.ReactElement;
-    }) => cloneElement(render, undefined, children),
-    TooltipPopup: () => null,
-  };
-});
-
-// A stop's one manual attempt reads the page's contexts; here it is the marker of a stop the row
-// holds — the demand that reads what the stop runs.
-vi.mock("../StopReadAgain", async () => {
-  const { createElement } = await import("react");
-  return {
-    StopReadAgain: ({ projectId }: { readonly projectId: string }) =>
-      createElement("i", { "data-test-again": projectId }),
-  };
-});
-
-// The shared minute clock runs a window timer: a card reads a fixed now here.
-vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0, useSecondsNowMs: () => 0 }));
-
-// Base UI's popover portals out of a node render: here it draws its trigger, and its popup while
-// open, in place.
-vi.mock("~/components/ui/popover", async () => {
-  const { cloneElement, createContext, createElement, Fragment, useContext } =
-    await import("react");
-  const Open = createContext<{ open: boolean; set: (open: boolean) => void }>({
-    open: false,
-    set: () => {},
+afterEach(() => {
+  act(() => {
+    for (const tree of mounted.splice(0)) tree.unmount();
   });
-  return {
-    Popover: ({
-      children,
-      open,
-      onOpenChange,
-    }: {
-      readonly children: React.ReactNode;
-      readonly open: boolean;
-      readonly onOpenChange: (open: boolean) => void;
-    }) => createElement(Open.Provider, { value: { open, set: onOpenChange } }, children),
-    PopoverTrigger: ({
-      children,
-      render,
-    }: {
-      readonly children: React.ReactNode;
-      readonly render: React.ReactElement;
-    }) => {
-      const { open, set } = useContext(Open);
-      return cloneElement(render, { onClick: () => set(!open) } as never, children);
-    },
-    PopoverPopup: ({ children }: { readonly children: React.ReactNode }) =>
-      useContext(Open).open ? createElement(Fragment, null, children) : null,
-  };
+  detailHolds.clear();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 import {
@@ -107,12 +95,12 @@ import {
   FRESH,
   item,
   MERGING,
-  mount,
+  mount as mountFlow,
   placed,
   PROD,
   PRODUCTION_STOP,
   pull,
-  renderFlow as render,
+  renderFlow,
   section,
   STAGE,
   STAGE_STOP,
@@ -126,6 +114,20 @@ import { PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 
 import { CardMateLiftActions } from "./ProjectCards";
 import { ZeropsProjectsFlow } from "./ZeropsProjectsFlow";
+
+const { createMemoryHistory, createRootRoute, createRouter, RouterContextProvider } =
+  await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+const router = createRouter({ routeTree: createRootRoute(), history: createMemoryHistory() });
+const withRouter = (element: React.ReactElement) => (
+  <RouterContextProvider router={router}>{element}</RouterContextProvider>
+);
+const mount = (element: React.ReactElement) => {
+  const tree = mountFlow(withRouter(element));
+  mounted.push(tree);
+  return tree;
+};
+const render = (props: Parameters<typeof renderFlow>[0] = {}) =>
+  renderToStaticMarkup(withRouter(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} {...props} />));
 
 /** A quiet group of its own id: one Mate who was spoken to, nothing waiting. */
 function quiet(groupId: string) {
@@ -615,11 +617,12 @@ describe("a row the page names (?group=)", () => {
     expect(scrolled).toEqual(["project-fff"]);
     act(() =>
       tree.update(
-        <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[ARRIVING, FOCUS]} />,
+        withRouter(
+          <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[ARRIVING, FOCUS]} />,
+        ),
       ),
     );
     expect(scrolled).toEqual(["project-fff", "project-fff"]);
-    vi.unstubAllGlobals();
   });
 
   it("lets the person's own scroll win", () => {
@@ -630,11 +633,12 @@ describe("a row the page names (?group=)", () => {
     interact("wheel");
     act(() =>
       tree.update(
-        <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[ARRIVING, FOCUS]} />,
+        withRouter(
+          <ZeropsProjectsFlow<Item> {...FLOW_PROPS} focusGroup="fff" groups={[ARRIVING, FOCUS]} />,
+        ),
       ),
     );
     expect(scrolled).toEqual(["project-fff"]);
-    vi.unstubAllGlobals();
   });
 });
 
@@ -667,7 +671,7 @@ describe("Projects detail demand", () => {
       let tree: ReactTestRenderer | undefined;
       act(() => {
         // The row measures its scroll; a card is only observed.
-        tree = create(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={groups} />, {
+        tree = create(withRouter(<ZeropsProjectsFlow<Item> {...FLOW_PROPS} groups={groups} />), {
           createNodeMock: () => ({
             addEventListener: () => {},
             removeEventListener: () => {},

@@ -231,6 +231,11 @@ describe("revision-bound witness receipts", () => {
 
   it("a changed scenario runs without opting in, even when only its comment changes", () => {
     gate.write(edited, "export {}; // updated comment\n");
+    const listing = gate.run(["--list"]);
+    expect(listing.status, listing.stderr).toBe(0);
+    expect(listing.stdout).toContain(
+      NodePath.join(gate.root, ".local", "share", "mate-gate-slots"),
+    );
     const result = gate.run();
     expect(result.status, result.stderr).toBe(0);
     expect(receipt()).toMatchObject({

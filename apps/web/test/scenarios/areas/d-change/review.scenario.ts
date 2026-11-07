@@ -1,7 +1,7 @@
 import { scenarioSuite } from "../../harness/suite.ts";
 import type { Page } from "puppeteer-core";
 import { resizeMenu } from "../../harness/browser.ts";
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { ChangeReceiptPart } from "@t3tools/shared/hqChanges";
 import { createScenario } from "../../harness/scenario.ts";
@@ -139,76 +139,6 @@ describe("D: change review, comments and merge", () => {
         yield* s.then.noExternalNetwork;
       }),
     );
-
-    // Catches Merge hiding progress or continuing to offer the completed change for merging.
-    it.effect("merge shows progress and the real result", () =>
-      Effect.gen(function* () {
-        const { s, change, r, area } = yield* setup;
-        const head = change.head;
-        const part = (setup: string, more: Partial<ChangeReceiptPart>): ChangeReceiptPart => ({
-          setup,
-          previewHostname: `${setup}stage`,
-          deploy: "ok",
-          deployedAt: "2026-10-14T21:06:00Z",
-          workspaceClean: true,
-          deployedCommit: head,
-          verified: true,
-          ...more,
-        });
-        // zcp's receipt of the change's last push: web at its head, api from an older commit,
-        // worker's preview failed.
-        yield* change.reports({
-          at: "2026-10-14T21:10:00Z",
-          parts: [
-            part("web", {}),
-            part("api", { deployedCommit: OLDER }),
-            (({ deployedCommit: _none, ...failed }) => failed)(
-              part("worker", { deploy: "failed", verified: false }),
-            ),
-          ],
-        });
-        yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
-        yield* s.given.signedIn;
-        yield* r.open;
-        recordStep(
-          "A change review lists each part's preview from its receipt, one stale and one failed, and still offers Merge",
-        );
-        yield* r.text(change.title);
-        yield* r.text("workerstage");
-        const short = head.slice(0, 7);
-        expect(
-          yield* Effect.promise(() =>
-            s.page.evaluate(() => {
-              const section = [
-                ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="review"] section'),
-              ].find(
-                (node) =>
-                  node.getBoundingClientRect().height > 0 &&
-                  node.querySelector(".rv-sec-h")?.textContent?.startsWith("Parts") === true,
-              );
-              return [...(section?.querySelectorAll("li") ?? [])].map((li) => li.innerText.trim());
-            }),
-          ),
-          "ASSERTION: the review lists the receipt's three parts, each as its preview stands",
-        ).toEqual([
-          `web · webstage · from ${short} · verified`,
-          `api · apistage · from a1b2c3d, the change is at ${short} · verified`,
-          "worker · workerstage · deploy failed",
-        ]);
-        yield* r.text("Not tried at this change: api (older commit), worker (failed).");
-        yield* r.mergeEnabled;
-        area.merge.hold();
-        yield* r.merge;
-        yield* Effect.promise(() => area.merge.received());
-        yield* r.text("Merging into main");
-        yield* r.cannotMerge;
-        area.merge.resume();
-        yield* r.text("Merged into main");
-        yield* r.cannotMerge;
-        yield* s.then.noReload;
-        yield* s.then.noExternalNetwork;
-      }),
-    );
   });
 });
 
@@ -269,10 +199,59 @@ describe("owner-reported layout regressions", () => {
     // person's eye dropped 24 px, then the question after a first merge came in above it.
     it.effect("merge leaves the review's body where the person's eye is", () =>
       Effect.gen(function* () {
-        const { s, r, area } = yield* setup;
+        const { s, change, r, area } = yield* setup;
+        const head = change.head;
+        const part = (setup: string, more: Partial<ChangeReceiptPart>): ChangeReceiptPart => ({
+          setup,
+          previewHostname: `${setup}stage`,
+          deploy: "ok",
+          deployedAt: "2026-10-14T21:06:00Z",
+          workspaceClean: true,
+          deployedCommit: head,
+          verified: true,
+          ...more,
+        });
+        // zcp's receipt of the change's last push: web at its head, api from an older commit,
+        // worker's preview failed.
+        yield* change.reports({
+          at: "2026-10-14T21:10:00Z",
+          parts: [
+            part("web", {}),
+            part("api", { deployedCommit: OLDER }),
+            (({ deployedCommit: _none, ...failed }) => failed)(
+              part("worker", { deploy: "failed", verified: false }),
+            ),
+          ],
+        });
         yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
         yield* s.given.signedIn;
         yield* r.open;
+        recordStep(
+          "A change review lists each part's preview from its receipt, one stale and one failed, and still offers Merge",
+        );
+        yield* r.text(change.title);
+        yield* r.text("workerstage");
+        const short = head.slice(0, 7);
+        expect(
+          yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const section = [
+                ...document.querySelectorAll<HTMLElement>('[data-zerops-surface="review"] section'),
+              ].find(
+                (node) =>
+                  node.getBoundingClientRect().height > 0 &&
+                  node.querySelector(".rv-sec-h")?.textContent?.startsWith("Parts") === true,
+              );
+              return [...(section?.querySelectorAll("li") ?? [])].map((li) => li.innerText.trim());
+            }),
+          ),
+          "ASSERTION: the review lists the receipt's three parts, each as its preview stands",
+        ).toEqual([
+          `web · webstage · from ${short} · verified`,
+          `api · apistage · from a1b2c3d, the change is at ${short} · verified`,
+          "worker · workerstage · deploy failed",
+        ]);
+        yield* r.text("Not tried at this change: api (older commit), worker (failed).");
         yield* r.mergeEnabled;
         yield* sheetSettled(s);
         const bodyTop = Effect.promise(() =>
@@ -288,13 +267,17 @@ describe("owner-reported layout regressions", () => {
         yield* r.merge;
         yield* Effect.promise(() => area.merge.received());
         yield* r.text("Merging into main");
+        yield* r.cannotMerge;
         const merging = yield* bodyTop;
         area.merge.resume();
         yield* r.text("Merged into main");
+        yield* r.cannotMerge;
         const merged = yield* bodyTop;
         expect(before).not.toBeNull();
         // Within half a pixel: the dialog's entrance may still settle its last fraction.
         for (const top of [merging, merged]) expect(Math.abs(top! - before!)).toBeLessThan(0.5);
+        yield* s.then.noReload;
+        yield* s.then.noExternalNetwork;
       }),
     );
 

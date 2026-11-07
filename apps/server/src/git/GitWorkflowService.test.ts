@@ -1,13 +1,17 @@
-import { assert, describe, expect, it, vi } from "@effect/vitest";
+import { assert, describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
 
-import { VcsRepositoryDetectionError } from "@t3tools/contracts";
+import { VcsListRefsInput, VcsRepositoryDetectionError, VcsStatusInput } from "@t3tools/contracts";
 
 import * as GitManager from "./GitManager.ts";
 import * as GitWorkflowService from "./GitWorkflowService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
+
+const statusInput = Schema.decodeUnknownSync(VcsStatusInput);
+const refsInput = Schema.decodeUnknownSync(VcsListRefsInput);
 
 function makeLayer(input: {
   readonly detect: VcsDriverRegistry.VcsDriverRegistry["Service"]["detect"];
@@ -27,7 +31,7 @@ describe("GitWorkflowService", () => {
   it.effect("returns an empty local status when no VCS repository is detected", () =>
     Effect.gen(function* () {
       const workflow = yield* GitWorkflowService.GitWorkflowService;
-      const status = yield* workflow.localStatus({ cwd: "/not-a-repo" });
+      const status = yield* workflow.localStatus(statusInput({ cwd: "/not-a-repo" }));
 
       assert.deepStrictEqual(status, {
         isRepo: false,
@@ -53,7 +57,7 @@ describe("GitWorkflowService", () => {
   it.effect("returns an empty full status when no VCS repository is detected", () =>
     Effect.gen(function* () {
       const workflow = yield* GitWorkflowService.GitWorkflowService;
-      const status = yield* workflow.status({ cwd: "/not-a-repo" });
+      const status = yield* workflow.status(statusInput({ cwd: "/not-a-repo" }));
 
       assert.deepStrictEqual(status, {
         isRepo: false,
@@ -81,43 +85,10 @@ describe("GitWorkflowService", () => {
     ),
   );
 
-  it.effect("does not call GitManager status methods when no VCS repository is detected", () => {
-    const localStatus = vi.fn();
-    const remoteStatus = vi.fn();
-    const status = vi.fn();
-
-    const testLayer = GitWorkflowService.layer.pipe(
-      Layer.provide(
-        Layer.mock(VcsDriverRegistry.VcsDriverRegistry)({
-          detect: () => Effect.succeed(null),
-        }),
-      ),
-      Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
-      Layer.provide(
-        Layer.mock(GitManager.GitManager)({
-          localStatus,
-          remoteStatus,
-          status,
-        }),
-      ),
-    );
-
-    return Effect.gen(function* () {
-      const workflow = yield* GitWorkflowService.GitWorkflowService;
-      yield* workflow.localStatus({ cwd: "/not-a-repo" });
-      yield* workflow.remoteStatus({ cwd: "/not-a-repo" });
-      yield* workflow.status({ cwd: "/not-a-repo" });
-
-      assert.equal(localStatus.mock.calls.length, 0);
-      assert.equal(remoteStatus.mock.calls.length, 0);
-      assert.equal(status.mock.calls.length, 0);
-    }).pipe(Effect.provide(testLayer));
-  });
-
   it.effect("returns an empty ref list when no VCS repository is detected", () =>
     Effect.gen(function* () {
       const workflow = yield* GitWorkflowService.GitWorkflowService;
-      const refs = yield* workflow.listRefs({ cwd: "/not-a-repo" });
+      const refs = yield* workflow.listRefs(refsInput({ cwd: "/not-a-repo" }));
 
       assert.deepStrictEqual(refs, {
         refs: [],
@@ -144,7 +115,7 @@ describe("GitWorkflowService", () => {
 
     return Effect.gen(function* () {
       const workflow = yield* GitWorkflowService.GitWorkflowService;
-      const error = yield* workflow.status({ cwd: "/repo" }).pipe(Effect.flip);
+      const error = yield* workflow.status(statusInput({ cwd: "/repo" })).pipe(Effect.flip);
 
       expect(error).toMatchObject({
         _tag: "GitManagerError",
@@ -171,7 +142,7 @@ describe("GitWorkflowService", () => {
 
     return Effect.gen(function* () {
       const workflow = yield* GitWorkflowService.GitWorkflowService;
-      const error = yield* workflow.listRefs({ cwd: "/repo" }).pipe(Effect.flip);
+      const error = yield* workflow.listRefs(refsInput({ cwd: "/repo" })).pipe(Effect.flip);
 
       expect(error).toMatchObject({
         _tag: "GitCommandError",

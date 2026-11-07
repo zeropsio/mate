@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 /**
  * The projects page deletes a project without a Mate the way the menu does: one holding code goes
  * through the dialog that lists what goes with it, and HQ deletes it with its code.

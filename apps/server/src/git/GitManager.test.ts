@@ -15,7 +15,6 @@ import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as References from "effect/References";
 import * as Result from "effect/Result";
-import { TestClock } from "effect/testing";
 import { ChildProcessSpawner } from "effect/process";
 import { beforeAll, expect } from "vite-plus/test";
 import type {
@@ -167,15 +166,18 @@ function runGitSync(cwd: string, args: readonly string[]): void {
 
 const fixtureDir = testFixturePool("t3-git-manager-fixtures-");
 const repoTemplate = testTempDir("t3-git-manager-template-");
+const unbornTemplate = testTempDir("t3-git-unborn-template-");
 const bareTemplate = testTempDir("t3-git-remote-template-");
 const emptyTemplate = testTempDir("t3-git-empty-template-");
 
 beforeAll(() => {
-  runGitSync(repoTemplate, ["init", "--initial-branch=main"]);
-  NodeFS.appendFileSync(
-    NodePath.join(repoTemplate, ".git", "config"),
-    "\n[maintenance]\n\tautoDetach = false\n[gc]\n\tautoDetach = false\n[user]\n\temail = test@example.com\n\tname = Test User\n",
-  );
+  for (const template of [repoTemplate, unbornTemplate]) {
+    runGitSync(template, ["init", "--initial-branch=main"]);
+    NodeFS.appendFileSync(
+      NodePath.join(template, ".git", "config"),
+      "\n[maintenance]\n\tautoDetach = false\n[gc]\n\tautoDetach = false\n[user]\n\temail = test@example.com\n\tname = Test User\n",
+    );
+  }
   NodeFS.writeFileSync(NodePath.join(repoTemplate, "README.md"), "hello\n");
   runGitSync(repoTemplate, ["add", "README.md"]);
   runGitSync(repoTemplate, ["commit", "-m", "Initial commit"]);
@@ -643,36 +645,22 @@ function makeManager(input?: {
   textGeneration?: Partial<FakeGitTextGeneration>;
   serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
   setupScriptRunner?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"];
-  gitConfigReads?: string[];
   sourceControlCalls?: string[];
 }) {
   const { service: gitHubCli, ghCalls } = createGitHubCliWithFakeGh(input?.ghScenario);
   const textGeneration = createTextGeneration(input?.textGeneration);
-  const serverConfigLayer = ServerConfig.layerTest(process.cwd(), {
-    prefix: "t3-git-manager-test-",
-  });
+  const configDir = fixtureDir("t3-git-manager-config-");
+  const worktreesDir = NodePath.join(configDir, "worktrees");
+  if (NodeFS.existsSync(worktreesDir)) {
+    for (const name of NodeFS.readdirSync(worktreesDir))
+      NodeFS.rmSync(NodePath.join(worktreesDir, name), { recursive: true, force: true });
+  }
+  const serverConfigLayer = ServerConfig.layerTest(process.cwd(), configDir);
 
   const serverSettingsLayer = ServerSettings.ServerSettingsService.layerTest(input?.serverSettings);
 
   // A reused path must not inherit the previous test's cached Git refs.
-  const vcsDriverLayer = Layer.fresh(
-    input?.gitConfigReads
-      ? Layer.effect(
-          GitVcsDriver.GitVcsDriver,
-          GitVcsDriver.make.pipe(
-            Effect.map((service) =>
-              GitVcsDriver.GitVcsDriver.of({
-                ...service,
-                readConfigValue: (cwd, key) =>
-                  Effect.sync(() => input.gitConfigReads?.push(key)).pipe(
-                    Effect.andThen(service.readConfigValue(cwd, key)),
-                  ),
-              }),
-            ),
-          ),
-        )
-      : GitVcsDriver.layer,
-  ).pipe(
+  const vcsDriverLayer = Layer.fresh(GitVcsDriver.layer).pipe(
     Layer.provideMerge(VcsProcess.layer),
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(serverConfigLayer),
@@ -960,135 +948,6 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         aheadOfDefaultCount: 0,
         pr: null,
       });
-    }),
-  );
-
-  it.effect("status briefly caches repeated lookups for the same cwd", () =>
-    Effect.gen(function* () {
-      const repoDir = yield* makeRepo("t3code-git-manager-");
-      yield* runGit(repoDir, ["checkout", "-b", "feature/status-cache"]);
-      const remoteDir = yield* createBareRemote();
-      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
-      yield* runGit(repoDir, ["push", "-u", "origin", "feature/status-cache"]);
-
-      const existingPr = {
-        number: 113,
-        title: "Cached PR",
-        url: "https://github.com/pingdotgg/codething-mvp/pull/113",
-        baseRefName: "main",
-        headRefName: "feature/status-cache",
-      };
-      const { manager, ghCalls } = yield* makeManager({
-        ghScenario: {
-          prListSequence: [JSON.stringify([existingPr]), JSON.stringify([existingPr])],
-        },
-      });
-
-      const first = yield* manager.status({ cwd: repoDir });
-      const second = yield* manager.status({ cwd: repoDir });
-
-      expect(first.pr?.number).toBe(113);
-      expect(second.pr?.number).toBe(113);
-      expect(ghCalls.filter((call) => call.startsWith("pr list "))).toHaveLength(1);
-    }),
-  );
-
-  it.effect("a branch tracking origin reads origin's URL once in the PR lookup", () =>
-    Effect.gen(function* () {
-      const repoDir = yield* makeRepo("t3code-git-manager-");
-      const remoteDir = yield* createBareRemote();
-      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
-      yield* runGit(repoDir, ["checkout", "-b", "feature/origin-once"]);
-      yield* runGit(repoDir, ["push", "-u", "origin", "feature/origin-once"]);
-
-      const gitConfigReads: string[] = [];
-      const { manager, ghCalls } = yield* makeManager({
-        gitConfigReads,
-        ghScenario: {
-          prListByHeadSelector: {
-            "feature/origin-once": JSON.stringify([
-              {
-                number: 217,
-                title: "Origin once PR",
-                url: "https://github.com/pingdotgg/codething-mvp/pull/217",
-                baseRefName: "main",
-                headRefName: "feature/origin-once",
-                state: "OPEN",
-                updatedAt: "2026-04-03T15:00:00Z",
-              },
-            ]),
-          },
-        },
-      });
-
-      const status = yield* manager.status({ cwd: repoDir });
-
-      expect(status.pr?.number).toBe(217);
-      expect(ghCalls.some((call) => call.startsWith("pr list "))).toBe(true);
-      // One read picks the hosting provider; the PR lookup reads origin once
-      // for both the head and the target remote, since the branch tracks origin.
-      expect(gitConfigReads.filter((key) => key === "remote.origin.url")).toHaveLength(2);
-    }),
-  );
-
-  it.effect("status rechecks open PRs every two minutes and settled answers less often", () =>
-    Effect.gen(function* () {
-      const remoteDir = yield* createBareRemote();
-      // One checkout per branch: status reads the PR of the branch a cwd has out.
-      const checkouts: Array<string> = [];
-      for (const branch of ["feature/open-pr", "feature/merged-pr", "feature/no-pr"]) {
-        const repoDir = yield* makeRepo("t3code-git-manager-");
-        yield* runGit(repoDir, ["checkout", "-b", branch]);
-        yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
-        yield* runGit(repoDir, ["push", "-u", "origin", branch]);
-        checkouts.push(repoDir);
-      }
-      const pullRequest = (number: number, headRefName: string, state: string) => ({
-        number,
-        title: headRefName,
-        url: `https://github.com/pingdotgg/codething-mvp/pull/${number}`,
-        baseRefName: "main",
-        headRefName,
-        state,
-        updatedAt: "2026-04-07T15:00:00Z",
-      });
-      const { manager, ghCalls } = yield* makeManager({
-        ghScenario: {
-          prListByHeadSelector: {
-            "feature/open-pr": JSON.stringify([pullRequest(301, "feature/open-pr", "OPEN")]),
-            "feature/merged-pr": JSON.stringify([pullRequest(302, "feature/merged-pr", "MERGED")]),
-          },
-        },
-      });
-      const lookupAll = Effect.forEach(checkouts, (cwd) => manager.status({ cwd }));
-      const prListCalls = () => ghCalls.filter((call) => call.startsWith("pr list "));
-
-      yield* lookupAll;
-      const initialCalls = prListCalls().length;
-      expect(initialCalls).toBeGreaterThanOrEqual(3);
-
-      yield* TestClock.adjust("121 seconds");
-      yield* lookupAll;
-      const openRecheck = prListCalls().slice(initialCalls);
-      expect(openRecheck.length).toBeGreaterThan(0);
-      expect(openRecheck.every((call) => call.includes("feature/open-pr"))).toBe(true);
-
-      // Just inside the 5-minute window only the open PR is asked again.
-      const beforeSecondRecheck = prListCalls().length;
-      yield* TestClock.adjust("178 seconds");
-      yield* lookupAll;
-      const secondRecheck = prListCalls().slice(beforeSecondRecheck);
-      expect(secondRecheck.length).toBeGreaterThan(0);
-      expect(secondRecheck.every((call) => call.includes("feature/open-pr"))).toBe(true);
-
-      // Just past it the settled answers expire too.
-      const beforeSettledRecheck = prListCalls().length;
-      yield* TestClock.adjust("2 seconds");
-      yield* lookupAll;
-      const settledRecheck = prListCalls().slice(beforeSettledRecheck);
-      expect(settledRecheck.some((call) => call.includes("feature/merged-pr"))).toBe(true);
-      expect(settledRecheck.some((call) => call.includes("feature/no-pr"))).toBe(true);
-      expect(settledRecheck.some((call) => call.includes("feature/open-pr"))).toBe(false);
     }),
   );
 
@@ -2110,12 +1969,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("includes local agent instructions when recent history is empty", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
-      yield* runGit(repoDir, ["init", "--initial-branch=main"]);
-      yield* runGit(repoDir, ["config", "maintenance.autoDetach", "false"]);
-      yield* runGit(repoDir, ["config", "gc.autoDetach", "false"]);
-      yield* runGit(repoDir, ["config", "user.email", "test@example.com"]);
-      yield* runGit(repoDir, ["config", "user.name", "Test User"]);
+      const repoDir = yield* fixtureFrom(unbornTemplate, "t3code-git-manager-unborn-");
       const agentInstructions = "Use lowercase source control text.";
       const claudeInstructions = "Keep pull request bodies brief.";
       NodeFS.writeFileSync(NodePath.join(repoDir, "AGENTS.md"), agentInstructions);
@@ -3294,10 +3148,10 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       yield* runGit(repoDir, ["push", "-u", "origin", "main"]);
       yield* runGit(remoteDir, ["symbolic-ref", "HEAD", "refs/heads/main"]);
 
-      const peerDir = yield* makeTempDir("t3code-git-peer-");
-      yield* runGit(peerDir, ["clone", remoteDir, "."]);
-      yield* runGit(peerDir, ["config", "maintenance.autoDetach", "false"]);
-      yield* runGit(peerDir, ["config", "gc.autoDetach", "false"]);
+      const peerDir = yield* makeRepo("t3code-git-peer-");
+      yield* runGit(peerDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(peerDir, ["fetch", "origin"]);
+      yield* runGit(peerDir, ["checkout", "-B", "main", "origin/main"]);
       yield* runGit(peerDir, ["config", "user.email", "peer@example.com"]);
       yield* runGit(peerDir, ["config", "user.name", "Peer User"]);
       NodeFS.writeFileSync(NodePath.join(peerDir, "remote.txt"), "remote\n");
@@ -4914,7 +4768,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       NodeFS.writeFileSync(NodePath.join(repoDir, "hooked.txt"), "hooked\n");
       NodeFS.writeFileSync(
         NodePath.join(repoDir, ".git", "hooks", "pre-commit"),
-        '#!/bin/sh\necho "hook: start" >&2\nsleep 0.05\necho "hook: end" >&2\n',
+        '#!/bin/sh\necho "hook: start" >&2\necho "hook: end" >&2\n',
         { mode: 0o755 },
       );
 

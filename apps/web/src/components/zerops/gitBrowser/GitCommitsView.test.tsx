@@ -1,23 +1,37 @@
 // @vitest-environment happy-dom
 import { act, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { createRoot, type Root } from "react-dom/client";
+import { LegendList } from "@legendapp/list/react";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vite-plus/test";
 import type { GitBrowseView } from "@t3tools/client-runtime/data";
 import type { GitOverviewRepository } from "@t3tools/client-runtime/zerops";
 import type { GitHome } from "@t3tools/shared/hqGitBrowse/home";
 import type { GitLog, GitLogItem, GitLogQuery } from "@t3tools/shared/hqGitBrowse/log";
 import type { GitBrowseSearch } from "./GitBrowseView";
 import { GitCommitsView } from "./GitCommitsView";
+import * as gitBrowse from "~/zerops/useGitBrowse";
 
 beforeAll(() => vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true));
 afterAll(() => vi.unstubAllGlobals());
 
-const held = vi.hoisted(() => ({
+const held = {
   pages: new Map<string, unknown>(),
   asked: [] as Array<unknown>,
-}));
-vi.mock("~/zerops/useGitBrowse", () => ({
-  useGitBrowseReads: (requests: ReadonlyArray<{ readonly params: GitLogQuery }>) => {
+};
+const mounted = new Map<Root, HTMLElement>();
+beforeEach(() => {
+  vi.spyOn(gitBrowse, "useGitBrowseReads").mockImplementation(((
+    requests: ReadonlyArray<{ readonly params: GitLogQuery }>,
+  ) => {
     held.asked.push(requests.map((request) => request.params));
     return {
       views: requests.map(
@@ -26,24 +40,39 @@ vi.mock("~/zerops/useGitBrowse", () => ({
       ),
       again: () => undefined,
     };
-  },
-}));
-// A list that draws every row: the page's rows, not the virtualizer's window, are under test.
-vi.mock("@legendapp/list/react", () => ({
-  LegendList: (props: {
-    readonly data: ReadonlyArray<{ readonly key: string }>;
-    readonly keyExtractor: (row: { readonly key: string }) => string;
-    readonly renderItem: (args: { readonly item: { readonly key: string } }) => ReactNode;
-    readonly ListFooterComponent?: ReactNode;
-  }) => (
+  }) as unknown as typeof gitBrowse.useGitBrowseReads);
+  // Draw every row: the page's rows, not the virtualizer's window, are under test.
+  const list = LegendList as unknown as {
+    type: {
+      render: (props: {
+        readonly data: ReadonlyArray<{ readonly key: string }>;
+        readonly keyExtractor: (row: { readonly key: string }) => string;
+        readonly renderItem: (args: { readonly item: { readonly key: string } }) => ReactNode;
+        readonly ListFooterComponent?: ReactNode;
+      }) => ReactNode;
+    };
+  };
+  vi.spyOn(list.type, "render").mockImplementation((props) => (
     <div>
       {props.data.map((row) => (
         <div key={props.keyExtractor(row)}>{props.renderItem({ item: row })}</div>
       ))}
       {props.ListFooterComponent}
     </div>
-  ),
-}));
+  ));
+});
+afterEach(async () => {
+  await act(async () => {
+    for (const [root, host] of mounted) {
+      root.unmount();
+      host.remove();
+    }
+  });
+  mounted.clear();
+  vi.restoreAllMocks();
+  held.pages.clear();
+  held.asked = [];
+});
 
 const tip = "a".repeat(40);
 const commit = (n: number, extra: Partial<GitLogItem> = {}): GitLogItem => ({
@@ -90,6 +119,7 @@ async function history(
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
+  mounted.set(root, host);
   await act(async () =>
     root.render(
       <GitCommitsView
@@ -112,6 +142,7 @@ async function history(
     close: async () => {
       await act(async () => root.unmount());
       host.remove();
+      mounted.delete(root);
     },
   };
 }

@@ -1,4 +1,4 @@
-# Receipts of the checked-out tree, sourced by CI's and Signal's verification steps.
+# Receipts of the checked-out tree, sourced by CI's verification step.
 # Reads only the newest page; older receipts are a safe miss, never a history scan.
 
 # tree_runs WORKFLOW BRANCH STATUS prints the push runs of WORKFLOW on BRANCH whose head commit has

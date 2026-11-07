@@ -44,7 +44,10 @@ const account = vi.hoisted(() => ({
   reads: [] as Array<string>,
   readError: null as unknown,
   verbs: [] as Array<readonly unknown[]>,
-  answer: { ok: true } as { readonly ok: true } | { readonly ok: false; readonly reason: string },
+  answer: { ok: true } as
+    | { readonly ok: true }
+    | { readonly ok: false; readonly reason: string }
+    | Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>,
 }));
 
 vi.mock("~/zerops/projectFlows", () => ({
@@ -1135,6 +1138,34 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     kind: "read",
     value: changeReadoutOfRecord(API_CHANGE, review({ files: [changed("src/api.ts")] })),
   };
+
+  it("merge shows progress and the real result", async () => {
+    detail.readout = READ_DETAIL;
+    let finish: (outcome: { readonly ok: true }) => void = () => {
+      throw new Error("The merge response was not held");
+    };
+    account.answer = new Promise<{ readonly ok: true }>((resolve) => {
+      finish = resolve;
+    });
+
+    await reviewed(async (host) => {
+      const enabledMerge = () =>
+        elementsOf(host, "button").some(
+          (button) =>
+            button.textContent.trim().startsWith("Merge") && !button.hasAttribute("disabled"),
+        );
+      expect(enabledMerge()).toBe(true);
+      await pressed(host, "Merge");
+      expect(account.verbs).toEqual([
+        ["merge", "group-orchard", { repository: "apidev", number: 1 }, API_CHANGE.head],
+      ]);
+      expect(host.textContent).toContain("Merging into main");
+      expect(enabledMerge()).toBe(false);
+      await act(async () => finish({ ok: true }));
+      expect(host.textContent).toContain("Merged into main");
+      expect(enabledMerge()).toBe(false);
+    });
+  });
 
   it.each([
     [404, "refused", true, "apidev has no change #1"],

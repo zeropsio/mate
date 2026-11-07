@@ -843,7 +843,7 @@ describe("HQ-computed Mate owners", () => {
               mate,
               person: { ...person, ownerUserId: null },
               signedInNow: {},
-              everSignedIn: { codex: "u1" },
+              everSignedIn: {},
             },
           },
         ],

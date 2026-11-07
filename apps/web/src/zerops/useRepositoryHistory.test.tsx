@@ -3,13 +3,14 @@
  * bounded — read while HQ's repositories are, empty where `main` holds nothing, and the reason
  * where HQ did not answer.
  */
-import type { CompareRead } from "@t3tools/client-runtime/zerops";
+import { compareReadKey, type CompareRead } from "@t3tools/client-runtime/zerops";
 import type { CompareCommit, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useRepositoryHistory, type ZeropsHistoryState } from "./useRepositoryHistory";
+import * as comparisons from "./useReleaseComparisons";
 
 const HEAD = "a".repeat(40);
 const COMMIT: CompareCommit = {
@@ -21,14 +22,14 @@ const COMMIT: CompareCommit = {
 };
 
 /** What HQ answers each comparison asked, and what was asked. */
-const compares = vi.hoisted(() => ({
+const compares = {
   asked: [] as Array<CompareRead>,
   answer: "answer" as "answer" | "fail" | "none",
-}));
-vi.mock("./useReleaseComparisons", async () => {
-  const { compareReadKey } = await import("@t3tools/client-runtime/zerops");
-  return {
-    useReleaseComparisons: (asks: ReadonlyMap<string, ReadonlyArray<CompareRead>>) =>
+};
+beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(comparisons, "useReleaseComparisons").mockImplementation(
+    (asks: ReadonlyMap<string, ReadonlyArray<CompareRead>>) =>
       new Map(
         [...asks].map(([appId, reads]) => {
           compares.asked.push(...reads);
@@ -58,8 +59,8 @@ vi.mock("./useReleaseComparisons", async () => {
             },
           ];
         }),
-      ),
-  };
+      ) as unknown as ReturnType<typeof comparisons.useReleaseComparisons>,
+  );
 });
 
 const renders: ZeropsHistoryState[] = [];
@@ -78,12 +79,13 @@ afterEach(() => {
   renders.length = 0;
   compares.asked = [];
   compares.answer = "answer";
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function historyOf(
   props: Parameters<typeof useRepositoryHistory>[0],
 ): ZeropsHistoryState | undefined {
-  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   act(() => {
     mounted.push(create(<Probe {...props} />));
   });

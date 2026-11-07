@@ -28,7 +28,8 @@ import {
   type RouteGate,
   type RouteTarget,
 } from "@t3tools/client-runtime/zerops/environments";
-import { AtomRegistry } from "effect/reactivity";
+import { Atom, AtomRegistry } from "effect/reactivity";
+import * as Option from "effect/Option";
 import { act, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -52,7 +53,8 @@ import { AccountDataContext } from "../zerops/accountData";
 import { hqOutage } from "../zerops/hqNavigation";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { useMateVoice } from "../zerops/mateVoiceContext";
-import type { ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
+import { ZeropsSessionContext } from "../zerops/sessionContext";
+import type { ZeropsOrganizationStatus, ZeropsSessionValue } from "../zerops/ZeropsSessionProvider";
 
 /** Where the fixture's zcp service is served: `zcp`, subdomain host `abc`, port 8080, region `prg1`. */
 const ORIGIN = "https://zcp-abc-8080.prg1.zerops.app";
@@ -69,38 +71,6 @@ const shell = vi.hoisted(() => ({
   /** Every route the gate handed the account runtime, in order. */
   routes: [] as Array<string | null>,
   /** When the account runtime's sweep asked for each target it reads again. */
-}));
-
-// This fixture proves route lifetime; the shared stage's rendering is covered by its own tests.
-vi.mock("../components/zerops/ZeropsMateEmptyState", () => ({
-  MateConnectionState: ({
-    headline,
-    secondary,
-    actions,
-  }: {
-    readonly headline: string;
-    readonly secondary: string;
-    readonly actions: ReactNode;
-  }) => (
-    <section>
-      {headline} {secondary}
-      {actions}
-    </section>
-  ),
-}));
-
-vi.mock("../state/environments", () => ({
-  useEnvironments: () => ({ environments: shell.environments }),
-  useEnvironmentConnectionState: () => ({ data: null }),
-}));
-vi.mock("../state/shell", async () => {
-  const { Atom } = await import("effect/reactivity");
-  const Option = await import("effect/Option");
-  const cached = Atom.make({ snapshot: Option.none(), status: "cached", error: Option.none() });
-  return { environmentShell: { stateValueAtom: () => cached } };
-});
-vi.mock("../zerops/ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({ organizationStatus: shell.organization }),
 }));
 
 /**
@@ -215,7 +185,25 @@ function showMates(
   shown = keys;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  const environments = await import("../state/environments");
+  const { environmentShell } = await import("../state/shell");
+  const stage = await import("../components/zerops/ZeropsMateEmptyState");
+  const cached = Atom.make({
+    snapshot: Option.none(),
+    status: "cached" as const,
+    error: Option.none(),
+  });
+  vi.spyOn(environments, "useEnvironments").mockImplementation((() => ({
+    environments: shell.environments,
+  })) as typeof environments.useEnvironments);
+  vi.spyOn(environmentShell, "stateValueAtom").mockReturnValue(cached);
+  // This fixture proves route lifetime; the shared stage's rendering has its own tests.
+  vi.spyOn(stage, "MateConnectionState").mockImplementation(({ headline, secondary, actions }) => (
+    <section>
+      {headline} {secondary} {actions}
+    </section>
+  ));
   const document = new TestNode("#document", null, 9);
   vi.stubGlobal("document", document);
   vi.stubGlobal("window", {
@@ -248,11 +236,20 @@ let unbindStage: () => void = () => undefined;
 
 /** Renders under the test's atoms, as the app's registry holds the account's store. */
 const renderIn = (node: ReactNode) =>
-  root.render(<RegistryContext value={atoms}>{node}</RegistryContext>);
+  root.render(
+    <RegistryContext value={atoms}>
+      <ZeropsSessionContext
+        value={{ organizationStatus: shell.organization } as ZeropsSessionValue}
+      >
+        {node}
+      </ZeropsSessionContext>
+    </RegistryContext>,
+  );
 
 afterEach(() => {
   act(() => root.unmount());
   unbindStage();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
