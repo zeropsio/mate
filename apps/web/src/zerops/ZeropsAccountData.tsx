@@ -16,7 +16,7 @@ import {
   observeAccount,
   repairZeropsSession,
   accountReadsAtom,
-  followMateRoles,
+  followAccessChanges,
   finishGoneProjects,
   platformMembership,
 } from "@t3tools/client-runtime/data";
@@ -104,8 +104,11 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   useEffect(() => {
     observation.show(orgId);
   }, [observation, orgId]);
-  // The person's role on a project moving in Zerops' own data asks what HQ refused of it again.
-  useEffect(() => followMateRoles(registry, observation.roleChanged), [observation, registry]);
+  // The person's access moving in Zerops' own data has HQ read again what it shows them.
+  useEffect(
+    () => followAccessChanges(registry, observation.accessChanged),
+    [observation, registry],
+  );
   // A running press keeps its organization's HQ stream open through this account's observation.
   useEffect(() => holdPressStreams(observation.keepPress), [observation]);
   useEffect(() => () => observation.stop(), [observation]);

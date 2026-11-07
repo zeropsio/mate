@@ -232,7 +232,7 @@ export interface EnvironmentStage {
   readonly hear: (signal: PlatformSignal) => void;
   /** A container's facts may have changed at the source (§6.2): it is read again. */
   readonly request: (key: TargetKey) => void;
-  /** The person's role on the project changed (`followMateRoles`): its refused Mate is asked again. */
+  /** The person's role on the project changed (`followAccessChanges`): its refused Mate is asked again. */
   readonly roleChanged: (projectId: string) => void;
   /** The account closed: every machine, timer, probe, exchange and listener ends. */
   readonly dispose: () => void;

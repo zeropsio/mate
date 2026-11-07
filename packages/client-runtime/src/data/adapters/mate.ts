@@ -195,7 +195,7 @@ export interface MateAdapter {
    * so even while HQ's presence reads its way up.
    */
   readonly request: (key: TargetKey, ask?: ProbeAsk) => void;
-  /** The person's role on the project changed (`followMateRoles`): a refusal of it is asked again. */
+  /** The person's role on the project changed (`followAccessChanges`): a refusal of it is asked again. */
   readonly roleChanged: (projectId: string) => void;
   /** The reading of a probe of this origin started from now on. */
   readonly next: (origin: string) => Promise<ProbeReading>;
