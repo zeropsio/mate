@@ -300,6 +300,14 @@ export const NO_HQ_WORDS = "This organization has no HQ yet. Ask an admin to set
  */
 export const ZEROPS_UNANSWERED = "Zerops is not answering, so HQ did nothing. Try again.";
 
+/**
+ * What a call says where HQ holds no credential that reads what it needs of the project
+ * (`503 zerops_unavailable`, reason `no_credential`): no presented key, environment deploy token
+ * or Mate key covers it, so HQ decided nothing. Trying again changes nothing until one does.
+ */
+export const ZEROPS_NO_CREDENTIAL =
+  "HQ has no access key for this project in Zerops, so it did nothing. Open the project's Mate, or renew its deploy token, then try again.";
+
 /** What anything asked of the organization's HQ says where its official HQ is not open here. */
 export const HQ_NOT_OPEN = "This organization's HQ is not open here.";
 

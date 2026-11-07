@@ -937,8 +937,11 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
       cleanup?: {
         readonly preparedRequestId: string;
       },
-      /** Its project, which the person chose to delete too: its own Delete runs once it is gone. */
-      alsoApplication?: DeleteApplicationTarget,
+      /**
+       * Its project, where this is its last Mate: deleted too, its own Delete runs once the Mate
+       * is gone; kept, that choice answers HQ's question whether to keep the project's Git.
+       */
+      application?: { readonly target: DeleteApplicationTarget; readonly also: boolean },
       birthTarget?: { readonly birthId: string; readonly projectId: string },
     ) => {
       if (activeOrganization === null) return;
@@ -1058,6 +1061,15 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
             unobserved: "HQ must confirm the key cleanup before this deletion is finished.",
           },
         );
+        // HQ asks Owners and Admins whether to keep the Git of a project its last Mate left; the
+        // person already said keep. An answer HQ does not take leaves the question in the menu.
+        if (application !== undefined && !application.also && isCurrent())
+          await operations.submit({
+            kind: "answer-kept-git",
+            orgId: clientId,
+            appId: application.target.appId,
+            answer: "keep",
+          });
       })()
         .finally(() => {
           writing.current.delete(key);
@@ -1070,10 +1082,10 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
             if (birthTarget !== undefined) setDeletingBirth(null);
             else replyToDialog(null);
             if (candidate !== undefined) leaveDeleted(candidate);
-            if (alsoApplication !== undefined)
+            if (application?.also === true)
               useDeleteApplicationDialog
                 .getState()
-                .open({ target: alsoApplication, confirmed: true });
+                .open({ target: application.target, confirmed: true });
           },
           (cause: unknown) => {
             if (!isCurrent()) return;
@@ -1572,7 +1584,9 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
             deleteMate(
               dialog.candidate,
               dialog.cleanup,
-              alsoApplication ? deletingApplication : undefined,
+              deletingApplication === undefined
+                ? undefined
+                : { target: deletingApplication, also: alsoApplication },
             );
           }}
           onOpenChange={(open) => {

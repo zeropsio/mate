@@ -1,10 +1,10 @@
 /**
- * Whose each Mate is, and who a surface names, as HQ names them.
+ * Whose each Mate is, and who a surface names.
  *
- * A Mate's owner is HQ's (`hqProjectPeople`): HQ decides who owns it and sends their name and
- * picture, so a load reads no member list for "Jan's Mate — you have Read access" (D5). Whoever else a
- * surface names — a login's signer, a remark's author — HQ's people name too. Somebody HQ names no
- * record of goes without a name, and a face without a badge.
+ * A Mate's owner is HQ's (`hqProjectPeople`): HQ decides who owns it and names them by Zerops user
+ * id; the organization's member list, read with the viewer's own token, names and pictures them.
+ * Whoever else a surface names — a login's signer, a remark's author — the member list names too.
+ * Somebody it does not hold goes without a name, and a face without a badge.
  */
 
 import { useAtomValue } from "@effect/atom-react";
@@ -42,8 +42,8 @@ export interface ZeropsMateOwner {
 
 /**
  * Somebody of the organization `clientId` by their Zerops user id, by name — a login's signer, a
- * remark's author — as HQ's people name them for the organization in view; its last word stands
- * while HQ does not answer. Nobody of another organization.
+ * remark's author — as the member list of the organization in view names them; its last answer
+ * stands while Zerops does not answer. Nobody of another organization.
  */
 export function useHqPersonNames(
   clientId: string | undefined,
@@ -59,8 +59,7 @@ export function useHqPersonNames(
 
 /**
  * Who a record names by their Zerops user id, or by the subject the engine records a person's
- * answer under: the person looking by their own account (HQ's people name only those its records
- * hold), anyone else as HQ names them.
+ * answer under: the person looking by their own account, anyone else as the member list names them.
  */
 export function personNameOf(
   subject: string,
@@ -82,8 +81,8 @@ export function usePersonNames(
 }
 
 /**
- * A Mate's owner as HQ names them (`HqMateOwner`), as a face in the corner of the Mate's own draws
- * them: their name and its initials, and the platform's picture of them HQ sends.
+ * A Mate's owner (`HqMateOwner`), as a face in the corner of the Mate's own draws them: their name
+ * and its initials, and the platform's picture of them.
  */
 export function zeropsMateOwnerOf(
   owner: HqMateOwner | null | undefined,
