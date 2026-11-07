@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off -- Vite config runs in Node before any Effect runtime exists.
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 import * as NodeZlib from "node:zlib";
 
 import tailwindcss from "@tailwindcss/vite";
@@ -77,21 +80,44 @@ const buildSourcemap: boolean | "hidden" =
       ? "hidden"
       : true;
 
+const unitTestOptions = {
+  fsModuleCache: true,
+  // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
+  taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
+  // Dynamic imports and isolated module reloads run inside cases and hooks. Their wall
+  // time under contention is not an assertion; CI's 10-minute job guard owns hangs.
+  hookTimeout: 660_000,
+  testTimeout: 660_000,
+  globalSetup: ["../../packages/shared/src/testing/longTempDir.ts"],
+} satisfies TestProjectInlineConfiguration["test"];
+
+// A shared worker (`isolate: false`) loads the module graph once for all its files, but Vitest
+// resets neither its mock registry nor its evaluated modules between them: a file that replaces
+// modules (`vi.mock`) would hand its fakes, and every consumer evaluated against them, to the
+// next file. Those files run in workers of their own; Vitest shares a worker only within one
+// project and environment, so no other file ever sees their replacements.
+const moduleMockingTestFiles = NodeFS.globSync(["src/**/*.test.ts", "src/**/*.test.tsx"], {
+  cwd: import.meta.dirname,
+}).filter((file) =>
+  /\bvi\.(?:mock|doMock)\(/u.test(
+    NodeFS.readFileSync(NodePath.join(import.meta.dirname, file), "utf8"),
+  ),
+);
+
 const unitTestProject = {
   extends: true,
   test: {
+    ...unitTestOptions,
     name: "unit",
-    fsModuleCache: true,
     isolate: false,
-    // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
-    taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
     include: ["src/**/*.test.{ts,tsx}"],
-    // Dynamic imports and isolated module reloads run inside cases and hooks. Their wall
-    // time under contention is not an assertion; CI's 10-minute job guard owns hangs.
-    hookTimeout: 660_000,
-    testTimeout: 660_000,
-    globalSetup: ["../../packages/shared/src/testing/longTempDir.ts"],
+    exclude: moduleMockingTestFiles,
   },
+} satisfies TestProjectInlineConfiguration;
+
+const isolatedUnitTestProject = {
+  extends: true,
+  test: { ...unitTestOptions, name: "unit-isolated", include: moduleMockingTestFiles },
 } satisfies TestProjectInlineConfiguration;
 
 /**
@@ -448,7 +474,11 @@ export default defineConfig(({ command }) => {
       },
     },
     test: {
-      projects: [defineProject(unitTestProject), defineProject(engineOracleProject)],
+      projects: [
+        defineProject(unitTestProject),
+        defineProject(isolatedUnitTestProject),
+        defineProject(engineOracleProject),
+      ],
     },
   };
 });
