@@ -715,7 +715,7 @@ describe("SidebarZeropsTree", () => {
 
   // HQ's navigation row names the owner whether or not anybody is signed in to the Mate's agent
   // now: both rows HQ recorded draw its owner's picture, as HQ's person record pictures them.
-  // witness: packages/client-runtime/src/data/projections/hqProjectPeople.ts | person?.ownerUserId ?? agentSigner(signedInNow, everSignedIn) → agentSigner(signedInNow, everSignedIn)
+  // witness: packages/client-runtime/src/data/projections/hqProjectPeople.ts | ownerOf(read, orgId, person?.ownerUserId) → ownerOf(read, orgId, undefined)
   it("wears a colleague's picture on its face's corner, cut out of the face, never before the name", () => {
     const rowOf = (recording: "navigation-project.signed-in" | "navigation-project.no-signer") => {
       const store = makeAccountStore(AtomRegistry.make());

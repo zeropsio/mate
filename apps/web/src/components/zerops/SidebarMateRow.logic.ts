@@ -103,13 +103,13 @@ export function ownerMark(owner: {
 /**
  * Whose Mate it is, as the seat before its name draws it:
  * - `person` — its owner, named by the member list: their picture or initial;
- * - `unnamed` — its records name somebody the member list has not named: not
- *   read yet, the read failed, or they are not in it. A neutral disc keeps
- *   the place, so nothing moves when they are read, and nothing is worth an
- *   error;
- * - `nobody` — its records name nobody: no `OWNER` entry, and nobody has
- *   signed its agent in. An empty seat, the "no assignee" convention, with
- *   the state in words: it is nobody's until somebody signs it in.
+ * - `unnamed` — HQ has not said whose it is yet, or names somebody the member
+ *   list has not named: not read yet, the read failed, or they are not in it.
+ *   A neutral disc keeps the place, so nothing moves when they are read, and
+ *   nothing is worth an error;
+ * - `nobody` — HQ names no owner of it (`ownerUserId`). An empty seat, the
+ *   "no assignee" convention, with the state in words: it is nobody's until
+ *   somebody signs its agent in, which makes them its owner in HQ.
  */
 export type OwnerSeat =
   | { readonly kind: "person"; readonly mark: OwnerMark }
@@ -134,13 +134,13 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  * its agent in (the owner, 2026-09-29: "mate without auth / owner should have
  * the state specially handled"):
  *
- * | its records                   | the member list | seat           | never asked                       |
+ * | HQ                            | the member list | seat           | never asked                       |
  * | ----------------------------- | --------------- | -------------- | --------------------------------- |
- * | name nobody                   | —               | the empty seat | the line                          |
- * | an `OWNER`, nobody signed in  | named           | their picture  | the line                          |
- * | an `OWNER`, nobody signed in  | not named yet   | a neutral disc | the line                          |
- * | somebody signed in            | named           | their picture  | nothing: a row as tall as it says |
- * | somebody signed in            | not named       | a neutral disc | nothing                           |
+ * | names no owner                | —               | the empty seat | the line                          |
+ * | an owner, nobody signed in    | named           | their picture  | the line                          |
+ * | an owner, nobody signed in    | not named yet   | a neutral disc | the line                          |
+ * | an owner, somebody signed in  | named           | their picture  | nothing: a row as tall as it says |
+ * | an owner, somebody signed in  | not named       | a neutral disc | nothing                           |
  *
  * The line takes the row's second line only where nothing was asked: a Mate
  * somebody has talked to says what was asked, and the seat alone says it is
@@ -156,8 +156,8 @@ const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
  * sign-in somebody is waited for never reads like a failure (the owner, 2026-10-01): anybody else
  * reads that it waits for a sign-in, quietly, and a viewer not known yet reads nothing. A Mate
  * that names nobody reads the fact. A Mate that runs on an agent that needs no sign-in (Cursor,
- * OpenCode…: HQ's overview) waits on nobody's sign-in and says none of it; its maker holds its
- * seat, as its records name them.
+ * OpenCode…: HQ's overview) waits on nobody's sign-in and says none of it; its owner HQ names
+ * holds its seat.
  */
 export function mateOwnerView(input: {
   readonly owner:
@@ -248,17 +248,15 @@ export function ownerBadge(seat: OwnerSeat, isViewer: boolean): BadgeSeat | null
  * Whether a Mate's row reads as not the viewer's — its face paler under its
  * owner's badge (the owner, 2026-09-30: "the not yours should have the avatar
  * bigger and maybe some other small visual diff also"): a colleague's, and
- * nobody's until somebody signs it in. Known from the first paint: the owner
- * HQ's people name, or before they have named them, the signer HQ's overview
- * names against the viewer's own id; a Mate that may be the viewer's reads as
- * theirs.
+ * one HQ names no owner of. Before the member list names HQ's owner, HQ's own
+ * word that the viewer is not it (`mine`) says so; a Mate that may be the
+ * viewer's reads as theirs.
  */
 export function mateNotYours(input: {
   readonly seat: OwnerSeat;
   readonly isViewer: boolean;
-  /** The user id its signer is, as HQ's overview names them (`mateOwnerRecords`). */
-  readonly signer: string | undefined;
-  readonly viewer: string | undefined;
+  /** HQ names the viewer its owner (`mine`); `undefined` where HQ does not say. */
+  readonly mine: boolean | undefined;
 }): boolean {
   switch (input.seat.kind) {
     case "nobody":
@@ -266,9 +264,7 @@ export function mateNotYours(input: {
     case "person":
       return !input.isViewer;
     case "unnamed":
-      return (
-        input.signer !== undefined && input.viewer !== undefined && input.signer !== input.viewer
-      );
+      return input.mine === false;
   }
 }
 

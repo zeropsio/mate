@@ -1,6 +1,7 @@
 /**
  * Who each project HQ places is, for the reader, as HQ computed it: its
- * owner — HQ's user id, named and pictured from the client's own member list (`zeropsPeople`) —,
+ * owner — HQ's user id (`ownerUserId`), the only word on whose a Mate is, named and pictured from
+ * the client's own member list (`zeropsPeople`); never guessed from who signed its agent in —,
  * whether its Mate waits on the reader, and who is signed in to each agent's own login now and who
  * ever was. Nothing is computed here from roles; an owner the member list does not name is drawn
  * as nobody's. A project HQ removed is in none of it.
@@ -60,28 +61,13 @@ function peopleOf(
           chief: { projectId: person.chiefProjectId, mine: person.mine },
         }),
     owned: person?.ownerUserId === undefined ? undefined : person.ownerUserId !== null,
-    owner: ownerOf(read, orgId, person?.ownerUserId ?? agentSigner(signedInNow, everSignedIn)),
+    owner: ownerOf(read, orgId, person?.ownerUserId),
     mine: person?.mine,
     waitsOnViewer: person?.waitsOnViewer,
     keyRefused: placement.mate?.keyRefused,
     signedInNow,
     everSignedIn,
   };
-}
-
-/**
- * Whose a Mate is where HQ names no `OWNER` on its project: the person signed in to its coding agent
- * now, else the last one who was (the owner, 2026-11-06: the faces on the menu's rows come back).
- */
-function agentSigner(
-  signedInNow: PlacementValue["signedInNow"] | undefined,
-  everSignedIn: PlacementValue["everSignedIn"] | undefined,
-): string | undefined {
-  for (const logins of [signedInNow, everSignedIn]) {
-    const id = logins?.["claude-code"] ?? logins?.["codex"] ?? Object.values(logins ?? {})[0];
-    if (id !== undefined && id.length > 0) return id;
-  }
-  return undefined;
 }
 
 function ownerOf(
