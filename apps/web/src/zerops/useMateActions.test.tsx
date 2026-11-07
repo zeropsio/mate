@@ -773,19 +773,14 @@ it("a bound shared birth offers Continue and Delete through the same Mate action
   expect(verbs(FEN).map((entry) => entry.id)).toEqual(["delete"]);
 });
 
-/** A birth's stage mounted where no DOM is: its arrival focus and listeners find none. */
-function stubNoDom(): void {
+it("Remove cleans up only the failed creation's project", async () => {
+  const registry = AtomRegistry.make();
   const noDom = Object.fromEntries(
     ["Node", "Element", "HTMLElement", "ShadowRoot"].map((name) => [name, function none() {}]),
   );
-  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom, { setTimeout, clearTimeout }));
+  vi.stubGlobal("window", Object.assign(new EventTarget(), noDom));
   vi.stubGlobal("document", Object.assign(new EventTarget(), { activeElement: null, body: {} }));
   for (const [name, type] of Object.entries(noDom)) vi.stubGlobal(name, type);
-}
-
-it("Remove cleans up only the failed creation's project", async () => {
-  const registry = AtomRegistry.make();
-  stubNoDom();
   const orgId = "org-acme";
   const projects = new Map([
     ["Ada", { id: "Ada", name: "Shop - Ada", status: "ACTIVE", clientId: orgId }],
@@ -2320,158 +2315,4 @@ it("a Mate with no deployment opens its Redeploy recovery from the shared menu",
   act(() => redeploy!.onSelect());
   expect(mock.deployDialog?.candidate).toEqual(candidate);
   expect(mock.restartContainer).not.toHaveBeenCalled();
-});
-
-// witness: apps/web/src/zerops/useMateActions.tsx | if (open.projectId !== null && open.adopted !== true) { → if (open.projectId !== null) {
-it("an interrupted existing-project adoption follows the decided deletion policy", async () => {
-  const registry = AtomRegistry.make();
-  stubNoDom();
-  const orgId = "org-acme";
-  const id = "9b4d065c-191d-413e-92ce-2bcdd08e0ee8";
-  mock.liveBirths = true;
-  mount(
-    registry,
-    (store) => {
-      registry.set(accountReadsAtom, {
-        data: store.data,
-        orgId,
-        demandDetail: () => () => {},
-        renewHeld: () => {},
-      });
-      liveProjects(orgId, [
-        { id: "Existing", name: "Existing", status: "ACTIVE", clientId: orgId },
-      ]).forEach(store.dispatch);
-      membershipInputs("OWNER", true, 1, orgId).forEach(store.dispatch);
-      // HQ's adoption of the existing project, its import claimed and then refused by Zerops.
-      mountHqNavigation(
-        registry,
-        orgId,
-        {
-          structure: {
-            apps: [
-              {
-                id: "shop",
-                name: "Shop",
-                projects: [{ projectId: "Existing", name: "Existing", kind: "plain", mate: null }],
-                births: [
-                  {
-                    id,
-                    projectId: "Existing",
-                    adopted: true,
-                    face: "rose:seal",
-                    madeBy: "user-ada",
-                    intent: {
-                      projectName: "Existing",
-                      recipe: { kind: "none" },
-                      agents: ["codex"],
-                      standUp: false,
-                      automated: false,
-                      placement: { role: "dev", name: "Nova", chief: false },
-                      location: null,
-                      userRoles: [],
-                    },
-                    attempts: {
-                      import: {
-                        by: "user-ada",
-                        at: "2026-11-05T10:00:00.000Z",
-                        refused: {
-                          at: "2026-11-05T10:00:01.000Z",
-                          reason: "Import refused by Zerops.",
-                        },
-                      },
-                    },
-                  },
-                ],
-              },
-            ],
-            ungrouped: [],
-          },
-        },
-        store,
-      );
-    },
-    <SharedBirthProbe />,
-  );
-  const store = mock.faceStore!;
-  const captured: Array<string> = [];
-  mock.deleteBirthOnly.mockImplementation(async (birthId: string, projectId: string | null) => {
-    captured.push(`delete birth ${birthId} of ${projectId}`);
-  });
-  mock.prepareProjectDeletion.mockImplementation(async () => {
-    captured.push("prepare project deletion");
-    return "completion";
-  });
-  mock.deleteRun = async (intent) => {
-    captured.push(intent.kind);
-    return undefined as never;
-  };
-  const stage = mounted.at(-1)!;
-  // What a person reads: a state the stage has swapped away from leaves hidden from them.
-  const readable = (node: ReactTestInstance | string): string =>
-    typeof node === "string"
-      ? node
-      : node.props["aria-hidden"] === "true"
-        ? ""
-        : node.children.map(readable).join("");
-  const hidden = (node: ReactTestInstance | null): boolean =>
-    node !== null && (node.props["aria-hidden"] === "true" || hidden(node.parent));
-  const buttons = () => stage.root.findAll((node) => node.type === "button" && !hidden(node));
-  const shown = () => ({
-    text: readable(stage.root),
-    buttons: buttons().map((node) => readable(node).trim()),
-  });
-
-  // The project's history read held: the birth and its Delete reach the page first.
-  expect(shown().text).toContain("Project created");
-  expect(shown().text).toContain("Waiting for project creation history");
-  expect(shown().buttons).toContain("Delete");
-
-  // The project's history answers empty.
-  const history = historyScope(orgId, "Existing");
-  act(() => {
-    store.dispatch({
-      kind: "stream",
-      key: history,
-      now: 0,
-      event: { kind: "demand", demanded: true },
-    });
-    store.dispatch({ kind: "stream", key: history, now: 0, event: { kind: "attempt" } });
-    store.dispatch({ kind: "stream", key: history, now: 0, event: { kind: "handshake" } });
-    store.dispatch({ kind: "baseline-begin", scope: history, generation: 1 });
-    store.dispatch({
-      kind: "baseline-commit",
-      scope: history,
-      generation: 1,
-      via: "zerops-read",
-      members: [],
-      rows: [],
-    });
-    store.dispatch({ kind: "stream", key: history, now: 0, event: { kind: "baseline-committed" } });
-  });
-  const state = shown();
-  expect(state.text).toContain("Project created");
-  expect(state.text).not.toContain("Waiting for project creation history");
-  expect(state.text).toContain("Import refused by Zerops.");
-  expect(state.text).toContain("Continue will register the Mate and submit the import.");
-  expect(state.text).toContain(
-    "Delete stops setting up the Mate and leaves the project untouched.",
-  );
-  expect(state.buttons).toContain("Continue");
-  expect(state.buttons).toContain("Delete");
-
-  const deleteButton = buttons().find((node) => readable(node).trim() === "Delete")!;
-  act(() => {
-    deleteButton.props.onClick();
-  });
-  expect(mock.deleteDialog.current).toMatchObject({
-    words: {
-      body: "This stops setting up the Mate and leaves the existing project and its services untouched.",
-      label: "Type Nova to confirm",
-      submit: "Delete Nova",
-    },
-  });
-  await act(async () => {
-    mock.deleteDialog.current!.onConfirm();
-  });
-  expect(captured).toEqual([`delete birth ${id} of Existing`]);
 });

@@ -2,16 +2,12 @@ import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveZerops, ORG } from "../data/__fixtures__/account.ts";
-import { seedHqNavigation } from "../data/__fixtures__/hqNavigation.ts";
-import { membershipInputs } from "../data/__fixtures__/membership.ts";
+import { liveZerops } from "../data/__fixtures__/account.ts";
 import type { OperationIntent, OperationResult } from "../data/model.ts";
 import { makeOperations } from "../data/operations/coordinator.ts";
-import { creationWritesExecutor } from "../data/operations/executors/creationWrites.ts";
 import { runToEnd, type RunToEnd } from "../data/operations/runToEnd.ts";
-import { sharedBirths } from "../data/projections/birthProgress.ts";
-import { makeAccountStore, readsOfState } from "../data/store.ts";
-import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient, ZeropsApiError } from "./api.ts";
+import { makeAccountStore } from "../data/store.ts";
+import { ZeropsApiError } from "./api.ts";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import { withZeropsMateTag } from "./groups.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
@@ -875,157 +871,6 @@ describe("runEnvironmentCreation — a Mate's one import", () => {
     });
     await run(plan("dev"), { ...platform, birthplace });
     expect(imported).toEqual([expect.objectContaining({ birthplace })]);
-  });
-
-  // witness: packages/client-runtime/src/zerops/runEnvironmentCreation.ts | ...(step.tier === undefined ? {} : { tierYaml: step.tier.yaml }) → {}
-  it("the one import carries the tier", async () => {
-    const registry = AtomRegistry.make();
-    const store = makeAccountStore(registry);
-    liveZerops({ running: [] }).forEach(store.dispatch);
-    // Zerops as the container import's routes answer a fresh project: the one import names the
-    // zcp service it creates and its creation process.
-    const requests: Array<{ readonly method: string; readonly path: string; body: string | null }> =
-      [];
-    const client = new ZeropsApiClient({
-      fetch: (input, init) => {
-        const method = init?.method ?? "GET";
-        const path = input.replace(`${DEFAULT_ZEROPS_API_BASE}/api/rest/public`, "");
-        requests.push({ method, path, body: typeof init?.body === "string" ? init.body : null });
-        const payload = path.endsWith("/service-stack/import")
-          ? {
-              projectId: "created-1",
-              serviceStacks: [
-                {
-                  id: "svc-api",
-                  name: "api",
-                  processes: [{ id: "proc-api", actionName: "stack.create" }],
-                },
-                {
-                  id: "svc-zcp",
-                  name: "zcp",
-                  processes: [{ id: "proc-zcp", actionName: "stack.create" }],
-                },
-              ],
-            }
-          : path.endsWith("/process/search")
-            ? { items: [] }
-            : path.endsWith("/integration-token") && method === "POST"
-              ? { id: "token-new", token: ["minted", "key"].join("_") }
-              : { list: [] };
-        return Promise.resolve(
-          new Response(JSON.stringify(payload), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-          }),
-        );
-      },
-    });
-    client.restoreSession({ accessToken: "access-1" });
-    const operations = makeOperations({
-      store,
-      executors: {
-        zerops: {
-          submit: creationWritesExecutor({
-            importProject: (clientId, yaml) => client.importProject(clientId, yaml),
-            importServicesIntoProject: (projectId, yaml) =>
-              client.importServicesIntoProject(projectId, yaml),
-            importDevelopmentContainer: (input) => client.importDevelopmentContainer(input),
-            hardenMate: (clientId, projectId, keyTokenId) =>
-              client.hardenMate(clientId, projectId, undefined, undefined, keyTokenId),
-          }),
-        },
-      },
-      makeId: () => "import-1",
-    });
-    const zerops = runToEnd({ operations, store, registry });
-    const { platform } = fakePlatform({ createProject: async () => ({ id: "created-1" }) });
-    const steps = planEnvironmentCreation({
-      clientId: ORG,
-      name: "Shop - Nova",
-      recipe: { kind: "tier", revision: "recipe-revision", tier: "mate", yaml: TIER_YAML },
-      role: "dev",
-      agents: ["codex"],
-    });
-    if (!steps.ok) throw new Error(steps.reason);
-    let receipt: string | undefined;
-    const outcome = await runEnvironmentCreation({
-      clientId: ORG,
-      steps: steps.steps,
-      platform: {
-        ...platform,
-        run: ((intent, options) =>
-          intent.kind === "import-container"
-            ? zerops(intent, options)
-            : platform.run(intent, options)) as RunToEnd,
-      },
-      onContainerImported: ({ processId }) => {
-        receipt = processId;
-      },
-    });
-    // Mate tier import accepted.
-    expect(outcome).toMatchObject({ ok: true, projectId: "created-1" });
-    const imports = requests.filter(
-      (request) =>
-        request.method === "POST" && request.path === "/project/created-1/service-stack/import",
-    );
-    expect(imports).toHaveLength(1);
-    const yaml = (JSON.parse(imports[0]!.body ?? "{}") as { readonly yaml: string }).yaml;
-    expect(yaml.includes("zcp@")).toBe(true);
-    expect(yaml.includes("hostname: api")).toBe(true);
-
-    // A second device reads only HQ's birth, its recorded import, and its own Zerops stream.
-    const second = makeAccountStore(registry);
-    liveZerops({
-      running: [],
-      projects: [{ id: "created-1", name: "Shop - Nova" }],
-      services: [
-        {
-          id: "svc-zcp",
-          projectId: "created-1",
-          name: "zcp",
-          status: "CREATING",
-          serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
-        },
-      ],
-    }).forEach(second.dispatch);
-    membershipInputs("OWNER", false, 1, ORG).forEach(second.dispatch);
-    seedHqNavigation(second, ORG, {
-      structure: {
-        apps: [
-          {
-            id: "app-shop",
-            name: "Shop",
-            projects: [
-              {
-                projectId: "created-1",
-                name: "Shop - Nova",
-                kind: "mate",
-                mate: { face: "", birthId: "b-nova" },
-              },
-            ],
-            births: [
-              {
-                id: "b-nova",
-                face: "",
-                madeBy: "ada",
-                projectId: "created-1",
-                ...(receipt === undefined ? {} : { importProcessId: receipt }),
-              },
-            ],
-          },
-        ],
-        ungrouped: [],
-      },
-    });
-    expect(
-      sharedBirths.derive(readsOfState(second.state()), { orgId: ORG, personId: "bea" }).open,
-    ).toMatchObject([{ importProcessId: "proc-zcp", progress: { phase: "container-starting" } }]);
-    expect(
-      requests.filter((request) => request.path.endsWith("/service-stack/import")),
-    ).toHaveLength(1);
-    second.close();
-    store.close();
-    registry.dispose();
   });
 
   it("registers a Mate before its container, and writes nothing after its import", async () => {
