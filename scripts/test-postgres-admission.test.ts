@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- deterministic host admission receipts.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeEvents from "node:events";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -7,6 +8,7 @@ import * as NodePath from "node:path";
 import { it } from "@effect/vitest";
 import { Effect } from "effect";
 import { expect } from "vite-plus/test";
+import { processesCarrying } from "./fixtures/run-markers.ts";
 import { acquirePostgresAdmission, postgresAdmissionBudget } from "./test-postgres-admission.ts";
 
 it("Decision: PG-backed test work from z3 and mate-hq on one host is admitted by one shared budget; waiting is ended by a release receipt, never a clock.", async () => {
@@ -82,6 +84,41 @@ it("a PostgreSQL admission owner's process exit releases its host capacity", asy
   } finally {
     if (owner.exitCode === null) owner.kill("SIGTERM");
     await exited;
+  }
+});
+
+// witness: scripts/test-postgres-admission.ts | env: sharedDaemonEnvironment(), → env: process.env,
+it("Decision: the shared PostgreSQL admission broker outlives its electing job by design, so reaping that job's run marker leaves a second holder's admission working", async () => {
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-reap-"));
+  const marker = NodeCrypto.randomBytes(16).toString("hex");
+  const script = `import {acquirePostgresAdmission} from ${JSON.stringify(new URL("./test-postgres-admission.ts", import.meta.url).href)}; const lease = await acquirePostgresAdmission({directory:process.argv[1],capacity:2}); process.send('admitted'); process.once('message',async()=>{await lease.release(); process.disconnect();});`;
+  const elector = NodeChildProcess.spawn(
+    process.execPath,
+    ["--input-type=module", "-e", script, directory],
+    {
+      env: { ...process.env, ZBOARD_RUN_MARKERS: marker },
+      stdio: ["ignore", "ignore", "inherit", "ipc"],
+    },
+  );
+  const exited = new Promise<void>((resolve) => elector.once("exit", () => resolve()));
+  const lost: Error[] = [];
+  try {
+    await new Promise<void>((resolve) => elector.once("message", () => resolve()));
+    const second = await acquirePostgresAdmission({
+      directory,
+      capacity: 2,
+      onLost: (error) => lost.push(error),
+    });
+    elector.send("release");
+    await exited;
+    // The elector's job ends: zboard stops every process still carrying its marker.
+    for (const pid of processesCarrying(marker)) process.kill(pid, "SIGKILL");
+    await second.release();
+    expect(lost).toEqual([]);
+  } finally {
+    if (elector.exitCode === null) elector.kill("SIGTERM");
+    await exited;
+    NodeFS.rmSync(directory, { recursive: true, force: true });
   }
 });
 

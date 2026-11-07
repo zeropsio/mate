@@ -122,7 +122,11 @@ To answer a question, go to the home:
   platform fact. One surface/flow/component belongs in tests (title is the product sentence; one-line
   why when the owner decided against the obvious) or code. Reasons/reversals belong in the commit message.
 - Test admission and removal: OWNER.md Testing. `scripts/check-test-sentences.ts` enforces
-  witness lines and `Drops-test`/`Drops-test-file` trailers.
+  witness lines and `Drops-test`/`Drops-test-file` trailers; `scripts/witness-replay.ts <file>`
+  replays a file's witnesses.
+- Wire-shaped test input: `recorded(<name>, edit?)` from `packages/test-recordings` (HQ from mate-hq
+  conformance; written only by `scripts/sync-recordings.ts`). Casts and annotations to contract types
+  in tests only decrease (`scripts/check-test-inputs.ts`).
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.
 - Paragraph-sized doc entries are list items, never table rows.

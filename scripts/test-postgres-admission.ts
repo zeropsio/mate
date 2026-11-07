@@ -12,6 +12,13 @@ import { acquireProcessLock } from "./test-process-lock.ts";
 export const postgresAdmissionBudget = (cores = NodeOS.availableParallelism()) =>
   Math.max(1, cores - 1);
 
+/**
+ * A shared test daemon outlives the job that elects it, so it leaves that job's zboard run
+ * markers behind: zboard stops every process carrying a job's marker when the job ends.
+ */
+export const sharedDaemonEnvironment = () =>
+  Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "ZBOARD_RUN_MARKERS"));
+
 interface AdmissionOptions {
   readonly directory?: string;
   readonly capacity?: number;
@@ -101,7 +108,11 @@ export async function acquirePostgresAdmission(
         daemon = NodeChildProcess.spawn(
           process.execPath,
           [NodeURL.fileURLToPath(import.meta.url), "serve", directory, String(capacity)],
-          { detached: true, stdio: ["ignore", "ignore", diagnostics, "ipc"] },
+          {
+            detached: true,
+            env: sharedDaemonEnvironment(),
+            stdio: ["ignore", "ignore", diagnostics, "ipc"],
+          },
         );
       } finally {
         NodeFS.closeSync(diagnostics);

@@ -857,6 +857,7 @@ it.each([
           "@t3tools/web",
           "@t3tools/desktop",
           "@t3tools/mobile",
+          "@t3tools/test-recordings",
           "t3",
           "t3code-relay",
         ]
@@ -1721,6 +1722,26 @@ it("BigInt source edits select checks while comments alone select none", () => {
   } finally {
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
+});
+
+// witness: scripts/gate-changed.ts | if (existing.some((path) => /\.test\.tsx?$/u.test(path))) → if (false)
+it("a lane editing a unit test replays its new witnesses before the test stages; scenario files replay in the integrator", () => {
+  const unit = "apps/server/src/spi/serverCommandReadiness.test.ts";
+  const scenario = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
+  const lines = (path: string) =>
+    selectGateSteps(repositoryGraph, {
+      comparison: "HEAD",
+      existing: [path],
+      paths: [path],
+      inventory: [scenario],
+      smokeFiles: [],
+      slots: 3,
+    }).steps.map((step) => `${step.name}: ${step.command} ${step.args.join(" ")}`);
+  const unitLane = lines(unit);
+  const replay = unitLane.indexOf("witness replay: node scripts/witness-replay.ts --changed HEAD");
+  expect(replay).toBeGreaterThan(-1);
+  expect(replay).toBeLessThan(unitLane.findIndex((line) => line.startsWith("related ")));
+  expect(lines(scenario).some((line) => line.startsWith("witness replay:"))).toBe(false);
 });
 
 it("the default laptop gate omits selected browser scenarios and fixed smoke", () => {

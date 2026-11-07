@@ -1,9 +1,11 @@
 /**
  * What HQ computed of the reader for each project, and the people it names, put into an account's
  * store as HQ's navigation would deliver them: for tests of the surfaces that read who a project's
- * owner is, whether its Mate waits on the reader, and who signed its agents in.
+ * owner is, whether its Mate waits on the reader, and who signed its agents in. Each project's row
+ * is one HQ recorded (`@t3tools/test-recordings`), with the test's facts written over it.
  */
 import type { HqNavigationProject } from "@t3tools/shared/hqStream";
+import { recorded } from "@t3tools/test-recordings/recorded";
 
 import { hqPeopleScope, placementsScope } from "../families/hqNavigation.ts";
 import { linkKeys, type ScopeKey } from "../model.ts";
@@ -12,6 +14,8 @@ import type { AccountStore } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 
 export interface SeededProjectPerson {
+  /** The row HQ recorded this project's starts from; one nobody is signed in to, unless named. */
+  readonly recording?: "navigation-project.signed-in" | "navigation-project.no-signer";
   readonly ownerUserId?: string | null;
   readonly waitsOnViewer?: boolean;
   readonly mine?: boolean;
@@ -61,21 +65,19 @@ export function seedHqProjectPeople(
       family: "placement",
       id: projectId,
       revision,
-      value: {
+      value: recorded(person.recording ?? "navigation-project.no-signer", (row) => ({
+        ...row,
         projectId,
-        appId: null,
         name: projectId,
-        kind: "mate",
-        mate: null,
         person: {
-          mine: person.mine ?? false,
-          ownerUserId: person.ownerUserId ?? null,
-          waitsOnViewer: person.waitsOnViewer ?? false,
-          unseen: null,
+          ...row.person,
+          ...(person.mine === undefined ? {} : { mine: person.mine }),
+          ...(person.ownerUserId === undefined ? {} : { ownerUserId: person.ownerUserId }),
+          ...(person.waitsOnViewer === undefined ? {} : { waitsOnViewer: person.waitsOnViewer }),
         },
-        signedInNow: person.signedInNow ?? {},
-        everSignedIn: person.everSignedIn ?? person.signedInNow ?? {},
-      },
+        signedInNow: person.signedInNow ?? row.signedInNow,
+        everSignedIn: person.everSignedIn ?? person.signedInNow ?? row.everSignedIn,
+      })),
     })),
     ...Object.entries(seed.people ?? {}).map(([userId, person]): Row => ({
       family: "hqPerson",
