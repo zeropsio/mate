@@ -176,12 +176,17 @@ export async function outageConnection(upstreamOrigin: string) {
     async stall() {
       const [client, link] = (await oneStructure())!;
       link.stalled = true;
+      /** Frames before this one answered an earlier wait. */
+      let read = 0;
       return {
-        waitForDownstream: (text: string) =>
-          waitFor(
-            () => (link.droppedDown.some((frame) => frame.includes(text)) ? true : undefined),
-            `stalled HQ frame containing ${text}`,
-          ),
+        /** HQ's next dropped frame that `matches`, after the one the previous wait found. */
+        waitForDownstream: (what: string, matches: (frame: string) => boolean) =>
+          waitFor(() => {
+            const index = link.droppedDown.findIndex((frame, at) => at >= read && matches(frame));
+            if (index === -1) return undefined;
+            read = index + 1;
+            return true;
+          }, `stalled HQ frame: ${what}`),
         waitForUpstream: () =>
           waitFor(() => (link.droppedUp > 0 ? true : undefined), "stalled browser frame"),
         get open() {

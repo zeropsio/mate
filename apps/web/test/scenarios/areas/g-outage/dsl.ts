@@ -1,4 +1,7 @@
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { HqStreamMessage } from "@t3tools/shared/hqStream";
 import { STREAM_POLICY } from "../../../../../../packages/client-runtime/src/data/streamMachine.ts";
 import type { Page } from "puppeteer-core";
 import { createScenario } from "../../harness/scenario.ts";
@@ -219,12 +222,28 @@ export const heartbeatsWithoutSnapshot = (s: Scenario) =>
     yield* Effect.promise(() => s.clock.advance(5_000));
   });
 
+const decodeStreamMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
+
 export const stallsHq = (s: Scenario) =>
   Effect.gen(function* () {
     const stalled = yield* Effect.promise(() => outageControls(s.drivers).stall());
     yield* Effect.promise(() => stallSleepSocket(s.page));
     return stalled;
   });
+
+/** HQ tells a held scope's change with no values (`scope-changed`); the client asks it again. */
+const navigationChanged = (frame: string) => {
+  const parsed = decodeStreamMessage(frame);
+  return (
+    Option.isSome(parsed) &&
+    parsed.value.type === "scope-changed" &&
+    parsed.value.scope.kind === "navigation"
+  );
+};
+
+/** HQ told the stalled link its navigation changed: the change exists, and the tab missed it. */
+export const hqToldWhileStalled = (stalled: Effect.Success<ReturnType<typeof stallsHq>>) =>
+  Effect.promise(() => stalled.waitForDownstream("navigation changed", navigationChanged));
 
 export const frozenMenuStillSays = (s: Scenario, name: string, absent: string) =>
   Effect.promise(async () => {

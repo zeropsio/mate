@@ -10,6 +10,7 @@ import {
   caughtUp,
   cappedHqOutage,
   stallsHq,
+  hqToldWhileStalled,
   frozenMenuStillSays,
   checkpoint,
   showsWokenTab,
@@ -81,13 +82,14 @@ describe("G: outages, sleep and several tabs", () => {
         yield* caughtUp(s, "Shop");
         const stalled = yield* stallsHq(s);
         yield* s.when.hq.colleague.renamesProject("Shop", "Shop while stalled");
-        yield* Effect.promise(() => stalled.waitForDownstream("Shop while stalled"));
+        yield* hqToldWhileStalled(stalled);
         yield* Effect.promise(() => s.clock.advance(30_000));
         yield* menuRowGone(s.page, "Shop while stalled");
         yield* menuSays(s.page, "Shop");
         yield* Effect.promise(() => s.clock.sleep());
+        // HQ told the stalled link its navigation changed and awaits the tab's retry before it
+        // tells again: the rename's own answer is this change's receipt.
         yield* s.when.hq.colleague.renamesProject("Shop", "Shop after wake");
-        yield* Effect.promise(() => stalled.waitForDownstream("Shop after wake"));
         yield* frozenMenuStillSays(s, "Shop", "Shop after wake");
         yield* Effect.promise(() => s.clock.wake(3_600_000));
         yield* showsWokenTab(s);
