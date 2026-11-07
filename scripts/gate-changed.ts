@@ -900,7 +900,7 @@ export function relatedTestPackages(packages: ReadonlyArray<GatePackage>) {
   return packages.filter((pkg) => /^(?:apps|infra)\//u.test(pkg.directory));
 }
 
-interface GateStage {
+export interface GateStage {
   readonly name: string;
   readonly command: string;
   readonly args: string[];
@@ -1218,6 +1218,23 @@ function stageHashes(
             else if ([...owners].some((owner) => touched.has(owner))) files.push(test);
           baseline = laneTests;
           trailers = laneTrailers;
+        } else if (stage.name === "witness replay") {
+          // Which witnesses are new depends on the base tests; replays read owners and configs too.
+          const replayed = paths.filter((path) => /\.test\.tsx?$/u.test(path));
+          files.push(...replayed);
+          for (const [test, owners] of witnessOwners(root))
+            if (replayed.includes(test))
+              files.push(...[...owners].filter((owner) => tracked.has(owner)));
+          for (const placement of testStages(replayed, graph.workspace)) {
+            const config = placement.args.indexOf("--config");
+            files.push(
+              NodePath.posix.join(
+                placement.cwd ?? ".",
+                config >= 0 ? placement.args[config + 1]! : "vite.config.ts",
+              ),
+            );
+          }
+          baseline = replayed;
         }
         if (
           !["check touched files", "test clock ratchet", "test input ratchet"].includes(stage.name)
@@ -1300,10 +1317,7 @@ async function sharedStageCache(
     return undefined;
   }
 
-  const path = [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
-    NodePath.delimiter,
-  );
-  const env = { ...process.env, PATH: path, MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8" };
+  const env = stageEnvironment(root);
   const snapshot = async () => {
     try {
       const { hashGuardContext, hashPackageTrees, makeGuardSourceHasher } =
@@ -1608,7 +1622,6 @@ export function selectGateSteps(
   const selectedScenarios = withScenarios
     ? inventory
     : inventory.filter((file) => paths.includes(file) && existing.includes(file));
-  const files = selectedScenarios.map((file) => NodePath.posix.relative("apps/web", file));
   const packages = typecheckPackages(paths, workspace);
   const steps: GateStage[] = [];
   steps.push({
@@ -1716,6 +1729,74 @@ export function selectGateSteps(
       ...units.filter((file) => manifestOwners.some((pkg) => file.startsWith(`${pkg.directory}/`))),
     ]),
   ].filter((file) => !repositoryInvariants.includes(file));
+  // New witnesses replay before the test stages, so a nested browser slot never waits on the gate's.
+  if (existing.some((path) => /\.test\.tsx?$/u.test(path)))
+    steps.push({
+      name: "witness replay",
+      command: "node",
+      args: ["scripts/witness-replay.ts", "--changed", comparison],
+    });
+  steps.push(...testStages([...ownedUnits, ...selectedScenarios], workspace));
+  // Edited smoke files already ran in full, so do not run their cases a second time.
+  const smoke = withScenarios ? smokeFiles.filter((file) => !inventory.includes(file)) : [];
+  for (const [name, configArgs, files] of [
+    [
+      "state-only smoke",
+      ["--config", "test/scenarios/vitest.config.ts"],
+      smoke.filter((file) => file.endsWith(".scenario.ts")),
+    ],
+    [
+      "state-only oracle smoke",
+      ["--project", "engine-oracle"],
+      smoke.filter((file) => file.startsWith("apps/web/test/engine-oracle/")),
+    ],
+  ] as const) {
+    if (!files.length) continue;
+    steps.push({
+      name,
+      cwd: "apps/web",
+      command: "vp",
+      args: [
+        "test",
+        "run",
+        ...configArgs,
+        ...files.map((file) => NodePath.posix.relative("apps/web", file)),
+        "--testNamePattern",
+        files
+          .flatMap((file) => stateOnlySmoke[file as keyof typeof stateOnlySmoke])
+          .map((title) => `(?:${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")})$`)
+          .join("|"),
+      ],
+    });
+  }
+  const browserStage = steps.findIndex((step) =>
+    step.args.some(
+      (arg) =>
+        arg.endsWith("/scenarios/vitest.config.ts") ||
+        arg.includes("test/engine-oracle/") ||
+        arg === "engine-oracle" ||
+        /\.(?:browser|scenario)\.[cm]?[jt]sx?$/u.test(arg),
+    ),
+  );
+  if (browserStage >= 0)
+    steps.splice(browserStage, 0, {
+      name: "browser/scenario slot",
+      command: "acquire",
+      args: [`GATE_SLOTS=${slots}`, gateSlotDirectory()],
+      slot: true,
+    });
+  return { steps, ownedUnits, selectedScenarios };
+}
+
+/** The stages that run test and scenario files, each under its package and Vitest config. */
+export function testStages(
+  testFiles: ReadonlyArray<string>,
+  workspace: ReadonlyArray<GatePackage>,
+): GateStage[] {
+  const steps: GateStage[] = [];
+  const scenarios = testFiles.filter((file) => file.endsWith(".scenario.ts"));
+  const files = scenarios.map((file) => NodePath.posix.relative("apps/web", file));
+  const ownedUnits = testFiles.filter((file) => !scenarios.includes(file));
   const driverUnits = ownedUnits.filter((file) =>
     file.startsWith("apps/web/test/scenarios/fakes/"),
   );
@@ -1783,55 +1864,22 @@ export function selectGateSteps(
       command: "vp",
       args: ["test", "run", "--config", "test/scenarios/vitest.config.ts", ...files],
     });
-  // Edited smoke files already ran in full, so do not run their cases a second time.
-  const smoke = withScenarios ? smokeFiles.filter((file) => !inventory.includes(file)) : [];
-  for (const [name, configArgs, files] of [
-    [
-      "state-only smoke",
-      ["--config", "test/scenarios/vitest.config.ts"],
-      smoke.filter((file) => file.endsWith(".scenario.ts")),
-    ],
-    [
-      "state-only oracle smoke",
-      ["--project", "engine-oracle"],
-      smoke.filter((file) => file.startsWith("apps/web/test/engine-oracle/")),
-    ],
-  ] as const) {
-    if (!files.length) continue;
-    steps.push({
-      name,
-      cwd: "apps/web",
-      command: "vp",
-      args: [
-        "test",
-        "run",
-        ...configArgs,
-        ...files.map((file) => NodePath.posix.relative("apps/web", file)),
-        "--testNamePattern",
-        files
-          .flatMap((file) => stateOnlySmoke[file as keyof typeof stateOnlySmoke])
-          .map((title) => `(?:${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")})$`)
-          .join("|"),
-      ],
-    });
-  }
-  const browserStage = steps.findIndex((step) =>
-    step.args.some(
-      (arg) =>
-        arg.endsWith("/scenarios/vitest.config.ts") ||
-        arg.includes("test/engine-oracle/") ||
-        arg === "engine-oracle" ||
-        /\.(?:browser|scenario)\.[cm]?[jt]sx?$/u.test(arg),
+  return steps;
+}
+
+/** The environment a stage runs under; the witness replay runs its test files the same way. */
+export function stageEnvironment(root: string, stage?: GateStage): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8",
+    PATH: [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
+      NodePath.delimiter,
     ),
-  );
-  if (browserStage >= 0)
-    steps.splice(browserStage, 0, {
-      name: "browser/scenario slot",
-      command: "acquire",
-      args: [`GATE_SLOTS=${slots}`, gateSlotDirectory()],
-      slot: true,
-    });
-  return { steps, ownedUnits, selectedScenarios };
+  };
+  // Keep the scenarios' configured serial PostgreSQL fixtures when unit workers are bounded.
+  if (stage?.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts")))
+    delete env.VITEST_MAX_WORKERS;
+  return env;
 }
 
 /** The CLI for one worktree; resolves to the exit status. */
@@ -2079,9 +2127,6 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     };
     // Retain only proven unchanged successes; pending stages are invalidated before any check.
     writeReceipt(receiptPath, receipt);
-    const PATH = [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
-      NodePath.delimiter,
-    );
     const logs = gateLogDirectory("gate-changed");
     if (verbose) console.log(`Full logs: ${logs}`);
     let slot: Awaited<ReturnType<typeof acquireGateSlot>> | undefined;
@@ -2129,11 +2174,9 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       const logPath = NodePath.join(logs, `${index + 1}.log`);
       const started = Date.now();
       const timingPath = NodePath.join(logs, `${index + 1}.timings.jsonl`);
-      const env: typeof process.env = {
-        ...process.env,
-        MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8",
+      const env: NodeJS.ProcessEnv = {
+        ...stageEnvironment(root, step),
         MATE_GATE_TIMINGS: timingPath,
-        PATH,
       };
       const selectedSmoke = smokeFiles.filter(
         (file) =>
@@ -2148,9 +2191,6 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
             ]),
           ),
         );
-      // Keep the scenarios' configured serial PostgreSQL fixtures when unit workers are bounded.
-      if (step.args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts")))
-        delete env.VITEST_MAX_WORKERS;
       const status = runLogged(
         step.command,
         [
