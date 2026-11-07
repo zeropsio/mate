@@ -305,11 +305,11 @@ const mebibytes = (bytes: number) => `${(bytes / 1024 ** 2).toFixed(1)} MiB`;
 
 /**
  * A full disk fails PostgreSQL, mkdtemp and vite's cache deep inside a run, and an ENOSPC crash
- * costs the cluster; refuse before a supervisor starts and say what fills the disk.
+ * costs the cluster; refuse and say what fills the disk.
  */
 function refuseFullDisk(home: string) {
   const floor = Number(process.env["MATE_TEST_PG_MIN_FREE_BYTES"] ?? 1024 ** 3);
-  const disk = NodeFS.statfsSync(home);
+  const disk = NodeFS.statfsSync(NodeFS.existsSync(home) ? home : NodePath.dirname(home));
   const free = disk.bavail * disk.bsize;
   if (free >= floor) return;
   const parent = NodePath.dirname(home);
@@ -332,7 +332,7 @@ function refuseFullDisk(home: string) {
       const owner = checkout === undefined ? "" : ` for ${checkout}`;
       return `${NodePath.basename(entry.path)}${owner} (${mebibytes(entry.bytes)})`;
     });
-  const volume = NodeChildProcess.spawnSync("df", ["-P", home], { encoding: "utf8" })
+  const volume = NodeChildProcess.spawnSync("df", ["-P", parent], { encoding: "utf8" })
     .stdout.trim()
     .split("\n")
     .at(-1)!
@@ -341,6 +341,17 @@ function refuseFullDisk(home: string) {
   throw new Error(
     `The disk ${volume} holding the PostgreSQL test cluster is full: ${mebibytes(free)} free, below the ${mebibytes(floor)} a run needs. Largest under ${parent}: ${largest.join(", ")}.`,
   );
+}
+
+/**
+ * Reclaims orphaned clusters beside `home`, then refuses a disk without room. Runs before a
+ * supervisor starts and at a run's start (its global setup) even when another run's supervisor
+ * serves, so a full disk stops the run before any case; orphans leave first, so a removed
+ * worktree's cluster never refuses a run.
+ */
+export function ensureRoom(home: string): void {
+  pruneOrphanedClusters({ home, report: stderrLine });
+  refuseFullDisk(home);
 }
 
 interface SupervisorReply {
@@ -367,9 +378,7 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
     const existing = await connect();
     if (existing) socket = existing;
     else {
-      // Orphans leave before the room check, so a removed worktree's cluster never refuses a run.
-      pruneOrphanedClusters({ home: postgresHome, report: stderrLine });
-      refuseFullDisk(postgresHome);
+      ensureRoom(postgresHome);
       NodeFS.rmSync(socketPath, { force: true });
       const diagnosticsPath = NodePath.join(postgresHome, "supervisor.log");
       const diagnostics = NodeFS.openSync(diagnosticsPath, "w", 0o600);
