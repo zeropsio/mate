@@ -93,7 +93,7 @@ import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation, type ZeropsAccess } from "../api.ts";
 import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
-import { hqRefusalWords, ZEROPS_UNANSWERED } from "./refusals.ts";
+import { hqRefusalWords, ZEROPS_NO_CREDENTIAL, ZEROPS_UNANSWERED } from "./refusals.ts";
 import { hqStructureOf } from "./structure.ts";
 import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
 
@@ -788,7 +788,11 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
       status: response.status,
       message:
         probeMessage ??
-        (code === WROTE_NOTHING_ZEROPS ? ZEROPS_UNANSWERED : "HQ is not answering right now."),
+        (code === WROTE_NOTHING_ZEROPS
+          ? ZEROPS_UNANSWERED
+          : code === "zerops_unavailable" && body.reason === "no_credential"
+            ? ZEROPS_NO_CREDENTIAL
+            : "HQ is not answering right now."),
     });
   }
   const reason = typeof body.reason === "string" ? body.reason : undefined;
@@ -1242,10 +1246,18 @@ export function makeHqApi(input: {
       const token = await held;
       if (!unproven.has(held)) await renewIfDue(token);
       try {
-        // Git browsing authenticates the person and the HQ session in separate headers.
+        // Git browsing authenticates the person and the HQ session in separate headers. Any other
+        // read carries the person's Zerops access token beside the session: HQ serves its own data
+        // of a project only where Zerops lists that project to this token now.
+        const method = (init.method ?? "GET").toUpperCase();
         const headers: Record<string, string> = browse
           ? { "X-HQ-Session": token, Authorization: `Bearer ${(await input.accessToken()).token}` }
-          : { Authorization: `Bearer ${token}` };
+          : method === "GET" || method === "HEAD"
+            ? {
+                Authorization: `Bearer ${token}`,
+                "X-Zerops-Access-Token": (await input.accessToken()).token,
+              }
+            : { Authorization: `Bearer ${token}` };
         if ((write || browse) && input.isCurrent?.() === false)
           throw new HqError({
             kind: "refused",

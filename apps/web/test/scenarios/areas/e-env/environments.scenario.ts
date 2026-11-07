@@ -72,6 +72,15 @@ describe("E: stage, production, release and rollback", () => {
               {},
               popover,
             );
+            // The page asks HQ for the application's repositories once the environment arrives:
+            // its push state is the answer to that read, never the first frame after the arrival.
+            await page.waitForFunction(
+              () =>
+                document
+                  .querySelector('[data-zerops-surface="git-stop-detail"]')
+                  ?.querySelector('[data-zerops-surface="git-delivery-status"]')
+                  ?.getAttribute("data-standing") !== "checking",
+            );
             await rendered(page);
           });
           expect(

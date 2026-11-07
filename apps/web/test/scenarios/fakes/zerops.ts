@@ -310,14 +310,19 @@ export class ZeropsFake {
     );
   }
 
-  async waitForRequest(key: string, count = 1) {
-    if ((this.requests.get(key) ?? 0) >= count) return;
+  /** Waits for `count` requests to `key`, or for `count` that carry `credential` where named. */
+  async waitForRequest(key: string, count = 1, credential?: string) {
+    const seen = () =>
+      (credential === undefined
+        ? this.requests.get(key)
+        : this.requestsByCredential.get(credential)?.get(key)) ?? 0;
+    if (seen() >= count) return;
     let listener = () => {};
     try {
       await deadline(
         new Promise<void>((resolve) => {
           listener = () => {
-            if ((this.requests.get(key) ?? 0) >= count) resolve();
+            if (seen() >= count) resolve();
           };
           this.events.on("request", listener);
         }),

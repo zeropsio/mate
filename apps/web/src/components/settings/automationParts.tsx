@@ -26,6 +26,10 @@ import { sectionState, taskSourceProblem, workingWords } from "./taskSourcesSett
  * is read, so the part paints in that shape from the first frame and nothing under it moves as
  * what it reads lands.
  */
+/** A day as these settings say it: "Nov 7, 2026" in the person's locale. */
+export const settingDay = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+
 export function HeldRoom({
   template,
   children,

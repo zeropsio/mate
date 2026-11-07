@@ -351,15 +351,6 @@
     "class": "review"
   },
   {
-    "path": "packages/client-runtime/src/data/projections/hqProjectPeople.ts",
-    "kind": "ConditionalExpression",
-    "fingerprint": "person.kind === \"known\" ? { userId, name: person.value.name ?? \"Unknown\", avatarUrl: person.value.avatarUrl } : null",
-    "owner": "maintainers",
-    "reason": "Authorized person collection includes known identities only; membership and access evidence remain separate.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
     "path": "packages/client-runtime/src/data/projections/mateEngine.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "conversation.kind === \"known\" ? conversation.value.window : null",

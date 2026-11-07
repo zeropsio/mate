@@ -474,3 +474,35 @@ describe("the GitHub app on many accounts", () => {
     ).toBe("https://github.com/apps/acme-mate");
   });
 });
+
+describe("the GitHub section where nobody is recorded to have sealed the app", () => {
+  // HQ main answers both null for an app made before it kept who sealed it (mate-hq 01e86bfe81).
+  const UNSEALED = known({ ...CONNECTED, sealedBy: null, sealedAt: null });
+
+  // witness: apps/web/src/components/settings/GithubAppSettings.tsx | const makeApp = section.kind === "none" ? section.connect : sealNeeded && section.manage; → const makeApp = section.kind === "none" ? section.connect : false;
+  it("offers the Owner and Admins Make again, which hands GitHub HQ's manifest for a new app", async () => {
+    const { host, button, controls, onPost } = await render({ controls: { read: read(UNSEALED) } });
+    expect(host.textContent).toContain(
+      "Nobody is recorded to have set this app up, so Mate uses it for nothing until an Owner or Admin makes it again.",
+    );
+    expect(button("Manage")).toBeUndefined();
+    expect(button("Make again")).toBeDefined();
+    await act(async () => button("Make again")!.click());
+    await act(async () => {
+      host.querySelector("form")!.requestSubmit();
+    });
+    expect(controls.manifest).toHaveBeenCalledWith({
+      owner: null,
+      name: "Acme Mate",
+      returnTo: RETURN_TO,
+    });
+    expect(onPost).toHaveBeenCalledWith(MANIFEST);
+  });
+
+  // witness: apps/web/src/components/settings/GithubAppSettings.tsx | ) : sealNeeded ? undefined : section.kind === "connected" ? ( → ) : section.kind === "connected" ? (
+  it("shows a member why the app is used for nothing, and nothing to press", async () => {
+    const { host } = await render({ admin: false, controls: { read: read(UNSEALED) } });
+    expect(host.textContent).toContain("until an Owner or Admin makes it again");
+    expect(host.querySelectorAll("button")).toHaveLength(0);
+  });
+});
