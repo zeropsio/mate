@@ -96,12 +96,7 @@ export function OriginGithubSheet({
                 {ask.repo} keeps its code on {address}
                 {app?.kind === "connected" ? ` through ${app.name}` : ""}.
               </p>
-              {gate === undefined ? null : (
-                <>
-                  <p className="rv-note">{gate}</p>
-                  <p className="rv-note">Mate checks GitHub's rules every minute.</p>
-                </>
-              )}
+              {gate === undefined ? null : <p className="rv-note">{gate}</p>}
             </>
           ) : step.kind === "taken" ? (
             <p className="rv-note">
