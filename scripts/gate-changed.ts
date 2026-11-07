@@ -7,6 +7,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
+import { browserPath, relatedScenarioLimit, scenarioSelectionManifest } from "./ci-blame.ts";
 import {
   guardScopePaths,
   runtimeCycleSourceRoots,
@@ -50,10 +51,6 @@ export const repositoryInvariants = [
   "packages/test-recordings/recorded.test.ts",
 ];
 
-// Opt-in local witnesses are bounded; required CI witnesses use the full affected selection.
-// Full related scenario files, nearest first; edited and explicitly named files are uncapped.
-export const relatedScenarioLimit = 8;
-
 export const scenarioAreas = [
   "a-signin",
   "b-menu",
@@ -67,9 +64,6 @@ export const scenarioAreas = [
   "harness",
   "lifecycle-mutations",
 ] as const;
-
-// Native runtimes are outside the hosted browser scenario harness.
-const browserPath = (path: string) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path);
 
 const sourceFile = /\.[cm]?[jt]sx?$/u;
 const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
@@ -909,6 +903,9 @@ export interface GateStage {
 }
 
 interface GateReceipt {
+  readonly version: 1;
+  readonly context: "gate";
+  readonly paths: ReadonlyArray<string>;
   readonly headSha: string;
   readonly baseSha: string;
   readonly stageHashes?: Readonly<Record<string, string>>;
@@ -916,6 +913,7 @@ interface GateReceipt {
   readonly selectionHash: string;
   readonly selectedStages: GateStage[];
   readonly omittedWitnesses: OmittedWitness[];
+  readonly selectionMs: number;
   results: { name: string; status: number; durationMs: number }[];
   durationMs: number;
   queueWaitMs: number;
@@ -990,6 +988,7 @@ function selectionHash(root: string): string {
   hash.update(process.version);
   const inputs = [
     "scripts/gate-changed.ts",
+    "scripts/ci-blame.ts",
     "scripts/gate-input-scopes.ts",
     "scripts/state-smoke-cases.ts",
     "scripts/gate-file-inputs.ts",
@@ -1437,6 +1436,12 @@ function readReceipt(path: string): GateReceipt | undefined {
   try {
     const receipt = JSON.parse(NodeFS.readFileSync(path, "utf8")) as GateReceipt | null;
     return receipt &&
+      receipt.version === 1 &&
+      receipt.context === "gate" &&
+      Array.isArray(receipt.paths) &&
+      receipt.paths.every((path) => typeof path === "string") &&
+      Number.isFinite(receipt.selectionMs) &&
+      receipt.selectionMs >= 0 &&
       Array.isArray(receipt.selectedStages) &&
       Array.isArray(receipt.results) &&
       receipt.selectedStages.every((stage) => stage && typeof stage.name === "string") &&
@@ -1541,30 +1546,6 @@ export function buildGateGraph(
   return Object.freeze({ workspace, units, scenarios, related });
 }
 
-export function selectScenarioFiles(
-  graph: ReturnType<typeof buildGateGraph>,
-  paths: ReadonlyArray<string>,
-  existing: ReadonlyArray<string>,
-  namedScenarios: ReadonlyArray<string>,
-  limit: number,
-) {
-  const scenarioPaths = paths.filter(browserPath);
-  const explicit = new Set([
-    ...namedScenarios,
-    ...scenarioPaths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
-  ]);
-  const ranked =
-    graph.related
-      ?.rank(scenarioPaths)
-      .filter(({ file }) => graph.scenarios.includes(file) && !explicit.has(file)) ?? [];
-  const selectedScenarios = ranked.slice(0, limit);
-  return {
-    selectedScenarios,
-    overflowScenarios: ranked.slice(limit),
-    inventory: [...new Set([...explicit, ...selectedScenarios.map(({ file }) => file)])].sort(),
-  };
-}
-
 function validateNamedScenarios(root: string, files: ReadonlyArray<string>): void {
   for (const file of files) {
     if (
@@ -1587,12 +1568,12 @@ export function affectedScenarioFiles(
   const paths = changedPaths(root, comparison);
   const meaningful = meaningfulChanges(root, comparison, paths);
   const graph = buildGateGraph(root, meaningful.previous, meaningful.paths);
-  const { inventory } = selectScenarioFiles(
+  const { inventory } = scenarioSelectionManifest(
+    "state-smoke",
     graph,
     meaningful.paths,
     paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path))),
     namedScenarios,
-    Infinity,
   );
   validateSelectedFiles(root, inventory);
   return inventory;
@@ -1897,6 +1878,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     console.error(`gate refused: ${stale}`);
     return 1;
   }
+  const selectionStarted = process.hrtime.bigint();
   const slots = gateSlotCount();
   const verbose = args.includes("--verbose");
   const withScenarios = args.includes("--with-scenarios") || args.includes("--scenarios");
@@ -1948,13 +1930,14 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     ...new Set([...meaningful.paths, ...existing.filter((file) => file.endsWith(".scenario.ts"))]),
   ].sort();
   const graph = buildGateGraph(root, meaningful.previous, selectionPaths);
-  const { inventory, selectedScenarios, overflowScenarios } = selectScenarioFiles(
+  const scenarioSelection = scenarioSelectionManifest(
+    "gate",
     graph,
     selectionPaths,
     existing,
     namedScenarios,
-    relatedScenarioLimit,
   );
+  const { inventory, selectedScenarios, overflowScenarios } = scenarioSelection;
   validateSelectedFiles(root, inventory);
   const { steps, selectedScenarios: selectedFilesForGate } = selectGateSteps(graph, {
     comparison,
@@ -1996,6 +1979,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
   ];
   // Unrelated inventory is recorded, but it is not an affected omission.
   const affectedOmissions = omittedWitnesses.filter(({ reason }) => reason !== "unrelated").length;
+  const selectionMs = Number(process.hrtime.bigint() - selectionStarted) / 1_000_000;
   const reportOmissions = () => {
     if (affectedOmissions) console.log(`${affectedOmissions} affected witnesses omitted`);
   };
@@ -2112,6 +2096,9 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       }
     const gateStarted = Date.now();
     const receipt: GateReceipt = {
+      version: scenarioSelection.version,
+      context: "gate",
+      paths,
       headSha: lane.headSha,
       baseSha: comparison,
       diffHash: hash,
@@ -2119,6 +2106,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       selectionHash: selection,
       selectedStages,
       omittedWitnesses,
+      selectionMs,
       results: [...reusable.values()],
       durationMs: 0,
       queueWaitMs: 0,

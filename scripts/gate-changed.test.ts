@@ -5,6 +5,7 @@ import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { chatGateTestFiles, chatGateStages, selectsChatGate } from "./chat-gate.ts";
+import { scenarioSelectionManifest } from "./ci-blame.ts";
 import { gateSlotCount } from "./gate-slots.ts";
 import { afterAll, beforeAll, expect, it, vi } from "vite-plus/test";
 import {
@@ -20,14 +21,13 @@ import {
   buildRelatedFileGraph,
   buildGateGraph,
   selectGateSteps,
-  selectScenarioFiles,
-  relatedScenarioLimit,
   stateOnlySmoke,
   runGate,
 } from "./gate-changed.ts";
 
 const gateRunnerFiles = [
   "gate-changed.ts",
+  "ci-blame.ts",
   "gate-input-scopes.ts",
   "gate-installed-dependencies.ts",
   "state-smoke-cases.ts",
@@ -410,7 +410,8 @@ it.each([{ args: [] }, { args: ["--list"] }])(
 
 // A real repository snapshot retains the bundle/harness boundary; expectations never create imports.
 let repositoryFixture: string;
-let repositoryGraph: ReturnType<typeof buildGateGraph>;
+let cachedRepositoryGraph: ReturnType<typeof buildGateGraph> | undefined;
+const repositoryGraph = () => (cachedRepositoryGraph ??= buildGateGraph(repositoryFixture));
 let smallFixture: string;
 const fixtureEnvironment = { ...process.env };
 const sourceRoot = NodePath.resolve(import.meta.dirname, "..");
@@ -486,7 +487,6 @@ beforeAll(() => {
   fixtureGit("config", "user.email", "gate@example.test");
   fixtureGit("add", ".");
   fixtureGit("commit", "-qm", "real repository fixture");
-  repositoryGraph = buildGateGraph(repositoryFixture);
 }, 30_000);
 afterAll(async () => {
   if (chatEditChild) {
@@ -633,17 +633,17 @@ function fixtureStages(withScenarios = false) {
   const selectionPaths = [
     ...new Set([...meaningful.paths, ...existing.filter((path) => path.endsWith(".scenario.ts"))]),
   ].sort();
-  const { inventory } = selectScenarioFiles(
-    repositoryGraph,
+  const { inventory } = scenarioSelectionManifest(
+    "gate",
+    repositoryGraph(),
     selectionPaths,
     existing,
     [],
-    relatedScenarioLimit,
   );
   const smokeFiles = selectionPaths.some((path) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path))
     ? Object.keys(stateOnlySmoke)
     : [];
-  const selection = selectGateSteps(repositoryGraph, {
+  const selection = selectGateSteps(repositoryGraph(), {
     comparison,
     existing,
     paths: selectionPaths,
@@ -822,7 +822,7 @@ it.each([
 ])("a lane validates only affected obligations for $path", ({ path, stages }) => {
   let steps: ReturnType<typeof selectGateSteps>["steps"] = [];
   expect(() => {
-    steps = selectGateSteps(repositoryGraph, {
+    steps = selectGateSteps(repositoryGraph(), {
       withScenarios: true,
       comparison: "HEAD",
       existing: [path],
@@ -1307,7 +1307,7 @@ it.concurrent("the CLI and immutable gate graph select identical obligations for
   const path = "apps/web/src/components/chat/RunChat.tsx";
   const result = await chatEditCli();
   expect(result.status, result.stderr).toBe(0);
-  const selection = selectGateSteps(repositoryGraph, {
+  const selection = selectGateSteps(repositoryGraph(), {
     comparison: fixtureGit("rev-parse", "HEAD"),
     existing: [path],
     paths: [path],
@@ -1729,7 +1729,7 @@ it("a lane editing a unit test replays its new witnesses before the test stages;
   const unit = "apps/server/src/spi/serverCommandReadiness.test.ts";
   const scenario = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
   const lines = (path: string) =>
-    selectGateSteps(repositoryGraph, {
+    selectGateSteps(repositoryGraph(), {
       comparison: "HEAD",
       existing: [path],
       paths: [path],
@@ -1747,7 +1747,7 @@ it("a lane editing a unit test replays its new witnesses before the test stages;
 it("the default laptop gate omits selected browser scenarios and fixed smoke", () => {
   const scenario = "apps/web/test/scenarios/areas/d-change/review.scenario.ts";
   const dependency = "apps/web/test/scenarios/areas/d-change/dsl.ts";
-  const { steps } = selectGateSteps(repositoryGraph, {
+  const { steps } = selectGateSteps(repositoryGraph(), {
     comparison: "HEAD",
     existing: [dependency],
     paths: [dependency],
@@ -1810,7 +1810,7 @@ const smokeTitles = [
 
 it("L2 runs invariants, touched typechecks, owned units, edited scenarios and fixed state-only smoke in order", () => {
   const path = "packages/contracts/src/engine.ts";
-  const selected = selectGateSteps(repositoryGraph, {
+  const selected = selectGateSteps(repositoryGraph(), {
     withScenarios: true,
     comparison: "HEAD",
     existing: [path, "apps/web/test/scenarios/areas/d-change/review.scenario.ts"],

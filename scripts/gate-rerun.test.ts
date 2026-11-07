@@ -10,6 +10,7 @@ import { stateOnlySmoke } from "./state-smoke-cases.ts";
 
 const gateRunnerFiles = [
   "gate-changed.ts",
+  "ci-blame.ts",
   "state-smoke-cases.ts",
   "gate-file-inputs.ts",
   "gate-input-scopes.ts",
@@ -214,6 +215,7 @@ describe("revision-bound witness receipts", () => {
     JSON.parse(NodeFS.readFileSync(NodePath.join(gate.root, ".gate-receipt.json"), "utf8")) as {
       headSha: string;
       baseSha: string;
+      selectionMs: number;
       completed: boolean;
       selectedStages: { name: string; args: string[] }[];
       omittedWitnesses: { file: string; kind: string; reason: string; cases?: string[] }[];
@@ -238,6 +240,14 @@ describe("revision-bound witness receipts", () => {
     );
     const result = gate.run();
     expect(result.status, result.stderr).toBe(0);
+    expect(receipt()).toMatchObject({
+      version: 1,
+      context: "gate",
+      headSha: gate.git("rev-parse", "HEAD"),
+      baseSha: gate.git("rev-parse", "base"),
+      paths: [edited],
+    });
+    expect(Number.isFinite(receipt().selectionMs)).toBe(true);
     expect(receipt().selectedStages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -249,6 +259,20 @@ describe("revision-bound witness receipts", () => {
     expect(
       gate.checks().some((check) => check.args.includes(NodePath.join(gate.root, edited))),
     ).toBe(true);
+  });
+
+  // witness: scripts/gate-changed.ts | receipt.version === 1 && → true &&
+  it("an unknown selection manifest version cannot reuse a gate receipt or its stages", () => {
+    gate.write(edited, "export {}; // unknown version\n");
+    expect(gate.run(["--force"]).status).toBe(0);
+    const receiptPath = NodePath.join(gate.root, ".gate-receipt.json");
+    NodeFS.writeFileSync(receiptPath, JSON.stringify({ ...receipt(), version: 2 }));
+    gate.clearChecks();
+    const result = gate.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).not.toContain("reused receipt");
+    expect(result.stdout).not.toContain("reused stage:");
+    expect(gate.checks().length).toBeGreaterThan(0);
   });
 
   it("a different HEAD creates a new verdict while unchanged stages are reused", () => {
