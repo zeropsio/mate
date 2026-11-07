@@ -93,7 +93,7 @@ import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation, type ZeropsAccess } from "../api.ts";
 import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
-import { hqRefusalWords, ZEROPS_UNANSWERED } from "./refusals.ts";
+import { hqRefusalWords, ZEROPS_NO_CREDENTIAL, ZEROPS_UNANSWERED } from "./refusals.ts";
 import { hqStructureOf } from "./structure.ts";
 import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
 
@@ -788,7 +788,11 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
       status: response.status,
       message:
         probeMessage ??
-        (code === WROTE_NOTHING_ZEROPS ? ZEROPS_UNANSWERED : "HQ is not answering right now."),
+        (code === WROTE_NOTHING_ZEROPS
+          ? ZEROPS_UNANSWERED
+          : code === "zerops_unavailable" && body.reason === "no_credential"
+            ? ZEROPS_NO_CREDENTIAL
+            : "HQ is not answering right now."),
     });
   }
   const reason = typeof body.reason === "string" ? body.reason : undefined;

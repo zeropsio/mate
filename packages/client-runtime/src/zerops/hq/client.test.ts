@@ -726,6 +726,30 @@ describe("makeHqApi", () => {
     expect(failure).toBeInstanceOf(HqError);
     expect(failure).toMatchObject(expected);
   });
+
+  // witness: packages/client-runtime/src/zerops/hq/client.ts | : code === "zerops_unavailable" && body.reason === "no_credential" → : false
+  it("a structure verb HQ holds no Zerops credential for says so, not that HQ is not answering", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/apps"
+        ? json(503, { code: "zerops_unavailable", reason: "no_credential" })
+        : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: doors().accessToken,
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    });
+    const failure = await api.createApp("Acme").catch((cause: unknown) => cause);
+    expect(failure).toBeInstanceOf(HqError);
+    expect(failure).toMatchObject({
+      kind: "unavailable",
+      code: "zerops_unavailable",
+      message:
+        "HQ has no access key for this project in Zerops, so it did nothing. Open the project's Mate, or renew its deploy token, then try again.",
+    });
+  });
 });
 
 describe("Git token refusals", () => {
