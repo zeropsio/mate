@@ -6,6 +6,7 @@ import {
   appName,
   appRepositories,
   installationStanding,
+  unansweredInstallations,
 } from "../components/settings/automationSettings.logic";
 import type { GitMirrorApp } from "../components/zerops/gitMirror.logic";
 import { useGithubApp } from "./useTaskSourceSettings";
@@ -29,12 +30,19 @@ export function useGitMirrorApp(shown = true): {
             repositories: appRepositories(setting.held),
             installUrl: setting.held.installUrl,
             installTrip: setting.held.public !== undefined,
-            waiting: setting.held.installations
-              .filter((installation) => installationStanding(installation) === "waiting")
-              .map((installation) => ({
-                account: installation.account,
-                repositories: installation.repositories.map((repository) => repository.fullName),
-              })),
+            waiting: setting.held.installations.flatMap((installation) =>
+              installation.state !== "unknown" && installationStanding(installation) === "waiting"
+                ? [
+                    {
+                      account: installation.account,
+                      repositories: installation.repositories.map(
+                        (repository) => repository.fullName,
+                      ),
+                    },
+                  ]
+                : [],
+            ),
+            unanswered: unansweredInstallations(setting.held),
           }
         : setting.state === "known" || setting.state === "unsupported"
           ? { kind: "none" }

@@ -75,19 +75,23 @@ export function seedHqProjectPeople(
       family: "placement",
       id: projectId,
       revision,
-      value: recorded(person.recording ?? "navigation-project.no-signer", (row) => ({
-        ...row,
-        projectId,
-        name: projectId,
-        person: {
-          ...row.person,
-          ...(person.mine === undefined ? {} : { mine: person.mine }),
-          ...(person.ownerUserId === undefined ? {} : { ownerUserId: person.ownerUserId }),
-          ...(person.waitsOnViewer === undefined ? {} : { waitsOnViewer: person.waitsOnViewer }),
-        },
-        signedInNow: person.signedInNow ?? row.signedInNow,
-        everSignedIn: person.everSignedIn ?? person.signedInNow ?? row.everSignedIn,
-      })),
+      value: recorded(
+        "navigation project:<id>",
+        person.recording ?? "navigation-project.no-signer",
+        (row) => ({
+          ...row,
+          projectId,
+          name: projectId,
+          person: {
+            ...row.person,
+            ...(person.mine === undefined ? {} : { mine: person.mine }),
+            ...(person.ownerUserId === undefined ? {} : { ownerUserId: person.ownerUserId }),
+            ...(person.waitsOnViewer === undefined ? {} : { waitsOnViewer: person.waitsOnViewer }),
+          },
+          signedInNow: person.signedInNow ?? row.signedInNow,
+          everSignedIn: person.everSignedIn ?? person.signedInNow ?? row.everSignedIn,
+        }),
+      ),
     })),
   ];
   store.dispatch({

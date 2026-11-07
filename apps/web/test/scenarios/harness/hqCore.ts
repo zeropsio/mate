@@ -64,6 +64,20 @@ export const openScenarioNavigation = (
               socket.send(encodeRequest({ type: "pong" }));
               return;
             }
+            if (
+              message.type === "scope-changed" &&
+              hqScopeKey(message.scope) === hqScopeKey(scope)
+            ) {
+              // HQ pushes no values of a change: asking the scope again is the read that answers it.
+              socket.send(
+                encodeRequest({
+                  type: "retry",
+                  scopes: [scope],
+                  ...(accessToken === undefined ? {} : { accessToken }),
+                }),
+              );
+              return;
+            }
             if (message.type === "scope-error" && hqScopeKey(message.scope) === hqScopeKey(scope)) {
               return reject(
                 new Error(
