@@ -167,13 +167,17 @@ export const refusalOf = (close: LinkClose | undefined): string | undefined => {
 
 /**
  * Whether the session's `subject` only reads along in this Mate: a Zerops person other than the
- * owner HQ last named. Nobody does while HQ names no owner, as the client opens its composer then.
+ * owner HQ last named, or any Zerops person while HQ refuses the Mate's key, until HQ next names
+ * its owner. Nobody does while HQ has named no owner yet, as the client opens its composer then.
  */
-export const readsAlongOnly = (standing: HqStanding, subject: string): boolean =>
-  standing.kind === "linked" &&
-  typeof standing.mate.ownerUserId === "string" &&
-  subject.startsWith(ZEROPS_SUBJECT_PREFIX) &&
-  zeropsUserIdOf(subject) !== standing.mate.ownerUserId;
+export const readsAlongOnly = (standing: HqStanding, subject: string): boolean => {
+  if (!subject.startsWith(ZEROPS_SUBJECT_PREFIX)) return false;
+  if (standing.kind === "not-linked") return standing.refusal !== undefined;
+  return (
+    typeof standing.mate.ownerUserId === "string" &&
+    zeropsUserIdOf(subject) !== standing.mate.ownerUserId
+  );
+};
 
 export interface ZeropsHqLinkOptions {
   readonly autoUpdatePolicy?: Pick<MateAutoUpdatePolicy["Service"], "open">;
