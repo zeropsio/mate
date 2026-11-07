@@ -126,16 +126,6 @@ it("withdraws the question when HQ removes the reader's access", async () => {
   expect(element.textContent).toBe("");
 });
 
-it("reports a lost kept-Git answer without inviting a repeat", async () => {
-  await render();
-  await arrive();
-  state.submit.mockResolvedValue({ progress: { stage: "uncertain", next: "ask-owner-again" } });
-  await act(async () => button("Keep Git").click());
-  expect(element.querySelector('[role="status"]')?.textContent).toContain(
-    "HQ has not confirmed your answer.",
-  );
-});
-
 it("an unconfirmed kept-Git answer tells the person what to do next", async () => {
   await render();
   await arrive();

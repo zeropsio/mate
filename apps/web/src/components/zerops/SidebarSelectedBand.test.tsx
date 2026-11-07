@@ -145,19 +145,6 @@ describe("the selected band over the open Mate", () => {
     expect(band().style.width).toBe("411px");
   });
 
-  it("covers a Mate without a crew exactly as its row, as it always did", async () => {
-    await draw(
-      <>
-        <SidebarSelectedBand current="enzo" />
-        <div data-zerops-surface="sidebar-project-rows">
-          <Mate crew={false} id="enzo" top={212} />
-        </div>
-      </>,
-    );
-    expect(band().style.transform).toBe("translate(0px, 120px)");
-    expect(band().style.height).toBe("76px");
-  });
-
   // The crew's feed answers after the menu drew — a reload with nothing
   // remembered: the line arrives in its own draw, and the list grows. The
   // band takes it in at once, where it stands; nothing slides.

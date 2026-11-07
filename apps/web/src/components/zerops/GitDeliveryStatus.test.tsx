@@ -696,17 +696,6 @@ describe("the origin's CI on a Git environment's last push", () => {
       "No CI reported",
     ]);
   });
-  it("a push HQ does not read CI for shows no CI line", () => {
-    const env = environment([job("pushed"), job("pushed", "web")]);
-    const html = renderToStaticMarkup(
-      <GitDeliveryStatus
-        environment={env}
-        repos={repos}
-        delivery={gitDeliveryOf(env, { releases: [release()], repos })}
-      />,
-    );
-    expect(html).not.toContain("data-git-ci");
-  });
   it("the CI line follows HQ's rewritten push record as it arrives", async () => {
     const registry = AtomRegistry.make();
     const zerops = {

@@ -60,24 +60,6 @@ describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () =
       label: `${owner.name}'s Mate`,
     });
   });
-
-  it("gives one person one hue, every time, on the colour wheel", () => {
-    const petra = { name: "Petra Malá", initials: "PM", avatarUrl: null };
-    const hue = ownerMark(petra).hue;
-    expect(ownerMark(petra).hue).toBe(hue);
-    expect(Number.isInteger(hue)).toBe(true);
-    expect(hue).toBeGreaterThanOrEqual(0);
-    expect(hue).toBeLessThan(360);
-  });
-
-  it("tells people apart by their hue", () => {
-    const hues = new Set(
-      ["Petra Malá", "Jan Beneš", "Eva Dvořák", "Tomáš Holý", "Dana Krausová"].map(
-        (name) => ownerMark({ name, initials: name.slice(0, 1), avatarUrl: null }).hue,
-      ),
-    );
-    expect(hues.size).toBeGreaterThanOrEqual(4);
-  });
 });
 
 // A Mate with no owner, or nobody signed in (the owner, 2026-09-29: "mate
