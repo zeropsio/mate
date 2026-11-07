@@ -38,7 +38,6 @@ export const scenarioDurations: Readonly<Record<string, number>> = {
   "apps/web/test/scenarios/areas/c-mate/identity.scenario.ts": 13_966,
   "apps/web/test/scenarios/areas/c-mate/replay.scenario.ts": 13_261,
   "apps/web/test/scenarios/areas/lifecycle-mutations/moving.scenario.ts": 13_130,
-  "apps/web/test/scenarios/areas/f-create/birth-tier-mate.scenario.ts": 12_609,
   "apps/web/test/scenarios/areas/c-mate/projects-opening.scenario.ts": 12_078,
   "apps/web/test/scenarios/areas/f-create/birth-before-import.scenario.ts": 11_984,
   "apps/web/test/scenarios/areas/c-mate/overview-filter.scenario.ts": 11_915,
