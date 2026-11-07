@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off preferSchemaOverJson:off -- host mutation-testing tool.
 /**
- * mutation-cull <package-or-dir> [--out DIR] [--concurrency N]
+ * mutation-cull <package-or-dir> [--out DIR] [--concurrency N] [--tests a.test.ts,b.test.ts]
  *
  * Runs StrykerJS (vitest runner, per-test coverage, no bail) on every source file of a directory and writes one
  * row per test case of that directory in CULL.tsv's columns: KILLS-NONE (no mutant fails it), DUPLICATE (every
@@ -12,6 +12,10 @@
  * the directory's tests and the tool version; a rerun skips files whose key still matches.
  * Stryker runs in place (no sandbox copy of the repository), so the directory must have no uncommitted changes.
  * Run it in a heavy slot: `heavy-slot node scripts/mutation-cull.ts packages/shared/src`.
+ *
+ * Known gap: under the repository's vitest 5 the Stryker 10.1.1 vitest runner does not reliably activate static
+ * (module-level) mutants; a test that guards only module-level code (a schema, a literal table) can read as
+ * KILLS-NONE or DUPLICATE, and which static mutants count as killed varies with host load.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
@@ -146,6 +150,58 @@ export function reportMutants(report: StrykerReport): Mutant[] {
         coveredBy: named(mutant.coveredBy),
       };
     });
+  });
+}
+
+/**
+ * The Timeout mutants of a report, as Stryker `mutate` ranges grouped by the test file that covers them ("" for a
+ * static mutant, which every test runs). Ranges take Stryker's 1-based lines and 0-based inclusive columns; the
+ * report's columns are 1-based.
+ */
+export function timeoutPlan(report: StrykerReport): Map<string, string[]> {
+  const fileById = new Map<string, string>();
+  for (const [file, { tests }] of Object.entries(report.testFiles ?? {}))
+    for (const test of tests) fileById.set(test.id, file);
+  const plan = new Map<string, string[]>();
+  for (const [file, { mutants }] of Object.entries(report.files))
+    for (const mutant of mutants) {
+      if (mutant.status !== "Timeout") continue;
+      const { start, end } = mutant.location;
+      const range = `${file}:${start.line}:${start.column - 1}-${end.line}:${end.column - 1}`;
+      const testFiles = new Set((mutant.coveredBy ?? []).flatMap((id) => fileById.get(id) ?? []));
+      for (const testFile of testFiles.size === 0 ? [""] : testFiles) {
+        const ranges = plan.get(testFile) ?? [];
+        if (!ranges.includes(range)) ranges.push(range);
+        plan.set(testFile, ranges);
+      }
+    }
+  return plan;
+}
+
+const TIMEOUT_ORDER = ["Killed", "Timeout", "RuntimeError", "Survived"];
+
+/**
+ * Replaces each Timeout mutant by its re-runs, one per covering test file: killed by every test any re-run names,
+ * otherwise the strongest status a re-run saw (Timeout, then RuntimeError, then Survived). A re-run's outcome
+ * comes from a failed assertion or Stryker's hit counter, never the clock, so the table does not depend on load.
+ */
+export function settleTimeouts(mutants: readonly Mutant[], reruns: readonly Mutant[]): Mutant[] {
+  const byId = new Map<string, Mutant[]>();
+  for (const rerun of reruns) {
+    const id = mutantId(rerun);
+    byId.set(id, [...(byId.get(id) ?? []), rerun]);
+  }
+  return mutants.map((mutant) => {
+    if (mutant.status !== "Timeout") return mutant;
+    const runs = byId.get(mutantId(mutant));
+    if (runs === undefined) throw new Error(`no re-run of Timeout mutant ${mutantId(mutant)}`);
+    const killedBy = [...new Set(runs.flatMap((run) => run.killedBy))].sort();
+    const status =
+      killedBy.length > 0
+        ? "Killed"
+        : (TIMEOUT_ORDER.find((candidate) => runs.some((run) => run.status === candidate)) ??
+          runs[0]!.status);
+    return { ...mutant, status, killedBy };
   });
 }
 
@@ -504,10 +560,99 @@ function nearestVitestConfig(root: string, dir: string): string {
 
 const reportName = (file: string) => file.replace(/[/\\]/g, "__");
 
+/**
+ * Stryker's timeout is wall-clock (dry-run time × 1.5 + 5 s), so under load a slow kill becomes a Timeout without
+ * killers. Timeout mutants are re-run alone, per covering test file, where the clock only guards a hang.
+ */
+const RERUN_TIMEOUT_MS = 30_000;
+
+/** tsconfig text without comments and trailing commas (JSONC), as JSON.parse reads it. */
+const jsonc = (text: string): unknown => {
+  let out = "";
+  for (let at = 0; at < text.length; at++) {
+    const char = text[at]!;
+    if (char === '"') {
+      const end = text.indexOf('"', at + 1);
+      let close = end;
+      while (close > 0 && text[close - 1] === "\\") close = text.indexOf('"', close + 1);
+      out += text.slice(at, close + 1);
+      at = close;
+    } else if (char === "/" && text[at + 1] === "/") at = text.indexOf("\n", at) - 1;
+    else if (char === "/" && text[at + 1] === "*") at = text.indexOf("*/", at) + 1;
+    else out += char;
+  }
+  return JSON.parse(out.replace(/,(\s*[}\]])/g, "$1"));
+};
+
+/**
+ * The tracked files a test file imports directly, by a relative specifier or one of its nearest tsconfig's
+ * `paths` patterns (`"~/*": ["./src/*"]`); TypeScript's `.js` spelling resolves to the `.ts` source.
+ */
+export function directImports(
+  root: string,
+  testFile: string,
+  tracked: ReadonlySet<string>,
+): string[] {
+  const text = NodeFS.readFileSync(NodePath.join(root, testFile), "utf8");
+  const { program } = parseSync(testFile, text);
+  const specifiers = program.body.flatMap((statement) =>
+    (statement.type === "ImportDeclaration" ||
+      statement.type === "ExportNamedDeclaration" ||
+      statement.type === "ExportAllDeclaration") &&
+    statement.source
+      ? [statement.source.value]
+      : [],
+  );
+  let paths: Array<readonly [string, string]> = [];
+  for (let at = NodePath.dirname(testFile); ; at = NodePath.dirname(at)) {
+    const tsconfig = NodePath.join(root, at, "tsconfig.json");
+    if (NodeFS.existsSync(tsconfig)) {
+      const options = (
+        jsonc(NodeFS.readFileSync(tsconfig, "utf8")) as {
+          compilerOptions?: { paths?: Record<string, readonly string[]> };
+        }
+      ).compilerOptions;
+      paths = Object.entries(options?.paths ?? {}).flatMap(([pattern, [target]]) =>
+        pattern.endsWith("*") && target?.endsWith("*")
+          ? [[pattern.slice(0, -1), NodePath.join(at, target.slice(0, -1))] as const]
+          : [],
+      );
+      break;
+    }
+    if (at === "." || at === "") break;
+  }
+  return [
+    ...new Set(
+      specifiers.flatMap((specifier) => {
+        const alias = paths.find(([prefix]) => specifier.startsWith(prefix));
+        const base = specifier.startsWith(".")
+          ? NodePath.join(NodePath.dirname(testFile), specifier)
+          : alias
+            ? NodePath.join(alias[1], specifier.slice(alias[0].length))
+            : undefined;
+        if (base === undefined) return [];
+        const stem = base.replace(/\.[cm]?js$/, "");
+        const found = [
+          base,
+          ...["ts", "tsx", "index.ts", "index.tsx"].map((ext) =>
+            ext.startsWith("index") ? `${stem}/${ext}` : `${stem}.${ext}`,
+          ),
+        ].find((candidate) => tracked.has(candidate));
+        return found === undefined ? [] : [found];
+      }),
+    ),
+  ];
+}
+
 export interface CullOptions {
   readonly dir: string;
   readonly out?: string;
   readonly concurrency?: number;
+  /**
+   * Scope to these test files: only their cases are classified, only they run, and only the files they import
+   * directly are mutated (a whole large directory costs hours; a card's test files and their owners do not).
+   */
+  readonly tests?: readonly string[];
 }
 
 export function mutationCull(options: CullOptions): {
@@ -534,32 +679,62 @@ export function mutationCull(options: CullOptions): {
   const cache = strykerCache();
   const plugin = runnerPlugin(root, cache);
   const core = NodePath.join(cache, "node_modules/@stryker-mutator/core/bin/stryker.js");
-  const { tests, testFiles } = inventory(root, dir, out);
+  const scope = options.tests?.map((file) => NodePath.relative(root, NodePath.resolve(file)));
+  const listed = inventory(root, dir, out);
+  const testFiles = scope ?? listed.testFiles;
+  const tests = scope ? listed.tests.filter((test) => scope.includes(test.file)) : listed.tests;
   const testsKey = sha(
     TOOL_KEY,
+    ...(scope ? ["scoped", ...scope] : []),
     ...testFiles.map((file) => NodeFS.readFileSync(NodePath.join(root, file))),
   );
   const tracked = run("git", ["ls-files", "--", dir], root).split("\n").filter(Boolean);
-  const sources = tracked.filter(mutatedFile);
+  const trackedSet = new Set(tracked);
+  const sources = scope
+    ? [...new Set(scope.flatMap((file) => directImports(root, file, trackedSet)))]
+        .filter(mutatedFile)
+        .sort()
+    : tracked.filter(mutatedFile);
   const stringified = stringifiedNames(
     tracked
       .filter((file) => SOURCE.test(file))
       .map((file) => NodeFS.readFileSync(NodePath.join(root, file), "utf8")),
   );
   const vitestConfig = nearestVitestConfig(root, dir);
+  // Stryker runs from the config's folder, as the repository runs a package's tests: a package config's
+  // `include` and `globalSetup` paths are relative to it. Paths cross that boundary through these two maps.
+  const base = NodePath.dirname(vitestConfig);
+  const cwd = NodePath.join(root, base);
+  const fromRoot = (entry: string) => {
+    const [, path, range = ""] = /^(.*?)(:\d+(?::\d+)?-\d+(?::\d+)?)?$/.exec(entry)!;
+    return NodePath.relative(base, path!) + range;
+  };
+  const toRoot = <T>(record: unknown): Record<string, T> =>
+    Object.fromEntries(
+      Object.entries((record ?? {}) as Record<string, T>).map(([path, value]) => [
+        NodePath.relative(root, NodePath.resolve(cwd, path)),
+        value,
+      ]),
+    );
   const revision = run("git", ["rev-parse", "HEAD"], root).trim();
 
-  const mutants: Mutant[] = [];
-  const reported: TestCase[] = [];
-  const failed: string[] = [];
-  sources.forEach((file, index) => {
-    const name = reportName(file);
+  /**
+   * One Stryker run writing `<name>.json` with its provenance and `<name>.key` (restart: a matching key skips it).
+   * Returns the decoded report, or undefined after recording the failure.
+   */
+  const strykerReport = (
+    name: string,
+    key: string,
+    source: string,
+    job: {
+      readonly mutate: readonly string[];
+      readonly testFiles: readonly string[];
+      readonly rerun: boolean;
+    },
+    failed: string[],
+  ): StrykerReport | undefined => {
     const reportPath = NodePath.join(out, "reports", `${name}.json`);
     const keyPath = NodePath.join(out, "reports", `${name}.key`);
-    const source = NodeFS.readFileSync(NodePath.join(root, file), "utf8");
-    const mutate = mutateEntries(file, source, stringified);
-    // The key covers the source and, when some functions stay unmutated, the ranges Stryker mutates.
-    const key = sha(testsKey, source, ...mutate.filter((entry) => entry !== file));
     const fresh =
       NodeFS.existsSync(reportPath) &&
       NodeFS.existsSync(keyPath) &&
@@ -567,7 +742,7 @@ export function mutationCull(options: CullOptions): {
     if (!fresh) {
       NodeFS.rmSync(reportPath, { force: true });
       const started = Date.now();
-      if (mutate.length > 0) {
+      if (job.mutate.length > 0) {
         const configPath = NodePath.join(out, "configs", `${name}.json`);
         NodeFS.writeFileSync(
           configPath,
@@ -576,7 +751,9 @@ export function mutationCull(options: CullOptions): {
             plugins: [plugin],
             // The repository runs vitest's default forks pool; the runner would pick threads, where a test
             // stubbing TZ cannot move the process time zone.
-            vitest: { configFile: vitestConfig, related: true, dir, pool: "forks" },
+            // The directory's tests are named through `testFiles`: vitest's `dir` would re-root a package
+            // config's `include` patterns and find nothing.
+            vitest: { configFile: NodePath.basename(vitestConfig), related: true, pool: "forks" },
             coverageAnalysis: "perTest",
             disableBail: true,
             inPlace: true,
@@ -584,27 +761,28 @@ export function mutationCull(options: CullOptions): {
             // every file of the directory in place on every run.
             disableTypeChecks: false,
             allowEmpty: true,
-            mutate,
-            ignorePatterns: onlyDirectoryPatterns(dir),
+            mutate: job.mutate.map(fromRoot),
+            testFiles: job.testFiles.map(fromRoot),
+            ignorePatterns: onlyDirectoryPatterns(NodePath.relative(base, dir)),
             reporters: ["json"],
             jsonReporter: { fileName: reportPath },
-            tempDirName: NodePath.relative(root, NodePath.join(out, "stryker-tmp")),
+            tempDirName: NodePath.relative(cwd, NodePath.join(out, "stryker-tmp")),
             cleanTempDir: true,
-            concurrency,
+            ...(job.rerun ? { concurrency: 1, timeoutMS: RERUN_TIMEOUT_MS } : { concurrency }),
           }),
         );
         const log = NodeFS.openSync(NodePath.join(out, "logs", `${name}.log`), "w");
         const result = NodeChildProcess.spawnSync(process.execPath, [core, "run", configPath], {
-          cwd: root,
+          cwd,
           stdio: ["ignore", log, log],
         });
         NodeFS.closeSync(log);
-        for (const entry of NodeFS.readdirSync(root))
-          if (/^stryker-setup-\d+\.js$/.test(entry)) NodeFS.rmSync(NodePath.join(root, entry));
+        for (const entry of NodeFS.readdirSync(cwd))
+          if (/^stryker-setup-\d+\.js$/.test(entry)) NodeFS.rmSync(NodePath.join(cwd, entry));
         if (result.status !== 0) {
-          failed.push(`${file}: stryker exited ${result.status}; see ${out}/logs/${name}.log`);
+          failed.push(`${name}: stryker exited ${result.status}; see ${out}/logs/${name}.log`);
           NodeFS.rmSync(reportPath, { force: true });
-          return;
+          return undefined;
         }
       }
       // A file without mutants writes no report; record it as empty so a rerun skips it.
@@ -617,29 +795,60 @@ export function mutationCull(options: CullOptions): {
           $provenance: {
             producer: `StrykerJS ${STRYKER_VERSION} via scripts/mutation-cull.ts`,
             revision,
-            source: file,
+            source: job.rerun ? `${source} with ${job.testFiles.join(", ")}` : source,
             schema: `mutation-testing-report-schema ${String(written.schemaVersion)}`,
           },
           schemaVersion: written.schemaVersion,
-          files: written.files,
-          testFiles: written.testFiles,
+          files: toRoot(written.files),
+          testFiles: toRoot(written.testFiles),
         }),
       );
       NodeFS.writeFileSync(keyPath, key);
-      console.log(
-        `[${index + 1}/${sources.length}] ${file} ${((Date.now() - started) / 1000).toFixed(1)} s`,
-      );
+      console.log(`${name} ${((Date.now() - started) / 1000).toFixed(1)} s`);
     }
-    const report = decodeStrykerReport(JSON.parse(NodeFS.readFileSync(reportPath, "utf8")));
-    mutants.push(...reportMutants(report));
+    return decodeStrykerReport(JSON.parse(NodeFS.readFileSync(reportPath, "utf8")));
+  };
+
+  const mutants: Mutant[] = [];
+  const reported: TestCase[] = [];
+  const failed: string[] = [];
+  for (const file of sources) {
+    const name = reportName(file);
+    const source = NodeFS.readFileSync(NodePath.join(root, file), "utf8");
+    const mutate = mutateEntries(file, source, stringified);
+    // The key covers the source and, when some functions stay unmutated, the ranges Stryker mutates.
+    const key = sha(testsKey, source, ...mutate.filter((entry) => entry !== file));
+    const report = strykerReport(name, key, file, { mutate, testFiles, rerun: false }, failed);
+    if (report === undefined) continue;
+    const reruns: Mutant[] = [];
+    for (const [testFile, ranges] of timeoutPlan(report)) {
+      const rerun = strykerReport(
+        `${name}.timeouts${testFile ? `.${reportName(testFile)}` : ""}`,
+        sha(key, String(RERUN_TIMEOUT_MS), testFile, ...ranges),
+        file,
+        {
+          mutate: ranges,
+          testFiles: testFile ? [testFile] : testFiles,
+          rerun: true,
+        },
+        failed,
+      );
+      if (rerun !== undefined) reruns.push(...reportMutants(rerun));
+    }
+    if (failed.length > 0) continue;
+    mutants.push(...settleTimeouts(reportMutants(report), reruns));
     reported.push(...reportTests(report));
-  });
+  }
   if (run("git", ["status", "--porcelain", "--", dir], root).trim() !== "")
     throw new Error(`${dir} changed during the run; Stryker's backup is under ${out}/stryker-tmp`);
   // A table without a file's mutants would call its tests KILLS-NONE; rerun to retry only these files.
   if (failed.length > 0)
     throw new Error(`no table: ${failed.length} file(s) failed\n${failed.join("\n")}`);
 
+  // Stryker exits 0 without a report when its dry run finds no test (a wrong config or test list); a table
+  // without any run test would call every case KILLS-NONE.
+  if (sources.length > 0 && reported.length === 0)
+    throw new Error(`no table: no Stryker run executed a test of ${dir}; see ${out}/logs`);
   const rows = classifyTests(caseInventory(tests, reported), mutants);
   const tsv = cullTsv(rows);
   NodeFS.writeFileSync(NodePath.join(out, "MUTCULL.tsv"), `${tsv}\n`);
@@ -657,10 +866,11 @@ if (import.meta.main) {
   };
   const out = flag("--out");
   const concurrency = flag("--concurrency");
+  const tests = flag("--tests");
   const [dir] = args;
   if (dir === undefined || args.length !== 1) {
     console.error(
-      "usage: node scripts/mutation-cull.ts <package-or-dir> [--out DIR] [--concurrency N]",
+      "usage: node scripts/mutation-cull.ts <package-or-dir> [--out DIR] [--concurrency N] [--tests a.test.ts,b.test.ts]",
     );
     process.exit(2);
   }
@@ -668,6 +878,7 @@ if (import.meta.main) {
     dir,
     ...(out === undefined ? {} : { out }),
     ...(concurrency === undefined ? {} : { concurrency: Number(concurrency) }),
+    ...(tests === undefined ? {} : { tests: tests.split(",") }),
   });
   const counts = new Map<Verdict, number>();
   for (const row of rows) counts.set(row.verdict, (counts.get(row.verdict) ?? 0) + 1);

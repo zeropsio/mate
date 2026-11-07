@@ -5,22 +5,24 @@ import {
   caseInventory,
   classifyTests,
   decodeStrykerReport,
+  directImports,
   mutateEntries,
   reportMutants,
   reportTests,
+  settleTimeouts,
   stringifiedNames,
   testKey,
+  timeoutPlan,
 } from "./mutation-cull.ts";
 
-// Recorded by scripts/mutation-cull.ts on packages/shared/src at a91a2ebf97 ($provenance in the file).
-const recording = decodeStrykerReport(
-  JSON.parse(
-    NodeFS.readFileSync(
-      new URL("./fixtures/mutation-cull/dpopCommon.stryker.json", import.meta.url),
-      "utf8",
+// Recorded by scripts/mutation-cull.ts on packages/shared/src at a91a2ebf97 ($provenance in each file).
+const recorded = (name: string) =>
+  decodeStrykerReport(
+    JSON.parse(
+      NodeFS.readFileSync(new URL(`./fixtures/mutation-cull/${name}`, import.meta.url), "utf8"),
     ),
-  ),
-);
+  );
+const recording = recorded("dpopCommon.stryker.json");
 const recordedTests = Object.values(recording.testFiles ?? {}).flatMap((file) => file.tests);
 const mutatedFile = Object.keys(recording.files)[0]!;
 const recordedMutants = recording.files[mutatedFile]!.mutants;
@@ -115,5 +117,60 @@ describe("mutation cull", () => {
       "src/check.ts:6-6",
     ]);
     expect(mutateEntries("src/check.ts", source, new Set())).toEqual(["src/check.ts"]);
+  });
+
+  // relaySigning.ts's isRecord guard loops past Stryker's hit limit in dpop.test.ts and fails an assertion in
+  // relaySigning.test.ts; the main run saw only the limit.
+  const timedOut = recorded("relaySigning.stryker.json");
+  const reruns = [
+    ...reportMutants(recorded("relaySigning.rerun-dpop.stryker.json")),
+    ...reportMutants(recorded("relaySigning.rerun-relaySigning.stryker.json")),
+  ];
+
+  // witness: scripts/mutation-cull.ts | for (const testFile of testFiles.size === 0 ? [""] : testFiles) { → for (const testFile of [""]) {
+  it("re-runs a Timeout mutant once per test file that covers it, at its own source range", () => {
+    const plan = timeoutPlan(timedOut);
+    expect([...plan.keys()].sort()).toEqual([
+      "packages/shared/src/dpop.test.ts",
+      "packages/shared/src/relaySigning.test.ts",
+    ]);
+    // Stryker ranges take 1-based lines and 0-based inclusive columns; the report's columns are 1-based.
+    for (const ranges of plan.values())
+      expect(ranges).toEqual(
+        expect.arrayContaining([
+          "packages/shared/src/relaySigning.ts:2:9-2:77",
+          "packages/shared/src/relaySigning.ts:9:6-9:21",
+        ]),
+      );
+  });
+
+  // witness: scripts/mutation-cull.ts | const killedBy = [...new Set(runs.flatMap((run) => run.killedBy))].sort(); → const killedBy = [...runs[0]!.killedBy];
+  it("counts a Timeout mutant as killed by a test whose file's re-run fails it, though another file's re-run hits the limit", () => {
+    const settled = settleTimeouts(reportMutants(timedOut), reruns);
+    const guard = settled.find((mutant) => mutant.line === 9 && mutant.column === 7)!;
+    expect(guard.status).toBe("Killed");
+    expect(guard.killedBy).toEqual([
+      "packages/shared/src/relaySigning.test.ts:6\trelaySigning > canonicalizes object keys recursively",
+    ]);
+  });
+
+  // witness: scripts/mutation-cull.ts | : alias → : undefined
+  it("scopes a test file to the files it imports by a relative or a tsconfig paths specifier", () => {
+    const scope = "scripts/fixtures/mutation-cull/scope";
+    const tracked = new Set(
+      [
+        "tsconfig.json",
+        "src/feature/a.case.mts",
+        "src/feature/a.ts",
+        "src/feature/d.ts",
+        "src/lib/b.ts",
+      ].map((file) => `${scope}/${file}`),
+    );
+    const root = new URL("..", import.meta.url).pathname;
+    expect(directImports(root, `${scope}/src/feature/a.case.mts`, tracked)).toEqual([
+      `${scope}/src/feature/a.ts`,
+      `${scope}/src/lib/b.ts`,
+      `${scope}/src/feature/d.ts`,
+    ]);
   });
 });
