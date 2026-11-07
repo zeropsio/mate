@@ -433,6 +433,30 @@ function fakeCluster() {
   NodeFS.writeFileSync(NodePath.join(data, "global", "pg_control"), "valid");
   return { root, home, bin, data };
 }
+type FakeCluster = ReturnType<typeof fakeCluster>;
+
+/** The PID in the cluster's postmaster.pid while its command line still runs this cluster. */
+function runningPostmaster({ data }: FakeCluster): number | undefined {
+  const record = NodePath.join(data, "postmaster.pid");
+  if (!NodeFS.existsSync(record)) return undefined;
+  const pid = Number(NodeFS.readFileSync(record, "utf8").split("\n")[0]);
+  const shown = NodeChildProcess.spawnSync("ps", ["-ww", "-o", "command=", "-p", String(pid)], {
+    encoding: "utf8",
+  });
+  return shown.status === 0 && shown.stdout.trim().endsWith(`postgres -D ${data}`)
+    ? pid
+    : undefined;
+}
+
+/**
+ * A case that fails before its supervisor stops PostgreSQL would delete postmaster.pid under the
+ * detached fake postmaster, so the supervisor's later pg_ctl stop finds no server and it runs on.
+ */
+function removeCluster(cluster: FakeCluster) {
+  const pid = runningPostmaster(cluster);
+  if (pid !== undefined) process.kill(pid, "SIGKILL");
+  NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+}
 
 it("Decision: A nonzero guard exit carries pg_ctl's exit code and the tail of its stderr in the relayed error. Decision: No retry, no wider bound; diagnostics only.", async () => {
   const cluster = fakeCluster();
@@ -468,7 +492,7 @@ it("Decision: A nonzero guard exit carries pg_ctl's exit code and the tail of it
     expect(NodeFS.readFileSync(attempts, "utf8")).toBe("stop\n");
   } finally {
     vi.unstubAllEnvs();
-    NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+    removeCluster(cluster);
   }
 });
 
@@ -511,7 +535,26 @@ it("Decision: A test PostgreSQL supervisor that starts with no surviving leases 
     await guardStopped(cluster.home);
   } finally {
     vi.unstubAllEnvs();
-    NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+    removeCluster(cluster);
+  }
+});
+
+// witness: scripts/test-postgres-supervisor.ts | if (!running) return; → return;
+it("the last lease's close stops the cluster's PostgreSQL before its guard lets go of the cluster", async () => {
+  const cluster = fakeCluster();
+  vi.stubEnv("MATE_TEST_PG_HOME", cluster.home);
+  vi.stubEnv("MATE_PG_BIN", cluster.bin);
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const owner = await acquireTestPostgres();
+    expect(runningPostmaster(cluster)).toBeTypeOf("number");
+    await owner.close();
+    await guardStopped(cluster.home);
+    expect(runningPostmaster(cluster)).toBeUndefined();
+  } finally {
+    vi.unstubAllEnvs();
+    removeCluster(cluster);
   }
 });
 
@@ -566,7 +609,7 @@ it.each([
   } finally {
     if (orphan?.exitCode === null && orphan.signalCode === null) orphan.kill("SIGKILL");
     vi.unstubAllEnvs();
-    NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+    removeCluster(cluster);
   }
 });
 
@@ -594,7 +637,7 @@ it("a live postmaster no supervisor recorded keeps running, and the start names 
   } finally {
     stranger.kill("SIGKILL");
     vi.unstubAllEnvs();
-    NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+    removeCluster(cluster);
   }
 });
 
