@@ -48,6 +48,7 @@ import {
   connectLinkSocket,
   makeZeropsHqLink,
   HQ_AUTO_UPDATE_VERIFY_BUDGET,
+  REFUSAL_REASK,
   mateOverviewFeed,
   lookupIpv6,
   actingIn,
@@ -55,6 +56,9 @@ import {
   type OverviewSources,
   type ZeropsHqLinkOptions,
 } from "./ZeropsHqLink.ts";
+
+/** Past the re-ask of a refused key and the most its spread adds. */
+const REASKED = Duration.millis(Duration.toMillis(REFUSAL_REASK) * 1.25 + 1);
 
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
 const encodeHeard = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -1519,7 +1523,8 @@ describe("ZeropsHqLink", () => {
           kind: "not-linked",
           refusal: "key_not_sensitive",
         });
-        yield* TestClock.adjust(Duration.millis(30));
+        // A refused key is asked again only after the re-ask (and its spread) when its store stays put.
+        yield* TestClock.adjust(REASKED);
         const second = yield* opened(sockets, 1);
         second.closeWith(4401, "key_refused");
         yield* TestClock.adjust(Duration.zero);
@@ -1528,7 +1533,7 @@ describe("ZeropsHqLink", () => {
           refusal: "key_refused",
         });
         // A close that names no refusal leaves the last one standing; HQ's state clears it.
-        yield* TestClock.adjust(Duration.millis(60));
+        yield* TestClock.adjust(REASKED);
         const third = yield* opened(sockets, 2);
         admit(third);
         yield* TestClock.adjust(Duration.zero);

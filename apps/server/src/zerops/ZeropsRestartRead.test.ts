@@ -36,6 +36,8 @@ it.effect.each(
         }),
         invalidate: Effect.die("must not retry"),
         lastSource: Effect.succeed("snapshot" as const),
+        revision: Effect.succeed(0),
+        changedSince: () => Effect.never,
       }),
       Effect.provideService(
         HttpClient.HttpClient,

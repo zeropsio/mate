@@ -31,6 +31,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
@@ -123,6 +124,13 @@ export interface ZeropsMateKeyReader {
   readonly lastSource: Effect.Effect<ZeropsMateKeySource | undefined>;
   /** Forces the next {@link read} to re-resolve, as a change of the store does. */
   readonly invalidate: Effect.Effect<void>;
+  /** How often the store has changed so far (never {@link invalidate}): a mark for {@link changedSince}. */
+  readonly revision: Effect.Effect<number>;
+  /**
+   * Completes once the store has changed after {@link revision} answered `mark`: the owner may have
+   * set the key or a variable it is judged by. Never, where there is no store.
+   */
+  readonly changedSince: (mark: number) => Effect.Effect<void>;
 }
 
 interface CacheEntry {
@@ -150,8 +158,13 @@ export const make = (input: {
     // Counted synchronously in the watcher's callback: a read that began before a change cannot
     // keep what it read past it.
     let changes = 0;
+    // The store's own changes, apart from `invalidate`'s; each counted before it is told.
+    let storeChanges = 0;
+    const storeChanged = yield* PubSub.unbounded<void>();
     const handle = input.watch(storePath, () => {
       changes++;
+      storeChanges++;
+      PubSub.publishUnsafe(storeChanged, undefined);
     });
     yield* Effect.addFinalizer(() => Effect.sync(() => handle.dispose()));
     const lastGoodStoreKey = yield* Ref.make<string | undefined>(undefined);
@@ -190,8 +203,18 @@ export const make = (input: {
       changes++;
     });
 
+    const revision = Effect.sync(() => storeChanges);
+    // Subscribed before the count is looked at, so a change between the two is still heard.
+    const changedSince = (mark: number) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const told = yield* PubSub.subscribe(storeChanged);
+          while (storeChanges <= mark) yield* PubSub.take(told);
+        }),
+      );
+
     const refusal = yield* ZeropsKeyRefusal.make(Effect.andThen(invalidate, read));
-    return { read, lastSource, invalidate, refusal };
+    return { read, lastSource, invalidate, revision, changedSince, refusal };
   });
 
 /**
@@ -205,6 +228,8 @@ export const snapshotOnlyReader = (snapshot: string | undefined): ZeropsMateKeyR
   read: Effect.succeed(snapshot),
   lastSource: Effect.succeed(snapshot !== undefined ? "snapshot" : undefined),
   invalidate: Effect.void,
+  revision: Effect.succeed(0),
+  changedSince: () => Effect.never,
 });
 
 /**
