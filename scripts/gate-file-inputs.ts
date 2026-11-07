@@ -234,6 +234,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/lib/brand-assets.test.ts": ["assets/**", "apps/mobile/assets/**"],
   "scripts/lib/cli-external-packages.test.ts": [],
   "scripts/lib/spread-shard.test.ts": ["apps/**", "packages/**"],
+  "scripts/lib/test-scratch-root.test.ts": [],
   "scripts/mate-boundaries.test.ts": ["apps/server/src/zerops/**"],
   "scripts/mutation-cull.test.ts": ["scripts/fixtures/mutation-cull/**"],
   "scripts/mate-readiness.test.ts": ["apps/web/src/**"],

@@ -334,36 +334,40 @@ it.each([
   },
 );
 
-it("a later run removes test PostgreSQL homes unused for a day unless a postmaster still runs on them", async () => {
-  const { pruneStaleClusters } = await import("./test-postgres.ts");
+// witness: scripts/test-postgres.ts | return record !== undefined && record !== "" && !exists(record); → return record !== undefined && record !== "";
+it("a later run removes a test PostgreSQL home whose recorded checkout is gone unless a postmaster still runs on it, and never touches a home whose checkout exists or that records none", async () => {
+  const { pruneOrphanedClusters } = await import("./test-postgres.ts");
   const parent = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-prune-"));
+  const live = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-checkout-"));
   try {
-    const now = Date.parse("2026-10-24T12:00:00Z");
-    const hours = (count: number) => (now - count * 60 * 60 * 1000) / 1000;
-    const home = (name: string, idleHours: number, postmaster?: number) => {
+    const removed = "/Volumes/mate-wt/mate-hq/removed-worktree";
+    const longAgo = Date.parse("2026-10-01T00:00:00Z") / 1000;
+    const home = (name: string, checkout?: string, postmaster?: number, idle?: boolean) => {
       const path = NodePath.join(parent, name);
       writeCluster(NodePath.join(path, "data"), "base");
-      NodeFS.writeFileSync(NodePath.join(path, "postgres.log"), "");
+      // mate-hq's recordCheckout writes the checkout's path, nothing else.
+      if (checkout !== undefined) NodeFS.writeFileSync(NodePath.join(path, "checkout"), checkout);
       if (postmaster !== undefined)
         NodeFS.writeFileSync(
           NodePath.join(path, "data", "postmaster.pid"),
           `${postmaster}\n${path}\n`,
         );
-      for (const entry of ["data", "postgres.log", "."])
-        NodeFS.utimesSync(NodePath.join(path, entry), hours(idleHours), hours(idleHours));
+      if (idle)
+        for (const entry of ["data", "checkout", "."])
+          NodeFS.utimesSync(NodePath.join(path, entry), longAgo, longAgo);
       return path;
     };
-    const self = home("mate-test-pg-501", 48);
-    home("mate-test-pg-501-0a1b2c3d4e5f", 25);
-    home("mate-test-pg-501-111111111111", 25, 4242);
-    home("mate-test-pg-501-222222222222", 25, 4343);
-    home("mate-test-pg-501-333333333333", 23);
-    home("another-cache", 72);
+    const self = home("mate-test-pg-501");
+    home("mate-test-pg-501-0a1b2c3d4e5f", removed);
+    home("mate-test-pg-501-111111111111", removed, 4242);
+    home("mate-test-pg-501-222222222222", removed, 4343);
+    home("mate-test-pg-501-333333333333", live, undefined, true);
+    home("mate-test-pg-501-444444444444");
+    home("another-cache", removed);
     const reported: string[] = [];
 
-    pruneStaleClusters({
+    pruneOrphanedClusters({
       home: self,
-      now,
       alive: (pid) => pid === 4242,
       report: (line) => reported.push(line),
     });
@@ -373,14 +377,16 @@ it("a later run removes test PostgreSQL homes unused for a day unless a postmast
       "mate-test-pg-501",
       "mate-test-pg-501-111111111111",
       "mate-test-pg-501-333333333333",
+      "mate-test-pg-501-444444444444",
     ]);
     expect(reported).toEqual(
       ["mate-test-pg-501-0a1b2c3d4e5f", "mate-test-pg-501-222222222222"].map(
         (name) =>
-          `Removed test PostgreSQL home ${NodePath.join(parent, name)}: unused for over 24 h and no postmaster runs on it.`,
+          `Removed test PostgreSQL home ${NodePath.join(parent, name)}: its checkout ${removed} no longer exists and no postmaster runs on it.`,
       ),
     );
   } finally {
+    NodeFS.rmSync(live, { recursive: true, force: true });
     NodeFS.rmSync(parent, { recursive: true, force: true });
   }
 });
@@ -614,6 +620,29 @@ it("a run whose cluster volume has less free space than the floor is refused bef
     expect(refusal).toContain(`The disk ${volume} holding the PostgreSQL test cluster is full:`);
     expect(refusal).toMatch(/ballast \(3\.0 MiB\)/u);
     expect(NodeFS.existsSync(NodePath.join(home, "supervisor.log"))).toBe(false);
+  } finally {
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// witness: scripts/test-postgres.ts | pruneOrphanedClusters({ home: postgresHome, report: stderrLine }); → stderrLine("");
+it("a run reclaims a removed worktree's test PostgreSQL home before it judges the volume's free space", async () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-room-"));
+  const home = NodePath.join(root, "mate-test-pg-501");
+  const orphan = NodePath.join(root, "mate-test-pg-501-0a1b2c3d4e5f");
+  writeCluster(NodePath.join(orphan, "data"), "base");
+  NodeFS.writeFileSync(NodePath.join(orphan, "checkout"), NodePath.join(root, "removed-worktree"));
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.stubEnv("MATE_TEST_PG_MIN_FREE_BYTES", String(Number.MAX_SAFE_INTEGER));
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    await acquireTestPostgres().then(
+      () => undefined,
+      () => undefined,
+    );
+    expect(NodeFS.existsSync(orphan)).toBe(false);
   } finally {
     vi.unstubAllEnvs();
     NodeFS.rmSync(root, { recursive: true, force: true });
