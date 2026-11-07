@@ -327,7 +327,7 @@ describe("ZeropsConnections", () => {
   );
 
   it.effect(
-    "A list older than 15 minutes refuses new tickets with reason not_in_list but keeps open connections",
+    "A list older than 15 minutes refuses new tickets with reason list_unconfirmed but keeps open connections",
     () =>
       Effect.gen(function* () {
         const { answer, closed, connections, open } = yield* setupOwn;
@@ -337,7 +337,7 @@ describe("ZeropsConnections", () => {
         yield* TestClock.adjust(1);
         assert.strictEqual(
           yield* Effect.flatten(connections.ticket(ticket("late", "jan"))),
-          "not_in_list",
+          "list_unconfirmed",
         );
         assert.deepEqual(closed, []);
         assert.isTrue(Option.isSome(yield* connections.current("jan")));

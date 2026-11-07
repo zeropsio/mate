@@ -22,7 +22,9 @@
  * with each `connected`, to whoever waits on a process (`processes`), and reads none itself.
  *
  * A list holds {@link ACCESS_LIST_HOLDS} from the read that brought it; a frame applied over it
- * does not extend that. Past that it refuses new tickets and keeps the connections already open.
+ * does not extend that. Past that it refuses new tickets as unconfirmed (`list_unconfirmed`) and
+ * keeps the connections already open (GAP-RIGHTS-6: open connections keep the last list while
+ * Zerops does not answer; see docs/architecture/identity-and-access.md#gap-rights in mate-hq).
  *
  * @module ZeropsMateAccessList
  */
@@ -184,13 +186,17 @@ export function applyAccessFrame(rows: OwnRows, frame: AccessFrame): OwnRows {
   return changed ? { ...rows, members } : rows;
 }
 
-/** What a new ticket for `userId` gets from `list` at `nowMs`: admitted, or why not. */
+/**
+ * What a new ticket for `userId` gets from `list` at `nowMs`: admitted, or why not. With no list,
+ * or one past its hold, Zerops has not confirmed whom it names, so the answer is that it cannot
+ * say (`list_unconfirmed`), never that the person is absent.
+ */
 export const ticketVerdict = (
   list: AccessList | undefined,
   userId: string,
   nowMs: number,
 ): "open" | TicketRefusal => {
-  if (list === undefined || nowMs > list.expiresAtMs) return "not_in_list";
+  if (list === undefined || nowMs > list.expiresAtMs) return "list_unconfirmed";
   const member = list.members.find((candidate) => candidate.userId === userId);
   if (member === undefined) return "not_in_list";
   return member.visibility === "open" ? "open" : "read_only";
@@ -237,7 +243,7 @@ export class ZeropsMateAccessList extends Context.Service<
     readonly current: Effect.Effect<Option.Option<AccessList>>;
     /**
      * A new ticket's verdict for `userId`, recomputing once first (or joining the recompute in
-     * flight) if the list does not open for them.
+     * flight) if the list does not open for them or is unconfirmed.
      */
     readonly admits: (userId: string) => Effect.Effect<"open" | TicketRefusal>;
     /** Whom the own list names, latest first, then after each change (`ZeropsOffboarding`). */
@@ -451,7 +457,7 @@ export const make = (own?: {
       admits: (userId) =>
         Effect.gen(function* () {
           const first = yield* verdict(userId);
-          if (first !== "not_in_list" || own === undefined) return first;
+          if (first === "open" || first === "read_only" || own === undefined) return first;
           yield* recompute;
           return yield* verdict(userId);
         }),

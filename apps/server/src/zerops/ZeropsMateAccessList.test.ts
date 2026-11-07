@@ -187,7 +187,7 @@ describe("ZeropsMateAccessList, computed by the Mate", () => {
   );
 
   it.effect(
-    "A list older than 15 minutes refuses new tickets with reason not_in_list but is kept for the connections already open",
+    "A list older than 15 minutes refuses new tickets with reason list_unconfirmed but is kept for the connections already open",
     () =>
       Effect.gen(function* () {
         const { answer, own } = yield* ownRead;
@@ -197,7 +197,7 @@ describe("ZeropsMateAccessList, computed by the Mate", () => {
         yield* TestClock.adjust(ACCESS_LIST_HOLDS);
         assert.strictEqual(yield* list.admits("jan"), "open");
         yield* TestClock.adjust(Duration.millis(1));
-        assert.strictEqual(yield* list.admits("jan"), "not_in_list");
+        assert.strictEqual(yield* list.admits("jan"), "list_unconfirmed");
         assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open");
       }).pipe(Effect.scoped),
   );

@@ -517,11 +517,14 @@ export const KeyLinkUp = Schema.Union([
     ok: Schema.Boolean,
   }),
   Schema.Struct({ type: Schema.Literal("key-refused") }),
-  /** A ticket the Mate's own list does not admit, sent instead of `ticket-ack`: definitive. */
+  /**
+   * A ticket the Mate's own list does not admit, sent instead of `ticket-ack`: definitive.
+   * `list_unconfirmed`: Zerops has not confirmed the list within its hold, so the Mate cannot say.
+   */
   Schema.Struct({
     type: Schema.Literal("ticket_refused"),
     ticket: Ticket,
-    reason: Schema.Literals(["not_in_list", "read_only"]),
+    reason: Schema.Literals(["not_in_list", "read_only", "list_unconfirmed"]),
   }),
 ]);
 export type KeyLinkUp = typeof KeyLinkUp.Type;
