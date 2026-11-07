@@ -1,11 +1,13 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalTimers:off -- deterministic kernel-lock interleaving with real worktree clients.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import { afterAll, beforeAll, expect, it, vi } from "vite-plus/test";
+import { processesCarrying } from "./fixtures/run-markers.ts";
 import { RESERVED, reservePort } from "./test-ports.ts";
 import type { TestPostgresLease } from "./test-postgres.ts";
 
@@ -217,6 +219,49 @@ it("a lease client that disconnects before its answer leaves the supervisor and 
     await held.close();
   } finally {
     gone?.destroy();
+    await held?.close();
+    await postgresStopped(home);
+    vi.unstubAllEnvs();
+  }
+});
+
+// witness: scripts/test-postgres.ts | env: sharedDaemonEnvironment(), → env: process.env,
+it("Decision: the shared test PostgreSQL outlives its electing job by design, so reaping that job's run marker leaves a second lease holder's connection working", async () => {
+  const home = sharedHome;
+  const marker = NodeCrypto.randomBytes(16).toString("hex");
+  const fixture = NodePath.join(import.meta.dirname, "fixtures/test-postgres-lifecycle.ts");
+  const elector = NodeChildProcess.spawn(process.execPath, [fixture, "worker"], {
+    env: { ...process.env, MATE_TEST_PG_HOME: home, ZBOARD_RUN_MARKERS: marker },
+    stdio: ["ignore", "ignore", "inherit", "ipc"],
+  });
+  const electorExited = new Promise<void>((resolve) => elector.once("exit", () => resolve()));
+  const next = (event: string) =>
+    new Promise<void>((resolve) => {
+      const receive = (message: unknown) => {
+        if ((message as { event: string }).event !== event) return;
+        elector.off("message", receive);
+        resolve();
+      };
+      elector.on("message", receive);
+    });
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.resetModules();
+  let held: TestPostgresLease | undefined;
+  try {
+    await next("created");
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    held = await acquireTestPostgres();
+    const released = next("released");
+    elector.send("release");
+    await released;
+    await electorExited;
+    // The elector's job ends: zboard stops every process still carrying its marker.
+    for (const pid of processesCarrying(marker)) process.kill(pid, "SIGKILL");
+    expect(await held.createDatabase()).toMatch(/^postgres:/u);
+    await held.close();
+  } finally {
+    if (elector.connected) elector.send("release", () => {});
+    await electorExited;
     await held?.close();
     await postgresStopped(home);
     vi.unstubAllEnvs();
