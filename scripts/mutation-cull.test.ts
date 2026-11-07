@@ -1,6 +1,9 @@
 // @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off -- Reads a recorded Stryker report.
+import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
-import { describe, expect, it } from "vite-plus/test";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import { beforeAll, describe, expect, it } from "vite-plus/test";
 import {
   caseInventory,
   classifyTests,
@@ -9,6 +12,7 @@ import {
   mutateEntries,
   reportMutants,
   reportTests,
+  scopeConfigSource,
   settleTimeouts,
   stringifiedNames,
   testKey,
@@ -119,6 +123,16 @@ describe("mutation cull", () => {
     expect(mutateEntries("src/check.ts", source, new Set())).toEqual(["src/check.ts"]);
   });
 
+  // Two runs of chatList.ts: the same mutants and kills, listed in the order each run finished them.
+  // witness: scripts/mutation-cull.ts | mutantId(a).localeCompare(mutantId(b)), → 0,
+  it("names the same witness whatever order Stryker's report lists the mutants in", () => {
+    const table = (name: string) => {
+      const report = recorded(name);
+      return classifyTests(reportTests(report), reportMutants(report));
+    };
+    expect(table("chatList.run-b.stryker.json")).toEqual(table("chatList.run-a.stryker.json"));
+  });
+
   // relaySigning.ts's isRecord guard loops past Stryker's hit limit in dpop.test.ts and fails an assertion in
   // relaySigning.test.ts; the main run saw only the limit.
   const timedOut = recorded("relaySigning.stryker.json");
@@ -172,5 +186,54 @@ describe("mutation cull", () => {
       `${scope}/src/lib/b.ts`,
       `${scope}/src/feature/d.ts`,
     ]);
+  });
+
+  // Vitest runs the generated config on a fixture with two projects, as apps/web has, one sharing a worker.
+  const fixture = new URL("./fixtures/mutation-cull/scope-config", import.meta.url).pathname;
+  const scoped = ["shared/a.case.mts", "shared/b.case.mts", "own/c.case.mts"];
+  let ran: ReadonlyArray<{ readonly file: string; readonly passed: boolean }> = [];
+  beforeAll(() => {
+    const scratch = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mutation-cull-scope-"));
+    try {
+      const config = NodePath.join(scratch, "scope.vitest.ts");
+      NodeFS.writeFileSync(
+        config,
+        scopeConfigSource(
+          NodePath.join(fixture, "vite.config.ts"),
+          scoped.map((file) => NodePath.join(fixture, file)),
+        ),
+      );
+      const report = NodePath.join(scratch, "report.json");
+      const env = Object.fromEntries(
+        Object.entries(process.env).filter(([name]) => !name.startsWith("VITEST")),
+      );
+      NodeChildProcess.spawnSync(
+        new URL("../node_modules/.bin/vp", import.meta.url).pathname,
+        ["test", "run", "--config", config, "--reporter=json", `--outputFile=${report}`],
+        { cwd: fixture, env, encoding: "utf8" },
+      );
+      const results = (
+        JSON.parse(NodeFS.readFileSync(report, "utf8")) as {
+          testResults: Array<{ name: string; assertionResults: Array<{ status: string }> }>;
+        }
+      ).testResults;
+      ran = results.map((result) => ({
+        file: NodePath.relative(fixture, result.name),
+        passed: result.assertionResults.every((assertion) => assertion.status === "passed"),
+      }));
+    } finally {
+      NodeFS.rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  // witness: scripts/mutation-cull.ts | project.config.include = own.map((file) => glob(NodePath.relative(dir, file))); → project.config.include = project.config.include;
+  it("runs a scoped Stryker run on exactly its test files, in every project of the config", () => {
+    expect(ran.map((result) => result.file).sort()).toEqual([...scoped].sort());
+  });
+
+  // witness: scripts/mutation-cull.ts | project.config.isolate = true; → project.config.isolate = project.config.isolate;
+  it("runs every scoped test file in a fresh worker, so a static mutant's module loads with it active", () => {
+    expect(ran.length).toBeGreaterThan(0);
+    expect(ran.filter((result) => !result.passed)).toEqual([]);
   });
 });

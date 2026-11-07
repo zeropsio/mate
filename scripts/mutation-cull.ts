@@ -13,9 +13,9 @@
  * Stryker runs in place (no sandbox copy of the repository), so the directory must have no uncommitted changes.
  * Run it in a heavy slot: `heavy-slot node scripts/mutation-cull.ts packages/shared/src`.
  *
- * Known gap: under the repository's vitest 5 the Stryker 10.1.1 vitest runner does not reliably activate static
- * (module-level) mutants; a test that guards only module-level code (a schema, a literal table) can read as
- * KILLS-NONE or DUPLICATE, and which static mutants count as killed varies with host load.
+ * Static (module-level) mutants run with their mutant active before the module loads, in a fresh module graph per
+ * test file: the tool names a run's test files through a generated vitest config (`scopeConfigSource`), never
+ * Stryker's `testFiles`, which makes Stryker 10.1.1 activate every mutant only once the tests start.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
@@ -28,7 +28,7 @@ import { testWorkerBudget } from "./lib/test-worker-budget.ts";
 
 const STRYKER_VERSION = "10.1.1";
 /** Bumping this re-runs every file: it is part of each report's key. */
-const TOOL_KEY = `stryker-${STRYKER_VERSION}/perTest/disableBail/forks`;
+const TOOL_KEY = `stryker-${STRYKER_VERSION}/perTest/disableBail/forks/scoped-config`;
 
 export type Verdict = "KILLS-NONE" | "DUPLICATE" | "KILLS";
 
@@ -244,7 +244,7 @@ export const witnessLine = (mutant: Mutant): string =>
  * cost is the number of mutants a test covers or kills (deterministic, unlike its run time); ties go to the
  * earlier test.
  * KILLS: the rest; its witness is the killed mutant with the fewest killers, a logic mutant before a string
- * literal one (a changed string is a copy check), then the shortest original text.
+ * literal one (a changed string is a copy check), then the shortest original text, then the first in the file.
  * The reason column carries the facts an agent needs: kill, unique-kill and coverage counts, whether a minimal
  * set of killing tests (greedy set cover, pruned) needs it, and how many covered mutants no test kills.
  */
@@ -342,7 +342,12 @@ export function classifyTests(tests: readonly TestCase[], mutants: readonly Muta
         (a, b) =>
           killers.get(mutantId(a))! - killers.get(mutantId(b))! ||
           Number(isString(a)) - Number(isString(b)) ||
-          a.original.length - b.original.length,
+          a.original.length - b.original.length ||
+          // Stryker lists a file's mutants in the order they finished, so ties go by position.
+          a.file.localeCompare(b.file) ||
+          a.line - b.line ||
+          a.column - b.column ||
+          mutantId(a).localeCompare(mutantId(b)),
       )[0]!;
     return {
       test,
@@ -644,6 +649,42 @@ export function directImports(
   ];
 }
 
+/**
+ * A vitest config that runs the repository's config on exactly `testFiles` (absolute paths), each test file in a
+ * fresh module graph. Stryker's own `testFiles` option would scope the run too, but Stryker 10.1.1 then treats
+ * every mutant as covered by that filter and activates it only when the tests start, after module-level code ran,
+ * so no static mutant is ever live. A project that shares modules across files (`isolate: false`) would run a
+ * static mutant's module once for several files, and a later mutant against modules loaded under an earlier one.
+ */
+export function scopeConfigSource(configFile: string, testFiles: readonly string[]): string {
+  return `import * as NodePath from "node:path";
+import base from ${JSON.stringify(configFile)};
+
+const files = ${JSON.stringify(testFiles)};
+const glob = (path) => path.replace(/[()[\\]{}*?!+@\\\\]/g, "\\\\$&");
+let scoped = false;
+const scope = {
+  name: "mutation-cull-scope",
+  configureVitest({ vitest }) {
+    if (scoped) return;
+    scoped = true;
+    for (const project of vitest.projects) {
+      const own = files.filter((file) => project.matchesTestGlob(file));
+      const dir = project.config.dir || project.config.root;
+      project.config.include = own.map((file) => glob(NodePath.relative(dir, file)));
+      project.config.isolate = true;
+    }
+  },
+};
+const withScope = (config) => ({
+  root: ${JSON.stringify(NodePath.dirname(configFile))},
+  ...config,
+  plugins: [...(config.plugins ?? []), scope],
+});
+export default typeof base === "function" ? async (env) => withScope(await base(env)) : withScope(base);
+`;
+}
+
 export interface CullOptions {
   readonly dir: string;
   readonly out?: string;
@@ -665,13 +706,16 @@ export function mutationCull(options: CullOptions): {
   const out = NodePath.resolve(
     options.out ?? NodePath.join(root, ".plans/mutation-cull", dir.replace(/[/\\]/g, "-")),
   );
+  // Stryker restores a file mutated in place by renaming its backup back, which fails across volumes and leaves
+  // the mutated file behind: the backup stays inside the worktree whatever volume `out` is on.
+  const backup = NodePath.join(root, "node_modules/.mutation-cull/stryker-tmp");
   const concurrency =
     options.concurrency ??
     testWorkerBudget(process.env.HEAVY_SLOTS ?? "7", NodeOS.availableParallelism())!;
   if (run("git", ["status", "--porcelain", "--", dir], root).trim() !== "")
     throw new Error(
       `${dir} has uncommitted changes; Stryker mutates it in place. After an interrupted run, restore it with ` +
-        `\`git checkout -- ${dir}\` (Stryker's backup: ${out}/stryker-tmp).`,
+        `\`git checkout -- ${dir}\` (Stryker's backup: ${backup}).`,
     );
   for (const sub of ["reports", "logs", "configs"])
     NodeFS.mkdirSync(NodePath.join(out, sub), { recursive: true });
@@ -744,6 +788,14 @@ export function mutationCull(options: CullOptions): {
       const started = Date.now();
       if (job.mutate.length > 0) {
         const configPath = NodePath.join(out, "configs", `${name}.json`);
+        const scopedConfig = NodePath.join(out, "configs", `${name}.vitest.ts`);
+        NodeFS.writeFileSync(
+          scopedConfig,
+          scopeConfigSource(
+            NodePath.join(root, vitestConfig),
+            job.testFiles.map((file) => NodePath.join(root, file)),
+          ),
+        );
         NodeFS.writeFileSync(
           configPath,
           JSON.stringify({
@@ -751,9 +803,7 @@ export function mutationCull(options: CullOptions): {
             plugins: [plugin],
             // The repository runs vitest's default forks pool; the runner would pick threads, where a test
             // stubbing TZ cannot move the process time zone.
-            // The directory's tests are named through `testFiles`: vitest's `dir` would re-root a package
-            // config's `include` patterns and find nothing.
-            vitest: { configFile: NodePath.basename(vitestConfig), related: true, pool: "forks" },
+            vitest: { configFile: scopedConfig, related: true, pool: "forks" },
             coverageAnalysis: "perTest",
             disableBail: true,
             inPlace: true,
@@ -762,11 +812,10 @@ export function mutationCull(options: CullOptions): {
             disableTypeChecks: false,
             allowEmpty: true,
             mutate: job.mutate.map(fromRoot),
-            testFiles: job.testFiles.map(fromRoot),
             ignorePatterns: onlyDirectoryPatterns(NodePath.relative(base, dir)),
             reporters: ["json"],
             jsonReporter: { fileName: reportPath },
-            tempDirName: NodePath.relative(cwd, NodePath.join(out, "stryker-tmp")),
+            tempDirName: NodePath.relative(cwd, backup),
             cleanTempDir: true,
             ...(job.rerun ? { concurrency: 1, timeoutMS: RERUN_TIMEOUT_MS } : { concurrency }),
           }),
@@ -806,7 +855,16 @@ export function mutationCull(options: CullOptions): {
       NodeFS.writeFileSync(keyPath, key);
       console.log(`${name} ${((Date.now() - started) / 1000).toFixed(1)} s`);
     }
-    return decodeStrykerReport(JSON.parse(NodeFS.readFileSync(reportPath, "utf8")));
+    const report = decodeStrykerReport(JSON.parse(NodeFS.readFileSync(reportPath, "utf8")));
+    // A project the scope plugin did not reach runs its whole include: its cases are not this table's.
+    const stray = Object.keys(report.testFiles ?? {}).filter(
+      (file) => !job.testFiles.includes(file),
+    );
+    if (stray.length > 0) {
+      failed.push(`${name}: ran test files outside the scope: ${stray.join(", ")}`);
+      return undefined;
+    }
+    return report;
   };
 
   const mutants: Mutant[] = [];
@@ -840,7 +898,7 @@ export function mutationCull(options: CullOptions): {
     reported.push(...reportTests(report));
   }
   if (run("git", ["status", "--porcelain", "--", dir], root).trim() !== "")
-    throw new Error(`${dir} changed during the run; Stryker's backup is under ${out}/stryker-tmp`);
+    throw new Error(`${dir} changed during the run; Stryker's backup is under ${backup}`);
   // A table without a file's mutants would call its tests KILLS-NONE; rerun to retry only these files.
   if (failed.length > 0)
     throw new Error(`no table: ${failed.length} file(s) failed\n${failed.join("\n")}`);
