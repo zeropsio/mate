@@ -340,10 +340,9 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
       input.grants[projectId]?.grants?.find(({ clientUserId }) => clientUserId === member.id)
         ?.roleCode;
     const roleOn = (projectId: string) => asOrgRole(grantOf(projectId) ?? role);
+    // Whose a Mate is, as HQ records it: never a Zerops OWNER override, which is only a role.
     const owned = input.projects.flatMap(({ projectId, kind }) =>
-      isMateKind(kind) &&
-      ((userId !== undefined && input.owners[projectId] === userId) ||
-        grantOf(projectId) === "OWNER")
+      isMateKind(kind) && userId !== undefined && input.owners[projectId] === userId
         ? [projectId]
         : [],
     );

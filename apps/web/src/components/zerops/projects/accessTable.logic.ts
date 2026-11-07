@@ -247,7 +247,7 @@ export function accessTable(input: ProjectPeopleInput): AccessTableView {
       const grant = input.grants[column.projectId]?.grants?.find(
         ({ clientUserId }) => clientUserId === member.id,
       )?.roleCode;
-      if (owned || grant === "OWNER")
+      if (owned)
         return {
           projectId: column.projectId,
           level: "owner",
