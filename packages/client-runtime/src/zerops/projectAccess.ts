@@ -42,6 +42,23 @@ export interface ProjectAccessChange {
 }
 
 /**
+ * Whether the viewer may change a member's access to projects, as Zerops takes the write: an owner
+ * anyone's, an admin their own and anyone's below an admin, nobody else anything (the membership
+ * rule in `teamRoles`, measured 2026-10-14). Zerops refuses the rest; this decides what is offered.
+ */
+export function mayChangeAccess(input: {
+  readonly viewerRole: string | undefined;
+  readonly memberRole: string | undefined;
+  /** The member is the viewer. */
+  readonly self: boolean;
+}): boolean {
+  if (!roleAtLeast(input.viewerRole, "ADMIN")) return false;
+  return (
+    roleAtLeast(input.viewerRole, "OWNER") || input.self || !roleAtLeast(input.memberRole, "ADMIN")
+  );
+}
+
+/**
  * Whether `role` already gives what `target` would: a grant naming it changes nothing. No
  * organization role gives the owner marker: an organization owner holds it only as a grant.
  */
