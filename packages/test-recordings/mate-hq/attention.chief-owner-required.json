@@ -1,0 +1,18 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "revision": "d9eadf39372c17286a6df55e5ee5e12df558ac70",
+    "via": "s19a-link.test.ts",
+    "schema": "scope-error"
+  },
+  "value": {
+    "type": "scope-error",
+    "scope": {
+      "kind": "attention",
+      "projectId": "CHIEF-s5-00000000-0000-4000-8000-000000000001"
+    },
+    "code": "chief_owner_required",
+    "reason": "dev",
+    "disposition": "refused"
+  }
+}
