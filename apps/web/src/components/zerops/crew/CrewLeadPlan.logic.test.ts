@@ -210,6 +210,7 @@ describe("crewPlanLocks — the plan's presses for a viewer who may not run all 
   /** The viewer may not run `closed`; `defaultLogin` for a crew with no run. */
   const accessOf = (closed: ReadonlyArray<string>) =>
     crewAccess({
+      readsAlong: false,
       snapshot: fixture,
       lockOf: (login) => (closed.includes(login) ? lock(login) : null),
       defaultLogin: "claudeAgent",

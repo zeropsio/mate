@@ -374,10 +374,13 @@ export const crewSendToWord = (name: string | null): string =>
  * these by the phrases' test), the crew named where the conversation names
  * its agent — in the Crew tab the crew is what they may not run — its dash
  * held to the word before it, so no line starts with it. Why nobody runs it
- * reads as the conversation says it.
+ * reads as the conversation says it; a colleague reading along is told it as
+ * the server's door tells them.
  */
-export function crewLockWords(ownership: "someone-else" | "unrecorded"): string {
+export function crewLockWords(ownership: "someone-else" | "unrecorded" | "reads-along"): string {
   switch (ownership) {
+    case "reads-along":
+      return "Only this Mate's owner can run its crew\u00a0— you can read along.";
     case "someone-else":
       return "Signed in by another project member\u00a0— only they can run this crew.";
     case "unrecorded":
@@ -385,7 +388,7 @@ export function crewLockWords(ownership: "someone-else" | "unrecorded"): string 
   }
 }
 
-/** The notice's one way out, the conversation's (`AGENT_OWNERSHIP_RECOVERY_LABEL`): the viewer's own sign-in. */
+/** The notice's one way out, the conversation's (`AGENT_OWNERSHIP_RECOVERY_LABEL`): the viewer's own sign-in — none while they read along. */
 export const CREW_LOCK_ACTION = AGENT_OWNERSHIP_RECOVERY_LABEL;
 
 /* ------------------------------------------------------------ the rows */
@@ -802,9 +805,11 @@ export function crewSetUpFooter(mateName: string, sharedDatabases = 0): string {
  */
 export function crewSuggestUnavailableWords(
   mateName: string,
-  lock: "someone-else" | "unrecorded" | "no-chat" | "update",
+  lock: "someone-else" | "unrecorded" | "reads-along" | "no-chat" | "update",
 ): string {
   switch (lock) {
+    case "reads-along":
+      return `Only ${mateName}'s owner can ask it\u00a0— you can read along.`;
     case "update":
       return `Update ${mateName} to get a proposal.`;
     case "someone-else":

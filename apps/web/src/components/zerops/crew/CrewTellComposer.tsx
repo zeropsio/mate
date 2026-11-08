@@ -11,7 +11,7 @@
  * For a viewer who may not run the crew (D6), `CrewTellLocked` stands in its
  * place: why, and the one way out, in the pill's own 48 px.
  */
-import type { CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
+import type { CrewLock, CrewLoginLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_COMPOSER_PLACEHOLDER,
   CREW_COMPOSER_PLAN_PLACEHOLDER,
@@ -233,7 +233,7 @@ export function CrewTellComposer({
 /**
  * The composer's place for a viewer who may not run the crew (D6): the lock
  * in the conversation's amber, why in its words with the crew for its agent
- * (`crewLockWords`), and its one way out — in the pill's own 48 px and
+ * (`crewLockWords`), and its one way out (none for a colleague reading along) — in the pill's own 48 px and
  * radius, quiet rather than white since nothing is written here, so nothing
  * under it moves when whose the crew's logins are becomes known.
  */
@@ -243,7 +243,7 @@ export function CrewTellLocked({
   className,
 }: {
   readonly lock: CrewLock;
-  readonly onSignIn: (lock: CrewLock) => void;
+  readonly onSignIn: (lock: CrewLoginLock) => void;
   /** Where it stands: the composer's place, or the empty state's press. */
   readonly className?: string;
 }) {
@@ -251,7 +251,9 @@ export function CrewTellLocked({
     <div className={cn("crew-locked", className)} data-crew-locked={lock.ownership}>
       <LockIcon aria-hidden="true" className="size-4 shrink-0 text-warning" />
       <p className="crew-locked-words">{crewLockWords(lock.ownership)}</p>
-      <CrewPress variant="secondary" label={CREW_LOCK_ACTION} onPress={() => onSignIn(lock)} />
+      {lock.ownership === "reads-along" ? null : (
+        <CrewPress variant="secondary" label={CREW_LOCK_ACTION} onPress={() => onSignIn(lock)} />
+      )}
     </div>
   );
 }

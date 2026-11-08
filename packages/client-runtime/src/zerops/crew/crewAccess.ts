@@ -3,7 +3,9 @@
  * login somebody signed in, and only that person runs it: a viewer who may not
  * run a login the crew runs on is offered nothing that runs or changes what
  * runs on it, and reads everything else — the rows, the plan, the crewmates'
- * conversations, what went into the Mate's code.
+ * conversations, what went into the Mate's code. A viewer reading along in a
+ * colleague's Mate (`readsAlong`) has every press closed, whoever signed its
+ * logins in: the server's door refuses every crew call of theirs.
  *
  * The same answer the server's door reaches (`crewAccess.ts` there,
  * `ZeropsTurnAdmission.admitOperator`), so a press that is offered never meets
@@ -38,15 +40,30 @@ import {
 } from "../agentOwnership.ts";
 
 /** Why a login is not the viewer's to run: somebody else's, or nobody's on record. */
-export type CrewLockOwnership = Exclude<ZeropsAgentOwnership, "mine" | "none">;
+export type CrewLoginLockOwnership = Exclude<ZeropsAgentOwnership, "mine" | "none">;
 
 /** A login the viewer may not run, and whose sign-in its one way out opens. */
-export interface CrewLock {
+export interface CrewLoginLock {
   /** The login: a provider instance id. */
   readonly login: string;
   readonly agentId: ZeropsAgentId;
-  readonly ownership: CrewLockOwnership;
+  readonly ownership: CrewLoginLockOwnership;
 }
+
+/**
+ * The Mate is a colleague's and the viewer reads along (`readsAlong`): nothing on its crew is
+ * theirs to run or change, whoever signed its logins in, as its server's door rules — and no
+ * sign-in of theirs opens it.
+ */
+export interface CrewReadAlongLock {
+  readonly ownership: "reads-along";
+}
+
+/** What closes a press on the crew for this viewer. */
+export type CrewLock = CrewLoginLock | CrewReadAlongLock;
+export type CrewLockOwnership = CrewLock["ownership"];
+
+const READS_ALONG: CrewReadAlongLock = { ownership: "reads-along" };
 
 /** A login as its conversation reads it (`resolveSpentLogin`, `resolveAgentAuthorizer`). */
 export interface CrewLoginFacts {
@@ -61,7 +78,7 @@ export function crewLoginLock(
   login: string,
   facts: CrewLoginFacts | undefined,
   viewerSubject: string | undefined,
-): CrewLock | null {
+): CrewLoginLock | null {
   if (facts === undefined || facts.agent.flagToken) return null;
   const ownership = resolveAgentOwnership({
     credPresent: facts.agent.credPresent,
@@ -69,7 +86,7 @@ export function crewLoginLock(
     viewerSubject,
   });
   if (agentOwnershipAllowsTurns(ownership)) return null;
-  return { login, agentId: facts.agent.agentId, ownership: ownership as CrewLockOwnership };
+  return { login, agentId: facts.agent.agentId, ownership: ownership as CrewLoginLockOwnership };
 }
 
 /** The crew as a reach resolves against it, from the snapshot as the engine does from its tables. */
@@ -121,8 +138,10 @@ export function crewAccess(input: {
   /** The login a crewmate the crew home names none for runs on: the project's default. */
   readonly defaultLogin: string;
   readonly reading: boolean;
+  /** The viewer reads along in this Mate (`readsAlong`): every press is closed. */
+  readonly readsAlong: boolean;
 }): CrewAccess {
-  const { lockOf } = input;
+  const lockOf = input.readsAlong ? () => READS_ALONG : input.lockOf;
   const crewmates = input.snapshot?.crewmates ?? [];
   const roster = (home?: CrewLoginRoster["home"]) =>
     crewSnapshotRoster(input.snapshot ?? { crewmates: [], board: { tasks: [] }, hosts: [] }, home);

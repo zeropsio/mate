@@ -14,7 +14,11 @@
  * composer's own height.
  */
 import { useServerConfigs } from "~/state/entities";
-import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
+import type {
+  CrewAccess,
+  CrewLock,
+  CrewLoginLock,
+} from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   CREW_LOCK_ACTION,
   CREW_SET_UP_LINE,
@@ -65,7 +69,7 @@ export function CrewSectionEmpty({
   /** Setting a crew up is not this viewer's: why, and the one way out, in the press's place. */
   readonly lock: CrewLock | null;
   readonly onSetUp: () => void;
-  readonly onSignIn: (lock: CrewLock) => void;
+  readonly onSignIn: (lock: CrewLoginLock) => void;
 }) {
   return (
     <div className="flex flex-col items-center px-12 pt-49 text-center" data-crew-section="none">
@@ -96,7 +100,8 @@ export function CrewSectionEmpty({
           />
         </div>
       ) : (
-        // Not the viewer's to set up: why, as the state's own line, and the one way out as its press.
+        // Not the viewer's to set up: why, as the state's own line, and the one way out as its press —
+        // none for a colleague reading along.
         <div className="mt-5 flex flex-col items-center gap-3" data-crew-locked={lock.ownership}>
           <p className="max-w-100 text-balance text-line leading-4.5 text-foreground/85">
             <LockIcon
@@ -105,12 +110,14 @@ export function CrewSectionEmpty({
             />
             {crewLockWords(lock.ownership)}
           </p>
-          <CrewPress
-            variant="secondary"
-            label={CREW_LOCK_ACTION}
-            onPress={() => onSignIn(lock)}
-            size="md"
-          />
+          {lock.ownership === "reads-along" ? null : (
+            <CrewPress
+              variant="secondary"
+              label={CREW_LOCK_ACTION}
+              onPress={() => onSignIn(lock)}
+              size="md"
+            />
+          )}
         </div>
       )}
     </div>
@@ -150,7 +157,7 @@ export interface CrewSectionProps {
   /** The chat an ask for the Mate goes to is not this viewer's to run; `null` where it is. */
   readonly askLock: CrewLock | null;
   /** A closed crew's one way out: the viewer's own sign-in. */
-  readonly onSignIn: (lock: CrewLock) => void;
+  readonly onSignIn: (lock: CrewLoginLock) => void;
   /** Crewmates the crew home lists that the crew doesn't have (`crewWaitingMembers`). */
   readonly waiting?: ComponentProps<typeof CrewWaiting>;
 }

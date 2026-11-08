@@ -24,6 +24,7 @@ const textOf = (html: string) =>
 /** What a viewer may run: every login but those `closed`, each signed in by somebody else. */
 const accessOf = (snapshot: CrewSnapshot, closed: ReadonlyArray<string>) =>
   crewAccess({
+    readsAlong: false,
     snapshot,
     lockOf: (login) => (closed.includes(login) ? lockOn(login) : null),
     defaultLogin: "claudeAgent",

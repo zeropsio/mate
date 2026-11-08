@@ -177,6 +177,7 @@ describe("crewModePressLock — the mode line's press for a viewer who may not r
   });
   const accessOf = (closed: boolean) =>
     crewAccess({
+      readsAlong: false,
       snapshot: fixture,
       lockOf: (login) => (closed ? lock(login) : null),
       defaultLogin: "claudeAgent",
