@@ -45,6 +45,7 @@ describe("authorizing a Mate's observation", () => {
         const { store, operations } = account({
           establishZcpAuthorization: async (projectId, context) => {
             asked.push([projectId, context]);
+            return { authorized: false, userId: null, expiresAt: null };
           },
         });
         yield* operations.submit(INTENT);

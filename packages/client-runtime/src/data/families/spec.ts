@@ -172,11 +172,6 @@ export interface SampledSource<Value> {
    */
   readonly freshMs: number | null;
   /**
-   * A value read once that still changes without any write of ours while this holds: it is read
-   * again on the sampled cadence while demanded, until an answer no longer holds it.
-   */
-  readonly agesWhile?: (value: Value) => boolean;
-  /**
    * A pushed row of another family that says this value changed: it is read again at once while
    * demanded, and on its next demand whatever its age.
    */

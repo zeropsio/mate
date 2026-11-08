@@ -1,4 +1,7 @@
-/** Read-only HQ status, refreshed by acknowledged automatic ZCP establishment. */
+/**
+ * Read-only HQ status, read once per demand and replaced by HQ's answer to our establishment of a
+ * ZCP context, which names the status as it stands after it.
+ */
 import type { HqApi } from "../../zerops/hq/client.ts";
 import {
   observeCredentialId,
@@ -32,15 +35,14 @@ export function makeObserveCredential(options: {
       const held = following.get(id);
       if (held !== undefined) held.count++;
       else {
-        const signature = () =>
-          JSON.stringify(readsOfState(store.state()).fact("hqObserveCredentialRequest", id));
-        let seen = signature();
+        const request = () => readsOfState(store.state()).fact("hqObserveCredentialRequest", id);
+        let seen = request();
         const stop = store.subscribe(() => {
-          const next = signature();
+          const next = request();
           if (next === seen) return;
           seen = next;
-          // HQ acknowledged changed credential input: fence every earlier metadata read.
-          reads.again(setting);
+          // HQ answered our establishment with the status after it: that answer is the status.
+          if (next.kind === "known") reads.answered(setting, next.value.answer);
         });
         following.set(id, { count: 1, stop });
       }

@@ -32,11 +32,14 @@ Share account-wide observations. Hold detail only while a consumer or an accepte
 needs it; share demand and release it at the last holder. Forgetting returns released detail to
 unknown; it never claims deletion. The last release forgets detail unless its family declares it
 kept for reuse (a return, a remount, a sampled freshness); the account's end forgets the rest.
-Losing a link is not a release. Use the source's realtime
+Losing a link is not a release. A producer of a pushed value (a Mate's overview through HQ)
+sends it only when what it says changed; the time it last looked is no change. Use the source's realtime
 contract where available. A request stays within the source's per-request bounds, declared once
 beside its wire schema; a longer list goes as several requests. The change notices read together are answered by one
 ask, so the source shares that ask's reads among them. A sampled source declares its demand and freshness policy centrally;
-components never add independent fetch, polling or recovery loops.
+components never add independent fetch, polling or recovery loops. A value its family reads once
+is read again on our own write, the person's again, or a pushed row that says it changed, never on
+a cadence in case it did.
 
 Projections are pure functions over keyed facts, source coverage, access and operations. Surfaces
 read projections, express demand and submit intents. They do not own a second remote cache, infer
@@ -66,7 +69,8 @@ organization pushes nothing, so it is heard only at the next read of their membe
 
 Record an operation and its identity before sending. Acceptance, reflection in observed facts and
 completion are separate states. An accepted operation retains its observation demand after the
-originating surface closes. Operation predicates stay pure; adapters and executors own remote I/O.
+originating surface closes. A write whose answer names the value as it stands after it commits
+that answer, ordered after every read begun before it, and reads nothing again. Operation predicates stay pure; adapters and executors own remote I/O.
 What a surface offers is decided by one pure rule per verb, mirrored from the owner that enforces
 it: verbs HQ answers in `packages/shared/src/zeropsPermissions.ts`, Zerops' own writes beside their
 domain in `packages/client-runtime/src/zerops` (team roles in `teamRoles.ts`, project access in
