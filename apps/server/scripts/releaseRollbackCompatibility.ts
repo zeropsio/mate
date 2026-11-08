@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import { parseSync } from "vite-plus";
 import { parse as parseYaml } from "yaml";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
@@ -22,6 +23,10 @@ export interface RollbackEvidence {
   readonly changedPaths: ReadonlyArray<string>;
   /** Read only when the lockfile changed; its absence then fails closed. */
   readonly lockfiles?: { readonly previous: string; readonly current: string };
+  /** Both sides of each changed blocklisted file; a file without them fails closed. */
+  readonly listedSources?: Readonly<
+    Record<string, { readonly previous: string; readonly current: string }>
+  >;
 }
 
 const stableVersion = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u;
@@ -46,9 +51,11 @@ const runtimeDeclaration = (encoded: string): string | undefined => {
  * What the previous release reads back, so a change here makes the release manual: stored rows
  * and their migrations, persisted engine and crew events and snapshots, the state directory's
  * files, and the update and startup path that performs the switch and the rollback. A path
- * ending in `/` covers its directory. The rule is a blocklist: every other path, a new one included, is compatible.
- * The server manifest's runtime declaration and the update protocol are compared separately;
- * dependencies are judged by the lockfile closure below.
+ * ending in `/` covers its directory, and any change in it, a new file included, is manual. A
+ * listed file is manual only when it changes or drops a declaration the previous release has
+ * (see `onlyAddsDeclarations`). The rule is a blocklist: every other path, a new one included,
+ * is compatible. The server manifest's runtime declaration and the update protocol are compared
+ * separately; dependencies are judged by the lockfile closure below.
  */
 export const BLOCKING_PATHS: ReadonlyArray<readonly [path: string, reason: string]> = [
   ["apps/server/src/persistence/", "SQL migrations, repositories and their row schemas"],
@@ -98,7 +105,6 @@ export const BLOCKING_PATHS: ReadonlyArray<readonly [path: string, reason: strin
   ["apps/server/src/server.ts", "wires startup, the update route and admission"],
   ["apps/server/src/spi/ProviderUpdateSafety.ts", "provider update safety"],
   ["apps/server/src/zerops/mateUpdateHttp.ts", "the update route zcp calls"],
-  ["apps/server/src/zerops/ZeropsMateUpdate.ts", "the update service"],
   ["apps/server/src/zerops/mateAutoUpdate.logic.ts", "the automatic update decision"],
   // What the pack inlines, and what the release manifest leaves for npm to resolve.
   ["scripts/lib/cli-external-packages.ts", "the artifact's runtime dependencies"],
@@ -120,15 +126,128 @@ const resolveLink = (from: string, target: string): string =>
 
 const isTest = (path: string): boolean => /\.test\.tsx?$/u.test(path);
 
-/** Changed paths on the blocklist. Tests are not in the artifact; the lockfile is judged separately. */
-const blockingPaths = (paths: ReadonlyArray<string>): ReadonlyArray<string> =>
-  paths.filter(
-    (path) =>
-      !isTest(path) &&
-      BLOCKING_PATHS.some(([blocked]) =>
-        blocked.endsWith("/") ? path.startsWith(blocked) : path === blocked,
-      ),
+/** A blocklisted file judged by its declarations, as opposed to a directory any change blocks. */
+const isListedFile = (path: string): boolean =>
+  !isTest(path) && BLOCKING_PATHS.some(([blocked]) => blocked === path);
+
+type Statement = ReturnType<typeof parseSync>["program"]["body"][number];
+
+/** A top-level statement's code without its comments or layout. */
+const statementText = (
+  source: string,
+  comments: ReadonlyArray<{ readonly start: number; readonly end: number }>,
+  statement: Statement,
+): string => {
+  let text = "";
+  let at = statement.start;
+  for (const comment of comments) {
+    if (comment.end <= at || comment.start >= statement.end) continue;
+    text += source.slice(at, comment.start);
+    at = comment.end;
+  }
+  return (text + source.slice(at, statement.end)).replace(/\s+/gu, " ").trim();
+};
+
+/** The names a statement declares, or undefined for anything else (an effect, a re-export). */
+const declaredNames = (statement: Statement): ReadonlyArray<string> | undefined => {
+  const declaration =
+    statement.type === "ExportNamedDeclaration" && statement.source === null
+      ? statement.declaration
+      : statement;
+  switch (declaration?.type) {
+    case "VariableDeclaration": {
+      const names = declaration.declarations.map((declarator) =>
+        declarator.id.type === "Identifier" ? declarator.id.name : undefined,
+      );
+      return names.every((name) => name !== undefined) ? names : undefined;
+    }
+    case "FunctionDeclaration":
+    case "ClassDeclaration":
+    case "TSInterfaceDeclaration":
+    case "TSTypeAliasDeclaration":
+    case "TSEnumDeclaration":
+      return declaration.id === null ? undefined : [declaration.id.name];
+    default:
+      return undefined;
+  }
+};
+
+/** Each import binding of a module by its local name, as what it binds. */
+const importBindings = (body: ReadonlyArray<Statement>): ReadonlyMap<string, string> =>
+  new Map(
+    body.flatMap((statement) =>
+      statement.type === "ImportDeclaration"
+        ? (statement.specifiers ?? []).map(
+            (specifier) =>
+              [
+                specifier.local.name,
+                `${statement.importKind} ${statement.source.value} ${specifier.type} ${
+                  specifier.type === "ImportSpecifier"
+                    ? specifier.imported.type === "Identifier"
+                      ? specifier.imported.name
+                      : specifier.imported.value
+                    : ""
+                } ${specifier.type === "ImportSpecifier" ? specifier.importKind : ""}`,
+              ] as const,
+          )
+        : [],
+    ),
   );
+
+/**
+ * Whether a blocklisted module's change leaves every stored shape the previous release reads:
+ * each of its top-level statements is still there unchanged (comments and layout aside), each
+ * import binding still binds the same thing, and what was added are only declarations whose
+ * names that code never used. A new declaration is a shape nothing old refers to, and it is
+ * stored only through a changed declaration or a blocklisted directory, which stay manual. An
+ * unparsable side fails closed.
+ */
+function onlyAddsDeclarations(previous: string, current: string): boolean {
+  const before = parseSync("previous.ts", previous);
+  const after = parseSync("current.ts", current);
+  if (before.errors.length > 0 || after.errors.length > 0) return false;
+  const text = (parsed: typeof before, source: string) => (statement: Statement) =>
+    statementText(source, parsed.comments, statement);
+  const kept = before.program.body
+    .filter((statement) => statement.type !== "ImportDeclaration")
+    .map(text(before, previous));
+  const now = after.program.body.filter((statement) => statement.type !== "ImportDeclaration");
+  const nowTexts = new Set(now.map(text(after, current)));
+  if (!kept.every((statement) => nowTexts.has(statement))) return false;
+  const keptTexts = new Set(kept);
+  const keptCode = kept.join("\n");
+  const usedBefore = (name: string) =>
+    new RegExp(`(?<![\\w$])${name.replaceAll("$", "\\$")}(?![\\w$])`, "u").test(keptCode);
+  const previousImports = importBindings(before.program.body);
+  for (const [name, binding] of importBindings(after.program.body)) {
+    const was = previousImports.get(name);
+    if (was === undefined ? usedBefore(name) : was !== binding) return false;
+  }
+  return now.every((statement) => {
+    if (keptTexts.has(text(after, current)(statement))) return true;
+    const names = declaredNames(statement);
+    return (
+      names !== undefined && names.every((name) => !previousImports.has(name) && !usedBefore(name))
+    );
+  });
+}
+
+/**
+ * Changed paths on the blocklist. Tests are not in the artifact; the lockfile is judged separately.
+ * A listed file whose change only adds declarations is compatible; without both sides it is not.
+ */
+const blockingPaths = (
+  paths: ReadonlyArray<string>,
+  sources: RollbackEvidence["listedSources"],
+): ReadonlyArray<string> =>
+  paths.filter((path) => {
+    if (isTest(path)) return false;
+    if (isListedFile(path)) {
+      const source = sources?.[path];
+      return source === undefined || !onlyAddsDeclarations(source.previous, source.current);
+    }
+    return BLOCKING_PATHS.some(([blocked]) => blocked.endsWith("/") && path.startsWith(blocked));
+  });
 
 const NAMED_BLOCKERS = 20;
 
@@ -227,7 +346,7 @@ export function rollbackBlocker(evidence: RollbackEvidence): string | undefined 
     evidence.changedPaths.includes("pnpm-lock.yaml") &&
     (previous === undefined || previous !== current);
   const blocking = [
-    ...blockingPaths(evidence.changedPaths),
+    ...blockingPaths(evidence.changedPaths, evidence.listedSources),
     ...(lockMoved
       ? ["pnpm-lock.yaml (the server's runtime dependencies moved or cannot be compared)"]
       : []),
@@ -292,6 +411,14 @@ export const readRollbackCompatibility = Effect.fn("readRollbackCompatibility")(
       const currentLock = lockChanged
         ? yield* git(["show", `${currentRef}:pnpm-lock.yaml`])
         : undefined;
+      // A listed file that one side lacks has no sides to compare and stays manual.
+      const listedSources: Record<string, { previous: string; current: string }> = {};
+      for (const path of changedPaths.filter(isListedFile)) {
+        const previous = yield* git(["show", `${previousTag}:${path}`]);
+        const current = yield* git(["show", `${currentRef}:${path}`]);
+        if (previous.code === 0 && current.code === 0)
+          listedSources[path] = { previous: previous.output, current: current.output };
+      }
       return rollbackBlocker({
         previousTag,
         candidateVersion: currentVersion,
@@ -303,6 +430,7 @@ export const readRollbackCompatibility = Effect.fn("readRollbackCompatibility")(
         previousPackage: reads.previousPackage.output,
         currentPackage: reads.currentPackage.output,
         changedPaths,
+        listedSources,
         ...(previousLock?.code === 0 && currentLock?.code === 0
           ? { lockfiles: { previous: previousLock.output, current: currentLock.output } }
           : {}),
