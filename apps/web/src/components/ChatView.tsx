@@ -238,6 +238,7 @@ import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { originAskPlaces, originAskPlacesKey } from "./zerops/origin/originAsk.logic";
 import { MateFaceAsMark } from "./zerops/primitives";
+import { mateAsker } from "./zerops/SidebarMateRow.logic";
 import { ComposerRoomHeld } from "./chat/ComposerStandIn";
 import {
   nextReadAlongRoom,
@@ -3453,7 +3454,7 @@ function ConversationView(props: ChatViewProps) {
     admissionOwner?.isViewer === false
       ? colleagueMateReadOnly({
           mateName: admissionMate.kind === "mate" ? admissionMate.mate.name : "This Mate",
-          ownerName: admissionOwner.name,
+          ownerName: admissionOwner.called,
         })
       : admission.readOnly
         ? {
@@ -8730,6 +8731,7 @@ function ConversationView(props: ChatViewProps) {
                         },
                   usageContinueTries: engineConversation,
                   onWithdrawHeldMessage: engineConversation ? onWithdrawHeldMessage : null,
+                  asker: mateAsker(admissionOwner),
                   onSteerQueuedMessage,
                   queueBlockedByAnswer: queueBlockedByPendingRequest,
                   steerQueuedMessageShortcutLabel: shortcutLabelForCommand(

@@ -12,12 +12,16 @@ import { Menu } from "../ui/menu";
 import { SidebarZeropsAccount, SidebarZeropsAccountMenu } from "./SidebarZeropsAccount";
 import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 
-const ADA = zeropsAccountDisplay({
-  email: "ada@example.com",
-  fullName: "Ada Lovelace",
-  firstName: "Ada",
-  avatar: { smallAvatarUrl: "https://cdn/ada.png" },
-});
+// The organization's member list calls her "Ada" (`ZeropsPerson.called`).
+const ADA = zeropsAccountDisplay(
+  {
+    email: "ada@example.com",
+    fullName: "Ada Lovelace",
+    firstName: "Ada",
+    avatar: { smallAvatarUrl: "https://cdn/ada.png" },
+  },
+  "Ada",
+);
 
 const organization = (name: string, id = name): ZeropsOrganization => ({
   id,

@@ -979,16 +979,46 @@ const PORTRAIT = `data:image/svg+xml,${encodeURIComponent(
  * differ by *Crew*.
  */
 const OWNERS = new Map<string, ZeropsMateOwner>([
-  ["links-enzo", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-  ["links-theo", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
-  ["todo-fen", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-  ["shop-otto", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
-  ["shop-mira", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: false }],
-  ["notes-iris", { name: "Eva Dvořák", initials: "ED", avatarUrl: null, isViewer: false }],
-  ["notes-kai", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
-  ["notes-lena", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-  ["todo-vera", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-  ["todo-nils", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
+  [
+    "links-enzo",
+    { name: "Petra Malá", called: "Petra", initials: "PM", avatarUrl: PORTRAIT, isViewer: true },
+  ],
+  [
+    "links-theo",
+    { name: "Jan Beneš", called: "Jan", initials: "JB", avatarUrl: null, isViewer: false },
+  ],
+  [
+    "todo-fen",
+    { name: "Petra Malá", called: "Petra", initials: "PM", avatarUrl: PORTRAIT, isViewer: true },
+  ],
+  [
+    "shop-otto",
+    { name: "Jan Beneš", called: "Jan", initials: "JB", avatarUrl: null, isViewer: false },
+  ],
+  [
+    "shop-mira",
+    { name: "Petra Malá", called: "Petra", initials: "PM", avatarUrl: PORTRAIT, isViewer: false },
+  ],
+  [
+    "notes-iris",
+    { name: "Eva Dvořák", called: "Eva", initials: "ED", avatarUrl: null, isViewer: false },
+  ],
+  [
+    "notes-kai",
+    { name: "Jan Beneš", called: "Jan", initials: "JB", avatarUrl: null, isViewer: false },
+  ],
+  [
+    "notes-lena",
+    { name: "Petra Malá", called: "Petra", initials: "PM", avatarUrl: PORTRAIT, isViewer: true },
+  ],
+  [
+    "todo-vera",
+    { name: "Petra Malá", called: "Petra", initials: "PM", avatarUrl: PORTRAIT, isViewer: true },
+  ],
+  [
+    "todo-nils",
+    { name: "Jan Beneš", called: "Jan", initials: "JB", avatarUrl: null, isViewer: false },
+  ],
 ]);
 
 /**
@@ -1025,8 +1055,20 @@ const FIXTURES = COMING_SET
       activity: new Map<string, ZeropsAgentActivity>(),
       flows: new Map<string, SidebarProjectFlow>(),
       owners: new Map<string, ZeropsMateOwner>([
-        ["acme-fen", { name: "Petra Malá", initials: "PM", avatarUrl: PORTRAIT, isViewer: true }],
-        ["acme-ada", { name: "Jan Beneš", initials: "JB", avatarUrl: null, isViewer: false }],
+        [
+          "acme-fen",
+          {
+            name: "Petra Malá",
+            called: "Petra",
+            initials: "PM",
+            avatarUrl: PORTRAIT,
+            isViewer: true,
+          },
+        ],
+        [
+          "acme-ada",
+          { name: "Jan Beneš", called: "Jan", initials: "JB", avatarUrl: null, isViewer: false },
+        ],
       ]),
       active: "acme-quinn",
       collapsed: [] as ReadonlyArray<string>,

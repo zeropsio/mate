@@ -229,7 +229,7 @@ export function OverviewCardMate({
       !owner.isViewer &&
       activity !== undefined &&
       (activity.kind === "approval" || activity.kind === "input" || activity.kind === "planReady")
-        ? owner.name.split(" ")[0]
+        ? owner.called
         : undefined,
     asks:
       activity !== undefined &&

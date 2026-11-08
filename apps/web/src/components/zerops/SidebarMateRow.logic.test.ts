@@ -1775,16 +1775,16 @@ describe("mateRowAskLine — the row's second line: what the person asked, or is
 // Only its owner talks to a Mate (D5), so the person who asked is its owner.
 describe("mateAsker — who a row says asked its Mate", () => {
   it.each([
-    { case: "the viewer's own Mate", owner: { name: "Petra Malá", isViewer: true }, by: "You" },
-    { case: "a colleague's", owner: { name: "Jan Novák", isViewer: false }, by: "Jan" },
+    { case: "the viewer's own Mate", owner: { called: "Petra", isViewer: true }, by: "You" },
+    { case: "a colleague's", owner: { called: "Jan", isViewer: false }, by: "Jan" },
     {
       case: "a colleague named by one word",
-      owner: { name: "Alex", isViewer: false },
+      owner: { called: "Alex", isViewer: false },
       by: "Alex",
     },
     {
       case: "a colleague HQ names without a name",
-      owner: { name: "  ", isViewer: false },
+      owner: { called: "  ", isViewer: false },
       by: undefined,
     },
     { case: "an owner HQ has not named", owner: undefined, by: undefined },

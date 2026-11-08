@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
+import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 
 import { MateMark } from "../../MateMark";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
@@ -218,8 +219,9 @@ export function SidebarChiefPlace({
 
 function useSignedInAccount() {
   const session = useZeropsSessionOptional();
+  const called = useViewerCalled();
   return session !== null && session.status === "signed-in"
-    ? zeropsAccountDisplay(session.user)
+    ? zeropsAccountDisplay(session.user, called)
     : null;
 }
 

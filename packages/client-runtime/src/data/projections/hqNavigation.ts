@@ -19,7 +19,6 @@ import {
   placementOffers,
   type ApplicationFacts,
 } from "@t3tools/shared/zeropsOffers";
-import type { HqPeople } from "@t3tools/shared/hqMates";
 
 import type { HqMate, HqStructure, CanonicalHqStructure } from "../../zerops/hq/client.ts";
 import { zeropsStructure } from "../../zerops/hq/structure.ts";
@@ -44,7 +43,8 @@ import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { retryDelayMs, STREAM_POLICY } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
-import { zeropsPeople } from "./zeropsPeople.ts";
+import { zeropsPeople, type ZeropsPerson } from "./zeropsPeople.ts";
+
 import {
   applicationFacts,
   applicationProjects,
@@ -54,13 +54,18 @@ import {
 import { scopeFreshness, scopeSlow, type ScopeFreshness } from "./freshness.ts";
 import type { RosterRead } from "./projects.ts";
 
+export type HqNavigationPeople = Readonly<
+  Record<string, Pick<ZeropsPerson, "name" | "called" | "clientUserId">>
+>;
+
 export interface HqNavigationRead extends Omit<ScopeFreshness, "complete"> {
   /** `null` until HQ's navigation said anything of the organization's applications. */
   readonly structure: HqStructure | null;
   readonly organization: HqOrganizationValue | null;
   /** The presses HQ holds, by project: each held while HQ lists it. */
   readonly presses: Readonly<Record<string, HqPressValue>>;
-  readonly people: HqPeople;
+  /** The organization's people by Zerops user id (`ZeropsPerson`). */
+  readonly people: HqNavigationPeople;
   /** Where the navigation's read stands: not asked for, its first catchup under way, or read. */
   readonly read: RosterRead;
   /** HQ's own word on why it refused the navigation, while it does. */
@@ -309,9 +314,9 @@ function navigationOf(
     ),
     people: includePeople
       ? Object.fromEntries(
-          [...zeropsPeople(read, orgId)].map(([id, { name, clientUserId }]) => [
+          [...zeropsPeople(read, orgId)].map(([id, { name, called, clientUserId }]) => [
             id,
-            { name, clientUserId },
+            { name, called, clientUserId },
           ]),
         )
       : {},

@@ -20,11 +20,11 @@ export interface ProjectReviewItem {
         readonly name: string;
         readonly tint: MateTintId;
         readonly shape: MateShapeId;
-        /** A colleague's Mate: its owner's first name ("Vira · Theo's"). */
-        readonly ownerFirstName?: string | undefined;
+        /** A colleague's Mate: what its owner is called (`ZeropsPerson.called`, "Vira · Theo's"). */
+        readonly ownerName?: string | undefined;
         /**
          * A colleague's Mate: its owner's mark as the menu's row draws it (`ownerMark`), picture
-         * and hue. Absent, the mark is drawn from `ownerFirstName`.
+         * and hue. Absent, the mark is drawn from `ownerName`.
          */
         readonly owner?: OwnerMark | undefined;
         readonly crewOf?: string | undefined;
@@ -107,7 +107,7 @@ export function reviewItemByline(item: ProjectReviewItem): string {
   const { by } = item;
   if (by !== undefined) {
     parts.push(by.crewOf === undefined ? by.name : `${by.name}, in ${by.crewOf}'s crew`);
-    if (by.ownerFirstName !== undefined) parts.push(`${by.ownerFirstName}'s`);
+    if (by.ownerName !== undefined) parts.push(`${by.ownerName}'s`);
   }
   if (item.label.length > 0) parts.push(item.label);
   if (!item.mine) parts.push("in review");

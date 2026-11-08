@@ -526,7 +526,7 @@ export function addressPlaces(
     readonly mates: ReadonlyArray<{
       readonly candidate: { readonly project: { readonly id: string } };
       readonly name: string;
-      readonly owner: { readonly name: string; readonly isViewer: boolean } | undefined;
+      readonly owner: { readonly called: string; readonly isViewer: boolean } | undefined;
     }>;
   },
   nowMs: number,
@@ -543,10 +543,7 @@ export function addressPlaces(
     ...stops(input.production?.(nowMs), true),
     ...stops(input.stages?.(nowMs), false),
     ...input.mates.map((mate) => {
-      const owner =
-        mate.owner === undefined || mate.owner.isViewer
-          ? undefined
-          : mate.owner.name.trim().split(/\s+/u)[0];
+      const owner = mate.owner === undefined || mate.owner.isViewer ? undefined : mate.owner.called;
       return {
         projectId: mate.candidate.project.id,
         kind: "mate" as const,

@@ -121,13 +121,11 @@ const COPIED_MS = 1_200;
 /** How long the section the tag spoke of stays lit. */
 const FLASH_MS = 1_200;
 
-const firstName = (name: string) => name.trim().split(/\s+/u)[0] ?? name;
-
 /** A Mate as its section is read, with zcp's leases and pool pairs where a conversation of it read them. */
 const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => ({
   projectId: mate.candidate.project.id,
   name: mate.name,
-  owner: mate.owner === undefined || mate.owner.isViewer ? undefined : firstName(mate.owner.name),
+  owner: mate.owner === undefined || mate.owner.isViewer ? undefined : mate.owner.called,
   routes: mate.candidate.routes,
   hostnames: mate.candidate.services?.hostnames,
   controlPlane: mate.candidate.service?.name,

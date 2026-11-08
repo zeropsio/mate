@@ -5,12 +5,16 @@ import { Menu } from "../../ui/menu";
 import { ZeropsAccountControl, ZeropsAccountMenu } from "./ZeropsAccountControl";
 import { zeropsAccountDisplay } from "./ZeropsAccountControl.logic";
 
-const ADA = zeropsAccountDisplay({
-  email: "ada@example.com",
-  fullName: "Ada Lovelace",
-  firstName: "Ada",
-  avatar: { smallAvatarUrl: "https://cdn/ada.png" },
-});
+// The organization's member list calls her "Ada" (`ZeropsPerson.called`).
+const ADA = zeropsAccountDisplay(
+  {
+    email: "ada@example.com",
+    fullName: "Ada Lovelace",
+    firstName: "Ada",
+    avatar: { smallAvatarUrl: "https://cdn/ada.png" },
+  },
+  "Ada",
+);
 
 const NAMELESS = zeropsAccountDisplay({ email: "ops@example.com" });
 

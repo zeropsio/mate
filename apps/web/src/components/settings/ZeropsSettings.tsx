@@ -24,6 +24,7 @@ import { PersonAvatar } from "../zerops/primitives";
 import { ZeropsHqCard } from "../zerops/ZeropsHqCard";
 import { zeropsAccountDisplay } from "../zerops/landing/ZeropsAccountControl.logic";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
@@ -43,7 +44,8 @@ export function ZeropsSettings() {
   const operations = useAccountOperations();
   const [error, setError] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
-  const account = status === "signed-in" ? zeropsAccountDisplay(user) : null;
+  const called = useViewerCalled();
+  const account = status === "signed-in" ? zeropsAccountDisplay(user, called) : null;
 
   return (
     <SettingsPageContainer>
@@ -59,7 +61,11 @@ export function ZeropsSettings() {
           status={
             account === null ? null : (
               <span className="flex items-center gap-2" data-zerops-account-line="true">
-                <PersonAvatar name={account.name} picture={account.avatarUrl} size={24} />
+                <PersonAvatar
+                  name={account.fullName ?? account.name}
+                  picture={account.avatarUrl}
+                  size={24}
+                />
                 <span className="truncate text-foreground">{account.fullName ?? account.name}</span>
                 {account.email === null ? null : <span className="truncate">{account.email}</span>}
               </span>

@@ -1635,7 +1635,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       return {
         name: projectNameInApp(item.project),
         ...faceOf(item.project),
-        ownerFirstName: colleague?.name.split(" ")[0],
+        ownerName: colleague?.called,
         owner: colleague === undefined ? undefined : ownerMark(colleague),
       };
     };
@@ -3614,7 +3614,7 @@ function useMateRowState<T extends RosterCandidate>({
     !owner.isViewer &&
     activity !== undefined &&
     (activity.kind === "approval" || activity.kind === "input" || activity.kind === "planReady")
-      ? owner.name.split(" ")[0]
+      ? owner.called
       : undefined;
   // What is read of the organization's key: an automated Mate at rest may wait for it.
   const automatedKey = useAutomatedKey();

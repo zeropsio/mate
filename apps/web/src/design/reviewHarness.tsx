@@ -44,7 +44,7 @@ const pull = (repository: string, number: number, title: string): FlowPullReques
   }) as unknown as FlowPullRequest;
 
 const NOVA = { name: "Nova", tint: "violet", shape: "clover" } as const;
-const PIP = { name: "Pip", tint: "sky", shape: "gem", ownerFirstName: "Tomas" } as const;
+const PIP = { name: "Pip", tint: "sky", shape: "gem", ownerName: "Tomas" } as const;
 const ORBIT_PULLS = [
   pull("appdev", 12, "Add a due date to each todo and sort the list by it"),
   pull("apidev", 3, "Rate-limit the public API"),

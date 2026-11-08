@@ -19,7 +19,6 @@ import {
   type CandidateRow,
 } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { HqPeople } from "@t3tools/shared/hqMates";
 import * as Option from "effect/Option";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { Atom } from "effect/reactivity";
@@ -35,6 +34,7 @@ import {
   shownHqNavigationAtom,
   shownHqStatusAtom,
   shownProjectsAtom,
+  type HqNavigationPeople,
   type HqNavigationRead,
   type CanonicalHqNavigationRead,
   shownCanonicalHqMenuNavigationAtom,
@@ -206,7 +206,7 @@ export const hqProjectAtom = Atom.family((environmentId: EnvironmentId) =>
 );
 
 /** The people HQ named for the organization in view, by Zerops user id; null while none are. */
-export const hqPeopleAtom = Atom.make((get): HqPeople | null => {
+export const hqPeopleAtom = Atom.make((get): HqNavigationPeople | null => {
   const navigation = get(shownHqNavigationAtom);
   return navigation.read === "unread" ? null : navigation.people;
 }).pipe(Atom.withLabel("zerops:hq-people"));

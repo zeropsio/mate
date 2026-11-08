@@ -488,12 +488,12 @@ describe("the project's places", () => {
             {
               candidate: { project: { id: "rhea" } },
               name: "Rhea",
-              owner: { name: "Karlos Novak", isViewer: false },
+              owner: { called: "Karlos", isViewer: false },
             },
             {
               candidate: { project: { id: "juno" } },
               name: "Juno",
-              owner: { name: "Ales R", isViewer: true },
+              owner: { called: "Ales", isViewer: true },
             },
           ],
         },

@@ -23,6 +23,8 @@ import { zeropsPeople } from "./zeropsPeople.ts";
 export interface HqMateOwner {
   readonly userId: string;
   readonly name: string;
+  /** What every surface calls them (`ZeropsPerson.called`). */
+  readonly called: string;
   /** The platform's picture of them; `null` where they have none. */
   readonly avatarUrl: string | null | undefined;
 }
@@ -77,7 +79,9 @@ function ownerOf(
 ): HqMateOwner | null {
   if (userId == null) return null;
   const person = zeropsPeople(read, orgId).get(userId);
-  return person === undefined ? null : { userId, name: person.name, avatarUrl: person.avatarUrl };
+  return person === undefined
+    ? null
+    : { userId, name: person.name, called: person.called, avatarUrl: person.avatarUrl };
 }
 
 export const hqProjectPeople: Projection<string, Readonly<Record<string, HqProjectPeople>>> = {

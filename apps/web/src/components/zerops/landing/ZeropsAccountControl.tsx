@@ -13,6 +13,7 @@ import { useState } from "react";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 import { Button } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../ui/menu";
 import { PersonAvatar } from "../primitives";
@@ -39,7 +40,11 @@ export function ZeropsAccountControl({
         className="min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent"
         data-zerops-account-control="true"
       >
-        <PersonAvatar name={account.name} picture={account.avatarUrl} size={24} />
+        <PersonAvatar
+          name={account.fullName ?? account.name}
+          picture={account.avatarUrl}
+          size={24}
+        />
         <span className="hidden max-w-40 truncate text-sm font-normal sm:inline">
           {account.name}
         </span>
@@ -66,7 +71,11 @@ export function ZeropsAccountMenu({
   return (
     <>
       <div className="flex items-center gap-3 px-2 py-2" data-zerops-account-identity="true">
-        <PersonAvatar name={account.name} picture={account.avatarUrl} size={32} />
+        <PersonAvatar
+          name={account.fullName ?? account.name}
+          picture={account.avatarUrl}
+          size={32}
+        />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-foreground">
             {account.fullName ?? account.name}
@@ -93,12 +102,13 @@ export function ZeropsAccountMenu({
 /** The control wired to the session; renders nothing while nobody is signed in. */
 export function ZeropsSessionAccountControl() {
   const { status, user, signOut } = useZeropsSession();
+  const called = useViewerCalled();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   if (status !== "signed-in") return null;
   return (
     <ZeropsAccountControl
-      account={zeropsAccountDisplay(user)}
+      account={zeropsAccountDisplay(user, called)}
       busy={busy}
       error={error}
       onSignOut={() => {
