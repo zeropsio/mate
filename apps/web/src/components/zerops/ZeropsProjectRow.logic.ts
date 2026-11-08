@@ -73,6 +73,13 @@ export function mateOutsideHq(
   return known && project.hq === undefined && !birthing;
 }
 
+/**
+ * No Mate is on this container yet: its flag reads off (the container machine's `needs-enable`).
+ * Enable writes HQ's record itself, so HQ holding none is no reason to withhold it.
+ */
+const awaitsEnable = (input: ZeropsRowInput): boolean =>
+  input.health === "predates-mate" && input.mateFlag === false;
+
 export const NOT_IN_HQ_LINE = "Not in this HQ";
 
 export interface ZeropsRowInput {
@@ -102,10 +109,9 @@ export interface ZeropsRowInput {
   readonly runningProcessKind?: "restart-service" | "start-service" | "start-project" | undefined;
   /**
    * `ZCP_MATE_ENABLED`'s own read, by key (`data/projections/mateVariables`),
-   * for a `predates-mate` row only — the fact that tells this container
-   * apart from one merely away (spec-mate §4.5, H9). `"unknown"` for a read
-   * that failed; absent for one not yet made (or made for any other
-   * health), read the same conservative way as `false`.
+   * made once no Mate answers its container — the fact that tells a
+   * container with no Mate yet apart from one merely away (spec-mate §4.5,
+   * H9). `"unknown"` for a read that failed; absent for one not yet made.
    */
   readonly mateFlag?: boolean | "unknown" | undefined;
   /**
@@ -434,7 +440,7 @@ function isStopped(candidate: ZeropsRowCandidate): boolean {
 
 export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPresentation {
   const { candidate, health, runningProcessKind } = input;
-  if (input.outsideHq) {
+  if (input.outsideHq && !awaitsEnable(input)) {
     return { status: { label: NOT_IN_HQ_LINE, tone: "off" }, detail: NOT_IN_HQ_LINE };
   }
 
@@ -641,7 +647,7 @@ export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowActio
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, health, can } = input;
   const role = input.role ?? readZeropsMembership(candidate.project).role;
-  if (input.outsideHq) return { kind: "not-in-hq" };
+  if (input.outsideHq && !awaitsEnable(input)) return { kind: "not-in-hq" };
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   // A verb the door would refuse is not offered (D5). The row says why in
   // place of it.
