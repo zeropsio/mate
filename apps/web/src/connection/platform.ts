@@ -44,20 +44,26 @@ import { clientPresentationMetadata } from "./clientMetadata";
 
 let nextObservedRpcRequestId = 0;
 
-function currentNetworkStatus(): "unknown" | "offline" | "online" {
-  if (typeof navigator === "undefined") {
-    return "unknown";
-  }
-  return navigator.onLine ? "online" : "offline";
+/**
+ * The network as the connection layer hears it from the browser. `navigator.onLine` is trusted
+ * only when it says online: Chrome on macOS can report offline while every request still flows
+ * (a VPN or virtual interface), and an "offline" here parks every Mate's connection with no
+ * attempt and no error. A browser that calls itself offline is "unknown", so its Mates still try
+ * and a real outage shows as their failed attempts.
+ */
+export function browserNetworkStatus(onLine: boolean | undefined): "unknown" | "online" {
+  return onLine === true ? "online" : "unknown";
 }
 
 const connectivityLayer = Connectivity.layer({
-  status: Effect.sync(currentNetworkStatus),
+  status: Effect.sync(() =>
+    browserNetworkStatus(typeof navigator === "undefined" ? undefined : navigator.onLine),
+  ),
   changes: Stream.callback((queue) =>
     Effect.acquireRelease(
       Effect.sync(() => {
         const online = () => Queue.offerUnsafe(queue, "online");
-        const offline = () => Queue.offerUnsafe(queue, "offline");
+        const offline = () => Queue.offerUnsafe(queue, browserNetworkStatus(false));
         window.addEventListener("online", online);
         window.addEventListener("offline", offline);
         return { online, offline };

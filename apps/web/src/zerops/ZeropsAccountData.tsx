@@ -114,8 +114,10 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   useEffect(() => () => observation.stop(), [observation]);
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;
+    // Visible is enough: `navigator.onLine` can say offline while requests flow, and resuming
+    // through a real outage only fails the reads it makes.
     const resume = () => {
-      if (document.visibilityState === "visible" && navigator.onLine) observation.resume();
+      if (document.visibilityState === "visible") observation.resume();
     };
     window.addEventListener("online", resume);
     window.addEventListener("focus", resume);
