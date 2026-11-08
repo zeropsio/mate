@@ -332,8 +332,8 @@ function flowStageLine(stop: GroupFlowStop): PlaceLineSaid {
 /**
  * A card's places in the order the code travels: every stage by its name, then production — each
  * how it is and where it is (the owner, 2026-10-11: the overview showed production alone, and
- * everything else was a click or more away). Production is always said, "Not released yet" where
- * nothing runs there, so every card ends on it.
+ * everything else was a click or more away). Production is always said — "Not added" where there
+ * is none, "Not released yet" where nothing runs in it — so every card ends on it.
  */
 export function placeLines(input: {
   readonly flow: Pick<GroupFlow, "production" | "stages"> &
@@ -398,7 +398,7 @@ export function placeLines(input: {
         projectId: undefined,
         addresses: [],
         dot: "none",
-        words: [placeStateWord("prod", "empty")],
+        words: [ENVIRONMENT_NOT_ADDED],
         trouble: false,
         nothingDeployed: true,
       },
@@ -476,17 +476,6 @@ export function placeServices(
 /** What a place is called on its card: production in full, a stage by its own name, capitalised. */
 export function placeLabel(line: Pick<PlaceLine, "kind" | "name">): string {
   return environmentTitle(line.kind, line.name);
-}
-
-/**
- * What a tier the application does not have says on its page's column, beside its way to add it:
- * the word its card says of a place with nothing deployed — never a third word for it (the live
- * audit read "Not added" there, "Not released yet" on the card) — or why it cannot be added yet.
- */
-export function environmentSlotWord(tier: "production" | "stage", line: string): string {
-  return line === ENVIRONMENT_NOT_ADDED
-    ? placeStateWord(tier === "production" ? "prod" : "stage", "empty")
-    : line;
 }
 
 /** The release a card offers: how many changes, where they were tested, what production runs. */
@@ -580,16 +569,6 @@ export function releaseProductionRuns(
   inFlight: string | undefined,
 ): string | undefined {
   return releases.find((release) => release.standing === "live" && release.tag !== inFlight)?.tag;
-}
-
-/**
- * Whether there is something for *Put it live* to put live: the app's code merged, or a change of
- * it open that its one press merges. A Mate's setup files are no app.
- */
-export function putLiveHasChange(flow: Pick<GroupFlow, "main" | "pullRequests">): boolean {
-  return (
-    flow.main.hasCode === true || flow.pullRequests.some((entry) => entry.pull.kind === "code")
-  );
 }
 
 /** "3 changes ready to release", "1 change ready to release". */

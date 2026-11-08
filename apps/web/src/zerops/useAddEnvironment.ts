@@ -73,14 +73,14 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
 /** What HQ's flow of an application tells its environments' facts. */
 export type ApplicationEnvironmentReads = Pick<
   ApplicationEnvironmentFacts,
-  "environments" | "recipeRead" | "recipeTiers"
+  "environments" | "recipeRead" | "recipeTiers" | "merged" | "pullRequests"
 >;
 
 /**
  * Every fact an application's environments are told from (`applicationEnvironments`), gathered
  * once for every surface: HQ's offers to this person, the account's projects of the application
  * placed as a tier or as a Mate that is also the stage, creations under way, and what the
- * surface's flow read of HQ's environments and the recipe.
+ * surface's flow read of HQ's environments, the recipe and the application's changes.
  */
 export function useApplicationEnvironmentFacts(): (
   groupId: string,
@@ -99,6 +99,8 @@ export function useApplicationEnvironmentFacts(): (
       recipeRead: reads?.recipeRead === true,
       recipeTiers: reads?.recipeTiers ?? [],
       offered: offers(groupId),
+      merged: reads?.merged ?? [],
+      pullRequests: reads?.pullRequests ?? [],
     }),
     [offers, pending, projects],
   );
@@ -129,7 +131,12 @@ export function useEnvironmentOffers(): (
  */
 export function useEnvironmentQuestionFacts(
   groupId: string,
-  flow: Pick<ZeropsProjectFlow, "recipeRead" | "recipeTiers" | "environmentInputs"> | undefined,
+  flow:
+    | Pick<
+        ZeropsProjectFlow,
+        "recipeRead" | "recipeTiers" | "environmentInputs" | "merged" | "pullRequests"
+      >
+    | undefined,
 ): ReturnType<typeof questionFactsOf> {
   const factsOf = useApplicationEnvironmentFacts();
   return useMemo(() => {
@@ -141,6 +148,8 @@ export function useEnvironmentQuestionFacts(
             environments: flow.environmentInputs,
             recipeRead: flow.recipeRead,
             recipeTiers: flow.recipeTiers,
+            merged: flow.merged,
+            pullRequests: flow.pullRequests,
           },
     );
     return questionFactsOf({

@@ -2190,6 +2190,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               environments: [...flow.environments.values()],
               recipeRead: flow.recipeRead === true,
               recipeTiers: flow.recipeTiers ?? [],
+              merged: flow.merged ?? [],
+              pullRequests: flow.pullRequests,
             },
       ),
     );

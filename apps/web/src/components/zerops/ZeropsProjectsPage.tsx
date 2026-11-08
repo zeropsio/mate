@@ -167,7 +167,6 @@ import { invalidateZerops } from "~/zerops/accountInvalidations";
 import { MateFace, STATUS_BADGE_TONE } from "./primitives";
 import { useOverviewSlots } from "./projects/overviewSlots";
 import { ProductionRun } from "./ProductionRun";
-import { putLiveHasChange } from "./projects/projectCard.logic";
 import { OverviewCardMate } from "./projects/OverviewCardMate";
 import { ArrivalWelcome } from "./projects/ArrivalWelcome";
 import { signInSettled } from "./projects/arrival.logic";
@@ -2725,11 +2724,8 @@ export function ZeropsProjectsContent({
         renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
         renderHistory={overview.renderHistory}
-        setUpProduction={({ group, flow }) =>
-          !addableTiers(group).includes("production") ||
-          groupIsEmpty(group) ||
-          // Nothing to put live yet: production says so, and the press comes with a change.
-          !putLiveHasChange(flow)
+        setUpProduction={({ group }) =>
+          !addableTiers(group).includes("production") || groupIsEmpty(group)
             ? undefined
             : creationRunning
               ? "busy"

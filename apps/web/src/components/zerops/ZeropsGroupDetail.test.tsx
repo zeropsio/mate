@@ -174,6 +174,8 @@ const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: undefined,
+    merged: [],
+    pullRequests: [],
     releaseOffered: false,
     releasing: undefined,
   });
@@ -381,6 +383,8 @@ describe("ZeropsGroupPane", () => {
         productionRuns: "unknown",
         waiting: { count: 0, atLeast: false },
         mainHasCode: true,
+        merged: [{ kind: "code" }],
+        pullRequests: [],
         releaseOffered: false,
         releasing: undefined,
         ...over,

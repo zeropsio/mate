@@ -953,6 +953,8 @@ function EnvironmentsFrame({
         productionRuns: "unknown",
         waiting: { count: waiting.total, atLeast: false },
         mainHasCode: true,
+        merged: [{ kind: "code" }],
+        pullRequests: [],
         releaseOffered: release.offered,
         releasing: undefined,
         ...facts,

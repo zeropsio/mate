@@ -226,6 +226,8 @@ describe("environmentSlots", () => {
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: true,
+    merged: [{ kind: "code" }],
+    pullRequests: [],
     releaseOffered: false,
     releasing: undefined,
   };
@@ -472,6 +474,8 @@ it("A recorded environment replaces its target's pending and half-made rows with
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: undefined,
+    merged: [],
+    pullRequests: [],
     releaseOffered: false,
     releasing: undefined,
   });
@@ -508,6 +512,8 @@ it("A git production takes the production slot, so Add production is no longer o
     productionRuns: "unknown",
     waiting: { count: 0, atLeast: false },
     mainHasCode: true,
+    merged: [{ kind: "code" }],
+    pullRequests: [],
     releaseOffered: true,
     releasing: undefined,
   });
