@@ -54,10 +54,12 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
+import { readCodexAccountAuth } from "../spi/codexAccount.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import {
@@ -371,7 +373,7 @@ export interface ZeropsLoginsOptions {
   readonly instanceChanges: Stream.Stream<Instances>;
   /** Replaces the whole map, as a settings patch of `providerInstances` does. */
   readonly writeInstances: (next: Instances) => Effect.Effect<unknown, ServerSettingsError>;
-  /** The login's own CLI status, run with its home ({@link mateLoginEnvironment}). */
+  /** The login's own agent asked whether it accepts the login in its home ({@link mateLoginEnvironment}). */
   readonly verify: (login: MateLogin) => Effect.Effect<AgentAuthVerification>;
   /** Told when a login's verified status changes, so the model picker's snapshot catches up. */
   readonly reconcile?: (id: string, verified: ServerProviderAuthStatus) => Effect.Effect<void>;
@@ -744,6 +746,7 @@ export const layer = Layer.effect(
     const config = yield* ServerConfig;
     const settings = yield* ServerSettingsService;
     const processRunner = yield* ProcessRunner.ProcessRunner;
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const projectSigners = yield* ZeropsProjectSigners;
     const signIns = yield* ZeropsSignIns;
     const providerInstances = yield* ProviderInstances;
@@ -756,10 +759,12 @@ export const layer = Layer.effect(
       ),
       writeInstances: (next) => settings.updateSettings({ providerInstances: next }),
       verify: (login) =>
-        verifyAgentAuth(
-          login.agent,
-          spawnAgentAuthProbe(processRunner, config.cwd, mateLoginEnvironment(login)),
-        ),
+        verifyAgentAuth(login.agent, {
+          spawn: spawnAgentAuthProbe(processRunner, config.cwd, mateLoginEnvironment(login)),
+          codexAccount: readCodexAccountAuth({ cwd: config.cwd, homePath: login.home }).pipe(
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          ),
+        }),
       reconcile: providerInstances.reconcileInstanceAuth,
       readSigners: projectSigners.signers,
       signIns,

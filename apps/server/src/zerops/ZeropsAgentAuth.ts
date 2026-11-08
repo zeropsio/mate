@@ -30,9 +30,8 @@
  * `~/.claude.json`'s account section alone, even with the credential
  * artifact itself absent. Instead `refreshProviderAuth` (injected at
  * {@link layer}, composed by {@link layerVerifyAgentAuth}) runs each agent
- * CLI's OWN status command (`ZeropsAgentAuthVerify.verifyAgentAuth` —
- * `claude auth status` / `codex login status`, the same argv-list spawn
- * shape {@link ZeropsCli} uses for `zcp`) and reduces its answer to
+ * agent's OWN answer (`ZeropsAgentAuthVerify.verifyAgentAuth` —
+ * `claude auth status`, and Codex's app-server account) and reduces it to
  * `providerAuth`; that is what gates the flag write. Nothing else runs
  * alongside that probe (audit C3): the provider driver picker's own cache
  * may lag up to `CAPABILITIES_PROBE_TTL` (~5 min) behind a logout, and that
@@ -74,10 +73,12 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
+import { readCodexAccountAuth } from "../spi/codexAccount.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
@@ -90,7 +91,7 @@ import { turnAuthFailureAgent } from "./zeropsTurnAuthFailure.ts";
 import {
   spawnAgentAuthProbe,
   verifyAgentAuth,
-  type AgentAuthProbeSpawn,
+  type AgentAuthChecks,
   type AgentAuthVerification,
 } from "./ZeropsAgentAuthVerify.ts";
 
@@ -853,13 +854,13 @@ export const make = (options: ZeropsAgentAuthOptions) =>
  * probe (`ZeropsAgentAuthVerify.verifyAgentAuth`), never the provider
  * registry's probe (see the module header's "How it verifies"). Exported
  * separately from {@link layer} so this composition is directly testable
- * against a fake {@link AgentAuthProbeSpawn} without standing up
+ * against fake {@link AgentAuthChecks} without standing up
  * `ZeropsCli`/`ProcessRunner` layers.
  */
 export const layerVerifyAgentAuth =
-  (spawn: AgentAuthProbeSpawn) =>
+  (checks: AgentAuthChecks) =>
   (agentId: ZeropsAgentId): Effect.Effect<AgentAuthVerification> =>
-    verifyAgentAuth(agentId, spawn);
+    verifyAgentAuth(agentId, checks);
 
 export const layer = Layer.effect(
   ZeropsAgentAuth,
@@ -870,11 +871,17 @@ export const layer = Layer.effect(
     const projectSigners = yield* ZeropsProjectSignersModule.ZeropsProjectSigners;
     const providerInstances = yield* ProviderInstances;
     const bus = yield* ProviderRuntimeEventBus;
-    const spawnProbe = spawnAgentAuthProbe(processRunner, config.cwd);
+    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const checks: AgentAuthChecks = {
+      spawn: spawnAgentAuthProbe(processRunner, config.cwd),
+      codexAccount: readCodexAccountAuth({ cwd: config.cwd }).pipe(
+        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+      ),
+    };
 
     return yield* make({
       agentFlag,
-      refreshProviderAuth: layerVerifyAgentAuth(spawnProbe),
+      refreshProviderAuth: layerVerifyAgentAuth(checks),
       reconcileProviderAuth: providerInstances.reconcileAgentAuth,
       refreshProviderSnapshot: providerInstances.refreshAgent,
       homeDir: config.homeDir,
