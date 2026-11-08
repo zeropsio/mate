@@ -396,6 +396,11 @@ export const make = (options?: StartupOptions) =>
           return Effect.logError("server runtime startup failed", {
             cause: startupExit.cause,
           }).pipe(
+            Effect.andThen(
+              Option.isSome(commandReadiness)
+                ? commandReadiness.value.fail("server runtime startup failed")
+                : Effect.void,
+            ),
             Effect.andThen(commandGate.failCommandReady(error)),
             Effect.andThen(options?.abort?.(error) ?? Effect.void),
           );
