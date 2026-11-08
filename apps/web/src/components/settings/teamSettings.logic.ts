@@ -8,7 +8,7 @@
  * arrive read.
  */
 import type { ResentInvitation } from "@t3tools/client-runtime/data";
-import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import { zeropsRoleWords, type ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrantEntry } from "@t3tools/client-runtime/zerops/appAccess";
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
@@ -93,10 +93,6 @@ export interface TeamPerson {
   readonly userId: string | undefined;
   readonly name: string;
   readonly email: string | null;
-  /** Their role as a card's badge: a preset's name, else "Custom role". */
-  readonly badge: string;
-  /** A custom role's reach in words, said on hover; null for one of Mate's four. */
-  readonly badgeHint: string | null;
   /** Their membership whole, as the person page edits it. */
   readonly membership: OrgMembership;
   readonly initials: string;
@@ -104,7 +100,7 @@ export interface TeamPerson {
   readonly you: boolean;
   /** Not joined yet: an invitation. */
   readonly pending: boolean;
-  /** Their role, in words. */
+  /** Their role in the one word every surface says it (`zeropsRoleWords`): a card's badge. */
   readonly role: string;
   readonly reach: TeamReach | null;
   /** The second line: an invitation first, their role, then what they reach. */
@@ -124,14 +120,6 @@ export type TeamView =
       readonly invite: ReadonlyArray<TeamRole>;
     };
 
-/** Each preset's name, as a card's badge and a person's role say it. */
-export const TEAM_ROLE_WORDS: Readonly<Record<TeamRole, string>> = {
-  owner: "Owner",
-  admin: "Admin",
-  developer: "Developer",
-  guest: "Guest",
-};
-
 /** A Zerops role in plain words, as *Fine-tune permissions* names it. */
 export const ROLE_CODE_WORDS = {
   OWNER: "Owner",
@@ -141,21 +129,11 @@ export const ROLE_CODE_WORDS = {
   NO_ACCESS: "No access",
 } as const;
 
-/** A Zerops role none of Mate's four presets names, as a card's badge says it. */
-export const CUSTOM_ROLE = "Custom role";
-
 /** An invitation not joined yet, as its row says it. */
 export const INVITED_LINE = "Invited · waiting for them to join";
 
 /** An invitation Send again sent, as its row says it. */
 export const SENT_AGAIN_LINE = "Sent again · not joined yet";
-
-const ROLE_WORDS = {
-  OWNER: "Owner",
-  ADMIN: "Admin",
-  BASIC_USER: "Works on every project",
-  READ_ONLY: "Sees every project",
-} as const;
 
 /** Whether a membership's role reaches no project by itself: its grants say what it reaches. */
 const byGrants = (member: ZeropsOrganizationMember) =>
@@ -226,9 +204,10 @@ export function teamPeople(input: TeamInput): TeamView {
     const name = typed ?? own ?? "Someone";
     const preset = teamRoleOf(member);
     const role =
-      preset === "developer" || preset === "guest"
-        ? TEAM_ROLE_WORDS[preset]
-        : ROLE_WORDS[asOrgRole(member.roleCode) as keyof typeof ROLE_WORDS];
+      zeropsRoleWords({
+        roleCode: asOrgRole(member.roleCode),
+        canCreateProjects: member.canCreateProjects,
+      }) ?? "";
     const reach = reachOf(member, input);
     const actions = teamActions({
       viewer: input.viewer,
@@ -244,8 +223,6 @@ export function teamPeople(input: TeamInput): TeamView {
       userId,
       name,
       email: member.user?.email?.trim() || null,
-      badge: preset === null ? CUSTOM_ROLE : TEAM_ROLE_WORDS[preset],
-      badgeHint: preset === null ? role : null,
       membership: membershipOf(member),
       initials: zeropsInitials(name),
       avatarUrl: memberPicture({

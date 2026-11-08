@@ -207,16 +207,6 @@ export function shortName(name: string): string {
   return `${parts[0]} ${parts.at(-1)!.charAt(0).toLocaleUpperCase()}.`;
 }
 
-/** A role's words, and what it reaches when no place here says otherwise. */
-const ROLE_WORDS: Partial<
-  Record<ZeropsOrgRole, { readonly role: string; readonly reach?: string }>
-> = {
-  OWNER: { role: "Owner", reach: "everything" },
-  ADMIN: { role: "Admin", reach: "everything" },
-  BASIC_USER: { role: "Works on every project" },
-  READ_ONLY: { role: "Sees every project" },
-};
-
 const PLACE_ORDER: Readonly<Record<string, number>> = { production: 0, stage: 1, devstage: 2 };
 const KIND_WORD: Readonly<Record<string, string>> = {
   production: "Production",
@@ -267,8 +257,10 @@ function accessWords(
   role: ZeropsOrgRole,
   onPlaces: ReadonlyArray<{ readonly place: Place; readonly access: Access }>,
 ): string | null {
-  const words = ROLE_WORDS[role];
-  if (words !== undefined) {
+  // A role that reaches every place by itself is said by its word; a developer's or guest's by
+  // what their own grants give.
+  const word = role === "NO_ACCESS" ? undefined : zeropsRoleWords({ roleCode: role });
+  if (word !== undefined) {
     const base = accessOf(role);
     const exceptions = (["full", "read", "none"] as const).flatMap((access) => {
       const differing = onPlaces.filter((one) => one.access === access && access !== base);
@@ -278,8 +270,8 @@ function accessWords(
     });
     // "Admin · read only on production": an exception stands where "everything" would.
     return [
-      words.role,
-      ...(exceptions.length === 0 && words.reach !== undefined ? [words.reach] : exceptions),
+      word,
+      ...(exceptions.length === 0 && roleAtLeast(role, "ADMIN") ? ["everything"] : exceptions),
     ].join(" · ");
   }
   const reached = onPlaces.filter(({ access }) => access !== "none");
