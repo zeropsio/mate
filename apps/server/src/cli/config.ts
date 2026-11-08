@@ -207,6 +207,10 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  zcpMateBootFile: Config.String("ZCP_MATE_BOOT_FILE").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
   zeropsFixtures: Config.String("T3CODE_ZEROPS_FIXTURES").pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
@@ -471,6 +475,7 @@ export const resolveServerConfig = (
             hostname: env.zeropsHostname,
             statusFile: env.zcpStatusFile,
             mateUpdateStateFile: env.zcpMateUpdateStateFile,
+            mateBootFile: env.zcpMateBootFile,
           })
         : undefined;
     // Every process the server starts (provider CLIs, and through them zcp) inherits this

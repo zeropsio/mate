@@ -58,22 +58,15 @@ const readinessRoute = HttpRouter.add(
   Effect.gen(function* () {
     if (!(yield* local)) return refused;
     const readiness = yield* Effect.serviceOption(ServerCommandReadiness);
+    if (Option.isSome(readiness)) yield* readiness.value.await;
     const environment = yield* ServerEnvironment;
     const { serverVersion: version, bootId } = yield* environment.getDescriptor;
-    // A boot still on its way answers at once with how far it got, so zcp can tell it from one
-    // that stopped; idleness is asked only of a server that accepts commands.
-    const boot = Option.isSome(readiness)
-      ? yield* readiness.value.boot
-      : { ready: false, progress: 0 };
-    if (!boot.ready)
-      return HttpServerResponse.jsonUnsafe({ protocol: 1, version, bootId, ...boot });
     const facts = yield* readMateUpdateIdleFacts;
     return HttpServerResponse.jsonUnsafe({
       protocol: 1,
       version,
       bootId,
-      ready: facts.idle,
-      progress: boot.progress,
+      ready: Option.isSome(readiness) && facts.idle,
       blockers: facts.blockers,
     });
   }),

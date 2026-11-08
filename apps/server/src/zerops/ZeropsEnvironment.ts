@@ -69,6 +69,8 @@ export interface ZeropsEnvironment {
   readonly statusFile: string | undefined;
   /** zcp's Mate update state (`ZCP_MATE_UPDATE_STATE_FILE`), written before it switches versions. */
   readonly mateUpdateStateFile: string | undefined;
+  /** Where this boot reports its progress to zcp until it accepts commands (`ZCP_MATE_BOOT_FILE`). */
+  readonly mateBootFile?: string | undefined;
   /** The platform's live service-environment store; see {@link ZEMBED_ENV_STORE_PATH}. */
   readonly envStorePath: string;
 }
@@ -86,6 +88,7 @@ export interface ZeropsEnvironmentInput {
   readonly hostname?: string | undefined;
   readonly statusFile?: string | undefined;
   readonly mateUpdateStateFile?: string | undefined;
+  readonly mateBootFile?: string | undefined;
 }
 
 /**
@@ -180,6 +183,7 @@ export const resolveZeropsEnvironment = (
     hostname: present(input.hostname),
     statusFile: present(input.statusFile),
     mateUpdateStateFile: present(input.mateUpdateStateFile),
+    mateBootFile: present(input.mateBootFile),
     envStorePath: ZEMBED_ENV_STORE_PATH,
   };
 };
