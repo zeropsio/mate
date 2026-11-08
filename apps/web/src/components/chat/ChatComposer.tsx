@@ -4003,8 +4003,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 message={providerInputSubmissionError ?? composerSubmissionError}
               />
               {/* What stops the agent taking a message is the composer's own to say (S6): the
-                  model control's dot names it, and this line says why sending waits. */}
+                  model control's dot names it, and this line says why sending waits. Where the
+                  Mate's admission holds the send, its own notice says why, once. */}
               {providerSendBlockReason === null ||
+              zeropsSendBlockReason !== null ||
               providerInputSubmissionError !== null ||
               composerSubmissionError !== null ||
               isComposerCollapsedMobile ? null : (

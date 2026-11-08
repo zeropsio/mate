@@ -48,6 +48,7 @@ import {
   ThreadId,
   ThreadMessagePreviewRole,
   TrimmedNonEmptyString,
+  ZeropsLoginState,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -273,6 +274,11 @@ export const LoginDigest = Schema.Struct({
   present: Schema.Boolean,
   /** An API key, not a person's sign-in. */
   token: Schema.Boolean,
+  /**
+   * Whether it can run a turn, as the Mate's own check classifies it (`classifyZeropsAgentAuth`):
+   * a credential can be there and no longer work. Absent from a Mate older than it.
+   */
+  state: Schema.optionalKey(ZeropsLoginState),
 });
 export type LoginDigest = typeof LoginDigest.Type;
 

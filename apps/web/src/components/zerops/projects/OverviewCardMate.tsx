@@ -18,10 +18,16 @@ import {
   candidateContainerRuns,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import type { MateComing } from "@t3tools/client-runtime/data";
+import {
+  mateAdmissionSummary,
+  type AgentAdmissionAttention,
+  type MateComing,
+} from "@t3tools/client-runtime/data";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { CircleAlertIcon, GitPullRequestIcon } from "lucide-react";
 import type { ReactNode } from "react";
+import { Atom } from "effect/reactivity";
+import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -66,6 +72,8 @@ import {
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
 import { CardMate, CardMateTime } from "./ProjectCards";
 import { cardMateReading, cardSecondWords, type CardMateReading } from "./projectCard.logic";
+
+const NO_ADMISSION = Atom.make<AgentAdmissionAttention | null>(null);
 
 export function OverviewCardMate({
   candidate,
@@ -164,9 +172,19 @@ export function OverviewCardMate({
   const tags = readZeropsMembership(candidate.project);
   const signers = people?.everSignedIn;
   const records = mateOwnerRecords(candidate.project, people?.owned);
+  // Whether it can run, as its row and its composer say it (`mateAdmissionSummary`).
+  const orgId = useAccountOrgId();
+  const admission = useProjection(
+    mateAdmissionSummary,
+    orgId === null
+      ? null
+      : { orgId, projectId: candidate.project.id, viewerSubject: viewer, mateName: name },
+    NO_ADMISSION,
+  );
   const seated = mateOwnerView({
     owner,
     records,
+    admission,
     asked: view.ask !== undefined,
     hqSigners:
       signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
