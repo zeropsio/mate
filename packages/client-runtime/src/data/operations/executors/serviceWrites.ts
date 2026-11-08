@@ -78,6 +78,10 @@ export const processReceipt = (
       };
 
 export function enableZeropsMateExecutor(platform: {
+  /** Writes the Mate's record in HQ; a refusal fails definitively with HQ's sentence. */
+  readonly register: (intent: IntentOf<"enable-zerops-mate">) => Promise<void>;
+  /** The Mate's own key, established by the person, written as the zcp's secret `ZCP_API_KEY`. */
+  readonly installMateKey: (intent: IntentOf<"enable-zerops-mate">) => Promise<void>;
   readonly writeMateFlag: (serviceId: string) => Promise<void>;
   readonly variablesWritten: (intent: IntentOf<"enable-zerops-mate">) => void;
   readonly restartService: (
@@ -86,6 +90,9 @@ export function enableZeropsMateExecutor(platform: {
 }) {
   return (requestId: string, intent: IntentOf<"enable-zerops-mate">) =>
     Effect.gen(function* () {
+      // HQ's record first: its hello is admitted only with the record and the key.
+      if (intent.record !== undefined) yield* verb(() => platform.register(intent));
+      yield* verb(() => platform.installMateKey(intent));
       yield* verb(() => platform.writeMateFlag(intent.serviceId));
       yield* Effect.sync(() => platform.variablesWritten(intent));
       // The flag landed: a restart not taken leaves it on, and the restart the person's to do.

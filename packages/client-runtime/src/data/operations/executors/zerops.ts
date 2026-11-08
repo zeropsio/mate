@@ -86,6 +86,7 @@ type ZeropsOperationsClient = Pick<
   | "deleteIntegrationToken"
   | "enableSubdomainAccess"
   | "writeMateFlag"
+  | "installMateKey"
   | "startProject"
   | "fetchProject"
   | "writeProject"
@@ -129,7 +130,9 @@ type ZeropsOperationsClient = Pick<
 export function makeZeropsExecutor(input: {
   readonly client: ZeropsOperationsClient & Pick<ZeropsApiClient, "accountEpoch">;
   /** Capture this operation's HQ/person before native credential establishment can yield. */
-  readonly hqApiOf: (orgId: string) => Pick<HqApi, "establishZcpAuthorization"> | null;
+  readonly hqApiOf: (
+    orgId: string,
+  ) => Pick<HqApi, "establishZcpAuthorization" | "createMate"> | null;
   readonly viewerOf: (orgId: string) => ZeropsOrganization | undefined;
   readonly active: () => boolean;
   readonly readDetail: (demand: DetailDemand) => Promise<boolean>;
@@ -238,6 +241,24 @@ export function makeZeropsExecutor(input: {
       startProject: (projectId) => client.startProject(projectId),
     });
     const enableMate = enableZeropsMateExecutor({
+      register: async ({ orgId, projectId, serviceId, record }) => {
+        const hq = input.hqApiOf(orgId);
+        if (hq === null || record === undefined)
+          throw new ZeropsWriteNotSent({
+            outcome: "definitive-refusal",
+            message: "HQ is not ready to record this Mate.",
+          });
+        try {
+          await hq.createMate({ projectId, serviceId, face: record.face });
+        } catch (cause) {
+          // HQ's refusal is final and says why; anything else may have written the record.
+          if (cause instanceof HqError && cause.kind === "refused")
+            throw new ZeropsWriteNotSent({ outcome: "definitive-refusal", message: cause.message });
+          throw cause;
+        }
+      },
+      installMateKey: ({ orgId, projectId, projectName, serviceId }) =>
+        client.installMateKey({ clientId: orgId, projectId, projectName, serviceId }),
       writeMateFlag: (serviceId) => client.writeMateFlag(serviceId),
       variablesWritten: ({ orgId, serviceId }) =>
         input.revalidate(orgId, { family: "mateVariables", ownerId: serviceId }),
@@ -468,6 +489,7 @@ export function makeZeropsExecutor(input: {
         deleteProject: (id, signal) => source.deleteProject(id, signal, check),
         enableSubdomainAccess: (id) => source.enableSubdomainAccess(id, check),
         writeMateFlag: (id) => source.writeMateFlag(id, check),
+        installMateKey: (key) => source.installMateKey(key, check),
         startProject: (id) => source.startProject(id, check),
         writeProject: (project, record) => source.writeProject(project, record, check),
         createProject: (input, signal) => source.createProject(input, signal, check),

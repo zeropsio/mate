@@ -74,6 +74,8 @@ export interface ZeropsIntegrationToken {
   readonly created?: string | undefined;
   /** Who minted it: besides an org owner, the one person who may write it. */
   readonly createdByUser?: string | undefined;
+  /** A key that acts beyond its grants; every one minted before 2026-10-13 is (HQ: `key_too_wide`). */
+  readonly sudo?: boolean | undefined;
 }
 
 /**
@@ -174,6 +176,7 @@ const PRESS_KEY_NAME_PREFIX = "zcp-";
  * by the name it gives them, holding this project alone at a Mate's own role — so a press never
  * mints a second key beside one it made. A key an earlier client widened to other projects is not
  * reused: it is not taken for the Mate's (`isMateKeyOf`), and a key of the press's own is minted.
+ * Nor is a `sudo` key, as the platform makes with a container (HQ's Mate door never admits one).
  */
 export function newestMateKey(
   tokens: ReadonlyArray<ZeropsIntegrationToken>,
@@ -181,7 +184,10 @@ export function newestMateKey(
 ): ZeropsIntegrationToken | undefined {
   return newestFirst(
     tokens.filter(
-      (token) => token.name.startsWith(PRESS_KEY_NAME_PREFIX) && isMateKeyOf(token, projectId),
+      (token) =>
+        token.name.startsWith(PRESS_KEY_NAME_PREFIX) &&
+        token.sudo !== true &&
+        isMateKeyOf(token, projectId),
     ),
   )[0];
 }
