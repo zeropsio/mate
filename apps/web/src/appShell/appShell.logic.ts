@@ -1,21 +1,19 @@
 /**
  * The hosted client's app-shell worker decides here, and only here, what it answers.
  *
- * The hosted client (zerops.yml `prod`/`staging`: static nginx behind Cloudflare) asks for its page
- * on every load, `no-cache`: a reload waited 150–470 ms for the page's first byte, and once 10.8 s
- * on a stalled origin with a blank screen. The worker answers a reload with the page it kept and
- * asks the origin for a newer one beside it (stale-while-revalidate): the next load runs what the
- * origin served this time. The bundle's own files (`/assets/*`, named by their content) come from a
- * cache first, so a kept page's chunks still load after a deploy removed them.
+ * The hosted client (zerops.yml `prod`/`staging`: static nginx behind Cloudflare) asks the origin
+ * for its page on every load (network first, `no-cache`), so the first load after a deploy runs
+ * the deploy. The page the worker kept answers only when the origin cannot: offline, or an origin
+ * that fails. The bundle's own files (`/assets/*`, named by their content) come from a cache first,
+ * so a tab running an older page still loads its chunks after a deploy removed them.
  *
  * **A page is kept only with its files.** The build lists in each page what it boots and warms
  * from (`appShellBuild.logic.ts`); the worker fetches every listed file into the asset cache and
  * only then keeps the page. A deploy that lands between a page's fetch and its files leaves the
  * previous page kept, so a kept page always boots, however many deploys later.
  *
- * Every decision is a pure function of the request, a stored time or a list of entries; the worker
- * (`appShellWorker.ts`) only carries them out with the Cache API. The page reads the same names to
- * forget its kept page before a stale-chunk reload (`appShellClient.ts`).
+ * Every decision is a pure function of the request or a list of entries; the worker
+ * (`appShellWorker.ts`) only carries them out with the Cache API.
  *
  * The names below are a contract between builds, not a version: an open tab running an older
  * bundle still asks the newest worker for its chunks, so a cache is never renamed casually, and the
@@ -35,28 +33,11 @@ export const KNOWN_CACHES: ReadonlySet<string> = new Set([SHELL_CACHE, ASSET_CAC
 /** The page is the same document at every app address (the host's SPA fallback): kept once. */
 export const SHELL_CACHE_KEY_PATH = "/";
 
-/** When the worker stored an entry, ms since the epoch, on the stored response itself. */
-export const STORED_AT_HEADER = "x-mate-app-shell-stored-at";
-
-/**
- * On a kept page: how many files it listed, all kept before it was. A page kept without it (an
- * earlier worker's) is not answered at once.
- */
-export const LISTED_FILES_HEADER = "x-mate-app-shell-files";
-
 /** The element of the page that lists its files (`embedShellFiles`). */
 export const SHELL_FILES_ELEMENT_ID = "app-shell-files";
 
 /** How many listed files the worker fetches at once while it keeps a page. */
 export const PRECACHE_CONCURRENCY = 6;
-
-/**
- * A kept page this old is not answered at once: the origin is asked first (falling back to the
- * kept page only when it cannot answer). A week means someone who has not opened Mate for a week
- * waits for one round trip instead of running a week-old build for one load; every load that does
- * reach the origin refreshes the time, so daily use never meets the bound.
- */
-export const SHELL_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Paths the origin serves itself or that belong to a backend, never the app's page. */
 const NEVER_THE_PAGE_PREFIXES = ["/mate", "/assets", "/fonts"] as const;
@@ -116,26 +97,6 @@ export function routeRequest(request: AppShellRequest): AppShellRoute {
   return "pass";
 }
 
-/** `cached`: answer the kept page now and refresh it behind; `network`: ask the origin first. */
-export type ShellPlan = "cached" | "network";
-
-/**
- * A kept page is answered at once while it is younger than {@link SHELL_MAX_AGE_MS} and was kept
- * with its files. None kept, one kept without its files (an earlier worker's), one the page forgot
- * (stored at 0, `forgetCachedShell`), one past the bound, or one stored in the future (the clock
- * went back) asks the origin first.
- */
-export function planShell(
-  kept: { readonly storedAt: number | undefined; readonly listed: boolean } | undefined,
-  now: number,
-): ShellPlan {
-  if (kept === undefined || !kept.listed) return "network";
-  const { storedAt } = kept;
-  if (storedAt === undefined || !Number.isFinite(storedAt) || storedAt <= 0) return "network";
-  const age = now - storedAt;
-  return age >= 0 && age < SHELL_MAX_AGE_MS ? "cached" : "network";
-}
-
 export interface ResponseFacts {
   readonly status: number;
   readonly type: ResponseType;
@@ -159,27 +120,23 @@ export function isKeepable(kind: "shell" | "asset", response: ResponseFacts, ori
   return kind === "shell" ? html : !html;
 }
 
-/** When an entry was stored, from its header; `undefined` when it carries none. */
-export function readStoredAt(headers: Pick<Headers, "get">): number | undefined {
-  const raw = headers.get(STORED_AT_HEADER);
-  if (raw === null) return undefined;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : undefined;
-}
-
 /**
- * The same response, carrying when it was stored. Consumes `response`'s body. The body a fetch
- * hands over is already decoded, so the transfer's encoding and length no longer describe it.
+ * A fetched response's headers, as stored: the body a fetch hands over is already decoded, so the
+ * transfer's encoding and length no longer describe it.
  */
-export function stampResponse(response: Response, storedAt: number): Response {
+export function storedHeaders(response: Response): Headers {
   const headers = new Headers(response.headers);
   headers.delete("content-encoding");
   headers.delete("content-length");
-  headers.set(STORED_AT_HEADER, String(storedAt));
+  return headers;
+}
+
+/** The same response, ready to store. Consumes `response`'s body. */
+export function storable(response: Response): Response {
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
-    headers,
+    headers: storedHeaders(response),
   });
 }
 

@@ -41,7 +41,7 @@ import { resolveThreadEnvModeForCapability } from "@t3tools/shared/threadEnvMode
 import * as Duration from "effect/Duration";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
-import { APP_VERSION } from "../../branding";
+import { APP_COMMIT, APP_VERSION } from "../../branding";
 import {
   canCheckForUpdate,
   getDesktopUpdateButtonTooltip,
@@ -242,6 +242,11 @@ function AboutVersionTitle() {
     <span className="inline-flex items-baseline gap-2">
       <span>Version</span>
       <code className="text-2xs font-medium text-muted-foreground">{APP_VERSION}</code>
+      {APP_COMMIT ? (
+        <code className="text-2xs font-medium text-muted-foreground">
+          {APP_COMMIT.slice(0, 12)}
+        </code>
+      ) : null}
     </span>
   );
 }

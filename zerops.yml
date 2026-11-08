@@ -49,9 +49,9 @@ zerops:
         # Adobe Express Embed SDK's public client id (Adobe limits it to the
         # domains listed for it); the panel still waits on each person's Labs switch.
         VITE_ADOBE_EXPRESS_CLIENT_ID: a3cdc81c5842438cb95c4e772c03e0a7
-        # A reload paints from the page the app-shell worker kept (`/sw.js`, `src/appShell/`),
-        # never waiting on this origin. `retire` ships the worker that removes it; never just
-        # delete this line (docs/operations/release-and-deploy.md).
+        # The app-shell worker (`/sw.js`, `src/appShell/`) asks this origin for the page on every
+        # load and answers with the page it kept only offline. `retire` ships the worker that
+        # removes it; never just delete this line (docs/operations/release-and-deploy.md).
         VITE_APP_SHELL_WORKER: app-shell
         # `--filter` already leaves Electron out; this makes a stray install
         # of it cheap rather than a 100 MB download.

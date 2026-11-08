@@ -5,18 +5,15 @@ import {
   cachesToDelete,
   embedShellFiles,
   isKeepable,
-  planShell,
   readShellFiles,
   routeRequest,
   SHELL_FILES_ELEMENT_ID,
   staticRoutes,
-  SHELL_MAX_AGE_MS,
   type AppShellRequest,
   type ResponseFacts,
 } from "./appShell.logic";
 
 const ORIGIN = "https://mate.example.test";
-const DAY = 24 * 60 * 60 * 1000;
 
 function navigation(path: string, overrides: Partial<AppShellRequest> = {}): AppShellRequest {
   return {
@@ -105,47 +102,6 @@ describe("what the app-shell worker answers", () => {
     },
   ])("$title", ({ request }) => {
     expect(routeRequest(request)).toBe("pass");
-  });
-});
-
-describe("when a kept page answers a load at once", () => {
-  const now = 100 * DAY;
-  it.each([
-    { title: "no kept page asks the origin first", storedAt: "none", plan: "network" },
-    {
-      title: "a page an earlier worker kept without its files asks the origin first",
-      storedAt: now - 60 * 60 * 1000,
-      listed: false,
-      plan: "network",
-    },
-    {
-      title: "a page kept an hour ago answers at once",
-      storedAt: now - 60 * 60 * 1000,
-      plan: "cached",
-    },
-    { title: "a page kept six days ago answers at once", storedAt: now - 6 * DAY, plan: "cached" },
-    {
-      title: "a page kept a week ago asks the origin first",
-      storedAt: now - SHELL_MAX_AGE_MS,
-      plan: "network",
-    },
-    {
-      title: "a page the stale-chunk reload forgot asks the origin first",
-      storedAt: 0,
-      plan: "network",
-    },
-    {
-      title: "a page kept in the future (the clock went back) asks the origin first",
-      storedAt: now + DAY,
-      plan: "network",
-    },
-    { title: "an unreadable stamp asks the origin first", storedAt: Number.NaN, plan: "network" },
-  ] as const)("$title", (row) => {
-    const kept =
-      row.storedAt === "none"
-        ? undefined
-        : { storedAt: row.storedAt, listed: "listed" in row ? row.listed : true };
-    expect(planShell(kept, now)).toBe(row.plan);
   });
 });
 
