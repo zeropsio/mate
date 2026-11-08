@@ -1530,7 +1530,7 @@ it.each([undefined, true, false])(
   },
 );
 
-// The one question after the first code merge of an application with no production (MODEL §3,
+// The one question after the first code merge, for the tiers an application lacks (MODEL §3,
 // §9.3 – §9.5, §9.11): said once, in the review of the merge this person just finished, never on a
 // reopen, never to somebody with nothing to answer it with.
 describe("changeReview: where should it run (the one question)", () => {
@@ -1540,7 +1540,6 @@ describe("changeReview: where should it run (the one question)", () => {
       pull: pull({ merged: true, mergedAt: minutesAgo(1), firstCodeMerge: true }),
       press: { kind: "done" },
       downstream: { production: false, stage: false },
-      productionHeld: false,
       addable: both,
       ...over,
     });
@@ -1594,7 +1593,6 @@ describe("changeReview: where should it run (the one question)", () => {
       "the merge is a recipe's",
       { pull: pull({ merged: true, kind: "recipe", firstCodeMerge: true }) },
     ],
-    ["a production is held in any state (being made, failed)", { productionHeld: true }],
     ["the review is reopened: nobody pressed Merge here", { press: { kind: "idle" } }],
     ["the merge is still running", { press: { kind: "running" } }],
     ["the person may add neither", { addable: { stage: false, production: false } }],

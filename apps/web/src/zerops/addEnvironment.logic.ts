@@ -1,7 +1,7 @@
 /**
  * What the one question after an application's first merge is told about its environments: which
  * of *Add stage* and *Add production* it may offer — the one rule every door asks
- * (`environmentAddable`) over HQ's offers — and whether a production is held at all.
+ * (`environmentAddable`) over HQ's offers.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -32,9 +32,8 @@ export function questionFactsOf(input: {
    */
   readonly held: ReadonlyArray<HeldEnvironment>;
 }): {
+  /** A tier held in any state — held, half-made, being made — is not addable. */
   readonly addable: { readonly stage: boolean; readonly production: boolean };
-  /** A production in any state — held, half-made, being made — is a production. */
-  readonly productionHeld: boolean;
 } {
   const held = heldTiers(input.held);
   const ask = (tier: GroupEnvironmentTier) =>
@@ -46,10 +45,7 @@ export function questionFactsOf(input: {
       gitOffered: input.offered.git === true,
       held,
     });
-  return {
-    addable: { stage: ask("stage"), production: ask("production") },
-    productionHeld: held.production,
-  };
+  return { addable: { stage: ask("stage"), production: ask("production") } };
 }
 
 /**

@@ -532,7 +532,6 @@ function Change({
       comments={conversation}
       environments={environments}
       onAddEnvironment={noop}
-      productionHeld={false}
       frame={frame}
       hqAddress={HARNESS_HQ}
       initiallyOpen={open}
@@ -548,7 +547,7 @@ function Change({
       onOpenPage={frame === "page" ? undefined : noop}
       previews={PREVIEWS}
       project="Beviro"
-      stages={["stage"]}
+      stages={environments.some((entry) => entry.tier === "stage") ? ["stage"] : []}
       onRetry={noop}
       remarks={remarksOf(conversation)}
       onFix={noop}
@@ -1221,6 +1220,18 @@ export const REVIEW_STATES: ReadonlyArray<{
       <Change
         addable={{ stage: false, production: true }}
         environments={[{ tier: "stage" }]}
+        over={{ ...MERGED_NOW, firstCodeMerge: true }}
+        press={{ kind: "done" }}
+      />
+    ),
+  },
+  {
+    id: "first-merge-stage",
+    label: "The first code merge, a production exists: where should it run? (stage only)",
+    node: (
+      <Change
+        addable={{ stage: true, production: false }}
+        environments={[{ tier: "production" }]}
         over={{ ...MERGED_NOW, firstCodeMerge: true }}
         press={{ kind: "done" }}
       />
