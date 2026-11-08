@@ -1,5 +1,5 @@
 /** The turn presentation of engine evidence. The decider remains the authority for RunEnd. */
-import type { Run, RunTurnState } from "@t3tools/contracts";
+import { isRefusedAttempt, type Run, type RunTurnState } from "@t3tools/contracts";
 
 export const turnStateOf = (run: Pick<Run, "state" | "end">): RunTurnState => {
   if (["admitted", "sending", "running", "waiting"].includes(run.state)) return "running";
@@ -12,6 +12,8 @@ export const turnStateOf = (run: Pick<Run, "state" | "end">): RunTurnState => {
     case "usage-limit":
       return "interrupted";
     case "failed":
+      // A refused attempt never ran: no turn of the conversation broke.
+      return isRefusedAttempt(run.end) ? "interrupted" : "error";
     case "crashed":
       return "error";
     default:
@@ -26,5 +28,7 @@ export const runStatusOf = (view: {
 }): "running" | "error" | "ready" => {
   if (view.activeRun !== null) return "running";
   const end = view.lastEnded?.end;
-  return end?.kind === "failed" || end?.kind === "crashed" ? "error" : "ready";
+  return (end?.kind === "failed" && !isRefusedAttempt(end)) || end?.kind === "crashed"
+    ? "error"
+    : "ready";
 };
