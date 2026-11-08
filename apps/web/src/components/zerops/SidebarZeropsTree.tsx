@@ -86,7 +86,7 @@ import {
   type GroupEnvironmentTier,
   type GroupFlowStop,
   type ListedStop,
-  missingEnvironmentRows,
+  applicationEnvironments,
   type StopComing,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -194,7 +194,7 @@ import {
   rememberProjectsOnScreen,
   useProjectOrder,
 } from "~/zerops/projectOrderPreference";
-import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
+import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import {
   useHqProjectPerson,
   zeropsMateOwnerOf,
@@ -330,7 +330,6 @@ import { keyboardTarget, movedAnnouncement, useProjectReorder } from "./SidebarP
 import {
   groupFlowInputOf,
   groupMemberFactsOf,
-  tiersAddable,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
@@ -874,8 +873,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     projectRefs.set(id, made);
     return made;
   };
-  // Whether *Add stage* and *Put it live* stand in a project's menu: HQ's offer of each.
-  const environmentOffers = useEnvironmentOffers();
+  // Whether *Add stage* and *Put it live* stand in a project's menu (`applicationEnvironments`).
+  const environmentFacts = useApplicationEnvironmentFacts();
   const addMateOffer = useAddMateOffer();
   const orgOffer = useOrgOffers();
   const addMateGate = useNewMateGate();
@@ -2181,21 +2180,19 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     place: string | undefined,
     withoutMate = false,
   ): ReadonlyArray<HeadingMenuEntry> => {
-    const missing = missingEnvironmentRows({
-      tiersOnMain: tiersAddable({
-        offered: environmentOffers(group.groupId),
-        group,
-        hq: [...(getFlow?.(group.groupId)?.environments.values() ?? [])].map((row) => ({
-          id: row.id,
-          tier: row.tier,
-        })),
-        recipe: {
-          read: getFlow?.(group.groupId)?.recipeRead === true,
-          tiers: getFlow?.(group.groupId)?.recipeTiers ?? [],
-        },
-      }),
-      declarations: [],
-    });
+    const flow = getFlow?.(group.groupId);
+    const environments = applicationEnvironments(
+      environmentFacts(
+        group.groupId,
+        flow === undefined
+          ? undefined
+          : {
+              environments: [...flow.environments.values()],
+              recipeRead: flow.recipeRead === true,
+              recipeTiers: flow.recipeTiers ?? [],
+            },
+      ),
+    );
     return projectHeadingMenu({
       collapsed: fold?.open === false,
       onToggle: fold?.toggle,
@@ -2255,15 +2252,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           moveByKey(group.groupId, group.name, direction);
         },
       },
-      setUp: missing.map((row) => ({
-        label: environmentDoorLabel(row.tier, row.name),
-        act:
-          onSetUp === undefined
-            ? onBrowseProjects
-            : () => {
-                onSetUp(group.groupId, row.tier);
-              },
-      })),
+      setUp: (["stage", "production"] as const)
+        .filter((tier) => environments.addable[tier])
+        .map((tier) => ({
+          label: environmentDoorLabel(tier, tier === "stage" ? "Stage" : "Production"),
+          act:
+            onSetUp === undefined
+              ? onBrowseProjects
+              : () => {
+                  onSetUp(group.groupId, tier);
+                },
+        })),
       onBrowseProjects,
     });
   };

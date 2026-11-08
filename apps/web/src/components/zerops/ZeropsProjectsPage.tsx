@@ -4,7 +4,7 @@ import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { placementNotice } from "./projects/placementNotice.logic";
-import { overviewPaints, tiersAddable } from "./projects/projectsView.logic";
+import { overviewPaints } from "./projects/projectsView.logic";
 import { useGitEnvironmentFormInputs } from "~/zerops/useGitEnvironmentFormInputs";
 import { isChief } from "~/zerops/chief";
 import { roleOffers } from "@t3tools/client-runtime/data";
@@ -47,7 +47,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
-import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
+import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { hqDown, hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
 import {
@@ -139,6 +139,7 @@ import { mateAutomation } from "./SidebarMateRow.logic";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
 
 import {
+  applicationEnvironments,
   assignCandidateMateTints,
   mateShapeOf,
   newMateTint,
@@ -1659,7 +1660,7 @@ export function ZeropsProjectsContent({
   );
 
   // Which tiers HQ offers this person to add to the group (`add_stage` / `add_production`).
-  const environmentOffers = useEnvironmentOffers();
+  const environmentFacts = useApplicationEnvironmentFacts();
 
   // "Add stage" opens the form; the form's answer is what gets created.
   const [creationRequest, setCreationRequest] = useState<{
@@ -2455,17 +2456,18 @@ export function ZeropsProjectsContent({
     );
   };
 
-  const addableTiers = ({ groupId }: Pick<ZeropsGroup, "groupId">) => {
-    const group = groupTree.groups.find((entry) => entry.group.groupId === groupId)?.group;
-    if (group === undefined) return [];
+  // What each project holds and may be added to, as every surface tells it (`applicationEnvironments`).
+  const environmentsOf = ({ groupId }: Pick<ZeropsGroup, "groupId">) => {
     const flow = projectFlow.flows.get(groupId);
-    if (flow === undefined) return [];
-    return tiersAddable({
-      offered: environmentOffers(groupId),
-      group,
-      hq: [...flow.environments.values()].map((row) => ({ id: row.id, tier: row.tier })),
-      recipe: { read: flow.recipeRead, tiers: flow.recipeTiers },
-    });
+    return flow === undefined
+      ? undefined
+      : applicationEnvironments(environmentFacts(groupId, flow));
+  };
+  const addableTiers = (group: Pick<ZeropsGroup, "groupId">) => {
+    const environments = environmentsOf(group);
+    return (["stage", "production"] as const).filter(
+      (tier) => environments?.addable[tier] === true,
+    );
   };
 
   /**

@@ -608,9 +608,11 @@ export {
   environmentTierForRole,
   type GroupEnvironment,
   type GroupEnvironmentTier,
-  missingEnvironmentRows,
-  MISSING_ENVIRONMENT_LINE,
-  type MissingEnvironmentRow,
+  applicationEnvironments,
+  listedEnvironmentsOf,
+  type ApplicationEnvironmentFacts,
+  type ApplicationEnvironments,
+  type EnvironmentOffers,
 } from "./groupEnvironments.ts";
 export {
   deployedCommit,

@@ -121,11 +121,7 @@ import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useHqAppFailure } from "~/zerops/useHqAppDetail";
-import {
-  useAddEnvironment,
-  useGroupPendingEnvironments,
-  useEnvironmentOffers,
-} from "~/zerops/useAddEnvironment";
+import { useAddEnvironment, useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { useOpenPutLive } from "~/zerops/putLive";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
@@ -350,27 +346,6 @@ export function runtimeStopsOf(
  * The Mates of a group that are also its stage (`devstage`): HQ deploys nothing to them, their
  * agent does, and they stand for the stage in the *Environments* section.
  */
-export function devstagesOf(
-  groupId: string,
-  projects: ReadonlyArray<ZeropsProject>,
-): ReadonlyArray<{ readonly id: string; readonly name: string }> {
-  return projects.flatMap((project) => {
-    const membership = readZeropsMembership(project);
-    return membership.groupId === groupId && membership.role === "devstage"
-      ? [{ id: project.id, name: projectNameInApp(project) }]
-      : [];
-  });
-}
-
-function useDevstages(
-  groupId: string,
-): ReadonlyArray<{ readonly id: string; readonly name: string }> {
-  const inventory = useZeropsInventory();
-  const held = useContext(HeldInventoryContext);
-  const projects = held?.projects ?? inventory.projects;
-  return useMemo(() => devstagesOf(groupId, projects), [groupId, projects]);
-}
-
 function useRuntimeStops(groupId: string): ReadonlyArray<RuntimeStopIdentity> {
   const inventory = useZeropsInventory();
   const held = useContext(HeldInventoryContext);
@@ -558,11 +533,9 @@ function KnownGroupAside({
   const firstDeployOf = useStageFirstDeploys(flow);
   // *Mirror code to GitHub or GitLab…* over this page, as from the overview card's ···.
   const [mirroring, setMirroring] = useState(false);
-  const offered = useEnvironmentOffers()(groupId);
+  const environmentFacts = useApplicationEnvironmentFacts();
   const addEnvironment = useAddEnvironment();
   const openPutLive = useOpenPutLive();
-  const devstages = useDevstages(groupId);
-  const pendingEnvironments = useGroupPendingEnvironments(groupId);
   const { listing } = useZeropsCandidates();
   const { halfMade, finishing } = useEnvironmentSetup(
     useMemo(() => heldCandidates(listing).rows.map(({ project }) => project.id), [listing]),
@@ -575,21 +548,12 @@ function KnownGroupAside({
   const slots = !flow.declarationsRead
     ? []
     : environmentSlots({
-        environments: environments.map((entry) => ({
-          id: entry.id,
-          target: entry.target,
-          tier: entry.tier,
-        })),
-        devstages,
-        pending: pendingEnvironments,
+        ...environmentFacts(groupId, flow),
         halfMade: halfMadeHere.map((entry) => ({
           id: entry.projectId,
           tier: entry.tier,
           finish: entry.finish,
         })),
-        recipeTiers: flow.recipeTiers,
-        recipeRead: flow.recipeRead,
-        offered: offered ?? { stage: false, production: false },
         productionRuns:
           production?.target.kind !== "zerops"
             ? "unknown"

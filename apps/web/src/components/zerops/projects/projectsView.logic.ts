@@ -23,9 +23,6 @@ import {
   type FlowPullRequest,
   type Moved,
   type GroupEnvironmentTier,
-  type HeldEnvironment,
-  environmentAddable,
-  heldTiers,
   type GroupFlow,
   type GroupFlowComing,
   type GroupFlowInput,
@@ -38,7 +35,6 @@ import {
   type ReleaseGate,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
-  type ZeropsGroup,
   type ZeropsGroupPendingMember,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
@@ -503,64 +499,6 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
       controlPlane: item.service?.name,
     };
   });
-}
-
-/**
- * The tiers a project's menu offers *Add* for — the one answer (`environmentAddable`) for the
- * group as its tree holds it: its projects by role (a Mate that is also the stage counts as the
- * stage), its creations under way, and what HQ records of it, each counted once; whether the
- * recipe holds the tier; and whether HQ offers this person the tier. Nothing is offered before HQ
- * says.
- */
-export function tiersAddable(input: {
-  /** The tiers HQ offers this person to add (`add_stage` / `add_production`); `null` before it says. */
-  readonly offered: {
-    readonly stage: boolean;
-    readonly production: boolean;
-    readonly git?: boolean;
-    readonly zerops?: { readonly stage: boolean; readonly production: boolean };
-  } | null;
-  readonly group: Pick<ZeropsGroup, "pending"> & {
-    readonly environments: ReadonlyArray<{
-      readonly role: import("@t3tools/client-runtime/zerops").ZeropsEnvironmentRole | undefined;
-      readonly project: { readonly id: string } | undefined;
-    }>;
-  };
-  /** The application's environments as HQ records them. */
-  readonly hq: ReadonlyArray<HeldEnvironment>;
-  readonly recipe: { readonly read: boolean; readonly tiers: ReadonlyArray<GroupEnvironmentTier> };
-}): ReadonlyArray<GroupEnvironmentTier> {
-  const { offered, group } = input;
-  if (offered === null) return [];
-  const held = heldTiers([
-    ...input.hq,
-    ...group.environments.flatMap((entry): ReadonlyArray<HeldEnvironment> => {
-      const tier =
-        entry.role === "prod"
-          ? "production"
-          : entry.role === "stage" || entry.role === "devstage"
-            ? "stage"
-            : undefined;
-      return tier === undefined || entry.project === undefined
-        ? []
-        : [{ id: entry.project.id, tier }];
-    }),
-    ...group.pending.flatMap((entry): ReadonlyArray<HeldEnvironment> =>
-      entry.kind === "stage" || entry.kind === "production"
-        ? [{ id: entry.projectId, tier: entry.kind }]
-        : [],
-    ),
-  ]);
-  return (["stage", "production"] as const).filter((tier) =>
-    environmentAddable({
-      tier,
-      recipeRead: input.recipe.read,
-      recipeTiers: input.recipe.tiers,
-      offered: offered.zerops?.[tier] ?? offered[tier],
-      gitOffered: offered.git === true,
-      held,
-    }),
-  );
 }
 
 /** The part of a group's project flow `groupFlow` reads. */
