@@ -1531,13 +1531,14 @@ export function ZeropsProjectsContent({
         if (!serviceId || activeOrganization === null) return;
         setConnectError(null);
         setEnablingCandidateKey(candidate.key);
-        // Its record in HQ first, where HQ holds none, so its hello is admitted; then the flag and
-        // the restart: the install step re-runs on boot and comes back with the current zcp, which
-        // only installs Zerops Mate when it finds ZCP_MATE_ENABLED set.
+        // Its record in HQ first, where HQ holds none, and its own key, so its hello is admitted;
+        // then the flag and the restart: the install step re-runs on boot and comes back with the
+        // current zcp, which only installs Zerops Mate when it finds ZCP_MATE_ENABLED set.
         const record = setUpMateRecord({ project: candidate.project, candidates });
         void submitZeropsWrite(operations, activeOrganization.id, {
           kind: "enable-zerops-mate",
           projectId: candidate.project.id,
+          projectName: candidate.project.name,
           serviceId,
           ...(record === undefined ? {} : { record }),
         })

@@ -1892,10 +1892,8 @@ export class ZeropsApiClient {
    * `zeropsYaml` are an ordinary import's (the platform's import schema); the platform's own
    * first-class-recipe endpoint takes the container alone.
    *
-   * The key is minted here, by the person, with its own project and nothing
-   * more: `BASIC_USER` there, no grant on any other project (ADR 0003), no
-   * delegation. It goes into the container
-   * as the secret `ZCP_API_KEY`, and the platform is asked for no token of
+   * The key is the Mate's own, established here by the person (`#establishMateKey`). It goes into
+   * the container as the secret `ZCP_API_KEY`, and the platform is asked for no token of
    * its own (`createIntegrationToken: false`). The platform's would be
    * `ADMIN`, a project variable every service can read, and a one-time
    * delegation — three things a later step had to take back, from a browser
@@ -1905,12 +1903,8 @@ export class ZeropsApiClient {
    * the first one started:
    * - a project that has its container already makes no write at all, and one holding several zcp
    *   services is refused, naming them: a project holds one Mate (audit D2);
-   * - a key an earlier press minted, its container never imported, is reused
-   *   — set to its own project alone where it is still `ADMIN` (`planMateKey`),
-   *   and its value regenerated, because the value is shown once and nothing
-   *   kept it — never a second key beside it;
-   * - a key this call minted whose authorization `onKeyEstablished` refused is deleted: no
-   *   container will hold it.
+   * - a key an earlier press minted, its container never imported, is reused, never a second key
+   *   beside it — only while no zcp is being created that may hold it already.
    *
    * The value lives in this call alone: it is in the import's body and in no
    * answer, no log and no error.
@@ -1949,9 +1943,6 @@ export class ZeropsApiClient {
       if (container.kind === "several") throw new Error(severalMatesLine(container.names));
       if (container.kind === "one") return { serviceName: container.service.name, imported: false };
 
-      const grants: ReadonlyArray<ZeropsProjectGrant> = [
-        { projectId: input.projectId, roleCode: MATE_SELF_PROJECT_ROLE },
-      ];
       const tokens = await this.listIntegrationTokens(input.clientId, signal);
       const earlier = newestMateKey(tokens, input.projectId);
       this.#assertGeneration(generation);
@@ -1972,85 +1963,13 @@ export class ZeropsApiClient {
         }
         this.#assertGeneration(generation);
       }
-      let apiKey: string;
-      /** The key this call minted, never an earlier press's. */
-      let minted: string | undefined;
-      if (earlier === undefined) {
-        const key = await this.mintIntegrationToken(
-          {
-            clientId: input.clientId,
-            name: mateKeyName(input.projectName),
-            roleCode: "NO_ACCESS",
-            projects: grants,
-          },
-          signal,
-          beforeWrite,
-        );
-        apiKey = key.token;
-        minted = key.id;
-      } else {
-        // The write replaces the key's whole project list: it is planned from the key as read
-        // under its lock, every token writer's, and lowers its org role to none. Found by its name,
-        // a key that reaches another project by then is not the Mate's: it is neither narrowed nor
-        // handed to the container.
-        await this.#holdToken(earlier.id, async () => {
-          const current = (await this.listIntegrationTokens(input.clientId, signal)).find(
-            (token) => token.id === earlier.id,
-          );
-          if (current === undefined) return;
-          this.#assertGeneration(generation);
-          const plan = planMateKey({
-            token: current,
-            selfProjectId: input.projectId,
-            foundBy: "name",
-          });
-          if (plan.kind === "not-its-key") {
-            throw new Error(
-              `The key ${current.name} reaches another project now, so it is not reused. Try again.`,
-            );
-          }
-          if (plan.kind === "held") return;
-          await this.setIntegrationTokenProjects(
-            {
-              clientId: input.clientId,
-              tokenId: current.id,
-              name: current.name,
-              projects: plan.projects,
-            },
-            signal,
-            beforeWrite,
-          );
-        });
-        this.#assertGeneration(generation);
-        apiKey = await this.regenerateIntegrationToken(
-          { clientId: input.clientId, tokenId: earlier.id },
-          signal,
-          beforeWrite,
-        );
-      }
-
-      this.#assertGeneration(generation);
-      if (onKeyEstablished !== undefined) {
-        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
-        this.#assertGeneration(generation);
-        const keyHash = Array.from(new Uint8Array(digest), (byte) =>
-          byte.toString(16).padStart(2, "0"),
-        ).join("");
-        try {
-          await onKeyEstablished({ projectId: input.projectId, keyHash });
-        } catch (cause) {
-          // A key HQ did not authorize is a key no container holds: the one this call minted is
-          // taken back, by the account that minted it; an earlier press's stays for the next to reuse.
-          if (minted !== undefined && this.#generation === generation)
-            await this.deleteIntegrationToken(
-              { clientId: input.clientId, tokenId: minted },
-              signal,
-              beforeWrite,
-            ).catch(() => undefined);
-          throw cause;
-        }
-        this.#assertGeneration(generation);
-      }
+      const { apiKey } = await this.#establishMateKey(
+        { ...input, earlier },
+        generation,
+        signal,
+        beforeWrite,
+        onKeyEstablished,
+      );
 
       const serviceName = nextZcpServiceName(services.map((service) => service.name));
       this.#assertGeneration(generation);
@@ -2096,6 +2015,118 @@ export class ZeropsApiClient {
         throw new ZeropsWriteNotSent(cause);
       throw cause;
     }
+  }
+
+  /**
+   * The Mate's own key, established by the person as a birth and an Enable do: minted with its own
+   * project and nothing more — `BASIC_USER` there, no grant on any other project (ADR 0003), no
+   * delegation — named `zcp-<project>` as the platform names its own. An earlier press's key
+   * (`earlier`, `newestMateKey`) is reused instead, never a second key beside it: set to its own
+   * project alone where it is still `ADMIN` (`planMateKey`) and its value regenerated, because the
+   * value is shown once and nothing kept it. A key this call minted whose authorization
+   * `onKeyEstablished` refused is deleted: no container will hold it.
+   *
+   * The value leaves only in the answer; `minted` names the key this call made, never an earlier
+   * press's.
+   */
+  async #establishMateKey(
+    input: {
+      readonly clientId: string;
+      readonly projectId: string;
+      readonly projectName: string;
+      readonly earlier: ZeropsIntegrationToken | undefined;
+    },
+    generation: number,
+    signal: AbortSignal | undefined,
+    beforeWrite: (() => Promise<void>) | undefined,
+    onKeyEstablished:
+      | ((context: { readonly projectId: string; readonly keyHash: string }) => Promise<void>)
+      | undefined,
+  ): Promise<{ readonly apiKey: string; readonly minted: string | undefined }> {
+    const grants: ReadonlyArray<ZeropsProjectGrant> = [
+      { projectId: input.projectId, roleCode: MATE_SELF_PROJECT_ROLE },
+    ];
+    const earlier = input.earlier;
+    let apiKey: string;
+    /** The key this call minted, never an earlier press's. */
+    let minted: string | undefined;
+    if (earlier === undefined) {
+      const key = await this.mintIntegrationToken(
+        {
+          clientId: input.clientId,
+          name: mateKeyName(input.projectName),
+          roleCode: "NO_ACCESS",
+          projects: grants,
+        },
+        signal,
+        beforeWrite,
+      );
+      apiKey = key.token;
+      minted = key.id;
+    } else {
+      // The write replaces the key's whole project list: it is planned from the key as read
+      // under its lock, every token writer's, and lowers its org role to none. Found by its name,
+      // a key that reaches another project by then is not the Mate's: it is neither narrowed nor
+      // handed to the container.
+      await this.#holdToken(earlier.id, async () => {
+        const current = (await this.listIntegrationTokens(input.clientId, signal)).find(
+          (token) => token.id === earlier.id,
+        );
+        if (current === undefined) return;
+        this.#assertGeneration(generation);
+        const plan = planMateKey({
+          token: current,
+          selfProjectId: input.projectId,
+          foundBy: "name",
+        });
+        if (plan.kind === "not-its-key") {
+          throw new Error(
+            `The key ${current.name} reaches another project now, so it is not reused. Try again.`,
+          );
+        }
+        if (plan.kind === "held") return;
+        await this.setIntegrationTokenProjects(
+          {
+            clientId: input.clientId,
+            tokenId: current.id,
+            name: current.name,
+            projects: plan.projects,
+          },
+          signal,
+          beforeWrite,
+        );
+      });
+      this.#assertGeneration(generation);
+      apiKey = await this.regenerateIntegrationToken(
+        { clientId: input.clientId, tokenId: earlier.id },
+        signal,
+        beforeWrite,
+      );
+    }
+
+    this.#assertGeneration(generation);
+    if (onKeyEstablished !== undefined) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
+      this.#assertGeneration(generation);
+      const keyHash = Array.from(new Uint8Array(digest), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+      try {
+        await onKeyEstablished({ projectId: input.projectId, keyHash });
+      } catch (cause) {
+        // A key HQ did not authorize is a key no container holds: the one this call minted is
+        // taken back, by the account that minted it; an earlier press's stays for the next to reuse.
+        if (minted !== undefined && this.#generation === generation)
+          await this.deleteIntegrationToken(
+            { clientId: input.clientId, tokenId: minted },
+            signal,
+            beforeWrite,
+          ).catch(() => undefined);
+        throw cause;
+      }
+      this.#assertGeneration(generation);
+    }
+    return { apiKey, minted };
   }
 
   /**
@@ -3002,6 +3033,80 @@ export class ZeropsApiClient {
   }
 
   /**
+   * Gives a container made without Mate the Mate's own key, as a birth gives its zcp
+   * (`#establishMateKey`): the person establishes the key, and it is written as the secret
+   * `ZCP_API_KEY` of the container's zcp service, over the one there or beside the project's
+   * variable of that name — a service's own variable outranks its project's (zerops-docs
+   * `features/env-variables`, Variable Precedence). The key the platform made with the container
+   * is never reused nor read: it is `sudo`, which HQ's Mate door never admits, and a plain
+   * project variable on older containers. Its restart, the boot that reads the key, is the
+   * caller's. No observe authorization is asked for: HQ grants one only to a Mate placed in an
+   * application, and an Enabled Mate is placed in none (`authorize-observe` asks once it is).
+   *
+   * A key this call minted that no variable came to hold is deleted. The value lives in this call
+   * alone: in the variable's body and in no answer, no log and no error.
+   */
+  async installMateKey(
+    input: {
+      readonly clientId: string;
+      readonly projectId: string;
+      /** The project's name: the key is `zcp-<name>`, as the platform names its own. */
+      readonly projectName: string;
+      readonly serviceId: string;
+    },
+    beforeWrite?: () => Promise<void>,
+  ): Promise<void> {
+    const generation = this.#generation;
+    let written = false;
+    try {
+      const earlier = newestMateKey(
+        await this.listIntegrationTokens(input.clientId),
+        input.projectId,
+      );
+      this.#assertGeneration(generation);
+      const { apiKey, minted } = await this.#establishMateKey(
+        { ...input, earlier },
+        generation,
+        undefined,
+        beforeWrite,
+        undefined,
+      );
+      const write = { key: ZCP_API_KEY, content: apiKey, sensitive: true };
+      try {
+        const current = (await this.#serviceEnv(input.serviceId)).find(
+          (entry) => entry.key === ZCP_API_KEY,
+        );
+        this.#assertGeneration(generation);
+        written = true;
+        await (current === undefined
+          ? this.addServiceVariable(input.serviceId, write, beforeWrite)
+          : this.updateServiceVariable(current.id, write, beforeWrite));
+      } catch (cause) {
+        // A key no variable holds is taken back, by the account that minted it.
+        if (
+          minted !== undefined &&
+          this.#generation === generation &&
+          !(cause instanceof ZeropsApiError && cause.kind === "uncertain")
+        )
+          await this.deleteIntegrationToken(
+            { clientId: input.clientId, tokenId: minted },
+            undefined,
+            beforeWrite,
+          ).catch(() => undefined);
+        throw cause;
+      }
+    } catch (cause) {
+      if (
+        !written &&
+        !(cause instanceof ZeropsWriteNotSent) &&
+        !(cause instanceof ZeropsApiError && cause.kind === "uncertain")
+      )
+        throw new ZeropsWriteNotSent(cause);
+      throw cause;
+    }
+  }
+
+  /**
    * Writes the Zerops Mate flag on for a container that is not serving it. Its restart is the
    * caller's next write: a service env change reaches a container's process environment only at
    * boot, which is the same boot `zcp init` reads it on.
@@ -3025,27 +3130,6 @@ export class ZeropsApiClient {
    * one read-back; a miss there gets exactly one more create attempt, never
    * an unbounded retry loop.
    */
-  /**
-   * How the container's own Zerops key (`ZCP_API_KEY`) is kept, as the person reads it: on its zcp
-   * service, else on its project, where zcp reads it. HQ admits a Mate only by a key it cannot read
-   * in clear (`key_not_sensitive`), and the platform keeps the key of a container it made as a plain
-   * project variable. Only the kind leaves this call, never the value.
-   */
-  async mateKeyOf(projectId: string, serviceId: string): Promise<"secret" | "plain" | "absent"> {
-    const service = (await this.#serviceEnv(serviceId)).find((entry) => entry.key === ZCP_API_KEY);
-    const project =
-      service === undefined
-        ? (
-            await this.#request<{ readonly items?: ReadonlyArray<ZeropsServiceEnvVar> }>(
-              `/project/${projectId}/env`,
-            )
-          ).items?.find((entry) => entry.key === ZCP_API_KEY)
-        : undefined;
-    const key = service ?? project;
-    if (key === undefined) return "absent";
-    return key.sensitive === true || key.content === "REDACTED" ? "secret" : "plain";
-  }
-
   async writeMateFlag(serviceId: string, beforeWrite?: () => Promise<void>): Promise<void> {
     const generation = this.#generation;
     const current = (await this.#serviceEnv(serviceId)).find(

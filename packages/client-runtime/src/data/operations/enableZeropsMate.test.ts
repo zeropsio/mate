@@ -12,6 +12,7 @@ const ENABLE = {
   kind: "enable-zerops-mate",
   orgId: ORG,
   projectId: "p1",
+  projectName: "app",
   serviceId: "s1",
 } as const;
 
@@ -50,8 +51,8 @@ function operationsOf(
 ) {
   const calls: string[] = [];
   const submit = enableZeropsMateExecutor({
-    mateKeyOf: () => Promise.resolve("secret"),
     register: () => Promise.resolve(),
+    installMateKey: () => Promise.resolve(),
     writeMateFlag: (serviceId) => {
       calls.push(`flag ${serviceId}`);
       return answers.flag?.() ?? Promise.resolve();

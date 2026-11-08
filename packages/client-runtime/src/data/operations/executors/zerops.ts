@@ -86,7 +86,7 @@ type ZeropsOperationsClient = Pick<
   | "deleteIntegrationToken"
   | "enableSubdomainAccess"
   | "writeMateFlag"
-  | "mateKeyOf"
+  | "installMateKey"
   | "startProject"
   | "fetchProject"
   | "writeProject"
@@ -241,7 +241,6 @@ export function makeZeropsExecutor(input: {
       startProject: (projectId) => client.startProject(projectId),
     });
     const enableMate = enableZeropsMateExecutor({
-      mateKeyOf: (projectId, serviceId) => client.mateKeyOf(projectId, serviceId),
       register: async ({ orgId, projectId, serviceId, record }) => {
         const hq = input.hqApiOf(orgId);
         if (hq === null || record === undefined)
@@ -258,6 +257,8 @@ export function makeZeropsExecutor(input: {
           throw cause;
         }
       },
+      installMateKey: ({ orgId, projectId, projectName, serviceId }) =>
+        client.installMateKey({ clientId: orgId, projectId, projectName, serviceId }),
       writeMateFlag: (serviceId) => client.writeMateFlag(serviceId),
       variablesWritten: ({ orgId, serviceId }) =>
         input.revalidate(orgId, { family: "mateVariables", ownerId: serviceId }),
@@ -488,7 +489,7 @@ export function makeZeropsExecutor(input: {
         deleteProject: (id, signal) => source.deleteProject(id, signal, check),
         enableSubdomainAccess: (id) => source.enableSubdomainAccess(id, check),
         writeMateFlag: (id) => source.writeMateFlag(id, check),
-        mateKeyOf: (projectId, serviceId) => source.mateKeyOf(projectId, serviceId),
+        installMateKey: (key) => source.installMateKey(key, check),
         startProject: (id) => source.startProject(id, check),
         writeProject: (project, record) => source.writeProject(project, record, check),
         createProject: (input, signal) => source.createProject(input, signal, check),
