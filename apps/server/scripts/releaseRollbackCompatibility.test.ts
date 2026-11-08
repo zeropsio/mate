@@ -261,6 +261,7 @@ describe("a release may update automatically only inside its proved rollback ran
     Array.from(
       [
         "apps/server/src/git/GitManager.ts",
+        "apps/server/src/ws.ts",
         "apps/server/src/textGeneration/CodexTextGeneration.ts",
         "apps/server/src/engine/store/EngineStore.test.ts",
         "apps/hq/src/main.ts",
@@ -292,7 +293,6 @@ describe("a release may update automatically only inside its proved rollback ran
         "apps/server/src/zerops/ZeropsGitCredentialFile.ts",
         "apps/server/src/environment/ServerEnvironment.ts",
         "apps/server/src/cli/config.ts",
-        "apps/server/src/ws.ts",
         "apps/server/src/server.ts",
         "apps/server/src/serverRuntimeStartup.ts",
         "apps/server/src/spi/ProviderUpdateSafety.ts",
