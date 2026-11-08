@@ -1,6 +1,6 @@
 ---
 name: test-t3-app
-description: Launch, retain, and test the T3 Code web app in isolated development environments, including first-try browser authentication with one-time pairing URLs, pairing-token recovery, worktree-safe state directories, cross-turn dev server lifecycle, and direct SQLite inspection or fixture seeding. Use when an agent needs to run T3 locally, iteratively test UI behavior with a human, recover from an expired or consumed pairing token, isolate dev state, or prepare test data in state.sqlite.
+description: Launch, retain, and test the Mate web app in isolated development environments, including the Zerops sign-in door on the dev origin, worktree-safe state directories, cross-turn dev server lifecycle, and direct SQLite inspection or fixture seeding. Use when an agent needs to run Mate locally, iteratively test UI behavior with a human, sign a controlled browser in, isolate dev state, or prepare test data in state.sqlite.
 ---
 
 # Test T3 App
@@ -14,7 +14,7 @@ Use this skill for the web client. For iOS Simulator, Android Emulator, or physi
    - Use the repository's ignored `.t3` directory for reusable worktree-local state.
    - Use `mktemp -d /tmp/t3code-test.XXXXXX` for disposable state and retain the printed absolute path.
 3. Start the full web stack with `vp run dev`. In a linked worktree it defaults to that worktree's gitignored `.t3`; pass `--home-dir <base-dir>` only when the test needs a different isolated directory.
-4. Keep the terminal session alive and read the selected server port, web port, base directory, and pairing URL from its output.
+4. Keep the terminal session alive and read the selected server port, web port and base directory from its output.
 
 Treat a base directory as disposable only when it was created or deliberately selected for the current test. Never delete or directly seed the shared `~/.t3` directory. Prefer starting with a new temporary base directory over clearing state of uncertain ownership.
 
@@ -24,13 +24,11 @@ Ports are derived from the worktree path but can shift when occupied. Always rea
 
 Shared browser dev is single-origin: Vite proxies the backend paths, so never set `VITE_HTTP_URL` or `VITE_WS_URL` for `dev`/`dev:web`.
 
-The dev runner disables browser auto-open by default. Do not pass `--browser` during automated testing: an automatically opened page can consume the one-time bootstrap token before the controlled browser uses it.
+The dev runner disables browser auto-open by default. Do not pass `--browser` during automated testing; drive the controlled browser instead.
 
 ### Verify a shared environment before human handoff
 
-When another person will use the printed pairing URL, first open the shared origin without the pairing path or fragment in the controlled browser and confirm the T3 Code app loads. This browser navigation is required even when curl succeeds because browsers block some otherwise reachable ports before making a network request.
-
-Do not open the other person's complete pairing URL during this reachability check; doing so consumes its one-time token. If the agent also needs an authenticated browser, create and consume a separate pairing token, then leave a fresh token for the other person.
+When another person will use the environment, open the printed web origin in the controlled browser and confirm the app loads. This browser navigation is required even when curl succeeds because browsers block some otherwise reachable ports before making a network request. Hand over the bare origin; the other person signs in with their own Zerops account.
 
 ## Preserve the environment while iterating
 
@@ -39,24 +37,19 @@ Treat the overall testing or implementation loop—not an assistant turn or one 
 - Keep the dev process, base directory, selected ports, authenticated browser tab, registered projects, and seeded fixtures alive while the user may inspect the result or request follow-up changes.
 - Do not stop the server merely because one verification pass completed or because you are yielding a response to the user.
 - Before starting another environment, check whether the existing process and browser tab still serve the task. Reuse them when healthy instead of discarding useful state.
-- On a later turn, verify that the existing process is alive and reuse its printed ports and base directory. If it exited, restart with the same base directory; create a new pairing token only when the browser session is no longer valid.
-- Tell the user when a test environment remains available, including its non-secret web URL when useful. Include a pairing token only when the user still needs to pair (see below).
+- On a later turn, verify that the existing process is alive and reuse its printed ports and base directory. If it exited, restart with the same base directory; sign the browser in again only when its session is no longer valid.
+- Tell the user when a test environment remains available, including its web origin when useful.
 
-## Authenticate the browser on the first navigation
+## Sign the browser in through the Zerops door
 
-1. Wait for the server log that says authentication is required and includes a URL ending in `/pair#token=...`.
-2. Use the controlled in-app browser or browser-automation surface available to the agent. Do not use a system-browser launch command during automated testing.
-3. Open that complete URL exactly once as the controlled browser's first navigation. Preserve the fragment and token verbatim.
-4. Wait for the pairing exchange and redirect to finish before navigating elsewhere.
-5. Continue in the same browser context so its stored bearer session remains available.
+The dev server prints no credential: it names its origin and HQ. A browser signs in with a Zerops account, the same door as production.
 
-Keep pairing URLs out of screenshots, committed files, and durable logs. When the user asked for a shared environment, the deliverable IS the full pairing URL — paste it in your reply, token and all; a bare origin is useless to them. A pairing token is short-lived and single-use; opening the URL in another browser or opening it twice can consume it, so never open a URL you handed to the user.
+1. Use the controlled in-app browser or browser-automation surface available to the agent, in a profile already signed in to `app.zerops.io`. Do not use a system-browser launch command during automated testing.
+2. Open `<web origin>/zerops` and choose "Continue with your Zerops account". The tab goes to Zerops's consent page at `app.zerops.io/authorize-app`, which names the dev origin as the target; continue there.
+3. Zerops mints a personal access token for the dev origin and returns to `<web origin>/zerops/authorized#token=<token>&state=<nonce>`. The app takes the fragment out of the URL and history on mount and adopts the token.
+4. Continue in the same browser context so its stored session remains available.
 
-## Recover a consumed or expired pairing token
-
-Run `node apps/server/src/bin.ts pair` from the repository root. It discovers the running dev server (worktree `.t3` first, same precedence as the dev runner) and prints a fresh `Pair URL` against the server's current web origin. Pass `--base-dir <base-dir>` only when the server was started with `--home-dir`, using the identical path.
-
-Tokens from `pair` carry standard client scopes. The startup pairing URL carries admin scopes; if the user needs Settings → Connections management (`access:write`), restart the server and hand over the new startup URL instead.
+The callback URL carries a live Zerops credential until the app removes it. Never print, log, screenshot or save the page URL, a navigation or request event, a HAR or a trace around the door: print `origin + pathname` only (strip `[?#].*`). A leaked one is revoked in the account's Settings › Token management (`Zerops Code · <device> · <origin>`).
 
 ## Inspect or seed SQLite state
 
@@ -65,7 +58,7 @@ Read [references/sqlite-fixtures.md](references/sqlite-fixtures.md) before chang
 - Use `node apps/server/scripts/t3-sqlite-state.ts query` for schema discovery and read-only checks.
 - Stop the dev server before using `node apps/server/scripts/t3-sqlite-state.ts exec`, then restart it with the same base directory.
 - Seed projection tables only for disposable UI fixtures. Use application commands and APIs when testing business behavior or projection correctness.
-- Use the auth CLI, not direct `auth_*` table edits, for pairing and sessions.
+- Never edit `auth_*` tables directly; sign in through the door instead.
 
 The helper refuses to write to the shared `~/.t3` directory by default and creates a database backup before each mutation.
 
@@ -83,8 +76,6 @@ If completion is uncertain, keep the environment alive and mention that it is re
 
 ## Troubleshoot predictably
 
-- If the browser shows an unauthenticated pairing screen, issue a new token instead of retrying the consumed URL.
-- If the pairing URL is no longer visible, create a replacement token with both `--dev-url` and `--base-url`.
-- If the replacement token is rejected, verify that the CLI and server use the identical absolute base directory and web URL.
+- If the browser lands on "Sign in to Mate" again, pass the door again; a Zerops password prompt means the profile's `app.zerops.io` session expired.
 - If the UI shows unexpected data, verify that every command uses the identical explicit base directory before editing anything.
 - If ports move because another instance is running, trust the current dev-runner output rather than assuming ports `13773` and `5733`.

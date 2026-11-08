@@ -26,9 +26,9 @@ Pre-installed and wired into login shells (`~/.bashrc`/`~/.profile`): Node 24 (v
   (`node --watch`, port 13773) together, auto-wiring `VITE_HTTP_URL`/`VITE_WS_URL`. Use
   `npm run dev:server` / `npm run dev:web` for one side. If base ports are taken it auto-offsets to
   the next free pair, so read the actual ports from stdout. Avoid production `build`/`start` in dev.
-- Auth/pairing: the server is unauthenticated by default and prints a pairing URL to stdout on startup
-  (e.g. `http://localhost:5733/pair#token=XXXX`). Open that URL in the browser to pair before the web
-  UI can talk to the server. Server state (SQLite, auth, projects) lives under `~/.t3`
+- Sign-in: the server prints its origin and no credential. Open `<origin>/zerops` and continue with a
+  Zerops account; the callback `…/zerops/authorized#token=…` carries a live personal token until the
+  app strips it, so never print or log the page URL around it. Server state (SQLite, auth, projects) lives under `~/.t3`
   (`T3CODE_HOME`); multiple `npm run dev` instances bind different ports but share that same DB.
 - Agent providers are external CLIs (`codex`, `claude`, `cursor-agent`, `opencode`) probed on `PATH`.
   Without one installed the UI loads but no agent can run. Claude Code
