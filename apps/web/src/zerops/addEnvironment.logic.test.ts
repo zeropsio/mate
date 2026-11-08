@@ -8,8 +8,7 @@ import {
 } from "./addEnvironment.logic";
 
 // What the one question after a first merge is told: a button only for a tier the one rule
-// (`environmentAddable`) offers — HQ's offer, the recipe, nothing of it here yet — and a production
-// in any state is a production.
+// (`environmentAddable`) offers — HQ's offer, the recipe, nothing of it here yet, in any state.
 describe("questionFactsOf", () => {
   const base = {
     offered: { stage: true, production: true },
@@ -21,37 +20,37 @@ describe("questionFactsOf", () => {
     {
       case: "nothing held, both held by the recipe, HQ offers both",
       input: base,
-      want: { addable: { stage: true, production: true }, productionHeld: false },
+      want: { addable: { stage: true, production: true } },
     },
     {
       case: "HQ offers neither",
       input: { ...base, offered: { stage: false, production: false } },
-      want: { addable: { stage: false, production: false }, productionHeld: false },
+      want: { addable: { stage: false, production: false } },
     },
     {
       case: "HQ offers only the stage",
       input: { ...base, offered: { stage: true, production: false } },
-      want: { addable: { stage: true, production: false }, productionHeld: false },
+      want: { addable: { stage: true, production: false } },
     },
     {
       case: "the recipe holds only the stage",
       input: { ...base, recipeTiers: ["stage"] as const },
-      want: { addable: { stage: true, production: false }, productionHeld: false },
+      want: { addable: { stage: true, production: false } },
     },
     {
       case: "a production in any state: held, half-made or being made",
       input: { ...base, held: [{ id: "p", tier: "production" as const }] },
-      want: { addable: { stage: true, production: false }, productionHeld: true },
+      want: { addable: { stage: true, production: false } },
     },
     {
       case: "a stage is held (a Mate that is the stage too)",
       input: { ...base, held: [{ id: "s", tier: "stage" as const }] },
-      want: { addable: { stage: false, production: true }, productionHeld: false },
+      want: { addable: { stage: false, production: true } },
     },
     {
       case: "the recipe is not read: nothing is offered",
       input: { ...base, recipeRead: false, recipeTiers: [] as const },
-      want: { addable: { stage: false, production: false }, productionHeld: false },
+      want: { addable: { stage: false, production: false } },
     },
   ])("is $want.addable for $case", ({ input, want }) => {
     expect(questionFactsOf(input)).toEqual(want);

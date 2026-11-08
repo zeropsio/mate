@@ -310,13 +310,9 @@ export interface ChangeReviewInput {
   /** Where `main` goes next: a production a release puts it in front of, a stage that follows it. */
   readonly downstream: { readonly production: boolean; readonly stage: boolean };
   /**
-   * Whether the application holds a production in any state — declared, being made, failed — which
-   * is as good as present: the question after the first merge is never asked of it.
-   */
-  readonly productionHeld?: boolean | undefined;
-  /**
    * The environments this person may add now: those the recipe on `main` holds, the application
-   * lacks, and HQ offers the person (`add_stage` / `add_production`). Absent, none: nothing is offered on a guess.
+   * lacks in any state (a production being made or failed is held), and HQ offers the person
+   * (`add_stage` / `add_production`). Absent, none: nothing is offered on a guess.
    */
   readonly addable?: { readonly stage: boolean; readonly production: boolean } | undefined;
   /**
@@ -798,11 +794,11 @@ function draftAgain(
 /**
  * The question after a first code merge: only in the review of the merge this person just finished
  * (`press` done — never a reopened one), only for the application's first merged code change as HQ
- * says it, only where no production is held in any state, and only with a button to answer it.
+ * says it, and only with a button to answer it: one for each tier the application lacks and the
+ * person may add, so a production already there or being made leaves a missing stage offered.
  */
 function whereShouldItRun(input: ChangeReviewInput): ReviewQuestion | undefined {
   if (input.press?.kind !== "done" || input.pull.firstCodeMerge !== true) return undefined;
-  if (input.downstream.production || input.productionHeld === true) return undefined;
   const options = (
     [
       [

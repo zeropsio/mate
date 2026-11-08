@@ -153,7 +153,6 @@ vi.mock("~/zerops/useAddEnvironment", () => ({
   useAddEnvironment: () => () => undefined,
   useEnvironmentQuestionFacts: () => ({
     addable: { stage: false, production: false },
-    productionHeld: false,
   }),
 }));
 vi.mock("~/zerops/fixRequest", () => ({
@@ -1489,7 +1488,6 @@ describe("the one question after the first merge", () => {
   const asking: Partial<ChangeReviewViewProps> = {
     environments: [],
     press: { kind: "done" },
-    productionHeld: false,
     addable: { stage: true, production: true },
   };
 
@@ -1511,7 +1509,6 @@ describe("the one question after the first merge", () => {
   it.each([
     ["it was not the first code merge", merged({ firstCodeMerge: false }), asking],
     ["the review is only reopened", FIRST, { ...asking, press: { kind: "idle" } as const }],
-    ["a production is held", FIRST, { ...asking, productionHeld: true }],
     [
       "the person may add nothing",
       FIRST,

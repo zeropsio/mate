@@ -459,7 +459,6 @@ function ChangeReviewData({
   return (
     <ChangeReviewView
       environments={flow?.environmentInputs ?? NO_ENVIRONMENTS}
-      productionHeld={question.productionHeld}
       addable={question.addable}
       onAddEnvironment={(tier) => {
         onClose();
@@ -635,8 +634,6 @@ export interface ChangeReviewViewProps {
   readonly environments: ReadonlyArray<{ readonly tier: GroupEnvironmentTier }>;
   /** How many changes wait for production, as HQ's release offer counts them; `undefined` until it has. */
   readonly waitingForProduction: number | undefined;
-  /** Whether the application holds a production in any state (`ReviewQuestion`). */
-  readonly productionHeld?: boolean | undefined;
   /** The environments the one question after a first merge may offer. */
   readonly addable?: ChangeReviewInput["addable"];
   /** Opens the form that adds the stage or the production the question offered. */
@@ -754,7 +751,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         ? undefined
         : { files: read.conflict, by: undefined },
     downstream,
-    productionHeld: props.productionHeld,
     addable: props.addable,
     waiting: {
       count: props.waitingForProduction,
