@@ -32,6 +32,8 @@ import {
   type HqFixtureWire,
 } from "../__fixtures__/hqWire.ts";
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";
+import { discussionDemand } from "../families/hqDiscussion.ts";
+import { changeDiscussion } from "../projections/changeDiscussion.ts";
 import { hqAppGitTargets } from "../projections/hqNavigation.ts";
 import { hqAppDetail } from "../projections/hqAppDetail.ts";
 import { attention } from "../__fixtures__/mateAttention.ts";
@@ -353,41 +355,54 @@ describe("hqNavigationLink", () => {
       }),
   );
 
+  // witness: packages/client-runtime/src/data/adapters/hq.ts | cursors.delete(hqScopeKey(registered.wire)); → ;
   it.effect.each([
     { when: "after the link let it go", between: settle },
     { when: "before the link looked", between: Effect.void },
   ])(
-    "An application detail held again $when asks HQ for its records whole and reads them again",
+    "A change's conversation held again $when asks HQ for its records whole and reads them again",
     ({ between }) =>
       Effect.gen(function* () {
         const store = makeAccountStore(AtomRegistry.make());
         const fixture = hqFixtureWire();
         const { fiber, link } = yield* live(store, fixture);
-        const scope = { kind: "app-detail", appId: "shop" } as const;
+        const change = { appId: "shop", repo: "web", number: 7 };
+        const scope = { kind: "discussion", ...change } as const;
+        const said = {
+          comments: [
+            {
+              id: "c1",
+              authorUserId: "u1",
+              authorMateProjectId: null,
+              body: "Ship it",
+              createdAt: "2026-10-06T10:00:00.000Z",
+            },
+          ],
+        };
         const subscribes = () =>
           fixture.sent.flatMap(({ request }) =>
             request.type === "subscribe"
-              ? request.scopes.filter((entry) => entry.scope.kind === "app-detail")
+              ? request.scopes.filter((entry) => entry.scope.kind === "discussion")
               : [],
           );
-        const first = link.demandDetail({ family: "hqAppDetail", ownerId: "shop" });
+        const first = link.demandDetail(discussionDemand(change));
         yield* settle;
         yield* fixture.send({
           type: "scope-reset",
           scope,
-          incarnation: "detail",
+          incarnation: "discussion",
           revision: 2,
-          values: [{ key: "preflight:web", value: gitPreflight }],
+          values: [{ key: "web:7", value: said }],
           removals: [],
         });
-        yield* fixture.send({ type: "scope-ready", scope, incarnation: "detail", revision: 2 });
+        yield* fixture.send({ type: "scope-ready", scope, incarnation: "discussion", revision: 2 });
         yield* settle;
         const read = () =>
-          hqAppDetail.derive(readsOfState(store.state()), { orgId: ORG, appId: "shop" });
+          changeDiscussion.derive(readsOfState(store.state()), { orgId: ORG, link: change });
 
         first();
         yield* between;
-        const again = link.demandDetail({ family: "hqAppDetail", ownerId: "shop" });
+        const again = link.demandDetail(discussionDemand(change));
         yield* settle;
 
         expect(subscribes()).toHaveLength(2);
@@ -395,15 +410,14 @@ describe("hqNavigationLink", () => {
         yield* fixture.send({
           type: "scope-reset",
           scope,
-          incarnation: "detail",
+          incarnation: "discussion",
           revision: 2,
-          values: [{ key: "preflight:web", value: gitPreflight }],
+          values: [{ key: "web:7", value: said }],
           removals: [],
         });
-        yield* fixture.send({ type: "scope-ready", scope, incarnation: "detail", revision: 2 });
+        yield* fixture.send({ type: "scope-ready", scope, incarnation: "discussion", revision: 2 });
         yield* settle;
-        expect(read().preflight).toEqual({ web: gitPreflight });
-        expect(read().read).toBe("read");
+        expect(read()).toEqual({ kind: "read", comments: said.comments });
         again();
         link.stop();
         yield* Fiber.interrupt(fiber);
