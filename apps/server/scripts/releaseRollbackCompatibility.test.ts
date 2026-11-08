@@ -10,6 +10,7 @@ import {
   type RollbackEvidence,
   RUNTIME_DECLARATION,
   RUNTIME_DEPENDENCIES,
+  STATE_LAYOUT_ROOT,
   UPDATE_PROTOCOL,
   contractFingerprints,
   rollbackBlocker,
@@ -113,6 +114,11 @@ const baseline: Readonly<Record<string, string>> = (() => {
   files["apps/server/src/serverSettings.ts"] +=
     'import { ServerSettings } from "@t3tools/contracts/settings";\n' +
     "export const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);\n";
+  const [layoutFile, layoutRoot] = STATE_LAYOUT_ROOT;
+  files[layoutFile] =
+    'import * as Effect from "effect/Effect";\nimport * as Path from "effect/Path";\n' +
+    `export const ${layoutRoot} = Effect.fn(function* (baseDir: string) {\n` +
+    '  const { join } = yield* Path.Path;\n  return { stateDir: join(baseDir, "userdata") };\n});\n';
   return files;
 })();
 

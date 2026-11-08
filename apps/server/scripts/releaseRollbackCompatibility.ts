@@ -1,10 +1,16 @@
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { readReleaseSource } from "@t3tools/shared/releaseSource";
 import { compareSemverVersions } from "@t3tools/shared/semver";
+import * as Cause from "effect/Cause";
+import * as Console from "effect/Console";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { parseSync } from "vite-plus";
+import { parseSync, transformWithOxc } from "vite-plus";
 import { parse as parseYaml } from "yaml";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
@@ -42,7 +48,8 @@ interface Contract {
  * What a release reads back from the state a newer one leaves when an update rolls back to it.
  * Each contract is fingerprinted from the code of both releases: the top-level statements its
  * roots reach through local names and repository imports, comments and layout aside, wherever
- * they live. Code that stores nothing is no contract: the update drain, admission, startup and the
+ * they live. Code is followed through what runs, a stored shape through its types too, so a shape
+ * that code only annotates (a record it serializes) is a root of its own. Code that stores nothing is no contract: the update drain, admission, startup and the
  * update route (their seam with zcp is the update protocol), the folds (a snapshot carries its
  * state version) and the import of the first crew store (read forward only).
  */
@@ -68,6 +75,10 @@ export const READ_BACK_CONTRACTS: ReadonlyArray<Contract> = [
       [
         "apps/server/src/provider/Layers/ProviderSessionDirectory.ts",
         ["decodeProviderDriverKind", "mergeRuntimePayload", "toRuntimeBinding"],
+      ],
+      [
+        "apps/server/src/provider/Services/ProviderSessionDirectory.ts",
+        ["ProviderRuntimeBinding", "ProviderRuntimeBindingWithMetadata"],
       ],
     ],
   },
@@ -110,15 +121,13 @@ export const READ_BACK_CONTRACTS: ReadonlyArray<Contract> = [
         "apps/server/src/zerops/crew/engine/CrewOwner.ts",
         ["StoredCrewEvent", "putTask", "appendLog", "memoryChange"],
       ],
+      ["apps/server/src/zerops/crew/CrewMemory.ts", ["CrewMemoryChange", "CrewMemoryEntry"]],
     ],
   },
   {
-    name: "the state directory and its files",
+    // Where they lie is the state directory's layout, evaluated below.
+    name: "the files in the state directory",
     roots: [
-      [
-        "apps/server/src/config.ts",
-        ["ServerDerivedPaths", "deriveServerPaths", "ensureServerDirectories"],
-      ],
       ["apps/server/src/serverSettings.ts", SHAPES],
       [
         "apps/server/src/serverSettings.ts",
@@ -135,6 +144,7 @@ export const READ_BACK_CONTRACTS: ReadonlyArray<Contract> = [
         "apps/server/src/uploadsFolder.ts",
         ["recordPath", "readRecord", "writeRecord", "uploadsFileName"],
       ],
+      ["apps/server/src/uploadsFolder.ts", ["KeptRecord"]],
       ["apps/server/src/zerops/ZeropsGitCredentialFile.ts", ["makeGitCredentialFile"]],
       ["apps/server/src/environment/ServerEnvironment.ts", ["make"]],
     ],
@@ -143,7 +153,10 @@ export const READ_BACK_CONTRACTS: ReadonlyArray<Contract> = [
     // An adapter writes its cursor inline; what it reads back is the reader below.
     name: "provider resume cursors",
     roots: [
-      ["apps/server/src/provider/Layers/ClaudeAdapter.ts", ["readClaudeResumeState"]],
+      [
+        "apps/server/src/provider/Layers/ClaudeAdapter.ts",
+        ["readClaudeResumeState", "ClaudeResumeState"],
+      ],
       [
         "apps/server/src/provider/Layers/CodexSessionRuntime.ts",
         ["CodexResumeCursorSchema", "readResumeCursorThreadId"],
@@ -167,13 +180,23 @@ export const READ_BACK_CONTRACTS: ReadonlyArray<Contract> = [
   },
 ];
 
+export const STATE_LAYOUT = "the state directory's layout";
 export const UPDATE_PROTOCOL = "the update protocol";
 export const RUNTIME_DECLARATION = "the server's runtime declaration";
 export const RUNTIME_DEPENDENCIES = "the server's runtime dependencies";
 
+/**
+ * The function a release derives every path of its state directory with. Its layout is the value
+ * it returns for one canonical production base directory, not the code or the types it takes: the
+ * configuration a server launches with is no state it leaves.
+ */
+export const STATE_LAYOUT_ROOT = ["apps/server/src/config.ts", "deriveServerPaths"] as const;
+const CANONICAL_BASE_DIR = "/canonical-base-dir";
+
 /** Every contract a release is judged by: the code contracts and the release's own files. */
 export const CONTRACT_NAMES: ReadonlyArray<string> = [
   ...READ_BACK_CONTRACTS.map((contract) => contract.name),
+  STATE_LAYOUT,
   UPDATE_PROTOCOL,
   RUNTIME_DECLARATION,
   RUNTIME_DEPENDENCIES,
@@ -299,11 +322,19 @@ interface ModuleStatement {
   /** Every name its code refers to, property names aside. */
   readonly uses: ReadonlyArray<string>;
   /**
+   * Every name only its types refer to. A stored shape is followed through them; code is followed
+   * only through what runs, as the types of the values it is handed (the configuration it
+   * launches with among them) are no state it stores.
+   */
+  readonly types: ReadonlyArray<string>;
+  /**
    * Names only its types query (`typeof x`). The type of a service's implementation is no stored
    * shape, so a query reaches only a declaration that is one, such as a schema.
    */
   readonly queries: ReadonlyArray<string>;
   readonly shape: boolean;
+  /** Where its declaration lies in the source, without an `export` keyword. */
+  readonly span: readonly [start: number, end: number];
 }
 
 interface ParsedModule {
@@ -373,27 +404,72 @@ const declaredNames = (declaration: AstNode): ReadonlyArray<string> => {
   }
 };
 
+/** `x.y` when the node names member `y` of identifier `x`, in code or in a type. */
+const qualifiedName = (node: AstNode): string | undefined => {
+  const [object, member] =
+    node.type === "MemberExpression" && node.computed !== true
+      ? [node.object, node.property]
+      : node.type === "TSQualifiedName"
+        ? [node.left, node.right]
+        : [];
+  return isNode(object) && object.type === "Identifier" && isNode(member)
+    ? `${String(object.name)}.${nameOf(member)}`
+    : undefined;
+};
+
+/** The TypeScript nodes that carry code: every other one is a type, erased when the code runs. */
+const TS_VALUE_NODES = new Set([
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSNonNullExpression",
+  "TSTypeAssertion",
+  "TSInstantiationExpression",
+  "TSEnumDeclaration",
+  "TSEnumBody",
+  "TSEnumMember",
+  "TSModuleDeclaration",
+  "TSModuleBlock",
+  "TSExportAssignment",
+  "TSImportEqualsDeclaration",
+  "TSExternalModuleReference",
+  "TSParameterProperty",
+]);
+
+type UseContext = "uses" | "types" | "queries";
+
 /**
- * The names code refers to: identifiers, except a non-computed property or member name. A name
- * only a type query (`typeof x`) refers to counts as a query.
+ * The names code refers to: identifiers, except a non-computed property or member name; a member
+ * of an identifier as `x.y`, so a namespace import reaches only the exports it reads. A name in a
+ * type counts as a type, one only a type query (`typeof x`) refers to as a query.
  */
 const usedNames = (
   node: unknown,
-  into: { readonly uses: Set<string>; readonly queries: Set<string> },
-  query = false,
+  into: Readonly<Record<UseContext, Set<string>>>,
+  context: UseContext = "uses",
 ): void => {
   if (Array.isArray(node)) {
-    for (const child of node) usedNames(child, into, query);
+    for (const child of node) usedNames(child, into, context);
     return;
   }
   if (!isNode(node)) return;
-  if (node.type === "Identifier") (query ? into.queries : into.uses).add(String(node.name));
+  const at: UseContext =
+    node.type === "TSTypeQuery"
+      ? "queries"
+      : context === "uses" && node.type.startsWith("TS") && !TS_VALUE_NODES.has(node.type)
+        ? "types"
+        : context;
+  const qualified = qualifiedName(node);
+  if (qualified !== undefined) {
+    into[at].add(qualified);
+    return;
+  }
+  if (node.type === "Identifier") into[at].add(String(node.name));
   for (const [key, child] of Object.entries(node)) {
     const propertyName =
       node.computed !== true &&
       (key === "key" || (key === "property" && node.type === "MemberExpression"));
     if (propertyName || (key === "right" && node.type === "TSQualifiedName")) continue;
-    usedNames(child, into, query || node.type === "TSTypeQuery");
+    usedNames(child, into, at);
   }
 };
 
@@ -432,6 +508,20 @@ const isShape = (declaration: AstNode, source: string): boolean => {
   }
 };
 
+/**
+ * A service's tag stands for its identity alone: what a service stores lies in its implementation,
+ * which a contract names as a root, never in the interface code asks it through. The server's
+ * configuration is one such interface: the environment it launches with is no state it leaves.
+ */
+const serviceTag = (declaration: AstNode, source: string): string | undefined => {
+  const base = declaration.superClass;
+  if (declaration.type !== "ClassDeclaration" || !isNode(base) || base.type !== "CallExpression")
+    return undefined;
+  if (!/^Context\.Service\b/u.test(source.slice(base.start, base.end))) return undefined;
+  const [key] = base.arguments as ReadonlyArray<AstNode>;
+  return `service ${nameOf(declaration.id)} ${key === undefined ? "" : source.slice(key.start, key.end)}`;
+};
+
 const parseModule = (path: string, source: string): ParsedModule | undefined => {
   const parsed = parseSync(path, source);
   if (parsed.errors.length > 0) return undefined;
@@ -440,14 +530,17 @@ const parseModule = (path: string, source: string): ParsedModule | undefined => 
   const exports = new Map<string, Binding | { readonly local: string }>();
   const stars: Array<string> = [];
   const add = (statement: AstNode, declaration: AstNode, names: ReadonlyArray<string>) => {
-    const used = { uses: new Set<string>(), queries: new Set<string>() };
-    usedNames(declaration, used);
+    const used = { uses: new Set<string>(), types: new Set<string>(), queries: new Set<string>() };
+    const tag = serviceTag(declaration, source);
+    if (tag === undefined) usedNames(declaration, used);
     statements.push({
-      text: statementText(source, parsed.comments, statement),
+      text: tag ?? statementText(source, parsed.comments, statement),
       names,
       uses: [...used.uses],
-      queries: [...used.queries].filter((name) => !used.uses.has(name)),
+      types: [...used.types].filter((name) => !used.uses.has(name)),
+      queries: [...used.queries].filter((name) => !used.uses.has(name) && !used.types.has(name)),
       shape: isShape(declaration, source),
+      span: [declaration.start, declaration.end],
     });
   };
   for (const statement of parsed.program.body as unknown as ReadonlyArray<AstNode>) {
@@ -508,16 +601,24 @@ export interface ReleaseTree<E> {
   readonly read: (path: string) => Effect.Effect<string | undefined, E>;
 }
 
-/** Parsed modules and lockfile closures by content, shared by the releases a walk compares. */
+/** Parsed modules, lockfile closures and state layouts by content, shared by a walk's releases. */
 interface FingerprintCache {
   readonly modules: Map<string, ParsedModule | undefined>;
   readonly locks: Map<string, string | undefined>;
+  readonly layouts: Map<string, ContractReading>;
 }
 
 const makeFingerprintCache = (): FingerprintCache => ({
   modules: new Map(),
   locks: new Map(),
+  layouts: new Map(),
 });
+
+/** A contract as one release has it: its fingerprint, and what it is made of for `--list`. */
+export interface ContractReading {
+  readonly fingerprint: string | undefined;
+  readonly members: ReadonlyArray<string>;
+}
 
 const isSourceModule = (path: string): boolean =>
   /\.tsx?$/u.test(path) && !/\.test\.tsx?$/u.test(path) && !path.endsWith(".d.ts");
@@ -533,11 +634,86 @@ const exportTarget = (entry: unknown): string | undefined => {
 };
 
 /**
- * The fingerprint of every contract at one release. A root module that is missing or does not
- * parse, a root name its module no longer declares, or any reached module that does not parse
- * leaves its contract unreadable, which is manual.
+ * The state directory's layout at one release: every path `STATE_LAYOUT_ROOT` derives for the
+ * canonical base directory, relative to it, by name. The function runs with what it reaches in
+ * its own module and the packages from outside the repository it imports; one that reaches
+ * another repository module, or that fails, leaves the layout unreadable.
  */
-export const contractFingerprints = <E>(
+const evaluateStateLayout = async (
+  source: string,
+  isExternal: (specifier: string) => boolean,
+): Promise<ContractReading> => {
+  const [file, root] = STATE_LAYOUT_ROOT;
+  const unreadable = (why: string): ContractReading => ({
+    fingerprint: undefined,
+    members: [`${file}: ${why}`],
+  });
+  try {
+    const { code } = await transformWithOxc(source, file);
+    const parsed = parseModule(file.replace(/\.ts$/u, ".js"), code);
+    if (parsed === undefined) return unreadable("does not parse");
+    const statements = new Set<ModuleStatement>();
+    const imports = new Map<string, Binding>();
+    const pending: Array<string> = [root];
+    for (let name = pending.pop(); name !== undefined; name = pending.pop()) {
+      const declarations = parsed.statements.filter((statement) => statement.names.includes(name));
+      for (const statement of declarations)
+        if (!statements.has(statement)) {
+          statements.add(statement);
+          pending.push(...statement.uses.map((use) => use.split(".", 1)[0] ?? use));
+        }
+      const binding = parsed.imports.get(name);
+      if (declarations.length > 0 || binding === undefined) continue;
+      if (!isExternal(binding.source)) return unreadable(`${root} reaches ${binding.source}`);
+      imports.set(name, binding);
+    }
+    if (statements.size === 0) return unreadable(`declares no ${root}`);
+    const bindings = [...imports];
+    const modules: ReadonlyArray<unknown> = await Promise.all(
+      bindings.map(([, binding]) => import(binding.source)),
+    );
+    const body = [
+      ...bindings.map(
+        ([local, binding], index) =>
+          `const ${local} = modules[${index}]${binding.name === "*" ? "" : `[${JSON.stringify(binding.name)}]`};`,
+      ),
+      ...[...statements]
+        .toSorted((a, b) => a.span[0] - b.span[0])
+        .map((statement) => code.slice(...statement.span)),
+      `return ${root};`,
+    ].join("\n");
+    // oxlint-disable-next-line no-new-func -- the layout is the value the release's own code derives.
+    // What it is the run tells: anything but a function returning the paths fails it.
+    const derive: (
+      baseDir: string,
+      devUrl: undefined,
+      options: object,
+    ) => Effect.Effect<object, never, Path.Path> = new Function("modules", body)(modules);
+    const exit = Effect.runSyncExit(
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const paths = yield* derive(CANONICAL_BASE_DIR, undefined, {});
+        return Object.entries(paths).map(([name, value]: [string, unknown]) =>
+          typeof value === "string"
+            ? `${name} = ${path.relative(CANONICAL_BASE_DIR, value)}`
+            : `${name} = ${JSON.stringify(value)}`,
+        );
+      }).pipe(Effect.provide(Path.layer)),
+    );
+    if (Exit.isFailure(exit)) return unreadable(`${root} fails: ${Cause.pretty(exit.cause)}`);
+    const members = exit.value.toSorted();
+    return { fingerprint: members.join("\n"), members };
+  } catch (error) {
+    return unreadable(String(error));
+  }
+};
+
+/**
+ * Every contract at one release. A root module that is missing or does not parse, a root name its
+ * module no longer declares, or any reached module that does not parse leaves its contract
+ * unreadable, which is manual.
+ */
+export const contractReadings = <E>(
   tree: ReleaseTree<E>,
   cache: FingerprintCache = makeFingerprintCache(),
 ) =>
@@ -598,6 +774,11 @@ export const contractFingerprints = <E>(
 
     const closure = Effect.fnUntraced(function* (contract: Contract) {
       const texts: Array<string> = [];
+      const members = new Set<string>();
+      const unreadable = (why: string): ContractReading => ({
+        fingerprint: undefined,
+        members: [why],
+      });
       const wants: Array<Want> = [];
       for (const [root, selector] of contract.roots) {
         const files = root.endsWith("/")
@@ -605,7 +786,7 @@ export const contractFingerprints = <E>(
           : [root];
         for (const file of files) {
           const parsed = yield* load(file);
-          if (parsed === undefined) return undefined;
+          if (parsed === undefined) return unreadable(`${file}: missing or does not parse`);
           if (selector === MODULE || selector === SHAPES) {
             wants.push({ kind: selector === MODULE ? "module" : "shapes", file });
             continue;
@@ -614,7 +795,7 @@ export const contractFingerprints = <E>(
             const declared =
               parsed.statements.some((statement) => statement.names.includes(name)) ||
               parsed.imports.has(name);
-            if (!declared) return undefined;
+            if (!declared) return unreadable(`${file}: declares no ${name}`);
             wants.push({ kind: "local", file, name, shapeOnly: false });
           }
         }
@@ -623,9 +804,13 @@ export const contractFingerprints = <E>(
       const included = new Set<string>();
       const follow = (from: string, binding: Binding, shapeOnly = false) => {
         const target = resolve(from, binding.source);
-        if (target === undefined) texts.push(`import ${binding.name} from ${binding.source}`);
-        else if (target === null) texts.push(`missing ${binding.source} from ${from}`);
-        else if (target.endsWith(".json")) wants.push({ kind: "json", file: target });
+        if (target === undefined) {
+          texts.push(`import ${binding.name} from ${binding.source}`);
+          members.add(`${binding.source}: ${binding.name}`);
+        } else if (target === null) {
+          texts.push(`missing ${binding.source} from ${from}`);
+          members.add(`${from}: missing ${binding.source}`);
+        } else if (target.endsWith(".json")) wants.push({ kind: "json", file: target });
         else if (binding.name === "*") wants.push({ kind: "module", file: target });
         else wants.push({ kind: "export", file: target, name: binding.name, shapeOnly });
       };
@@ -636,31 +821,41 @@ export const contractFingerprints = <E>(
         if (want.kind === "json") {
           // A manifest's own version is the release, not a shape it stores.
           texts.push(`json ${runtimeDeclaration((yield* tree.read(want.file)) ?? "")}`);
+          members.add(`${want.file}: json`);
           continue;
         }
         const parsed = yield* load(want.file);
-        if (parsed === undefined) return undefined;
+        if (parsed === undefined) return unreadable(`${want.file}: does not parse`);
         const include = (statement: ModuleStatement) => {
           if (included.size === included.add(`${want.file}\0${statement.text}`).size) return;
           texts.push(statement.text);
+          members.add(`${want.file}: ${statement.names.join(", ") || "(runs on import)"}`);
           for (const name of statement.uses)
             wants.push({ kind: "local", file: want.file, name, shapeOnly: false });
-          for (const name of statement.queries)
-            wants.push({ kind: "local", file: want.file, name, shapeOnly: true });
+          if (statement.shape) {
+            for (const name of statement.types)
+              wants.push({ kind: "local", file: want.file, name, shapeOnly: false });
+            for (const name of statement.queries)
+              wants.push({ kind: "local", file: want.file, name, shapeOnly: true });
+          }
           // What runs on import comes with the first statement taken from its module.
           if (statement.names.length > 0)
             for (const effect of parsed.statements) if (effect.names.length === 0) include(effect);
         };
         switch (want.kind) {
           case "local": {
+            const [name = "", member] = want.name.split(".", 2);
             const declarations = parsed.statements.filter(
-              (statement) =>
-                statement.names.includes(want.name) && (statement.shape || !want.shapeOnly),
+              (statement) => statement.names.includes(name) && (statement.shape || !want.shapeOnly),
             );
             for (const statement of declarations) include(statement);
-            const binding = parsed.imports.get(want.name);
-            if (declarations.length === 0 && binding !== undefined)
-              follow(want.file, binding, want.shapeOnly);
+            const binding = parsed.imports.get(name);
+            if (declarations.length > 0 || binding === undefined) break;
+            const target = resolve(want.file, binding.source);
+            // A repository namespace is read by the exports its code names.
+            if (binding.name === "*" && member !== undefined && typeof target === "string")
+              wants.push({ kind: "export", file: target, name: member, shapeOnly: want.shapeOnly });
+            else follow(want.file, binding, want.shapeOnly);
             break;
           }
           case "export": {
@@ -690,23 +885,58 @@ export const contractFingerprints = <E>(
             break;
         }
       }
-      return texts.sort().join("\n");
+      return {
+        fingerprint: texts.sort().join("\n"),
+        members: [...members].toSorted(),
+      } satisfies ContractReading;
     });
 
-    const fingerprints: Record<string, string | undefined> = {};
-    for (const contract of READ_BACK_CONTRACTS)
-      fingerprints[contract.name] = yield* closure(contract);
-    const protocol = decodeProtocol((yield* tree.read("apps/server/update-protocol.json")) ?? "");
-    fingerprints[UPDATE_PROTOCOL] = Option.isSome(protocol)
-      ? String(protocol.value.protocol)
-      : undefined;
-    const declaration = runtimeDeclaration((yield* tree.read("apps/server/package.json")) ?? "");
-    fingerprints[RUNTIME_DECLARATION] = declaration;
+    const fileReading = (file: string, fingerprint: string | undefined): ContractReading => ({
+      fingerprint,
+      members: [fingerprint === undefined ? `${file}: unreadable` : file],
+    });
+    const readings: Record<string, ContractReading> = {};
+    for (const contract of READ_BACK_CONTRACTS) readings[contract.name] = yield* closure(contract);
+    const [layoutFile] = STATE_LAYOUT_ROOT;
+    const layoutSource = yield* tree.read(layoutFile);
+    if (layoutSource !== undefined && !cache.layouts.has(layoutSource))
+      cache.layouts.set(
+        layoutSource,
+        yield* Effect.promise(() =>
+          evaluateStateLayout(
+            layoutSource,
+            (specifier) => resolve(layoutFile, specifier) === undefined,
+          ),
+        ),
+      );
+    readings[STATE_LAYOUT] =
+      layoutSource === undefined
+        ? fileReading(layoutFile, undefined)
+        : (cache.layouts.get(layoutSource) ?? fileReading(layoutFile, undefined));
+    const protocolFile = "apps/server/update-protocol.json";
+    const protocol = decodeProtocol((yield* tree.read(protocolFile)) ?? "");
+    readings[UPDATE_PROTOCOL] = fileReading(
+      protocolFile,
+      Option.isSome(protocol) ? String(protocol.value.protocol) : undefined,
+    );
+    const packageFile = "apps/server/package.json";
+    readings[RUNTIME_DECLARATION] = fileReading(
+      packageFile,
+      runtimeDeclaration((yield* tree.read(packageFile)) ?? ""),
+    );
     const lock = (yield* tree.read("pnpm-lock.yaml")) ?? "";
     if (!cache.locks.has(lock)) cache.locks.set(lock, serverRuntimeClosure(lock));
-    fingerprints[RUNTIME_DEPENDENCIES] = cache.locks.get(lock);
-    return fingerprints as ContractFingerprints;
+    readings[RUNTIME_DEPENDENCIES] = fileReading("pnpm-lock.yaml", cache.locks.get(lock));
+    return readings as Readonly<Record<string, ContractReading>>;
   });
+
+/** The fingerprint of every contract at one release. */
+export const contractFingerprints = <E>(tree: ReleaseTree<E>, cache?: FingerprintCache) =>
+  Effect.map(contractReadings(tree, cache), (readings): ContractFingerprints =>
+    Object.fromEntries(
+      Object.entries(readings).map(([name, reading]) => [name, reading.fingerprint]),
+    ),
+  );
 
 /**
  * Why the release needs an attended update, or undefined when it may update automatically.
@@ -743,6 +973,48 @@ export function rollbackCompatibility(evidence: RollbackEvidence): RollbackCompa
 /** The paths a release's contracts can reach. */
 const TREE_PATHS = ["apps/server", "packages", "scripts/lib", "pnpm-lock.yaml"];
 
+/** Runs git in `cwd`: its output and exit code. */
+const gitIn = (cwd?: string) =>
+  Effect.map(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
+    Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
+      const child = yield* spawner.spawn(ChildProcess.make("git", args, { stderr: "ignore", cwd }));
+      const [output, code] = yield* Effect.all(
+        [Stream.mkString(Stream.decodeText(child.stdout)), child.exitCode],
+        { concurrency: "unbounded" },
+      );
+      return { output, code: Number(code) };
+    }, Effect.scoped),
+  );
+
+type Git = Effect.Success<ReturnType<typeof gitIn>>;
+
+/** A release's files at `ref`, blobs read once by content; undefined when git cannot list them. */
+const releaseTreeAt = Effect.fnUntraced(function* (
+  git: Git,
+  ref: string,
+  blobs: Map<string, string>,
+) {
+  const listing = yield* git(["ls-tree", "-r", "-z", ref, "--", ...TREE_PATHS]);
+  const shas = new Map<string, string>();
+  for (const entry of listing.output.split("\0")) {
+    const tab = entry.indexOf("\t");
+    const [, type, sha] = entry.slice(0, tab).split(" ");
+    if (tab > 0 && type === "blob" && sha !== undefined) shas.set(entry.slice(tab + 1), sha);
+  }
+  if (listing.code !== 0 || shas.size === 0) return undefined;
+  const read = Effect.fnUntraced(function* (path: string) {
+    const sha = shas.get(path);
+    if (sha === undefined) return undefined;
+    if (!blobs.has(sha)) {
+      const blob = yield* git(["cat-file", "blob", sha]);
+      if (blob.code !== 0) return undefined;
+      blobs.set(sha, blob.output);
+    }
+    return blobs.get(sha);
+  });
+  return { paths: new Set(shas.keys()), read };
+});
+
 /**
  * The candidate's rollback range over the published stable history: compatibleFrom is the oldest
  * published release R such that every release after R, the candidate included, is
@@ -752,42 +1024,16 @@ const TREE_PATHS = ["apps/server", "packages", "scripts/lib", "pnpm-lock.yaml"];
  */
 export const readRollbackCompatibility = Effect.fn("readRollbackCompatibility")(
   function* (publishedTags: ReadonlyArray<string>, candidateVersion: string, cwd?: string) {
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const git = Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
-      const child = yield* spawner.spawn(ChildProcess.make("git", args, { stderr: "ignore", cwd }));
-      const [output, code] = yield* Effect.all(
-        [Stream.mkString(Stream.decodeText(child.stdout)), child.exitCode],
-        { concurrency: "unbounded" },
-      );
-      return { output, code };
-    }, Effect.scoped);
+    const git = yield* gitIn(cwd);
     const blobs = new Map<string, string>();
     const cache = makeFingerprintCache();
     // The walk reads each release twice in a row, as the newer and then the older side of a step.
     let last: { readonly ref: string; readonly fingerprints?: ContractFingerprints } | undefined;
     const fingerprintsAt = Effect.fnUntraced(function* (ref: string) {
       if (last?.ref === ref) return last.fingerprints;
-      const listing = yield* git(["ls-tree", "-r", "-z", ref, "--", ...TREE_PATHS]);
-      const shas = new Map<string, string>();
-      for (const entry of listing.output.split("\0")) {
-        const tab = entry.indexOf("\t");
-        const [, type, sha] = entry.slice(0, tab).split(" ");
-        if (tab > 0 && type === "blob" && sha !== undefined) shas.set(entry.slice(tab + 1), sha);
-      }
-      const read = Effect.fnUntraced(function* (path: string) {
-        const sha = shas.get(path);
-        if (sha === undefined) return undefined;
-        if (!blobs.has(sha)) {
-          const blob = yield* git(["cat-file", "blob", sha]);
-          if (blob.code !== 0) return undefined;
-          blobs.set(sha, blob.output);
-        }
-        return blobs.get(sha);
-      });
+      const tree = yield* releaseTreeAt(git, ref, blobs);
       const fingerprints =
-        listing.code === 0 && shas.size > 0
-          ? yield* contractFingerprints({ paths: new Set(shas.keys()), read }, cache)
-          : undefined;
+        tree === undefined ? undefined : yield* contractFingerprints(tree, cache);
       last = fingerprints === undefined ? { ref } : { ref, fingerprints };
       return fingerprints;
     });
@@ -856,3 +1102,23 @@ export const readRollbackCompatibility = Effect.fn("readRollbackCompatibility")(
   },
   Effect.orElseSucceed(() => MANUAL),
 );
+
+/** `--list [ref]`: what each contract is made of at a release (HEAD by default), so an over-reach shows. */
+const listContracts = Effect.fn("listContracts")(function* (ref: string) {
+  const tree = yield* releaseTreeAt(yield* gitIn(), ref, new Map());
+  if (tree === undefined) return yield* Effect.fail(`git cannot list the files of ${ref}`);
+  for (const [name, reading] of Object.entries(yield* contractReadings(tree))) {
+    yield* Console.log(
+      `${name}${reading.fingerprint === undefined ? " (unreadable)" : ""}: ${reading.members.length}`,
+    );
+    for (const member of reading.members) yield* Console.log(`  ${member}`);
+  }
+});
+
+if (import.meta.main) {
+  const [flag, ref = "HEAD"] = process.argv.slice(2);
+  (flag === "--list"
+    ? listContracts(ref)
+    : Effect.fail("usage: releaseRollbackCompatibility.ts --list [ref]")
+  ).pipe(Effect.provide(NodeServices.layer), NodeRuntime.runMain);
+}
