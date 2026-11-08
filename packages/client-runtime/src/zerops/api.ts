@@ -2989,9 +2989,10 @@ export class ZeropsApiClient {
       `/service-stack/${serviceId}/user-data`,
       {
         method: "POST",
-        // `sensitive` is required on every service userData write — the
-        // platform rejects a body without it as "field is required".
-        body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: true }),
+        // `sensitive` is required on every service userData write — the platform rejects a body
+        // without it as "field is required". The flag is no secret, and a sensitive value reads
+        // back as `REDACTED`: never as on, so the read-back below would create it a second time.
+        body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: false }),
       },
       {
         operationKind: "project-write",
