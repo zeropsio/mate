@@ -6,11 +6,13 @@
  * session that started it — and HQ, which keeps each login's last signer the Mate reported
  * (`lastSignedInBy`) and sends the map on the link (`signers`) after every `hello` and again when
  * an HQ write moves it. That is how whose a login is outlives a restart, or a container that
- * boots with nothing: the server keeps no file of it.
+ * boots with nothing: the server keeps no file of who may act.
  *
- * A sign-in watched here is kept with when it happened, by this server's clock (`signedAt`). HQ's
- * map names no time, so a signer it fills in has none. The Mate reports that time to HQ
- * (`lastSignedInAt`): a new one is a sign-in, which moves the Mate's owner in HQ.
+ * A sign-in watched here is kept with when it happened, by this server's clock (`signedAt`), in the
+ * server's state directory (`sign-ins.json`, `{ [key]: { by, at } }`), because HQ's map names no
+ * time and the Mate restarts on every update. The time is reported only while the login's signer is
+ * the one that file names; a signer HQ's map fills in for another person has none. The Mate reports
+ * that time to HQ (`lastSignedInAt`): a new one is a sign-in, which moves the Mate's owner in HQ.
  *
  * When the credential goes, its entry becomes display history and never authorizes a turn. A
  * login nobody signed in here and HQ names nobody for — one signed in from a terminal — is
@@ -21,10 +23,16 @@
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+
+import { ServerConfig } from "../config.ts";
 
 /** One login's latest signer. */
 export interface SignInRecord {
@@ -42,7 +50,8 @@ export interface SignInStore {
   readonly lastSigners: Effect.Effect<Readonly<Record<string, string>>>;
   /**
    * When the last recorded signer signed each login in (ISO 8601), for the sign-ins this server
-   * watched; a login whose signer only HQ's map named has none.
+   * watched, before a restart too; a login whose signer another sign-in than the watched one
+   * named has none.
    */
   readonly signedAt: Effect.Effect<Readonly<Record<string, string>>>;
   /** Records that `record.by` signed the login `key` in now, stamped with this server's clock. */
@@ -76,25 +85,99 @@ const applySigners = (
   return Object.keys(moved).length === 0 ? undefined : { ...current, ...moved };
 };
 
-/** The store, starting from `initial`: empty in a running server, until HQ's map or a sign-in. */
-export const memorySignInStore = (initial: SignInRecords = {}) =>
+/** A sign-in watched here: who signed the login in, and when (ISO 8601), by this server's clock. */
+const SignedAt = Schema.Struct({ by: Schema.String, at: Schema.String });
+const SignedAtMap = Schema.Record(Schema.String, SignedAt);
+type SignedAtMap = typeof SignedAtMap.Type;
+const decodeSignedAt = Schema.decodeUnknownEffect(Schema.fromJsonString(SignedAtMap));
+const encodeSignedAt = Schema.encodeEffect(Schema.fromJsonString(SignedAtMap));
+
+/** Where the watched sign-ins' times outlive the process. */
+export interface SignedAtKeep {
+  readonly read: Effect.Effect<SignedAtMap>;
+  readonly write: (all: SignedAtMap) => Effect.Effect<void>;
+}
+
+const keptNowhere: SignedAtKeep = { read: Effect.succeed({}), write: () => Effect.void };
+
+/**
+ * The times as one JSON file at `at`, replaced whole in one rename. A missing file is no sign-in
+ * yet; an unreadable one or a failed write is logged and leaves the times this process holds.
+ */
+export const signedAtFile = (at: string) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const directory = path.dirname(at);
+    const staged = path.join(directory, `.${path.basename(at)}.next`);
+    return {
+      read: fs.readFileString(at).pipe(
+        Effect.flatMap(decodeSignedAt),
+        Effect.catch((error) =>
+          error._tag === "PlatformError" && error.reason._tag === "NotFound"
+            ? Effect.succeed({})
+            : Effect.logWarning("zerops sign-ins: times unreadable", { reason: error._tag }).pipe(
+                Effect.as({}),
+              ),
+        ),
+      ),
+      write: (all) =>
+        Effect.gen(function* () {
+          const json = yield* encodeSignedAt(all);
+          yield* fs.makeDirectory(directory, { recursive: true });
+          yield* fs.writeFileString(staged, json, { mode: 0o600 });
+          yield* fs.rename(staged, at);
+        }).pipe(
+          Effect.onError(() => fs.remove(staged, { force: true }).pipe(Effect.ignore)),
+          Effect.catch((error) =>
+            Effect.logWarning("zerops sign-ins: times not kept", { reason: error._tag }),
+          ),
+          Effect.uninterruptible,
+        ),
+    } satisfies SignedAtKeep;
+  });
+
+/**
+ * The store, starting from `initial`: empty in a running server, until HQ's map or a sign-in. The
+ * times of the sign-ins it watched start from and go to `keep`.
+ */
+export const memorySignInStore = (initial: SignInRecords = {}, keep: SignedAtKeep = keptNowhere) =>
   Effect.gen(function* () {
     const records = yield* Ref.make(initial);
-    const signedAt = yield* Ref.make<Readonly<Record<string, string>>>({});
+    const signedAt = yield* Ref.make<SignedAtMap>(yield* keep.read);
+    // One write at a time, in the order the sign-ins were kept.
+    const stamps = yield* Semaphore.make(1);
     const moved = yield* PubSub.unbounded<void>();
     const told = PubSub.publish(moved, undefined);
     return {
       load: Ref.get(records).pipe(Effect.map(activeRecords)),
       lastSigners: Ref.get(records).pipe(Effect.map(lastSignersOf)),
-      signedAt: Ref.get(signedAt),
-      save: (key, record) =>
-        DateTime.now.pipe(
-          Effect.flatMap((now) =>
-            Ref.update(signedAt, (current) => ({ ...current, [key]: DateTime.formatIso(now) })),
+      signedAt: Effect.all([Ref.get(records), Ref.get(signedAt)]).pipe(
+        Effect.map(([current, stamped]) =>
+          Object.fromEntries(
+            Object.entries(stamped)
+              .filter(([key, { by }]) => current[key]?.by === by)
+              .map(([key, { at }]) => [key, at]),
           ),
-          Effect.andThen(Ref.update(records, (current) => ({ ...current, [key]: record }))),
-          Effect.andThen(told),
         ),
+      ),
+      save: (key, record) =>
+        stamps
+          .withPermits(1)(
+            DateTime.now.pipe(
+              Effect.flatMap((now) =>
+                Ref.updateAndGet(signedAt, (current) => ({
+                  ...current,
+                  [key]: { by: record.by, at: DateTime.formatIso(now) },
+                })),
+              ),
+              Effect.flatMap(keep.write),
+            ),
+          )
+          .pipe(
+            Effect.andThen(Ref.update(records, (current) => ({ ...current, [key]: record }))),
+            Effect.andThen(told),
+          ),
       clear: (key) =>
         Ref.modify(records, (current) => {
           const record = current[key];
@@ -119,4 +202,14 @@ export class ZeropsSignIns extends Context.Service<ZeropsSignIns, SignInStore>()
   "t3/zerops/zeropsSignIns",
 ) {}
 
-export const layer = Layer.effect(ZeropsSignIns, memorySignInStore());
+export const layer = Layer.effect(
+  ZeropsSignIns,
+  Effect.gen(function* () {
+    const config = yield* ServerConfig;
+    const path = yield* Path.Path;
+    return yield* memorySignInStore(
+      {},
+      yield* signedAtFile(path.join(config.stateDir, "sign-ins.json")),
+    );
+  }),
+);
