@@ -1035,6 +1035,12 @@ export const WsSubscribeServerConfigRpc = Rpc.make(WS_METHODS.subscribeServerCon
     mateUpdate: Schema.optional(Schema.Boolean),
     /** Whether this client understands `hqKey` events; the snapshot's `hqKey` goes to every client. */
     hqKey: Schema.optional(Schema.Boolean),
+    /**
+     * Whether this client applies `providersChanged` events. Such a client is
+     * sent only the providers that changed; any other gets the whole list as
+     * `providerStatuses`.
+     */
+    providerChanges: Schema.optional(Schema.Boolean),
   }),
   success: ServerConfigStreamEvent,
   error: Schema.Union([KeybindingsConfigError, ServerSettingsError, EnvironmentAuthorizationError]),

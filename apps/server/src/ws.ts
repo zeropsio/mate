@@ -65,6 +65,8 @@ import {
   RpcClientId,
   EnvironmentAuthorizationError,
   ThreadId,
+  type ServerConfigProvidersChangedPayload,
+  type ServerConfigStreamEvent,
   type ServerProvider,
   type TerminalAttachStreamEvent,
   type TerminalError,
@@ -182,6 +184,22 @@ export const resolveAvailableEditorsForConfig = <A, E, R>(
 export const resolveFileManagerRevealKindForConfig = <E, R>(
   discovery: Effect.Effect<FileManagerRevealKind | undefined, E, R>,
 ) => resolveDiscoveryForConfig(discovery, () => undefined);
+
+/** The entries of `next` that differ from `sent`, or null when the list is unchanged. */
+export function providersChangedSince(
+  sent: ReadonlyArray<ServerProvider>,
+  next: ReadonlyArray<ServerProvider>,
+): ServerConfigProvidersChangedPayload | null {
+  const sentById = new Map(sent.map((provider) => [provider.instanceId, JSON.stringify(provider)]));
+  const providers = next.filter(
+    (provider) => sentById.get(provider.instanceId) !== JSON.stringify(provider),
+  );
+  const instanceIds = next.map((provider) => provider.instanceId);
+  const sameInstances =
+    instanceIds.length === sent.length &&
+    instanceIds.every((instanceId, index) => sent[index]?.instanceId === instanceId);
+  return providers.length === 0 && sameInstances ? null : { providers, instanceIds };
+}
 
 function unexpectedCompatibilityError(error: never): never {
   throw new Error(`Unhandled compatibility error: ${String(error)}`);
@@ -1134,7 +1152,15 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                   providers = yield* providerRegistry.refreshInstance(instance.instanceId);
                 }
               }
-              return { providers: yield* withZeropsAgentAuth(providers) };
+              // A targeted refresh answers with the one provider it looked at;
+              // the config stream carries the change to every client.
+              return {
+                providers: yield* withZeropsAgentAuth(
+                  input.instanceId === undefined
+                    ? providers
+                    : providers.filter((provider) => provider.instanceId === input.instanceId),
+                ),
+              };
             }),
           ),
         // The MCP tab's methods (`zerops/mcp/McpServers.ts`).
@@ -1835,13 +1861,40 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                   (previous, next) => JSON.stringify(previous) === JSON.stringify(next),
                 ),
                 Stream.drop(1),
-                Stream.map((providers) => ({
-                  version: 1 as const,
-                  type: "providerStatuses" as const,
-                  payload: { providers },
-                })),
                 Stream.debounce(Duration.millis(PROVIDER_STATUS_DEBOUNCE_MS)),
               );
+              // A provider entry carries its whole model and command catalog, and a
+              // refresh restamps only the one it looked at: a capable client is sent
+              // just the entries that differ from what it was last sent.
+              const providerUpdates: Stream.Stream<ServerConfigStreamEvent> =
+                input.providerChanges === true
+                  ? providerStatuses.pipe(
+                      Stream.mapAccum(
+                        (): ReadonlyArray<ServerProvider> => config.providers,
+                        (sent, providers) => {
+                          const payload = providersChangedSince(sent, providers);
+                          return [
+                            providers,
+                            payload === null
+                              ? []
+                              : [
+                                  {
+                                    version: 1 as const,
+                                    type: "providersChanged" as const,
+                                    payload,
+                                  },
+                                ],
+                          ] as const;
+                        },
+                      ),
+                    )
+                  : providerStatuses.pipe(
+                      Stream.map((providers) => ({
+                        version: 1 as const,
+                        type: "providerStatuses" as const,
+                        payload: { providers },
+                      })),
+                    );
               // The only source of reported quota: the stream emits the
               // current set before any change, so the snapshot carrying it too
               // would just send every client the same array twice per connect.
@@ -1900,7 +1953,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                 Stream.merge(
                   keybindingsUpdates,
                   Stream.merge(
-                    providerStatuses,
+                    providerUpdates,
                     Stream.merge(settingsUpdates, usageLimitSourceUpdates),
                   ),
                 ),
