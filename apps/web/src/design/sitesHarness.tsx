@@ -97,7 +97,13 @@ function mate(
     owner:
       over.owner === undefined
         ? undefined
-        : { name: over.owner, initials: over.owner.slice(0, 1), avatarUrl: null, isViewer: false },
+        : {
+            name: over.owner,
+            called: over.owner,
+            initials: over.owner.slice(0, 1),
+            avatarUrl: null,
+            isViewer: false,
+          },
   };
 }
 

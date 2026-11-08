@@ -767,16 +767,16 @@ const YOU = "You";
 /**
  * Who a row says asked its Mate (the owner, 2026-10-11, of a row reading "continue" over its
  * answer: the person's words with nobody's name on them read like a label). Only its owner talks
- * to a Mate (D5), so it is them: *You* on the viewer's own, a colleague's first name on theirs —
+ * to a Mate (D5), so it is them: *You* on the viewer's own, what a colleague is called on theirs —
  * the messenger's "You:" before a message of yours — and nobody while HQ has not named its owner.
  */
 export function mateAsker(
-  owner: { readonly name: string; readonly isViewer: boolean } | undefined,
+  owner: { readonly called: string; readonly isViewer: boolean } | undefined,
 ): string | undefined {
   if (owner === undefined) return undefined;
   if (owner.isViewer) return YOU;
-  const first = owner.name.trim().split(/\s+/u)[0];
-  return first === undefined || first.length === 0 ? undefined : first;
+  const called = owner.called.trim();
+  return called.length === 0 ? undefined : called;
 }
 
 /** What `mateRowDraft` reads of the composer's store (`composerDraftStore.ts`). */

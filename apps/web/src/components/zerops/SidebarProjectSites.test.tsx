@@ -218,7 +218,13 @@ async function mount(
 }
 
 function owner(name: string): NonNullable<SitesMate["owner"]> {
-  return { name, initials: name.slice(0, 1), avatarUrl: null, isViewer: false };
+  return {
+    name,
+    called: name.split(" ")[0] ?? name,
+    initials: name.slice(0, 1),
+    avatarUrl: null,
+    isViewer: false,
+  };
 }
 
 const surface = (name: string) =>

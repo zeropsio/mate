@@ -32,6 +32,7 @@ import {
 import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useChiefOffer } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
+import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 import { useSidebar } from "../ui/sidebar";
 import {
   Menu,
@@ -156,7 +157,11 @@ export function SidebarZeropsAccount({
             />
           }
         >
-          <PersonAvatar name={account.name} picture={account.avatarUrl} size={32} />
+          <PersonAvatar
+            name={account.fullName ?? account.name}
+            picture={account.avatarUrl}
+            size={32}
+          />
         </MenuTrigger>
         {menu}
       </Menu>
@@ -177,7 +182,11 @@ export function SidebarZeropsAccount({
           />
         }
       >
-        <PersonAvatar name={account.name} picture={account.avatarUrl} size={32} />
+        <PersonAvatar
+          name={account.fullName ?? account.name}
+          picture={account.avatarUrl}
+          size={32}
+        />
         <span className="menu-foot-lines">
           <span className="menu-foot-name">{lines.name}</span>
           {/* An organization still being resolved is absent, never a placeholder: the foot must
@@ -250,7 +259,11 @@ export function SidebarZeropsAccountMenu({
   return (
     <>
       <div className="flex items-center gap-3 px-2 py-2" data-zerops-account-identity="true">
-        <PersonAvatar name={account.name} picture={account.avatarUrl} size={32} />
+        <PersonAvatar
+          name={account.fullName ?? account.name}
+          picture={account.avatarUrl}
+          size={32}
+        />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-foreground">
             {account.fullName ?? account.name}
@@ -410,6 +423,7 @@ export function SidebarZeropsAccountRow({
   // white-screens because no session is mounted is worse than one with no
   // account row. Signed out, there is no account to name either way.
   const session = useZeropsSessionOptional();
+  const called = useViewerCalled();
   const navigate = useNavigate();
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -434,7 +448,7 @@ export function SidebarZeropsAccountRow({
 
   return (
     <SidebarZeropsAccount
-      account={zeropsAccountDisplay(user)}
+      account={zeropsAccountDisplay(user, called)}
       activeOrganization={activeOrganization}
       collapsed={!isMobile && collapsed}
       destination={destination}

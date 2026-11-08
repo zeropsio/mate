@@ -11,6 +11,11 @@ import type { ProjectionReads } from "../store.ts";
 
 export interface ZeropsPerson {
   readonly name: string;
+  /**
+   * What every surface calls them: their first name where no other member of the organization
+   * shares it, else their full name (`name`).
+   */
+  readonly called: string;
   /** Their membership's id — what a project's `userRoles` names them by. */
   readonly clientUserId: string;
   /** The platform's own picture of them; `null` where they have none. */
@@ -28,13 +33,23 @@ export function zeropsPeople(
   const members = read.fact("organizationMembers", orgId);
   const people = new Map<string, ZeropsPerson>();
   if (members.kind !== "known") return people;
-  for (const member of members.value) {
+  const named = members.value.flatMap((member) => {
     const userId = member.userId ?? member.user?.id;
     const name = mateMemberName(member);
-    if (userId === undefined || name === undefined) continue;
+    if (userId === undefined || name === undefined) return [];
+    const first = text(member.user?.firstName?.trim()) ?? name.split(/\s+/u)[0] ?? name;
+    return [{ member, userId, name, first }];
+  });
+  const sharing = new Map<string, Set<string>>();
+  for (const { userId, first } of named) {
+    const key = first.toLocaleLowerCase();
+    sharing.set(key, (sharing.get(key) ?? new Set()).add(userId));
+  }
+  for (const { member, userId, name, first } of named) {
     const avatar = member.user?.avatar;
     people.set(userId, {
       name,
+      called: sharing.get(first.toLocaleLowerCase())?.size === 1 ? first : name,
       clientUserId: member.id,
       avatarUrl: text(avatar?.smallAvatarUrl) ?? text(avatar?.externalAvatarUrl) ?? null,
     });

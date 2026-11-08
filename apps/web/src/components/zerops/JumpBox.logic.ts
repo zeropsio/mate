@@ -54,7 +54,7 @@ export interface JumpMate {
   readonly connected: boolean;
   /** Its conversation, where it is connected and has one. */
   readonly conversation: JumpConversation | undefined;
-  readonly owner: { readonly name: string; readonly isViewer: boolean } | undefined;
+  readonly owner: { readonly called: string; readonly isViewer: boolean } | undefined;
   /** When the usage limit pausing it resets; absent while it is not paused. */
   readonly pausedUntil: string | undefined;
   readonly usageLimited?: boolean | undefined;
@@ -500,8 +500,6 @@ export interface JumpWritePlan {
   readonly action: JumpWriteAction;
 }
 
-const firstName = (name: string) => name.trim().split(/\s+/u)[0] ?? name;
-
 /**
  * Who reads what is written to a Mate, when, and what Enter does with it —
  * one line in one voice: `Nova reads it now`, `Nova is working — it reads
@@ -514,7 +512,7 @@ const firstName = (name: string) => name.trim().split(/\s+/u)[0] ?? name;
  */
 export function jumpWritePlan(input: {
   readonly name: string;
-  readonly owner: { readonly name: string; readonly isViewer: boolean } | undefined;
+  readonly owner: JumpMate["owner"];
   readonly conversation: JumpConversation;
   /** When a usage limit's pause ends, as the menu writes the time. */
   readonly pausedUntilLabel: string | undefined;
@@ -527,7 +525,7 @@ export function jumpWritePlan(input: {
 }): JumpWritePlan {
   const { name, owner, conversation, decision } = input;
   if (input.readOnly) {
-    const colleague = owner !== undefined && !owner.isViewer ? firstName(owner.name) : undefined;
+    const colleague = owner !== undefined && !owner.isViewer ? owner.called : undefined;
     return {
       hint:
         colleague === undefined

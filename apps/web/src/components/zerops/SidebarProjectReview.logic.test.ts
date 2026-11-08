@@ -114,13 +114,13 @@ describe("what a review item says under its title", () => {
     { case: "the viewer's Mate", by: VIRA, mine: true, says: "Vira · #12" },
     {
       case: "a colleague's Mate, in review",
-      by: { ...VIRA, ownerFirstName: "Theo" },
+      by: { ...VIRA, ownerName: "Theo" },
       mine: false,
       says: "Vira · Theo's · #12 · in review",
     },
     {
       case: "a colleague's Mate whose review waits on the viewer",
-      by: { ...VIRA, ownerFirstName: "Theo" },
+      by: { ...VIRA, ownerName: "Theo" },
       mine: true,
       says: "Vira · Theo's · #12",
     },

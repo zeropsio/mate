@@ -468,6 +468,8 @@ interface MessagesTimelineProps {
   onUsageContinue?: (() => void) | null;
   usageContinueTries?: boolean;
   onWithdrawHeldMessage?: ((runId: string) => void) | null;
+  /** Who the person's messages are headed with (`TimelineRowSharedState.asker`). */
+  asker?: string | undefined;
   onSteerQueuedMessage?: (id: string) => void;
   steerQueuedMessageShortcutLabel?: string | null;
   /** A question or an approval waits on the person: the queue waits with it. */
@@ -532,6 +534,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   onUsageContinue = null,
   usageContinueTries = false,
   onWithdrawHeldMessage = null,
+  asker,
   onSteerQueuedMessage = NOOP_QUEUED_MESSAGE_ACTION,
   steerQueuedMessageShortcutLabel = null,
   queueBlockedByAnswer = false,
@@ -1878,6 +1881,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onUsageContinue,
       usageContinueTries,
       onWithdrawHeldMessage,
+      asker,
       agentPanelModel: agentPanelModel ?? EMPTY_AGENT_PANEL_MODEL,
       onOpenAgents,
       onSteerQueuedMessage,
@@ -1918,6 +1922,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onUsageContinue,
       usageContinueTries,
       onWithdrawHeldMessage,
+      asker,
       agentPanelModel,
       onOpenAgents,
       onSteerQueuedMessage,
@@ -3678,7 +3683,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
           className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground"
           data-message-aside={row.aside ? "true" : undefined}
         >
-          <MessageAuthorHeading>You</MessageAuthorHeading>
+          <MessageAuthorHeading>{ctx.asker ?? "You"}</MessageAuthorHeading>
           {imagesAbove.length > 0 && (
             <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
               {imagesAbove.map((image: ChatImageAttachment) => {

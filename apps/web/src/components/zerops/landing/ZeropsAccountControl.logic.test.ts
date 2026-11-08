@@ -6,6 +6,7 @@ describe("zeropsAccountDisplay", () => {
   it.each([
     {
       name: "a full record",
+      called: "Ada",
       user: {
         email: "ada@example.com",
         fullName: "Ada Lovelace",
@@ -26,6 +27,7 @@ describe("zeropsAccountDisplay", () => {
     },
     {
       name: "the test account: a first name, no picture",
+      called: undefined,
       user: {
         email: "ales+onboarding@zerops.io",
         fullName: "Aleš",
@@ -43,6 +45,7 @@ describe("zeropsAccountDisplay", () => {
     },
     {
       name: "names split but never joined by the platform",
+      called: "Grace",
       user: { email: "grace@example.com", firstName: " Grace ", lastName: "Hopper", avatar: null },
       expected: {
         name: "Grace",
@@ -54,6 +57,7 @@ describe("zeropsAccountDisplay", () => {
     },
     {
       name: "only an email",
+      called: undefined,
       user: { email: "ops@example.com" },
       expected: {
         name: "ops",
@@ -65,6 +69,7 @@ describe("zeropsAccountDisplay", () => {
     },
     {
       name: "an external picture when the platform has none of its own",
+      called: "Xin",
       user: {
         email: "x@example.com",
         fullName: "Xin Li",
@@ -80,11 +85,12 @@ describe("zeropsAccountDisplay", () => {
     },
     {
       name: "nobody",
+      called: undefined,
       user: null,
       expected: { name: "Account", fullName: null, email: null, initials: "A", avatarUrl: null },
     },
-  ])("derives the display for $name", ({ user, expected }) => {
-    expect(zeropsAccountDisplay(user)).toEqual(expected);
+  ])("derives the display for $name", ({ user, called, expected }) => {
+    expect(zeropsAccountDisplay(user, called)).toEqual(expected);
   });
 
   it("prefers the first name the record splits out over the first word of the full name", () => {

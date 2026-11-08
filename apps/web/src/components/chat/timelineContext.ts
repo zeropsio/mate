@@ -85,6 +85,11 @@ export interface TimelineRowSharedState {
   usageContinueTries?: boolean;
   /** Withdraws a message no agent has yet: its queued run ends, stopped by the person. */
   onWithdrawHeldMessage?: ((runId: string) => void) | null;
+  /**
+   * Who the person's messages are headed with (`mateAsker`): the owner a read-along viewer reads
+   * along with; absent, *You*.
+   */
+  asker?: string | undefined;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
   onSteerQueuedMessage: (id: string) => void;

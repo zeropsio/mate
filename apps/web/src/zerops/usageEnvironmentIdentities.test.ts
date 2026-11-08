@@ -17,8 +17,8 @@ const OTTO = EnvironmentId.make("env-otto");
 const FEN = EnvironmentId.make("env-fen");
 
 /** Each Mate's owner as HQ names them, by project. */
-const JAN: HqMateOwner = { userId: "user-jan", name: "Jan Novak", avatarUrl: null };
-const EVA: HqMateOwner = { userId: "user-eva", name: "Eva Dvorak", avatarUrl: null };
+const JAN: HqMateOwner = { userId: "user-jan", name: "Jan Novak", called: "Jan", avatarUrl: null };
+const EVA: HqMateOwner = { userId: "user-eva", name: "Eva Dvorak", called: "Eva", avatarUrl: null };
 const JAN_OWNER = { id: "user-jan", name: "Jan Novak", initials: "JN", avatarUrl: null };
 const EVA_OWNER = { id: "user-eva", name: "Eva Dvorak", initials: "ED", avatarUrl: null };
 

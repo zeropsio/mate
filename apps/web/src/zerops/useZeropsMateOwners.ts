@@ -34,6 +34,8 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 /** A Mate's owner, as a face in the corner of the Mate's own draws them. */
 export interface ZeropsMateOwner {
   readonly name: string;
+  /** What every surface calls them (`HqMateOwner.called`). */
+  readonly called: string;
   readonly initials: string;
   readonly avatarUrl: string | null;
   /** The owner is the person looking: "You asked", and *Mine* keeps this Mate. */
@@ -41,9 +43,10 @@ export interface ZeropsMateOwner {
 }
 
 /**
- * Somebody of the organization `clientId` by their Zerops user id, by name — a login's signer, a
- * remark's author — as the member list of the organization in view names them; its last answer
- * stands while Zerops does not answer. Nobody of another organization.
+ * Somebody of the organization `clientId` by their Zerops user id, by what every surface calls them
+ * (`ZeropsPerson.called`) — a login's signer, a remark's author — as the member list of the
+ * organization in view names them; its last answer stands while Zerops does not answer. Nobody of
+ * another organization.
  */
 export function useHqPersonNames(
   clientId: string | undefined,
@@ -52,14 +55,15 @@ export function useHqPersonNames(
   const people = useAtomValue(hqPeopleAtom);
   const shown = clientId !== undefined && navigation.orgId === clientId;
   return useCallback(
-    (userId: string) => (shown ? people?.[userId]?.name : undefined),
+    (userId: string) => (shown ? people?.[userId]?.called : undefined),
     [people, shown],
   );
 }
 
 /**
  * Who a record names by their Zerops user id, or by the subject the engine records a person's
- * answer under: the person looking by their own account, anyone else as the member list names them.
+ * answer under: as the member list calls them, and the person looking by their own account where
+ * the list does not hold them.
  */
 export function personNameOf(
   subject: string,
@@ -67,8 +71,17 @@ export function personNameOf(
   people: (userId: string) => string | undefined,
 ): string | undefined {
   const userId = zeropsUserIdOf(subject);
-  if (viewer?.id === userId) return zeropsAccountDisplay(viewer).name;
-  return people(userId);
+  return people(userId) ?? (viewer?.id === userId ? zeropsAccountDisplay(viewer).name : undefined);
+}
+
+/**
+ * What every surface calls the person looking (`ZeropsPerson.called`), as the member list of the
+ * organization in view holds them; `undefined` while it does not.
+ */
+export function useViewerCalled(): string | undefined {
+  const viewerId = useZeropsSessionOptional()?.user?.id;
+  const people = useAtomValue(hqPeopleAtom);
+  return viewerId === undefined ? undefined : people?.[viewerId]?.called;
 }
 
 /** `personNameOf` for the organization `clientId`, as a surface names who answered its ask. */
@@ -91,6 +104,7 @@ export function zeropsMateOwnerOf(
   if (owner === null || owner === undefined) return undefined;
   return {
     name: owner.name,
+    called: owner.called,
     initials: zeropsInitials(owner.name),
     avatarUrl: owner.avatarUrl ?? null,
     isViewer: viewerUserId !== undefined && viewerUserId !== null && owner.userId === viewerUserId,

@@ -26,8 +26,11 @@ describe("zeropsMateOwnerOf", () => {
     { case: "their picture", avatarUrl: "https://img/jan.png" },
     { case: "initials where they have no picture", avatarUrl: null },
   ])("is the person's name, initials and $case", ({ avatarUrl }) => {
-    expect(zeropsMateOwnerOf({ userId: "u-jan", name: "Jan Novák", avatarUrl })).toEqual({
+    expect(
+      zeropsMateOwnerOf({ userId: "u-jan", name: "Jan Novák", called: "Jan", avatarUrl }),
+    ).toEqual({
       name: "Jan Novák",
+      called: "Jan",
       initials: "JN",
       avatarUrl,
       isViewer: false,
@@ -39,7 +42,7 @@ describe("zeropsMateOwnerOf", () => {
     { viewer: "u-ada", isViewer: false },
     { viewer: undefined, isViewer: false },
   ])("says whether the owner is the one looking: $viewer", ({ viewer, isViewer }) => {
-    const jan = { userId: "u-jan", name: "Jan Novák", avatarUrl: null };
+    const jan = { userId: "u-jan", name: "Jan Novák", called: "Jan", avatarUrl: null };
     expect(zeropsMateOwnerOf(jan, viewer)?.isViewer).toBe(isViewer);
   });
 

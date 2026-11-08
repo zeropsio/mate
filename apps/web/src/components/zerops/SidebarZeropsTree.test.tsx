@@ -4211,12 +4211,14 @@ describe("a Mate's own menu opens its crew, or sets one up", () => {
   const ACTIONS: MateRowActions = { muted: false, entries: [] };
   const MINE: ZeropsMateOwner = {
     name: "Petra Malá",
+    called: "Petra",
     initials: "PM",
     avatarUrl: null,
     isViewer: true,
   };
   const COLLEAGUES: ZeropsMateOwner = {
     name: "Jan Beneš",
+    called: "Jan",
     initials: "JB",
     avatarUrl: null,
     isViewer: false,

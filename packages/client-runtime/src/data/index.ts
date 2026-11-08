@@ -35,6 +35,7 @@ export {
   hqNavigation,
   hqPersonFacts,
   hqStatus,
+  type HqNavigationPeople,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
 export {

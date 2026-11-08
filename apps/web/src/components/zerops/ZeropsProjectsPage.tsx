@@ -1093,7 +1093,7 @@ export function ZeropsProjectsContent({
   ): ZeropsRowInput => {
     const visibility = visibilityOf(candidate);
     const ownerName =
-      visibility === "listed" ? projectPeople[candidate.project.id]?.owner?.name : undefined;
+      visibility === "listed" ? projectPeople[candidate.project.id]?.owner?.called : undefined;
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {

@@ -560,7 +560,7 @@ const conversation = (kind: JumpConversation["kind"] = "idle"): JumpConversation
 describe("jumpWritePlan — who reads it, when, and what Enter does", () => {
   const base = {
     name: "Nova",
-    owner: { name: "Ada Lovelace", isViewer: true },
+    owner: { called: "Ada", isViewer: true },
     conversation: conversation(),
     pausedUntilLabel: undefined,
     started: true,
@@ -679,13 +679,13 @@ describe("jumpWritePlan — who reads it, when, and what Enter does", () => {
     },
     {
       case: "a colleague's Mate the viewer may write to, which says nothing of the colleague",
-      input: { owner: { name: "Petra Malá", isViewer: false } },
+      input: { owner: { called: "Petra", isViewer: false } },
       hint: "Nova reads it now",
       action: "send",
     },
     {
       case: "a Mate found to be somebody else's after it was picked",
-      input: { owner: { name: "Petra Malá", isViewer: false }, readOnly: true },
+      input: { owner: { called: "Petra", isViewer: false }, readOnly: true },
       hint: "Nova is Petra's Mate — only Petra writes to it",
       action: "none",
     },

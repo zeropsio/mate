@@ -629,9 +629,9 @@ function ReviewMaker({ by }: { readonly by: ProjectReviewItem["by"] }) {
   }
   const mark =
     by.owner ??
-    (by.ownerFirstName === undefined
+    (by.ownerName === undefined
       ? undefined
-      : ownerMark({ name: by.ownerFirstName, initials: "", avatarUrl: null }));
+      : ownerMark({ name: by.ownerName, initials: "", avatarUrl: null }));
   return (
     <span aria-hidden="true" className="menu-tagpop-face">
       <span className={mark === undefined ? "flex" : "menu-tagpop-cut flex"}>
