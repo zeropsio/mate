@@ -44,12 +44,16 @@ describe("Usage claims require scope and source evidence", () => {
       kind: "unavailable",
     },
   ] as const)("$name", ({ read, kind }) =>
-    expect(usagePageState({ read, projects, scope: {} }).kind).toBe(kind),
+    expect(usagePageState({ read, projects, scope: {}, viewerUserId: null }).kind).toBe(kind),
   );
   it("explains ambiguous bookmarks", () =>
     expect(
-      usagePageState({ read: { kind: "reading" }, projects, scope: { legacyProject: "Shop" } })
-        .message,
+      usagePageState({
+        read: { kind: "reading" },
+        projects,
+        scope: { legacyProject: "Shop" },
+        viewerUserId: null,
+      }).message,
     ).toContain("ambiguous"));
   it("a historical scope is read by HQ without requiring a current Mate registration", () =>
     expect(
@@ -57,6 +61,7 @@ describe("Usage claims require scope and source evidence", () => {
         read: { kind: "read", report: recordedReport(), stale: false },
         projects: new Map(),
         scope: { project: "deleted-app" },
+        viewerUserId: null,
       }).kind,
     ).toBe("ready"));
 });
@@ -108,7 +113,12 @@ describe("Earlier history recorded without a day", () => {
   it("reads as recorded, never as no earlier history, and says the tokens it holds", () => {
     const report = undated("14217292");
     expect(
-      usagePageState({ read: { kind: "read", stale: false, report }, projects, scope: {} }),
+      usagePageState({
+        read: { kind: "read", stale: false, report },
+        projects,
+        scope: {},
+        viewerUserId: null,
+      }),
     ).toMatchObject({ kind: "ready", message: null });
     expect(undatedHistoryLine(report)).toBe("14,217,292 tokens recorded without a day");
   });

@@ -1,4 +1,5 @@
 import { useNowMs } from "../../zerops/useNowMs";
+import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { useAtomValue } from "@effect/atom-react";
 import { type EnvironmentId, type UsageProviderKind } from "@t3tools/contracts";
 import { RefreshCwIcon, XIcon } from "lucide-react";
@@ -248,7 +249,8 @@ export function UsagePage({
   });
 
   const nativeCosts = usageNativeCosts(report);
-  const state = usagePageState({ read, scope, projects });
+  const viewerUserId = useZeropsSessionOptional()?.user?.id ?? null;
+  const state = usagePageState({ read, scope, projects, viewerUserId });
   const settling = state.kind === "reading";
   const noTotals =
     state.kind === "unavailable" || state.kind === "invalid" || state.kind === "empty";

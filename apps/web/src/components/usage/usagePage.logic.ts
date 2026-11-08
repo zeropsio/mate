@@ -54,6 +54,8 @@ export function usagePageState(input: {
   readonly read: AgentUsageRead;
   readonly scope: UsageScope;
   readonly projects: ReadonlyMap<string, string>;
+  /** The signed-in person: a report HQ answered for their own Mates alone speaks of them. */
+  readonly viewerUserId: string | null;
 }): {
   readonly kind: "reading" | "unavailable" | "invalid" | "empty" | "partial" | "ready";
   readonly message: string | null;
@@ -80,16 +82,25 @@ export function usagePageState(input: {
       kind: "unavailable",
       message: "Exact usage is unavailable for this period. Choose a daily range.",
     };
-  if (report.totals.records === "0")
+  if (report.totals.records === "0") {
+    // A report asked for the viewer's own Mates says so, never reads as the organization's.
+    const own = input.viewerUserId !== null && report.query.ownerUserId === input.viewerUserId;
     return {
       kind: "empty",
       message:
         report.provenance === "legacy-scanner"
-          ? "No earlier history is recorded for this period."
+          ? own
+            ? "Your Mates have no earlier history recorded for this period."
+            : "No earlier history is recorded for this period."
           : report.recordedSince == null
-            ? "No recorded Mate usage yet."
-            : "No recorded usage in this period.",
+            ? own
+              ? "Your Mates have no recorded usage yet."
+              : "No recorded Mate usage yet."
+            : own
+              ? "Your Mates have no recorded usage in this period."
+              : "No recorded usage in this period.",
     };
+  }
   return { kind: report.state === "complete" ? "ready" : "partial", message: null };
 }
 
