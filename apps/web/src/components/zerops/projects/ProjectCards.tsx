@@ -703,9 +703,11 @@ function ProjectCard<T>({
   const settingUp = props.stageSettingUp?.(entry);
   const placeFacts = props.cardPlaces?.(entry);
   const readyWhere = ready === undefined ? undefined : readyLine(ready, placeFacts?.releaseOnStage);
-  // No stage yet: where one would stand, the way to add it — or that one is being set up.
+  // No stage yet: where one would stand, the way to add it — or that one is being set up, or the
+  // Mate that serves as it.
+  const devstage = flow.stages.length > 0 ? undefined : props.stageDevstage?.(entry);
   const stageSetUp =
-    flow.stages.length > 0
+    flow.stages.length > 0 || devstage !== undefined
       ? undefined
       : flow.creatingStages.length > 0 || settingUp !== undefined
         ? ("creating" as const)
@@ -799,6 +801,11 @@ function ProjectCard<T>({
           </section>
         );
       })}
+      {devstage === undefined ? null : (
+        <section className="ov-sec" data-zerops-place="stage">
+          <PlainPanel line={{ ...NEW_STAGE, words: [devstage] }} />
+        </section>
+      )}
       {stageSetUp === undefined ? null : (
         <section
           className="ov-sec"

@@ -5,8 +5,8 @@ import {
   type GroupFlow,
   type GroupFlowInput,
   type GroupNextStepKind,
-  type ZeropsGroup,
-  type ZeropsProject,
+  applicationEnvironments,
+  listedEnvironmentsOf,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -30,7 +30,6 @@ import {
   overviewFilterTabs,
   overviewKeeps,
   parseProjectsSearch,
-  tiersAddable,
   rowMateActivitiesOf,
   projectRowLine,
   shownUngrouped,
@@ -1098,32 +1097,38 @@ describe("a project row's Mates — what each is on", () => {
   });
 });
 
-describe("tiersAddable", () => {
+describe("applicationEnvironments", () => {
   type Tier = "stage" | "production";
+  const KIND_OF_ROLE = {
+    dev: "mate",
+    devstage: "devstage",
+    stage: "stage",
+    prod: "production",
+  } as const;
   const entry = (id: string, role: "dev" | "stage" | "prod" | "devstage") => ({
-    project: { id, name: id, status: "ACTIVE" } as ZeropsProject,
-    role,
+    id,
+    name: id,
+    hq: { appId: "shop", appName: "Shop", kind: KIND_OF_ROLE[role], mate: null },
   });
   const BOTH = { stage: true, production: true };
   const ask = (over: {
     offered?: { stage: boolean; production: boolean } | null;
-    environments?: ReadonlyArray<{
-      project: ZeropsProject;
-      role: "dev" | "stage" | "prod" | "devstage";
-    }>;
-    pending?: ZeropsGroup["pending"];
+    environments?: ReadonlyArray<ReturnType<typeof entry>>;
+    pending?: ReadonlyArray<{ id: string; tier: Tier }>;
     hq?: ReadonlyArray<{ id: string; tier: Tier }>;
     recipe?: { read: boolean; tiers: ReadonlyArray<Tier> };
-  }) =>
-    tiersAddable({
+  }) => {
+    const recipe = over.recipe ?? { read: true, tiers: ["stage", "production"] };
+    const { addable } = applicationEnvironments({
+      environments: over.hq ?? [],
+      ...listedEnvironmentsOf("shop", over.environments ?? [entry("dev", "dev")]),
+      pending: over.pending ?? [],
+      recipeRead: recipe.read,
+      recipeTiers: recipe.tiers,
       offered: over.offered === undefined ? BOTH : over.offered,
-      group: {
-        environments: over.environments ?? [entry("dev", "dev")],
-        pending: over.pending ?? [],
-      },
-      hq: over.hq ?? [],
-      recipe: over.recipe ?? { read: true, tiers: ["stage", "production"] },
     });
+    return (["stage", "production"] as const).filter((tier) => addable[tier]);
+  };
 
   it.each<[string, Parameters<typeof ask>[0], ReadonlyArray<Tier>]>([
     ["HQ offers both, nothing added", {}, ["stage", "production"]],
@@ -1145,11 +1150,7 @@ describe("tiersAddable", () => {
       { environments: [entry("p", "prod")] },
       ["stage"],
     ],
-    [
-      "a production being created",
-      { pending: [{ projectId: "n", kind: "production", name: "n", startedAt: 0 }] },
-      ["stage"],
-    ],
+    ["a production being created", { pending: [{ id: "n", tier: "production" }] }, ["stage"]],
     [
       "a stage and a production HQ holds, counted once beside the projects",
       {
@@ -1181,14 +1182,17 @@ it("Every Add door accepts HQ Git authority without a recipe and still holds occ
       git: true,
       zerops: { stage: false, production: false },
     },
-    group: { environments: [], pending: [] },
-    hq: [],
-    recipe: { read: false, tiers: [] },
+    environments: [],
+    devstages: [],
+    pending: [],
+    recipeRead: false,
+    recipeTiers: [],
   };
-  expect(tiersAddable(input)).toEqual(["stage", "production"]);
-  expect(tiersAddable({ ...input, hq: [{ id: "git-prod", tier: "production" }] })).toEqual([
-    "stage",
-  ]);
+  expect(applicationEnvironments(input).addable).toEqual({ stage: true, production: true });
+  expect(
+    applicationEnvironments({ ...input, environments: [{ id: "git-prod", tier: "production" }] })
+      .addable,
+  ).toEqual({ stage: true, production: false });
 });
 
 describe("overviewPaints — the overview paints its projects once, whole", () => {

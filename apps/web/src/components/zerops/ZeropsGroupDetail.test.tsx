@@ -14,6 +14,7 @@ import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 import {
   deployedVersion,
   environmentSlots,
+  listedEnvironmentsOf,
   releaseRow,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type EnvironmentServiceState,
@@ -63,7 +64,6 @@ import {
   ZeropsGroupPane,
   ZeropsStopPane,
   ZeropsRuntimeStops,
-  devstagesOf,
   runtimeStopsOf,
   stopRepository,
 } from "./ZeropsGroupDetail";
@@ -242,12 +242,12 @@ describe("runtime without HQ detail", () => {
       hq: { appId, appName: "Shop", kind, mate: null },
     });
     expect(
-      devstagesOf("shop", [
+      listedEnvironmentsOf("shop", [
         project("vera", "devstage"),
         project("iris", "mate"),
         project("shop-stage", "stage"),
         project("other-dev", "devstage", "links"),
-      ]),
+      ]).devstages,
     ).toEqual([{ id: "vera", name: "vera" }]);
   });
 
@@ -416,11 +416,10 @@ describe("ZeropsGroupPane", () => {
 
     describe("B: authoritative placement", () => {
       it("a Mate used as stage occupies the stage slot and explains who deploys it", () => {
-        const devstages = devstagesOf("shop", [
+        const { devstages } = listedEnvironmentsOf("shop", [
           {
             id: "Ada",
             name: "Ada",
-            status: "ACTIVE",
             hq: { appId: "shop", appName: "Shop", kind: "devstage", mate: { face: "" } },
           },
         ]);

@@ -23,9 +23,6 @@ import {
   type FlowPullRequest,
   type Moved,
   type GroupEnvironmentTier,
-  type HeldEnvironment,
-  environmentAddable,
-  heldTiers,
   type GroupFlow,
   type GroupFlowComing,
   type GroupFlowInput,
@@ -38,7 +35,6 @@ import {
   type ReleaseGate,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
-  type ZeropsGroup,
   type ZeropsGroupPendingMember,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
@@ -505,64 +501,6 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
   });
 }
 
-/**
- * The tiers a project's menu offers *Add* for — the one answer (`environmentAddable`) for the
- * group as its tree holds it: its projects by role (a Mate that is also the stage counts as the
- * stage), its creations under way, and what HQ records of it, each counted once; whether the
- * recipe holds the tier; and whether HQ offers this person the tier. Nothing is offered before HQ
- * says.
- */
-export function tiersAddable(input: {
-  /** The tiers HQ offers this person to add (`add_stage` / `add_production`); `null` before it says. */
-  readonly offered: {
-    readonly stage: boolean;
-    readonly production: boolean;
-    readonly git?: boolean;
-    readonly zerops?: { readonly stage: boolean; readonly production: boolean };
-  } | null;
-  readonly group: Pick<ZeropsGroup, "pending"> & {
-    readonly environments: ReadonlyArray<{
-      readonly role: import("@t3tools/client-runtime/zerops").ZeropsEnvironmentRole | undefined;
-      readonly project: { readonly id: string } | undefined;
-    }>;
-  };
-  /** The application's environments as HQ records them. */
-  readonly hq: ReadonlyArray<HeldEnvironment>;
-  readonly recipe: { readonly read: boolean; readonly tiers: ReadonlyArray<GroupEnvironmentTier> };
-}): ReadonlyArray<GroupEnvironmentTier> {
-  const { offered, group } = input;
-  if (offered === null) return [];
-  const held = heldTiers([
-    ...input.hq,
-    ...group.environments.flatMap((entry): ReadonlyArray<HeldEnvironment> => {
-      const tier =
-        entry.role === "prod"
-          ? "production"
-          : entry.role === "stage" || entry.role === "devstage"
-            ? "stage"
-            : undefined;
-      return tier === undefined || entry.project === undefined
-        ? []
-        : [{ id: entry.project.id, tier }];
-    }),
-    ...group.pending.flatMap((entry): ReadonlyArray<HeldEnvironment> =>
-      entry.kind === "stage" || entry.kind === "production"
-        ? [{ id: entry.projectId, tier: entry.kind }]
-        : [],
-    ),
-  ]);
-  return (["stage", "production"] as const).filter((tier) =>
-    environmentAddable({
-      tier,
-      recipeRead: input.recipe.read,
-      recipeTiers: input.recipe.tiers,
-      offered: offered.zerops?.[tier] ?? offered[tier],
-      gitOffered: offered.git === true,
-      held,
-    }),
-  );
-}
-
 /** The part of a group's project flow `groupFlow` reads. */
 export interface GroupFlowReads {
   /** The Mate tier as `main` holds it (`servicePairs`); `undefined` while unread. */
@@ -663,6 +601,7 @@ export function groupFlowInputOf(input: {
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
 }): GroupFlowInput {
   const { flow } = input;
+  const listedIds = new Set(input.members.map((member) => member.projectId));
   return {
     groupId: input.groupId,
     mates: input.members.flatMap((member) =>
@@ -704,22 +643,24 @@ export function groupFlowInputOf(input: {
           },
         ];
       }),
-      // An environment HQ delivers to a Git branch has no Zerops project, so no member of the
-      // group tree stands for it: its row alone is the stop.
-      ...(flow?.environments ?? []).flatMap((row) =>
-        row.target.kind === "git"
-          ? [
-              {
-                projectId: row.id,
-                name: row.name,
-                tier: row.tier,
-                row,
-                deployment: undefined,
-                addresses: [],
-              },
-            ]
-          : [],
-      ),
+      // An environment HQ records that no member of the group tree stands for — delivered to a Git
+      // branch, or a Zerops project the account does not list — is its row alone, as the project's
+      // *Environments* draws it.
+      ...(flow?.environments ?? []).flatMap((row) => {
+        const { target } = row;
+        if (target.kind === "zerops" && listedIds.has(target.projectId)) return [];
+        return [
+          {
+            projectId: row.id,
+            name: row.name,
+            tier: row.tier,
+            row,
+            deployment:
+              target.kind === "zerops" ? input.deployments?.get(target.projectId) : undefined,
+            addresses: [],
+          },
+        ];
+      }),
     ],
     release:
       flow === undefined
