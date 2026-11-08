@@ -15,8 +15,14 @@ export const observeRequestScope = (key: ObserveCredentialKey): ScopeKey =>
 declare module "../model.ts" {
   interface FamilyValues {
     readonly hqObserveCredential: ObserveCredential;
-    /** Successful automatic establishment; status reads begun earlier must be replaced. */
-    readonly hqObserveCredentialRequest: { readonly requestId: string };
+    /**
+     * HQ's answer to our establishment of a ZCP context: the status it names replaces every status
+     * read begun earlier.
+     */
+    readonly hqObserveCredentialRequest: {
+      readonly requestId: string;
+      readonly answer: ObserveCredential;
+    };
   }
 }
 export const hqObserveCredentialFamily: FamilySpec<"hqObserveCredential"> = {

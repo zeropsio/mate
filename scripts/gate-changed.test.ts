@@ -847,7 +847,10 @@ it.each([
   const lines = output.split("\n");
   const owner = path.split("/").slice(0, 2).join("/");
   const typechecks = lines.filter(
-    (line) => line.startsWith("typecheck ") && !line.startsWith("typecheck scenarios:"),
+    (line) =>
+      line.startsWith("typecheck ") &&
+      !line.startsWith("typecheck scenarios:") &&
+      !line.startsWith("typecheck engine oracle:"),
   );
   const ownerName = owner === "apps/server" ? "t3" : `@t3tools/${owner.split("/")[1]}`;
   const dependents =

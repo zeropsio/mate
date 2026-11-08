@@ -191,6 +191,7 @@ export const ExecutionEnvironmentUpdate = Schema.Struct({
   /** Empty when zcp has no manifest evidence; availability is unknown. */
   latest: Schema.String,
   available: Schema.Boolean,
+  /** When zcp's answer last said something new; a re-read with the same answer keeps it. */
   checkedAt: TrimmedNonEmptyString,
   automatic: Schema.optionalKey(
     Schema.Struct({

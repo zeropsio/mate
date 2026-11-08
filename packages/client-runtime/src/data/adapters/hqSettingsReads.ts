@@ -1,7 +1,8 @@
 /**
  * A setting HQ answers in one read — the organization's keys, its Slack app, an application's
  * webhooks — read while a screen demands it, supervised by the common retry and refusal policy, and
- * read again when asked (`again`, after a write of ours). Each read started has its number, which
+ * read again when asked (`again`, after a write of ours) — or given the value a write of ours answered
+ * (`answered`). Each read started has its number, which
  * the committed value's revision carries: a write's answer names the last read started before it
  * (`started`), so whoever waits for the write to show knows the read that can show it.
  *
@@ -213,6 +214,31 @@ export function makeSettingsReads(store: AccountStore) {
      */
     started: <F extends Family>(spec: SettingRead<F>): number =>
       readings.get(keyOf(spec))?.started ?? committed(spec),
+    /**
+     * Our own write answered with the setting as it stands now: that answer is its value,
+     * numbered after every read started, so none of them landing later replaces it.
+     */
+    answered: <F extends Family>(spec: SettingRead<F>, value: FamilyValues[F]) => {
+      if (closed) return;
+      const entry = readings.get(keyOf(spec));
+      const number = Math.max(entry?.started ?? 0, committed(spec)) + 1;
+      if (entry !== undefined) entry.started = number;
+      store.dispatch({
+        kind: "rows",
+        scope: spec.scope,
+        generation: streamOf(store.state(), spec.scope).generation,
+        method: "read",
+        via: "hq-stream",
+        rows: [
+          {
+            family: spec.family,
+            id: spec.id,
+            value,
+            revision: { kind: "mate-link", sequence: number },
+          } as never,
+        ],
+      });
+    },
     /**
      * Our own write's effect is read from HQ: the setting is held and read again until it
      * answers, then let go unless a screen still demands it.

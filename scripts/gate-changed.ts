@@ -1691,7 +1691,9 @@ export function selectGateSteps(
       args: ["exec", "tsc", "--noEmit", "--incremental"],
       cwd: pkg.directory,
     });
-  if (paths.some((path) => path.startsWith("apps/web/test/engine-oracle/")))
+  // The web's own test projects import the web and its dependencies, so they typecheck whenever it does.
+  const webTypechecks = packages.some((pkg) => pkg.name === "@t3tools/web");
+  if (webTypechecks)
     steps.push({
       name: "typecheck engine oracle",
       command: "vp",
@@ -1704,7 +1706,7 @@ export function selectGateSteps(
         "apps/web/test/engine-oracle/tsconfig.json",
       ],
     });
-  if (paths.some((path) => path.startsWith("apps/web/test/scenarios/")))
+  if (webTypechecks)
     steps.push({
       name: "typecheck scenarios",
       command: "vp",
