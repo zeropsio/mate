@@ -195,7 +195,7 @@ it.each([
   [undefined, "Source archive size is not available yet."],
   [null, "Source archive size is not available yet."],
   [0, "Source archive: 0 B"],
-  [1_305_166_613, "Source archive: 1.31 GB"],
+  [1_305_166_613, "Source archive: 1.22 GiB"],
 ] as const)(
   "the deployment answer renders its job's source archive evidence: %j",
   (sourceArchiveBytes, expected) => {
@@ -225,6 +225,6 @@ it("the deployment answer replaces unknown archive size when its HQ job is measu
   );
   navigation.environments = environmentsWith({ ...job, sourceArchiveBytes: 1_305_166_613 });
   const measured = renderToStaticMarkup(<ZeropsDeployAnswer answer={ANSWER} />);
-  expect(measured).toContain("Source archive: 1.31 GB");
+  expect(measured).toContain("Source archive: 1.22 GiB");
   expect(measured).not.toContain("Source archive size is not available yet.");
 });

@@ -1696,7 +1696,7 @@ it("Git detail and metadata describe the push destination without a service or p
 it.each([
   [undefined, "Source archive size is not available yet."],
   [null, "Source archive size is not available yet."],
-  [1_305_166_613, "Source archive: 1.31 GB"],
+  [1_305_166_613, "Source archive: 1.22 GiB"],
 ] as const)(
   "a durable service row retains its latest deployment's source measurement: %j",
   (sourceArchiveBytes, expected) => {

@@ -17,7 +17,7 @@ it.each([
   [undefined, "Source archive size is not available yet."],
   [null, "Source archive size is not available yet."],
   [0, "Source archive: 0 B"],
-  [1_305_166_613, "Source archive: 1.31 GB"],
+  [1_305_166_613, "Source archive: 1.22 GiB"],
 ] as const)(
   "a service renders its latest deployment's measured archive after it is live: %j",
   (sourceArchiveBytes, expected) => {

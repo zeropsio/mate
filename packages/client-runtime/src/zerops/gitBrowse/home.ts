@@ -13,12 +13,16 @@ export const homeRead = { query: GitHomeQuery, value: GitHome, moving: true } as
 export const githubRepositoryUrl = (remote: { readonly url: string }) =>
   remote.url.replace(/\.git$/u, "");
 
-/** Storage and compressed archives use decimal units; exact source bytes stay in the hint. */
+/**
+ * Storage and compressed archives use binary units, as HQ's whole-GiB cap does: a whole value
+ * reads "6 GiB", others up to two decimals; exact source bytes stay in the hint.
+ */
 export function formatStorageBytes(bytes: number): string {
-  const units = ["B", "kB", "MB", "GB", "TB"];
-  let unit = bytes < 1000 ? 0 : Math.min(Math.floor(Math.log10(bytes) / 3), units.length - 1);
-  if (unit < units.length - 1 && Number((bytes / 1000 ** unit).toFixed(2)) >= 1000) unit++;
-  return unit === 0 ? `${bytes} B` : `${(bytes / 1000 ** unit).toFixed(2)} ${units[unit]}`;
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  const scaled = (unit: number) => Number((bytes / 1024 ** unit).toFixed(2));
+  let unit = bytes < 1024 ? 0 : Math.min(Math.floor(Math.log2(bytes) / 10), units.length - 1);
+  if (unit < units.length - 1 && scaled(unit) >= 1024) unit++;
+  return unit === 0 ? `${bytes} B` : `${scaled(unit)} ${units[unit]}`;
 }
 
 /**
