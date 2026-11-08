@@ -769,7 +769,7 @@ describe("a last release", () => {
       }),
       forgotten: true,
     },
-    { name: "an application's detail", scope: hqAppDetailScope(ORG, "app"), forgotten: true },
+    { name: "an application's detail", scope: hqAppDetailScope(ORG, "app"), forgotten: false },
     { name: "navigation", scope: scope, forgotten: false },
     {
       name: "a sampled read still fresh for a new demand",
