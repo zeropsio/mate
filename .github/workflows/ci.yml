@@ -712,11 +712,15 @@ jobs:
             exit 1
           fi
 
+      # actionlint builds from the Go module proxy: GitHub release downloads fail intermittently.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: false
+
       - name: Check workflow schema
-        working-directory: scripts
-        env:
-          ACTIONLINT_RELEASE: "1.7.12"
-        run: vp exec github-actionlint -shellcheck= -pyflakes= ../.github/workflows/*.yml
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes= .github/workflows/*.yml
 
       - name: Check imported.lock
         run: node scripts/imported-lock.ts --check
