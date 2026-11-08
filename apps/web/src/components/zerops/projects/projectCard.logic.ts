@@ -571,16 +571,6 @@ export function releaseProductionRuns(
   return releases.find((release) => release.standing === "live" && release.tag !== inFlight)?.tag;
 }
 
-/**
- * Whether there is something for *Put it live* to put live: the app's code merged, or a change of
- * it open that its one press merges. A Mate's setup files are no app.
- */
-export function putLiveHasChange(flow: Pick<GroupFlow, "main" | "pullRequests">): boolean {
-  return (
-    flow.main.hasCode === true || flow.pullRequests.some((entry) => entry.pull.kind === "code")
-  );
-}
-
 /** "3 changes ready to release", "1 change ready to release". */
 export function readyTitle(ready: CardReady): string {
   if (ready.changeCount !== undefined)

@@ -24,6 +24,7 @@ import type { ZeropsEnvironmentRole } from "./groups.ts";
 import { environmentKeyed } from "./deployToken.ts";
 import { deploymentReadFailed, type Deployment } from "./flow/deployment.ts";
 import type { Shown } from "./knowledge/known.ts";
+import type { FlowPullRequest } from "./projectFlow.ts";
 import { PRODUCTION_SETTING_UP } from "./groupFlow.ts";
 import { changesCountWords } from "./projectAttention.ts";
 import { STAGE_SETTING_UP } from "./stopComing.ts";
@@ -221,12 +222,30 @@ export interface ApplicationEnvironmentFacts {
   readonly recipeRead: boolean;
   /** What HQ offers this person; `null` before it says, and nothing is offered on a guess. */
   readonly offered: EnvironmentOffers | null;
+  /** The application's changes landed on `main`: what *Put it live* would put live. */
+  readonly merged: ReadonlyArray<Pick<FlowPullRequest, "kind">>;
+  /** Its changes open, which *Put it live*'s one press merges. */
+  readonly pullRequests: ReadonlyArray<Pick<FlowPullRequest, "kind">>;
+}
+
+/**
+ * Whether there is something for *Put it live* to put live: the app's code merged, or a change of
+ * it open that its one press merges. A Mate's setup files are no app.
+ */
+export function putLiveHasChange(
+  changes: Pick<ApplicationEnvironmentFacts, "merged" | "pullRequests">,
+): boolean {
+  return [...changes.merged, ...changes.pullRequests].some((pull) => pull.kind === "code");
 }
 
 /** What an application holds of each tier and what may be added to it: one answer, every surface. */
 export interface ApplicationEnvironments {
   /** Everything it holds, in any state, each once. */
   readonly held: ReadonlyArray<HeldEnvironment>;
+  /**
+   * Which tier may be added. Production is added by *Put it live*, so every door offers it only
+   * where there is a change to put live (`putLiveHasChange`).
+   */
   readonly addable: { readonly stage: boolean; readonly production: boolean };
   /** What an absent tier's slot says: not added, or waiting for the recipe to hold it. */
   readonly absentLine: { readonly stage: string; readonly production: string };
@@ -262,7 +281,8 @@ export function listedEnvironmentsOf(
 /**
  * The one projection of an application's environments: what it holds — HQ's record (a Zerops one
  * by its project), the account's projects placed as a tier, a Mate that is also the stage, a
- * creation under way — and, by the one rule (`environmentAddable`), which tier may be added.
+ * creation under way — and, by the one rule (`environmentAddable`), which tier may be added: a
+ * production only with a change to put live.
  */
 export function applicationEnvironments(
   facts: ApplicationEnvironmentFacts,
@@ -294,7 +314,10 @@ export function applicationEnvironments(
       : ENVIRONMENT_NOT_ADDED;
   return {
     held,
-    addable: { stage: addable("stage"), production: addable("production") },
+    addable: {
+      stage: addable("stage"),
+      production: addable("production") && putLiveHasChange(facts),
+    },
     absentLine: { stage: absentLine("stage"), production: absentLine("production") },
     devstages: facts.devstages.map(({ id, name }) => ({
       id,

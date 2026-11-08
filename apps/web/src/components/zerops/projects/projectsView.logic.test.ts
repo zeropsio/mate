@@ -1126,6 +1126,8 @@ describe("applicationEnvironments", () => {
       recipeRead: recipe.read,
       recipeTiers: recipe.tiers,
       offered: over.offered === undefined ? BOTH : over.offered,
+      merged: [{ kind: "code" }],
+      pullRequests: [],
     });
     return (["stage", "production"] as const).filter((tier) => addable[tier]);
   };
@@ -1187,6 +1189,8 @@ it("Every Add door accepts HQ Git authority without a recipe and still holds occ
     pending: [],
     recipeRead: false,
     recipeTiers: [],
+    merged: [{ kind: "code" as const }],
+    pullRequests: [],
   };
   expect(applicationEnvironments(input).addable).toEqual({ stage: true, production: true });
   expect(

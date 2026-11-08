@@ -4,6 +4,7 @@ import {
   groupFlow,
   placeAddresses,
   PRODUCTION_DEPLOYING,
+  putLiveHasChange,
   type GroupFlowProduction,
   type GroupFlowStop,
   type RecipeReach,
@@ -36,7 +37,6 @@ import {
   releaseProductionRuns,
   placeLines,
   placeServices,
-  putLiveHasChange,
   readyLine,
   readyTitle,
   rollBackTarget,
@@ -746,32 +746,21 @@ describe("production's line while a release is on its way", () => {
 // The onboarding run: production offered "Put it live" while the Mate was still creating its
 // services and nothing was there to put live.
 describe("Put it live on a card", () => {
-  const main = (hasCode: boolean | undefined) => ({
-    head: undefined,
-    hasCode,
-    notLive: 0,
-    notLiveAtLeast: false,
-  });
-  const open = (kind: "code" | "recipe") => ({
-    pull: pull({ kind, number: 3, title: "Add the tea list" }),
-    blocked: null,
-    state: undefined,
-    review: true,
-  });
+  const open = (kind: "code" | "recipe") => pull({ kind, number: 3, title: "Add the tea list" });
   it.each([
-    { case: "nothing merged and no change open", hasCode: undefined, open: [], offered: false },
+    { case: "nothing merged and no change open", merged: [], open: [], offered: false },
     {
       case: "only the Mate's setup files open",
-      hasCode: undefined,
+      merged: [],
       open: [open("recipe")],
       offered: false,
     },
-    { case: "a change of the app open", hasCode: undefined, open: [open("code")], offered: true },
-    { case: "the app's code merged", hasCode: true, open: [], offered: true },
+    { case: "a change of the app open", merged: [], open: [open("code")], offered: true },
+    { case: "the app's code merged", merged: [open("code")], open: [], offered: true },
   ])(
     "is offered only once there is a change to put live: $case",
-    ({ hasCode, open: pulls, offered }) => {
-      expect(putLiveHasChange({ main: main(hasCode), pullRequests: pulls })).toBe(offered);
+    ({ merged, open: pulls, offered }) => {
+      expect(putLiveHasChange({ merged, pullRequests: pulls })).toBe(offered);
     },
   );
 });

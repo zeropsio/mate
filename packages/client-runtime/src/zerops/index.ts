@@ -610,6 +610,7 @@ export {
   type GroupEnvironmentTier,
   applicationEnvironments,
   listedEnvironmentsOf,
+  putLiveHasChange,
   type ApplicationEnvironmentFacts,
   type ApplicationEnvironments,
   type EnvironmentOffers,

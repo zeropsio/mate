@@ -209,6 +209,8 @@ describe("Projects compact flow", () => {
         productionRuns: "unknown",
         waiting: { count: 0, atLeast: false },
         mainHasCode: true,
+        merged: [{ kind: "code" }],
+        pullRequests: [],
         releaseOffered: false,
         releasing: undefined,
       });
