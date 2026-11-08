@@ -107,6 +107,11 @@ export function useGitBrowseReads<R extends GitBrowseRead>(
     again: () => {
       if (reader !== null && keys !== null && allowed === true) keys.forEach(reader.again);
     },
+    /** The `at`th read's value as a write's answer named it (`makeGitBrowseReads`' `answered`). */
+    answered: (at: number, value: GitBrowseValue<R>) => {
+      const key = keys?.[at];
+      if (reader !== null && key !== undefined) reader.answered(key, value);
+    },
   };
 }
 
@@ -115,7 +120,7 @@ export function useGitBrowse<R extends GitBrowseRead>(
   request: GitBrowseRequest<R>,
   allowed: boolean | undefined,
 ) {
-  const { views, again } = useGitBrowseReads([request], allowed);
+  const { views, again, answered } = useGitBrowseReads([request], allowed);
   const view: GitBrowseView<GitBrowseValue<R>> = views[0] ?? { state: "unread", busy: false };
-  return { view, again };
+  return { view, again, answered: (value: GitBrowseValue<R>) => answered(0, value) };
 }

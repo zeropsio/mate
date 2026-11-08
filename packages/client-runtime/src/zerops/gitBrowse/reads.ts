@@ -19,6 +19,7 @@ import { logRead } from "./log.ts";
 import { rawRead } from "./raw.ts";
 import { pathsRead } from "./paths.ts";
 import { refsRead } from "./refs.ts";
+import { storageRead } from "./storage.ts";
 import { treeRead } from "./tree.ts";
 
 export const GIT_BROWSE_READS = {
@@ -36,6 +37,7 @@ export const GIT_BROWSE_READS = {
   grep: grepRead,
   blame: blameRead,
   archive: archiveRead,
+  storage: storageRead,
 } as const;
 
 export type GitBrowseRead = keyof typeof GIT_BROWSE_READS;
@@ -69,7 +71,10 @@ export const gitBrowseSearch = <R extends GitBrowseRead>(read: R, params: GitBro
   );
 };
 
-/** A read's address; none where HQ would refuse its parameters as `invalid`. */
+/**
+ * A read's address, under `browse/` unless its line names its own `path` (a route of HQ's
+ * structure, `storage`); none where HQ would refuse its parameters as `invalid`.
+ */
 export const gitBrowsePath = <R extends GitBrowseRead>(
   read: R,
   appId: string,
@@ -77,7 +82,8 @@ export const gitBrowsePath = <R extends GitBrowseRead>(
   params: GitBrowseParams<R>,
 ) => {
   const search = gitBrowseSearch(read, params);
-  return search === null
-    ? null
-    : `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/browse/${read}?${search}`;
+  if (search === null) return null;
+  const line = GIT_BROWSE_READS[read];
+  const at = "path" in line ? line.path : `browse/${read}`;
+  return `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/${at}?${search}`;
 };

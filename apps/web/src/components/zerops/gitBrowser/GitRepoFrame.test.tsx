@@ -6,6 +6,14 @@ import { GitRepoFrame } from "./GitRepoFrame";
 vi.mock("./GitRefPicker", () => ({ GitRefPicker: () => null }));
 vi.mock("./GitArchiveButton", () => ({ useGitArchive: () => ({}), GitArchiveButton: () => null }));
 vi.mock("../ZeropsGitCredentials", () => ({ ZeropsGitCredentials: () => null }));
+vi.mock("./GitStorageFigure", async () => {
+  const { GitRepositoryStorage } = await import("./GitRepositoryStorage");
+  return {
+    GitStorageFigure: ({ storage }: { readonly storage: GitHomeAbout["storage"] }) => (
+      <GitRepositoryStorage storage={storage} />
+    ),
+  };
+});
 
 const page = (storage: GitHomeAbout["storage"]) =>
   renderToStaticMarkup(

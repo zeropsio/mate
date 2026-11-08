@@ -171,6 +171,11 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   "in_use:remote": "This repository mirrors to GitHub or GitLab. Disconnect the mirror first.",
   "in_use:open_change": "This repository has an open change. Merge or close it first.",
   "in_use:deploy": "A deploy of this repository is running. Try again when it finishes.",
+  // A repository's Git storage limit (`PUT /api/apps/:appId/repos/:repo/storage`).
+  cap_range: "A repository's storage limit is a whole number of GiB from 1 to 100.",
+  cap_below_usage: "This repository already holds more than that. Choose a larger limit.",
+  repo_not_moved:
+    "This repository's Git isn't in storage of its own yet, so its limit can't be changed.",
   change_not_found: "HQ has no such change.",
   attachment_not_found: "HQ has no such picture.",
   commit_not_found: "HQ has no such commit.",

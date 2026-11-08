@@ -2,7 +2,8 @@
  * Git browser reads on demand, supervised by the common retry and refusal policy: one HTTP read
  * per key, shared by every holder and released at the last; a file's bytes are held as a `Blob`. An answer pinned to a commit is never
  * read again while held; a moving one (`home`, `refs`) is read again on a new visit or an explicit
- * Again, never on a timer.
+ * Again, never on a timer. A write whose answer names a read's value as it stands (a repository's
+ * `storage` after its cap is set) commits that answer here, its one writer.
  */
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -23,7 +24,7 @@ import {
   gitBrowseScope,
   type GitBrowseKey,
 } from "../families/hqGitBrowse.ts";
-import type { LinkKey } from "../model.ts";
+import type { LinkKey, ScopeKey } from "../model.ts";
 import { streamOf } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
@@ -58,6 +59,8 @@ export const gitBrowseFailure =
 interface Held {
   count: number;
   again: boolean;
+  /** The revision of the last answer committed. */
+  sequence: number;
   wake?: () => void;
   supervisor?: LinkSupervisor;
   fiber?: Fiber.Fiber<never>;
@@ -85,6 +88,36 @@ export function makeGitBrowseReads(
 ) {
   let closed = false;
   const active = new Map<string, Held>();
+  const signal = (target: LinkKey | ScopeKey, event: StreamEvent) =>
+    Effect.map(Clock.currentTimeMillis, (now) =>
+      store.dispatch({ kind: "stream", key: target, now, event }),
+    );
+  const commit = (
+    identity: GitBrowseKey,
+    made: Held,
+    generation: number,
+    value: GitBrowseValue,
+  ) => {
+    const scope = gitBrowseScope(identity);
+    const id = gitBrowseId(identity);
+    store.dispatch({ kind: "baseline-begin", scope, generation });
+    store.dispatch({
+      kind: "baseline-commit",
+      scope,
+      generation,
+      via: "hq-stream",
+      partial: false,
+      members: [id],
+      rows: [
+        {
+          family: "hqGitBrowse",
+          id,
+          value,
+          revision: { kind: "mate-link", sequence: ++made.sequence },
+        },
+      ],
+    });
+  };
   const demand = (identity: GitBrowseKey) => {
     if (closed) return () => {};
     const id = gitBrowseId(identity);
@@ -94,13 +127,9 @@ export function makeGitBrowseReads(
       const scope = gitBrowseScope(identity);
       const key = gitBrowseLink(identity);
       const prior = store.state().facts.get(`hqGitBrowse:${id}`)?.revision;
-      let sequence = prior?.kind === "mate-link" ? prior.sequence : 0;
-      const signal = (target: LinkKey | typeof scope, event: StreamEvent) =>
-        Effect.map(Clock.currentTimeMillis, (now) =>
-          store.dispatch({ kind: "stream", key: target, now, event }),
-        );
       const made: Held = {
         count: 1,
+        sequence: prior?.kind === "mate-link" ? prior.sequence : 0,
         again:
           GIT_BROWSE_READS[identity.read].moving || streamOf(store.state(), scope).fault !== null,
       };
@@ -148,23 +177,7 @@ export function makeGitBrowseReads(
                         return yield* Effect.fail(answer.failure);
                       }
                       made.again = false;
-                      store.dispatch({ kind: "baseline-begin", scope, generation });
-                      store.dispatch({
-                        kind: "baseline-commit",
-                        scope,
-                        generation,
-                        via: "hq-stream",
-                        partial: false,
-                        members: [id],
-                        rows: [
-                          {
-                            family: "hqGitBrowse",
-                            id,
-                            value: answer.success,
-                            revision: { kind: "mate-link", sequence: ++sequence },
-                          },
-                        ],
-                      });
+                      commit(identity, made, generation, answer.success);
                     }
                     yield* signal(scope, { kind: "baseline-committed" });
                     yield* signal(key, { kind: "baseline-committed" });
@@ -210,6 +223,20 @@ export function makeGitBrowseReads(
       if (entry === undefined || closed) return;
       entry.again = true;
       entry.wake?.();
+    },
+    /**
+     * A write's answer as the held read's value: a read begun before it is late (its generation
+     * passed) and nothing is read again for it.
+     */
+    answered: <R extends GitBrowseRead>(identity: GitBrowseKey<R>, value: GitBrowseValue<R>) => {
+      const entry = active.get(gitBrowseId(identity));
+      if (entry === undefined || closed) return;
+      const scope = gitBrowseScope(identity);
+      Effect.runSync(signal(scope, { kind: "attempt" }));
+      Effect.runSync(signal(scope, { kind: "handshake" }));
+      entry.again = false;
+      commit(identity, entry, streamOf(store.state(), scope).generation, value);
+      Effect.runSync(signal(scope, { kind: "baseline-committed" }));
     },
     close: () => {
       closed = true;

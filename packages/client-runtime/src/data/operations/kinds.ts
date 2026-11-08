@@ -36,6 +36,7 @@ import {
   followGithubRepository,
   stopFollowingGithubRepository,
 } from "./hqGithubRemote.ts";
+import { setRepoCap } from "./hqRepoStorage.ts";
 import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateDeploy } from "./mateDeploy.ts";
@@ -110,6 +111,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   followGithubRepository,
   stopFollowingGithubRepository,
   deleteRepository,
+  setRepoCap,
   vaultWrite,
   serviceRestart,
   ...FLOW_WRITE_KINDS,
