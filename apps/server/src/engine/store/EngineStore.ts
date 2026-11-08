@@ -8,7 +8,8 @@
  * Every event is encoded by its kind's codec before it is written, and a step one of whose events
  * does not encode is refused (`invalid-signal`): the store never writes what it could not read
  * back. A rejected command is committed too (its receipt only), so a retry of it returns the same
- * answer. `load` is the latest snapshot plus a fold of the events after it.
+ * answer. `load` is the latest snapshot plus a fold of the events after it; a fold past the cadence
+ * (a snapshot of another state version, or none) writes its snapshot as it goes.
  *
  * `load`, `commit` and `events` are the conversation's; `owner(domain)` gives any kind the same.
  *
@@ -447,9 +448,24 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
           };
           if (snapshot.v === domain.stateVersion) state = snapshot.state;
         }
+        // A snapshot of another state version is unusable and commit rewrites it only when the head
+        // next crosses the cadence, so a quiet owner with a long history would fold all of it on
+        // every load. The fold rewrites it at commit's cadence instead: the next load starts here,
+        // and a load cut short (a boot killed for missing its budget) keeps what it folded. Any
+        // state folded from the stored events is a valid snapshot at its head.
+        let snapshotSeq = state.headSeq;
         for (;;) {
           const page = yield* readEvents(owner, state.headSeq, DEFAULT_EVENTS_PAGE);
           for (const event of page) state = domain.evolve(state, event);
+          if (Math.floor(state.headSeq / snapshotEvery) > Math.floor(snapshotSeq / snapshotEvery)) {
+            yield* sql`
+              UPDATE engine_conversation
+              SET snapshot_json = ${jsonText({ v: domain.stateVersion, state })},
+                snapshot_seq = ${state.headSeq}
+              WHERE conversation_id = ${owner}
+            `;
+            snapshotSeq = state.headSeq;
+          }
           if (page.length < DEFAULT_EVENTS_PAGE) return state;
         }
       }).pipe(Effect.mapError(storeError("load")));
