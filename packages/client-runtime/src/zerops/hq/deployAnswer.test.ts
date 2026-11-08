@@ -421,7 +421,7 @@ it.each([
   [undefined, "Source archive size is not available yet."],
   [null, "Source archive size is not available yet."],
   [0, "Source archive: 0 B"],
-  [1_305_166_613, "Source archive: 1.31 GB"],
+  [1_305_166_613, "Source archive: 1.22 GiB"],
 ] as const)("a deployment names only its measured source archive: %j", (bytes, expected) => {
   expect(sourceArchiveLabel(bytes)).toBe(expected);
   const answer = {
@@ -449,7 +449,7 @@ it("the same deployment job gains its archive measurement when HQ reports it lat
   );
   expect(followed.jobs.map((job) => job.sourceArchiveBytes)).toEqual([1_305_166_613, undefined]);
   expect(deployAnswerSaid(followed).environments[0]?.jobs.map((job) => job.sourceArchive)).toEqual([
-    "Source archive: 1.31 GB",
+    "Source archive: 1.22 GiB",
     "Source archive size is not available yet.",
   ]);
 });

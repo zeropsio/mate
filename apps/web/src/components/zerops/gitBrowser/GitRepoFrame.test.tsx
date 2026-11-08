@@ -54,21 +54,21 @@ describe("repository storage beside Clone", () => {
     {
       storage: {
         usedBytes: 1_300_000_000,
-        limitBytes: 2_000_000_000,
+        limitBytes: 2_147_483_648,
         large: true,
         routeBodyLimitBytes: null,
       },
-      line: "Git storage: 1.30 GB of 2.00 GB",
+      line: "Git storage: 1.21 GiB of 2 GiB",
       large: true,
     },
     {
       storage: {
         usedBytes: 1_300_000_000,
-        limitBytes: 2_000_000_000,
+        limitBytes: 2_147_483_648,
         large: false,
         routeBodyLimitBytes: null,
       },
-      line: "Git storage: 1.30 GB of 2.00 GB",
+      line: "Git storage: 1.21 GiB of 2 GiB",
       large: false,
     },
   ])("shows the repository metadata it reads: $line, large=$large", ({ storage, line, large }) => {
