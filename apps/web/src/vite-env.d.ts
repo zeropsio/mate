@@ -27,6 +27,8 @@ interface ImportMetaEnv {
   /** `app-shell` ships and registers the hosted client's worker, `retire` its kill switch (`appShell/`). */
   readonly VITE_APP_SHELL_WORKER: string;
   readonly APP_VERSION: string;
+  /** The commit the bundle was built from; empty outside a git checkout. */
+  readonly APP_COMMIT: string;
 }
 
 interface ImportMeta {
