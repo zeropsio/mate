@@ -45,7 +45,6 @@ const worker = globalThis as unknown as WorkerScope;
 const appShell = makeAppShellWorker({
   caches,
   fetch: (input, init) => fetch(input, init),
-  now: () => Date.now(),
   scope: worker.registration.scope,
 });
 

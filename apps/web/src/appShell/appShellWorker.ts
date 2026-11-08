@@ -12,17 +12,15 @@ import {
   assetsToEvict,
   cachesToDelete,
   isKeepable,
-  LISTED_FILES_HEADER,
   outcomeOf,
-  planShell,
   PRECACHE_CONCURRENCY,
   readShellFiles,
-  readStoredAt,
   routeRequest,
   SHELL_CACHE,
   SHELL_CACHE_KEY_PATH,
-  stampResponse,
   staticRoutes,
+  storable,
+  storedHeaders,
   type ResponseFacts,
   type StepOutcome,
 } from "./appShell.logic";
@@ -30,7 +28,6 @@ import {
 export interface AppShellWorkerHost {
   readonly caches: CacheStorage;
   readonly fetch: (input: Request | string, init?: RequestInit) => Promise<Response>;
-  readonly now: () => number;
   /** The worker's registration scope (`self.registration.scope`). */
   readonly scope: string;
 }
@@ -45,14 +42,6 @@ function factsOf(response: Response): ResponseFacts {
     redirected: response.redirected,
     url: response.url,
     contentType: response.headers.get("content-type"),
-  };
-}
-
-function keptPlanInput(kept: Response | undefined) {
-  if (kept === undefined) return undefined;
-  return {
-    storedAt: readStoredAt(kept.headers),
-    listed: kept.headers.has(LISTED_FILES_HEADER),
   };
 }
 
@@ -74,7 +63,7 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
       return "unavailable";
     }
     if (!isKeepable("asset", factsOf(fetched), origin)) return "unavailable";
-    const stored = await outcomeOf(assets.put(url, stampResponse(fetched, host.now())));
+    const stored = await outcomeOf(assets.put(url, storable(fetched)));
     return stored === "done" ? "kept" : "no-room";
   };
 
@@ -118,10 +107,7 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
     }
     if (outcome !== "kept") throw new Error(`A file the page boots from was ${outcome}`);
     const replaced = await keptBefore();
-    await shells.put(
-      shellKey,
-      stampResponse(new Response(body, { status: 200, headers }), host.now()),
-    );
+    await shells.put(shellKey, new Response(body, { status: 200, headers }));
     if (replaced === body) return;
     await evictAllBut(assets, new Set([...urls, ...listedUrls(replaced)]));
   };
@@ -143,8 +129,7 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
     if (files === undefined) throw new Error("The page lists no files to boot from");
     const running = inFlight.get(body);
     if (running !== undefined) return running;
-    const headers = new Headers(response.headers);
-    headers.set(LISTED_FILES_HEADER, String(files.length));
+    const headers = storedHeaders(response);
     const run = keeping.then(() => keepPage(shells, body, headers));
     keeping = outcomeOf(run);
     inFlight.set(body, run);
@@ -153,11 +138,11 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
   };
 
   /**
-   * Asks the origin for the page behind a kept one, for the next load. Offline, a failing origin
-   * or a file that cannot be kept leaves the kept page, and the next load asks again. `no-store`
+   * Asks the origin for its page and keeps it as the worker installs. Offline, a failing origin
+   * or a file that cannot be kept leaves the kept page, and the next load keeps one. `no-store`
    * keeps it out of the HTTP cache: Chrome lets one request at a time write a URL's entry, so a
-   * revalidation stuck on a slow origin would hold a network-first reload behind it (measured:
-   * 5.1 s instead of 3 s on a 3 s origin). The page is ~30 KB.
+   * fetch stuck on a slow origin would hold the next load's request behind it (measured: 5.1 s
+   * instead of 3 s on a 3 s origin). The page is ~30 KB.
    */
   const refreshShell = (shells: Cache) =>
     outcomeOf(
@@ -166,22 +151,24 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
         .then((response) => keepShell(shells, response)),
     );
 
+  /**
+   * The origin's page whenever it answers, so a load after a deploy runs the deploy; the kept page
+   * only when it cannot (offline, an error status). The answered page is kept behind it.
+   */
   const serveShell = async (request: Request, keepAlive: KeepAlive) => {
     const shells = await host.caches.open(SHELL_CACHE);
-    const kept = await shells.match(shellKey);
-    if (planShell(keptPlanInput(kept), host.now()) === "cached" && kept !== undefined) {
-      keepAlive(refreshShell(shells));
-      return kept;
-    }
     let response: Response;
     try {
       response = await host.fetch(request);
     } catch (error) {
-      // Offline with a page too old (or forgotten) to answer at once: it beats no page.
+      const kept = await shells.match(shellKey);
       if (kept !== undefined) return kept;
       throw error;
     }
-    if (!response.ok && kept !== undefined) return kept;
+    if (!response.ok) {
+      const kept = await shells.match(shellKey);
+      if (kept !== undefined) return kept;
+    }
     keepAlive(outcomeOf(keepShell(shells, response.clone())));
     return response;
   };
@@ -192,7 +179,7 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
     if (kept !== undefined) return kept;
     const response = await host.fetch(request);
     if (isKeepable("asset", factsOf(response), origin)) {
-      keepAlive(outcomeOf(assets.put(request.url, stampResponse(response.clone(), host.now()))));
+      keepAlive(outcomeOf(assets.put(request.url, storable(response.clone()))));
     }
     return response;
   };
@@ -218,17 +205,11 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
     },
     /**
      * On install: keep the origin's page with its files (from the HTTP cache after the first
-     * visit's own load), so the next load already paints at once. A failure never fails the
-     * install: the first navigation the worker answers asks the origin and keeps its page instead.
+     * visit's own load), so the next load already has one offline. A failure never fails the
+     * install: the first navigation the worker answers keeps its page instead.
      */
     install() {
-      return outcomeOf(
-        host.caches.open(SHELL_CACHE).then(async (shells) => {
-          const kept = await shells.match(shellKey);
-          const fresh = planShell(keptPlanInput(kept), host.now()) === "cached";
-          return fresh ? "done" : refreshShell(shells);
-        }),
-      );
+      return outcomeOf(host.caches.open(SHELL_CACHE).then(refreshShell));
     },
     /**
      * On activation: drop caches no build knows. The asset cache is bounded when a page is kept,

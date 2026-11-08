@@ -4,15 +4,13 @@
  * fails. Each deploy replaces the whole bundle (the hosted client's static service, a Mate's
  * /mate/); the hosted client's worker keeps every file a kept page boots and warms from, and the
  * chunks this browser fetched since (`appShell/`), never others. The app reloads once to the new
- * build instead, after making the worker's kept page ask the origin first
- * (`reloadIntoFreshShell`). A tab that reloaded for this a moment ago and fails again shows the
- * error screen: never a loop.
+ * build instead: the worker answers a load with the origin's page whenever the origin answers. A
+ * tab that reloaded for this a moment ago and fails again shows the error screen: never a loop.
  *
  * A Mate's setup runs in the tab that pressed it and stops with the page: the reload waits for
  * it to end.
  */
 
-import { reloadIntoFreshShell } from "../appShell/appShellClient";
 import { pressesInFlight } from "../zerops/matePress";
 
 /** A second stale chunk within this long of the last reload is a real failure, not a deploy. */
@@ -92,6 +90,6 @@ export function makeStaleChunkRecovery(host: StaleChunkHost) {
 export const staleChunkRecovery = makeStaleChunkRecovery({
   storage: () => window.sessionStorage,
   now: () => Date.now(),
-  reload: reloadIntoFreshShell,
+  reload: () => window.location.reload(),
   busy: pressesInFlight,
 });

@@ -1,13 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  ASSET_CACHE,
-  embedShellFiles,
-  SHELL_CACHE,
-  SHELL_MAX_AGE_MS,
-  STORED_AT_HEADER,
-} from "./appShell.logic";
-import { forgetCachedShell } from "./appShellClient";
+import { ASSET_CACHE, embedShellFiles, SHELL_CACHE } from "./appShell.logic";
 import { installStaticRoutes, makeAppShellWorker, type StaticRoutingHost } from "./appShellWorker";
 
 const ORIGIN = "https://mate.example.test";
@@ -96,7 +89,6 @@ function browser(options: { readonly assetCapacity?: number } = {}) {
   const { storage, stores } = memoryCaches(
     options.assetCapacity === undefined ? {} : { [ASSET_CACHE]: options.assetCapacity },
   );
-  let now = 1_000_000_000;
   const origin = {
     page: pageOf(1),
     assets: new Map<string, string>(),
@@ -160,7 +152,6 @@ function browser(options: { readonly assetCapacity?: number } = {}) {
   const worker = makeAppShellWorker({
     caches: storage,
     fetch,
-    now: () => now,
     scope: `${ORIGIN}/`,
   });
   const answer = async (path: string, kind: "navigation" | "script") => {
@@ -194,9 +185,6 @@ function browser(options: { readonly assetCapacity?: number } = {}) {
     settle,
     deploy,
     cachedAssets,
-    later: (ms: number) => {
-      now += ms;
-    },
   };
 }
 
@@ -221,33 +209,16 @@ describe("a reload of the hosted client", () => {
     expect(await tab.load("/")).toEqual(boots(1));
   });
 
-  it("paints the kept page at once while the origin stalls", async () => {
-    const tab = browser();
-    await tab.load("/");
-    await tab.settle();
-    tab.origin.state = "stalled";
-    expect(buildOf(await tab.answer("/", "navigation"))).toBe("build 1");
-  });
-
-  it("runs a deploy's page on the load after the one that found it", async () => {
-    const tab = browser();
-    await tab.load("/");
-    await tab.settle();
-    tab.deploy(2);
-    expect(await tab.load("/")).toEqual(boots(1));
-    await tab.settle();
-    expect(await tab.load("/")).toEqual(boots(2));
-  });
-
   it("keeps a page only once every file it boots from is kept: after two deploys the next load still boots", async () => {
     const tab = browser();
     await tab.load("/");
     await tab.settle();
     tab.deploy(2);
-    // Build 1 runs; behind it the worker keeps page 2, which this browser never ran.
+    // Page 2 arrives without its files loaded; the worker keeps it with them behind.
     await tab.answer("/", "navigation");
     await tab.settle();
     tab.deploy(3);
+    tab.origin.state = "offline";
     expect(await tab.load("/")).toEqual(boots(2));
   });
 
@@ -256,8 +227,9 @@ describe("a reload of the hosted client", () => {
     await tab.load("/");
     await tab.settle();
     tab.deploy(2, ["/assets/route-2.js"]);
-    await tab.load("/");
+    await tab.answer("/", "navigation");
     await tab.settle();
+    tab.origin.state = "offline";
     expect(await tab.load("/")).toEqual(boots(1));
   });
 
@@ -265,6 +237,7 @@ describe("a reload of the hosted client", () => {
     const tab = browser();
     await tab.worker.install();
     tab.deploy(2);
+    tab.origin.state = "offline";
     const opened = await tab.load("/");
     expect(opened.booted).not.toContain("build 2 route");
     expect(opened).toEqual(boots(1));
@@ -358,32 +331,10 @@ describe("a reload of the hosted client", () => {
     await shells.put(
       `${ORIGIN}/`,
       new Response("<html><body>build 0</body></html>", {
-        headers: { "content-type": "text/html", [STORED_AT_HEADER]: String(1_000_000_000) },
+        headers: { "content-type": "text/html" },
       }),
     );
     expect((await tab.load("/")).page).toBe("build 1");
-  });
-
-  it("asks the origin first for a page kept longer than its bound, and paints it offline", async () => {
-    const tab = browser();
-    await tab.load("/");
-    await tab.settle();
-    tab.deploy(2);
-    tab.later(SHELL_MAX_AGE_MS);
-    expect(await tab.load("/")).toEqual(boots(2));
-    await tab.settle();
-    tab.later(SHELL_MAX_AGE_MS);
-    tab.origin.state = "offline";
-    expect(await tab.load("/")).toEqual(boots(2));
-  });
-
-  it("gets the origin's page after a stale chunk made the page forget the kept one", async () => {
-    const tab = browser();
-    await tab.load("/");
-    await tab.settle();
-    tab.deploy(2);
-    await forgetCachedShell(tab.storage, ORIGIN);
-    expect(await tab.load("/")).toEqual(boots(2));
   });
 
   it("never keeps a missing bundle file the host answered with the page", async () => {
@@ -409,7 +360,6 @@ describe("a reload of the hosted client", () => {
       } as unknown as CacheStorage,
       fetch: async (input) =>
         served("from the network", typeof input === "string" ? input : input.url, "text/html"),
-      now: () => 0,
       scope: `${ORIGIN}/`,
     });
     expect(await (await broken.answer(request("/"), () => {}))?.text()).toBe("from the network");

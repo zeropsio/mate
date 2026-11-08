@@ -76,7 +76,8 @@ if (!isElectron) {
   });
 }
 
-// The hosted client's next reload paints from the page it keeps (`appShell/appShellClient.ts`).
+// The hosted client's worker keeps its page for offline loads and its chunks for open tabs
+// (`appShell/appShellClient.ts`).
 startAppShellWorker(
   appShellWorkerMode({
     mode: import.meta.env.VITE_APP_SHELL_WORKER,
