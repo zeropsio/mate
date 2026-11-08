@@ -1,6 +1,6 @@
 import { ObserveCredential } from "./observeCredential.ts";
 import { type HqProblem, HqRefusal } from "@t3tools/shared/hqProblems";
-import type { KeptGitAnswer } from "@t3tools/contracts";
+import { HqRepoStorage, type HqRepoCapRequest, type KeptGitAnswer } from "@t3tools/contracts";
 import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
@@ -608,6 +608,11 @@ export interface HqApi {
   readonly unfollowRepoUpstream?: (appId: string, repo: string) => Promise<void>;
   /** The repository and its code are deleted from Mate (`DELETE /api/apps/:appId/repos/:repo`). */
   readonly deleteRepo?: (appId: string, repo: string) => Promise<void>;
+  /**
+   * A repository's Git storage cap set, in whole GiB (`PUT /api/apps/:appId/repos/:repo/storage`):
+   * HQ's answer is its storage as it stands after.
+   */
+  readonly setRepoCap?: (appId: string, repo: string, capGiB: number) => Promise<HqRepoStorage>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
   /** Reads metadata only; provisioning records authority separately. */
   readonly observeCredential?: (projectId: string) => Promise<ObserveCredential>;
@@ -1993,6 +1998,22 @@ export function makeHqApi(input: {
         true,
       );
     },
+    setRepoCap: async (appId, repo, capGiB) => {
+      const response = await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/storage`,
+        {
+          method: "PUT",
+          body: JSON.stringify(await withAccess({ capGiB } satisfies HqRepoCapRequest)),
+        },
+        true,
+      );
+      // HQ took it: an answer this build cannot read leaves where the cap stands unknown.
+      try {
+        return await decoded(HqRepoStorage)(response);
+      } catch {
+        throw uncertain();
+      }
+    },
     observeCredential: async (projectId) =>
       decoded(ObserveCredential)(
         await authorized(`/api/mates/${encodeURIComponent(projectId)}/observe-credential`),
@@ -2043,7 +2064,8 @@ export function makeHqApi(input: {
           browsePathOrRefuse(read, appId, repo, params),
           signal === undefined ? {} : { signal },
           false,
-          true,
+          // A read at its own path is HQ's structure, signed in as any person's read.
+          !("path" in GIT_BROWSE_READS[read]),
         ),
       ),
     gitBrowseBytes: async (read, appId, repo, params, signal) => {

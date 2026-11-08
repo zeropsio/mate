@@ -49,3 +49,4 @@ export * from "./engineWire.ts";
 export * from "./mateHealth.ts";
 export * from "./wire/keptGit.ts";
 export * from "./wire/project.ts";
+export * from "./wire/repoStorage.ts";

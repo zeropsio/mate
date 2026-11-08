@@ -4,6 +4,7 @@
  *
  * @module zerops/gitBrowse/home
  */
+import type { HqRepoStorage } from "@t3tools/contracts";
 import { GitHome, GitHomeQuery } from "@t3tools/shared/hqGitBrowse/home";
 
 export const homeRead = { query: GitHomeQuery, value: GitHome, moving: true } as const;
@@ -18,6 +19,24 @@ export function formatStorageBytes(bytes: number): string {
   let unit = bytes < 1000 ? 0 : Math.min(Math.floor(Math.log10(bytes) / 3), units.length - 1);
   if (unit < units.length - 1 && Number((bytes / 1000 ** unit).toFixed(2)) >= 1000) unit++;
   return unit === 0 ? `${bytes} B` : `${(bytes / 1000 ** unit).toFixed(2)} ${units[unit]}`;
+}
+
+/**
+ * The figure as it stands: the repository's storage read (or a set's answer) once it is known,
+ * else what its home said; whether it is large stays the home's.
+ */
+export function currentStorage(
+  home: GitHome["about"]["storage"],
+  read: Pick<HqRepoStorage, "usedBytes" | "limitBytes"> | null,
+): GitHome["about"]["storage"] {
+  return read === null
+    ? home
+    : {
+        usedBytes: read.usedBytes,
+        limitBytes: read.limitBytes,
+        large: home?.large ?? null,
+        routeBodyLimitBytes: home?.routeBodyLimitBytes ?? null,
+      };
 }
 
 /** HQ alone decides whether a repository is large; rounded labels never make that decision. */

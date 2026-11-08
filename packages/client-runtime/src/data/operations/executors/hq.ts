@@ -101,7 +101,14 @@ export type HqWrites = Pick<
 > &
   Partial<Pick<HqApi, "recordReveal">> &
   Partial<
-    Pick<HqApi, "repoRemoteViaApp" | "followRepoUpstream" | "unfollowRepoUpstream" | "deleteRepo">
+    Pick<
+      HqApi,
+      | "repoRemoteViaApp"
+      | "followRepoUpstream"
+      | "unfollowRepoUpstream"
+      | "deleteRepo"
+      | "setRepoCap"
+    >
   > &
   FlowWrites &
   Partial<HqGitWrites> &
@@ -1006,6 +1013,25 @@ export function makeHqExecutor(ports: {
             affected: [{ family: "hqAppDetail", id: `${intent.appId}/repos` }],
             outcome: { kind: "pending" },
           };
+        }
+        if (intent.kind === "set-repo-cap") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          if (api.setRepoCap === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "Update HQ to change a repository's storage limit.",
+            });
+          // HQ's `409 conflict` here is a refusal it names (`cap_below_usage`, `repo_not_moved`).
+          const storage = yield* Effect.tryPromise({
+            try: () => api.setRepoCap!(intent.appId, intent.repo, intent.capGiB),
+            catch: faultOf,
+          });
+          return answered(requestId, intent.appId, { storage });
         }
         if (!("orgId" in intent))
           return yield* Effect.die(new Error(`HQ executes no ${intent.kind}.`));
