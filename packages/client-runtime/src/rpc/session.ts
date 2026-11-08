@@ -54,15 +54,12 @@ export interface RpcSession {
   readonly closed: Effect.Effect<never, ConnectionAttemptError>;
 }
 
-export interface RpcSessionOptions {
-  readonly usageLimitSources?: boolean;
-  /** This client answers /usage-limits itself, so the server may advertise it. */
-  readonly usageLimitsCommand?: boolean;
-  /**
-   * This client decodes `mateUpdate` config events. The connection's one config subscription
-   * then carries them, so the account's config feed shares it instead of opening a second.
-   */
-  readonly mateUpdate?: boolean;
+/**
+ * The connection's one config subscription asks with every capability flag given here, so a feed
+ * asking with the same flags (`MATE_SERVER_CONFIG_SUBSCRIPTION`) shares it instead of opening a
+ * second.
+ */
+export interface RpcSessionOptions extends ServerConfigSubscriptionInput {
   /**
    * True while this client's own throttling may hold pongs back (a hidden browser tab runs its
    * timers once a minute), so missed pongs then never close the socket. The person's return is
@@ -150,11 +147,7 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
   options: RpcSessionOptions = {},
 ) {
   const webSocketConstructor = yield* Socket.WebSocketConstructor;
-  const serverConfigInput: ServerConfigSubscriptionInput = {
-    ...(options.usageLimitSources === true ? { usageLimitSources: true } : {}),
-    ...(options.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
-    ...(options.mateUpdate === true ? { mateUpdate: true } : {}),
-  };
+  const { pingTimeoutPaused: _pingTimeoutPaused, ...serverConfigInput } = options;
 
   const connect = Effect.fnUntraced(function* (connection: PreparedConnection) {
     yield* Effect.annotateCurrentSpan({

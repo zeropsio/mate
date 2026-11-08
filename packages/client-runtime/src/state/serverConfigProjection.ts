@@ -59,6 +59,24 @@ export function applyServerConfigProjection(
         latestEvent: event,
         source: "live",
       }));
+    case "providersChanged":
+      return Option.map(current, (projection) => {
+        const byId = new Map(
+          projection.config.providers.map((provider) => [provider.instanceId, provider]),
+        );
+        for (const provider of event.payload.providers) byId.set(provider.instanceId, provider);
+        return {
+          config: {
+            ...projection.config,
+            providers: event.payload.instanceIds.flatMap((instanceId) => {
+              const provider = byId.get(instanceId);
+              return provider === undefined ? [] : [provider];
+            }),
+          },
+          latestEvent: event,
+          source: "live",
+        };
+      });
     case "mateUpdate":
       return Option.map(current, (projection) => {
         const { update: _previous, ...environment } = projection.config.environment;

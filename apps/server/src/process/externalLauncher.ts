@@ -25,7 +25,6 @@ import {
   resolveSpawnCommand,
   withPathDirectoryListings,
 } from "@t3tools/shared/shell";
-import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -444,47 +443,42 @@ const resolveBrowserLaunch = Effect.fn("externalLauncher.resolveBrowserLaunch")(
   return buildBrowserLaunch(target, platform, env);
 });
 
-const resolveAvailableEditors = Effect.fn("externalLauncher.resolveAvailableEditors")(function* () {
+interface EditorDiscovery {
+  readonly editors: ReadonlyArray<EditorId>;
+  /** Only looked for when "file-manager" is among the editors. */
+  readonly fileManagerRevealKind: FileManagerRevealKind | undefined;
+}
+
+const NO_EDITORS: EditorDiscovery = { editors: [], fileManagerRevealKind: undefined };
+
+const discoverEditors = Effect.fn("externalLauncher.discoverEditors")(function* () {
   const platform = yield* HostProcessPlatform;
   const env = { ...(yield* readBrowserLaunchEnv), ...(yield* readCommandLookupEnv) };
-  return yield* buildAvailableEditors(platform, env).pipe(withPathDirectoryListings);
+  return yield* Effect.gen(function* () {
+    const editors = yield* buildAvailableEditors(platform, env);
+    const fileManagerRevealKind = editors.includes("file-manager")
+      ? yield* fileManagerRevealKindForPlatform(platform, env)
+      : undefined;
+    return { editors, fileManagerRevealKind } satisfies EditorDiscovery;
+  }).pipe(withPathDirectoryListings);
 });
-
-const resolveFileManagerRevealKind = Effect.fn("externalLauncher.resolveFileManagerRevealKind")(
-  function* () {
-    const platform = yield* HostProcessPlatform;
-    const env = { ...(yield* readBrowserLaunchEnv), ...(yield* readCommandLookupEnv) };
-    return yield* fileManagerRevealKindForPlatform(platform, env);
-  },
-);
 
 // Editor discovery walks PATH for every known editor (and on Linux may spawn
 // `xdg-mime` to vet the file manager), and every client connect embeds its
-// answer in the server config, which a client waits on before it opens a
-// conversation. So it never runs on a connect's critical path once anything is
-// known: the first connect's scan is kept, a connect inside the cache
-// window reuses what it found, and a connect after it is answered from the
-// last scan while a fresh one runs behind it (the next connect hears what that
-// one found). Only a connect before the first scan ever finished waits on it.
-// It is not scanned at boot: a server nobody connected to reads nothing of its
-// host's PATH (a scenario Mate reads nothing from the developer's home).
+// answer in the server config. What is installed on the host changes only when
+// someone installs or removes an editor, so the answer is read once, when the
+// first connect needs it, and again only on an explicit refresh
+// (`rediscoverEditors`); no connect ever scans after the first. It is not
+// scanned at boot: a server nobody connected to reads nothing of its host's
+// PATH (a scenario Mate reads nothing from the developer's home).
 //
 // The scan runs on the launcher's own scope, never on a connection fiber: a
 // client disconnecting mid-scan only stops waiting, and the scan is kept, so no
-// interrupt is ever cached. A scan that has not finished within
-// EDITOR_DISCOVERY_SCAN_TIMEOUT is let go uncached (its waiters hear no
-// editors, as `server.getConfig`'s own timeout would say) and the next connect
-// starts another.
-// Expiry uses the monotonic clock (Clock.monotonicTimeNanos), matching the
-// command-resolution cache in @t3tools/shared/shell, so a backward wall-clock
-// adjustment cannot keep an expired entry alive.
-const EDITOR_DISCOVERY_CACHE_TTL_NANOS = 60_000_000_000n;
+// interrupt is ever kept as the answer. A scan that has not finished within
+// EDITOR_DISCOVERY_SCAN_TIMEOUT is let go unkept (its waiters hear no editors,
+// as `server.getConfig`'s own timeout would say) and the next connect starts
+// another.
 const EDITOR_DISCOVERY_SCAN_TIMEOUT = "10 seconds";
-
-interface EditorDiscoveryCacheEntry {
-  readonly editors: ReadonlyArray<EditorId>;
-  readonly expiresAtNanos: bigint;
-}
 
 /**
  * ExternalLauncher - Service tag for browser/editor launch operations.
@@ -495,12 +489,14 @@ export class ExternalLauncher extends Context.Service<
     readonly resolveAvailableEditors: () => Effect.Effect<ReadonlyArray<EditorId>>;
     /**
      * Reveal kind for the host, or undefined when the executable a reveal
-     * actually spawns is unavailable. Only meaningful when
-     * `resolveAvailableEditors` includes "file-manager": on Linux that
-     * availability check also carries the directory-handler probe this
-     * capability relies on.
+     * actually spawns is unavailable or "file-manager" is not among
+     * `resolveAvailableEditors`: on Linux that availability check also carries
+     * the directory-handler probe this capability relies on. Read from the
+     * same discovery as the editors.
      */
     readonly resolveFileManagerRevealKind: () => Effect.Effect<FileManagerRevealKind | undefined>;
+    /** Look at the host's editors again (an explicit refresh); later connects hear the answer. */
+    readonly rediscoverEditors: () => Effect.Effect<void>;
     /** Launch a URL target in the default browser. */
     readonly launchBrowser: (target: string) => Effect.Effect<void, ExternalLauncherError>;
     /**
@@ -759,32 +755,23 @@ export const make = Effect.gen(function* () {
       Effect.provideService(Path.Path, path),
     );
 
-  const editorDiscoveryCache = yield* Ref.make<Option.Option<EditorDiscoveryCacheEntry>>(
-    Option.none(),
-  );
-  const editorScan = yield* Ref.make<Option.Option<Deferred.Deferred<ReadonlyArray<EditorId>>>>(
+  const discovered = yield* Ref.make<Option.Option<EditorDiscovery>>(Option.none());
+  const editorScan = yield* Ref.make<Option.Option<Deferred.Deferred<EditorDiscovery>>>(
     Option.none(),
   );
   const scope = yield* Effect.scope;
   /** The scan under way, or a new one on the launcher's scope. */
   const scanEditors = Effect.gen(function* () {
-    const fresh = yield* Deferred.make<ReadonlyArray<EditorId>>();
+    const fresh = yield* Deferred.make<EditorDiscovery>();
     const running = yield* Ref.modify(editorScan, (current) =>
       Option.isSome(current) ? [current.value, current] : [fresh, Option.some(fresh)],
     );
     if (running !== fresh) return running;
-    yield* provideCommandResolutionServices(resolveAvailableEditors()).pipe(
+    yield* provideCommandResolutionServices(discoverEditors()).pipe(
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      Effect.tap((editors) =>
-        Effect.flatMap(Clock.monotonicTimeNanos, (nowNanos) =>
-          Ref.set(
-            editorDiscoveryCache,
-            Option.some({ editors, expiresAtNanos: nowNanos + EDITOR_DISCOVERY_CACHE_TTL_NANOS }),
-          ),
-        ),
-      ),
+      Effect.tap((discovery) => Ref.set(discovered, Option.some(discovery))),
       Effect.timeoutOption(EDITOR_DISCOVERY_SCAN_TIMEOUT),
-      Effect.map(Option.getOrElse((): ReadonlyArray<EditorId> => [])),
+      Effect.map(Option.getOrElse(() => NO_EDITORS)),
       Effect.exit,
       Effect.flatMap((exit) =>
         Ref.set(editorScan, Option.none()).pipe(Effect.andThen(Deferred.done(fresh, exit))),
@@ -793,20 +780,16 @@ export const make = Effect.gen(function* () {
     );
     return fresh;
   });
-  const cachedAvailableEditors = Effect.gen(function* () {
-    const nowNanos = yield* Clock.monotonicTimeNanos;
-    const entry = yield* Ref.get(editorDiscoveryCache);
-    if (Option.isNone(entry)) return yield* Deferred.await(yield* scanEditors);
-    if (entry.value.expiresAtNanos <= nowNanos) yield* scanEditors;
-    return entry.value.editors;
+  const discovery = Effect.gen(function* () {
+    const known = yield* Ref.get(discovered);
+    return Option.isSome(known) ? known.value : yield* Deferred.await(yield* scanEditors);
   });
 
   return ExternalLauncher.of({
-    resolveAvailableEditors: () => cachedAvailableEditors,
+    resolveAvailableEditors: () => Effect.map(discovery, (found) => found.editors),
     resolveFileManagerRevealKind: () =>
-      provideCommandResolutionServices(resolveFileManagerRevealKind()).pipe(
-        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      ),
+      Effect.map(discovery, (found) => found.fileManagerRevealKind),
+    rediscoverEditors: () => Effect.asVoid(Effect.flatMap(scanEditors, Deferred.await)),
     launchBrowser: (target) =>
       launchBrowser(target).pipe(
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),

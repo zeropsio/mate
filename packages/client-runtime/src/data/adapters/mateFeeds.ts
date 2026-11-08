@@ -57,6 +57,7 @@ export const MATE_SERVER_CONFIG_SUBSCRIPTION = {
   usageLimitsCommand: true,
   mateUpdate: true,
   hqKey: true,
+  providerChanges: true,
 } as const;
 
 /**
