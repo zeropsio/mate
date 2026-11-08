@@ -417,12 +417,16 @@ export interface ZeropsVariableWrite {
   readonly sensitive: boolean;
 }
 
-/** One record from `GET /service-stack/{id}/env`. */
+/** One record from `GET /service-stack/{id}/env` (or `GET /project/{id}/env`). */
 export interface ZeropsServiceEnvVar {
   readonly id: string;
   readonly key: string;
   readonly content: string;
+  readonly sensitive?: boolean;
 }
+
+/** The container's own Zerops key, as zcp and a Mate's server read it (spec-mate §3.3). */
+const ZCP_API_KEY = "ZCP_API_KEY";
 
 /**
  * The service env key zcp keys every mate-shaped effect off. Nothing about
@@ -3020,6 +3024,27 @@ export class ZeropsApiClient {
    * one read-back; a miss there gets exactly one more create attempt, never
    * an unbounded retry loop.
    */
+  /**
+   * How the container's own Zerops key (`ZCP_API_KEY`) is kept, as the person reads it: on its zcp
+   * service, else on its project, where zcp reads it. HQ admits a Mate only by a key it cannot read
+   * in clear (`key_not_sensitive`), and the platform keeps the key of a container it made as a plain
+   * project variable. Only the kind leaves this call, never the value.
+   */
+  async mateKeyOf(projectId: string, serviceId: string): Promise<"secret" | "plain" | "absent"> {
+    const service = (await this.#serviceEnv(serviceId)).find((entry) => entry.key === ZCP_API_KEY);
+    const project =
+      service === undefined
+        ? (
+            await this.#request<{ readonly items?: ReadonlyArray<ZeropsServiceEnvVar> }>(
+              `/project/${projectId}/env`,
+            )
+          ).items?.find((entry) => entry.key === ZCP_API_KEY)
+        : undefined;
+    const key = service ?? project;
+    if (key === undefined) return "absent";
+    return key.sensitive === true || key.content === "REDACTED" ? "secret" : "plain";
+  }
+
   async writeMateFlag(serviceId: string, beforeWrite?: () => Promise<void>): Promise<void> {
     const generation = this.#generation;
     const current = (await this.#serviceEnv(serviceId)).find(

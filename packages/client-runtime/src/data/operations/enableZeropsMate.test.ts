@@ -50,6 +50,8 @@ function operationsOf(
 ) {
   const calls: string[] = [];
   const submit = enableZeropsMateExecutor({
+    mateKeyOf: () => Promise.resolve("secret"),
+    register: () => Promise.resolve(),
     writeMateFlag: (serviceId) => {
       calls.push(`flag ${serviceId}`);
       return answers.flag?.() ?? Promise.resolve();

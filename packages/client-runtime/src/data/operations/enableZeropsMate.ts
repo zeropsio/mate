@@ -1,7 +1,10 @@
 /**
- * Turning Zerops Mate on for a container, at Zerops: its `ZCP_MATE_ENABLED` flag written on — the
- * write reads it back itself (`ZeropsApiClient.writeMateFlag`) — then the container restarted, the
- * boot that reads the flag. The restart's process is the operation's handle and says how it
+ * Turning Zerops Mate on for a container. First what HQ's Mate door would refuse is refused here,
+ * before anything is written: a container key HQ could read in clear (`ZeropsApiClient.mateKeyOf`),
+ * then the Mate's record HQ is asked for (`POST /api/mates`, as a birth on an existing project
+ * writes it, owned by the person pressing), refused by HQ for a person or a project it may not hold.
+ * Only then, at Zerops: its `ZCP_MATE_ENABLED` flag written on — the write reads it back itself
+ * (`ZeropsApiClient.writeMateFlag`) — then the container restarted, the boot that reads the flag. The restart's process is the operation's handle and says how it
  * ended. A restart not taken after the flag landed leaves the flag on and the restart the person's
  * next step; a lost answer is never adopted from a restart someone else may have made.
  *
@@ -17,6 +20,8 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly projectId: string;
       readonly serviceId: string;
+      /** The Mate's record HQ is asked to write first; absent where HQ holds it already. */
+      readonly record?: { readonly face: string };
     };
   }
 }

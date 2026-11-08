@@ -116,6 +116,9 @@ async function world(shape: "envVariables" | "vault", role: "dev" | "stage" = "d
       active: () => true,
       viewerOf: () => ({ id: "ORG", name: "Org", membershipId: "member", roleCode: "ADMIN" }),
       hqApiOf: () => ({
+        createMate: async () => {
+          throw new Error("No Mate record is written here.");
+        },
         establishZcpAuthorization: async () => ({
           authorized: false,
           userId: null,

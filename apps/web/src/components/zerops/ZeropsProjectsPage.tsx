@@ -220,7 +220,7 @@ import {
 } from "~/zerops/projectFlows";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
-import { deployRowTone } from "./ZeropsProjectRow.logic";
+import { deployRowTone, setUpMateRecord } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 
 import { ZeropsReleaseVerb } from "./ZeropsReleaseVerb";
@@ -1531,14 +1531,15 @@ export function ZeropsProjectsContent({
         if (!serviceId || activeOrganization === null) return;
         setConnectError(null);
         setEnablingCandidateKey(candidate.key);
-        // Write the flag, then restart: the install step re-runs on boot and
-        // comes back with the current zcp, which only installs Zerops Mate
-        // when it finds ZCP_MATE_ENABLED set. A restart on its own returns the
-        // container to the identical state.
+        // Its record in HQ first, where HQ holds none, so its hello is admitted; then the flag and
+        // the restart: the install step re-runs on boot and comes back with the current zcp, which
+        // only installs Zerops Mate when it finds ZCP_MATE_ENABLED set.
+        const record = setUpMateRecord({ project: candidate.project, candidates });
         void submitZeropsWrite(operations, activeOrganization.id, {
           kind: "enable-zerops-mate",
           projectId: candidate.project.id,
           serviceId,
+          ...(record === undefined ? {} : { record }),
         })
           .then(() => {
             intendContainer(candidate.key, { kind: "enable" });

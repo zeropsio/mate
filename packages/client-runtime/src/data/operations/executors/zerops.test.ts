@@ -213,8 +213,12 @@ it.effect.each([
         (orgId) => {
           expect(orgId).toBe("org");
           const captured = currentPerformer;
-          if (change === "unsupported") return {};
+          const createMate = async () => {
+            throw new Error("No Mate record is written here.");
+          };
+          if (change === "unsupported") return { createMate };
           return {
+            createMate,
             establishZcpAuthorization: async (projectId, context) => {
               order.push("authorize");
               established.push({ performer: captured, projectId, ...context });

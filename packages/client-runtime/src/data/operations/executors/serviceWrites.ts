@@ -6,6 +6,7 @@
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
+import { ZeropsWriteNotSent } from "../../../zerops/api.ts";
 import type { OperationReceipt } from "../../model.ts";
 import type { OwnerUnobservable } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
@@ -77,7 +78,25 @@ export const processReceipt = (
         outcome: { kind: "pending" },
       };
 
+/** Why HQ would refuse the container's key, as one sentence; none for a key it may admit. */
+export function mateKeyRefusal(key: "secret" | "plain" | "absent"): string | undefined {
+  switch (key) {
+    case "secret":
+      return undefined;
+    case "absent":
+      return "This container holds no Zerops key (ZCP_API_KEY), so HQ cannot know its Mate.";
+    case "plain":
+      return "Its Zerops key (ZCP_API_KEY) is a plain variable, which HQ refuses: make it a secret variable of the zcp service, then turn Zerops Mate on again.";
+  }
+}
+
 export function enableZeropsMateExecutor(platform: {
+  readonly mateKeyOf: (
+    projectId: string,
+    serviceId: string,
+  ) => Promise<"secret" | "plain" | "absent">;
+  /** Writes the Mate's record in HQ; a refusal fails definitively with HQ's sentence. */
+  readonly register: (intent: IntentOf<"enable-zerops-mate">) => Promise<void>;
   readonly writeMateFlag: (serviceId: string) => Promise<void>;
   readonly variablesWritten: (intent: IntentOf<"enable-zerops-mate">) => void;
   readonly restartService: (
@@ -86,6 +105,15 @@ export function enableZeropsMateExecutor(platform: {
 }) {
   return (requestId: string, intent: IntentOf<"enable-zerops-mate">) =>
     Effect.gen(function* () {
+      // What HQ's Mate door would refuse is refused before anything is written.
+      yield* verb(async () => {
+        const refusal = mateKeyRefusal(
+          await platform.mateKeyOf(intent.projectId, intent.serviceId),
+        );
+        if (refusal !== undefined)
+          throw new ZeropsWriteNotSent({ outcome: "definitive-refusal", message: refusal });
+        if (intent.record !== undefined) await platform.register(intent);
+      });
       yield* verb(() => platform.writeMateFlag(intent.serviceId));
       yield* Effect.sync(() => platform.variablesWritten(intent));
       // The flag landed: a restart not taken leaves it on, and the restart the person's to do.
