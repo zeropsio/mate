@@ -1,9 +1,8 @@
 /** Inventory presentation decorates the shared grouping with the current Mate connection rows. */
-import { canonicalInventoryGroups } from "@t3tools/client-runtime/data";
+import { canonicalInventoryGroups, type InventoryGroupsView } from "@t3tools/client-runtime/data";
 import {
   rankZeropsCandidateForListing,
   type ZeropsPlacedBirth,
-  type CanonicalGroupTreeView,
 } from "@t3tools/client-runtime/zerops";
 import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
@@ -13,12 +12,12 @@ import { useProjection } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
 
-const EMPTY = Atom.make({ groups: [], ungrouped: [], tools: [], empty: true });
+const EMPTY = Atom.make({ groups: [], ungrouped: [], tools: [], empty: true, undrawn: [] });
 export function useProjectsInventory(
   candidates: ReadonlyArray<ZeropsCandidatePresentation>,
   order: ProjectOrderOptions,
   births: ReadonlyArray<ZeropsPlacedBirth>,
-): CanonicalGroupTreeView<ZeropsCandidatePresentation> {
+): InventoryGroupsView<ZeropsCandidatePresentation> {
   const { activeOrganization } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const tree = useProjection(

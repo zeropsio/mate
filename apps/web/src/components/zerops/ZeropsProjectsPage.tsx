@@ -2676,6 +2676,7 @@ export function ZeropsProjectsContent({
             ? undefined
             : { ...project, addMateWhy: addMateWhy(project.groupId) }
         }
+        undrawn={groupTree.undrawn}
         isMate={hasMate}
         onCreateProject={noProjectYet && roleOffered.newProject ? askNewProject : undefined}
         noProjectYet={noProjectYet}

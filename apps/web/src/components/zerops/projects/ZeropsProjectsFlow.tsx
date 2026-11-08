@@ -96,8 +96,11 @@ export interface ProjectPageSlot {
   readonly addMateWhy?: string | null;
   /** Who can work on it, and how — under its Mates on the card. */
   readonly people?: ReactNode;
-  /** What the page says while the project is not among the read ones yet. */
-  readonly unread: ReactNode;
+  /**
+   * What the page says while the project is not among the drawn ones: `undrawn` where the tree
+   * leaves it out for good (`ZeropsProjectsFlowProps.undrawn`), else while it is read.
+   */
+  readonly unread: (undrawn: boolean) => ReactNode;
 }
 
 export interface ZeropsProjectsFlowProps<T> {
@@ -234,6 +237,8 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly renderCardPeople?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** One project's own page in place of the overview (`ProjectPageSlot`). */
   readonly page?: ProjectPageSlot | undefined;
+  /** The applications HQ knows that the tree leaves out (`InventoryGroupsView.undrawn`). */
+  readonly undrawn?: ReadonlyArray<string> | undefined;
 }
 
 /**
@@ -280,7 +285,7 @@ const CONTAINER_NEEDS_PERSON: ReadonlySet<ZeropsRowAction["kind"]> = new Set([
 ]);
 
 export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
-  const { groups, ungrouped, creating = false, onCreateProject, focusGroup, page } = props;
+  const { groups, ungrouped, creating = false, onCreateProject, focusGroup, page, undrawn } = props;
   if (page !== undefined) {
     const entry = groups.find((candidate) => candidate.group.groupId === page.groupId);
     return (
@@ -291,7 +296,7 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         role="region"
       >
         {entry === undefined ? (
-          page.unread
+          page.unread(undrawn?.includes(page.groupId) === true)
         ) : (
           <ProjectPage
             aside={page.aside}

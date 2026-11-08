@@ -9,6 +9,7 @@ import { canonicalAppEnvironments } from "./appEnvironments.ts";
 import type { ZeropsPlacedBirth, ZeropsProjectOrder } from "../../zerops/groups.ts";
 import type { ZeropsProject } from "../../zerops/api.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
+import { scopeFreshness } from "./freshness.ts";
 import type { Projection } from "../store.ts";
 import { inventory, type InventoryKey } from "./inventory.ts";
 import { sameValue } from "./equal.ts";
@@ -21,9 +22,17 @@ export interface InventoryGroupsKey extends InventoryKey {
   /** Accepted local intents remain visible before the platform roster catches up. */
   readonly births: ReadonlyArray<ZeropsPlacedBirth>;
 }
+export interface InventoryGroupsView<T> extends CanonicalGroupTreeView<T> {
+  /**
+   * The applications HQ has said in full that the tree leaves out — none of their environments is
+   * the viewer's and they hold records — so a page opened on one says so instead of waiting.
+   */
+  readonly undrawn: ReadonlyArray<string>;
+}
+
 export const canonicalInventoryGroups: Projection<
   InventoryGroupsKey,
-  CanonicalGroupTreeView<{ readonly project: ZeropsProject }>
+  InventoryGroupsView<{ readonly project: ZeropsProject }>
 > = {
   name: "canonicalInventoryGroups",
   keyOf: (key) => JSON.stringify(key),
@@ -31,7 +40,9 @@ export const canonicalInventoryGroups: Projection<
     const projects = inventory
       .derive(read, key)
       .projects.filter(({ id }) => key.projectIds.includes(id));
-    const apps = read.members(hqAppsScope(key.organization.organizationId)).ids.flatMap((id) => {
+    const scope = hqAppsScope(key.organization.organizationId);
+    const undrawn: Array<string> = [];
+    const apps = read.members(scope).ids.flatMap((id) => {
       const app = read.fact("hqApp", id);
       if (app.kind !== "known") return [];
       const { environments } = canonicalAppEnvironments.derive(read, {
@@ -39,13 +50,16 @@ export const canonicalInventoryGroups: Projection<
         appId: id,
       });
       // Missing roster members never prove an empty application. Recorded rows need no carrier.
-      return (environments?.length ?? 0) > 0 ||
+      if (
+        (environments?.length ?? 0) > 0 ||
         app.value.contents?.empty === true ||
         (app.value.contents?.deletingProjectIds.length ?? 0) > 0
-        ? [{ id, name: app.value.name ?? "Unknown", environments }]
-        : [];
+      )
+        return [{ id, name: app.value.name ?? "Unknown", environments }];
+      undrawn.push(id);
+      return [];
     });
-    return buildCanonicalGroupTree(
+    const tree = buildCanonicalGroupTree(
       projects.map((project) => ({ project })),
       {
         order: key.order,
@@ -54,6 +68,7 @@ export const canonicalInventoryGroups: Projection<
         apps,
       },
     );
+    return { ...tree, undrawn: scopeFreshness(read, scope).complete ? undrawn : [] };
   },
   equals: sameValue,
 };

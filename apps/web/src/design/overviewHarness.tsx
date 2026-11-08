@@ -670,7 +670,7 @@ function HarnessPage() {
                     aside: <ProjectPageAside groupId={PAGE} />,
                     people: <ProjectPagePeople />,
                     onAddMate: () => acted.push(`add-mate:${PAGE}`),
-                    unread: null,
+                    unread: () => null,
                   }
             }
             renderChanges={(entry) => {
