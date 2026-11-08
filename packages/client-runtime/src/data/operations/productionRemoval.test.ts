@@ -68,7 +68,12 @@ describe("production removal receipts", () => {
           },
           lifecycleReceipt: async () => {
             if (retained)
-              return { requestId: "remove", intent, productionRemoval: { deleteProject } };
+              return {
+                requestId: "remove",
+                intent,
+                at: "2026-11-05T14:02:00.000Z",
+                productionRemoval: { deleteProject },
+              };
             throw new HqError({
               kind: "unavailable",
               code: "network",
@@ -104,6 +109,7 @@ describe("production removal receipts", () => {
                   ? { projectId: "other" }
                   : { deleteProject: true }),
             },
+            at: "2026-11-05T14:02:00.000Z",
             productionRemoval: { deleteProject: mismatch === "fate" },
           }),
         });

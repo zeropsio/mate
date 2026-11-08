@@ -16,6 +16,7 @@ import { makeAccountStore, readsOfState, type AccountStore } from "./store.ts";
 
 const PREPARED: HqLifecycleRecord = {
   requestId: "prepare",
+  at: "2026-11-05T14:02:00.000Z",
   intent: { kind: "prepare-mate-deletion", orgId: ORG, hqProjectId: "hq", projectId: "bea" },
   result: { keyTokenId: "exact-key", completion: "seal" },
 };
