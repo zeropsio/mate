@@ -176,7 +176,6 @@ import {
   rollBackTarget,
   stopRowSays,
 } from "./place/place.logic";
-import { environmentSlotWord } from "./projects/projectCard.logic";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -758,7 +757,7 @@ export function ZeropsGroupPane({
                       {slot.name}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {environmentSlotWord(slot.tier, slot.line)}
+                      {slot.line}
                     </span>
                     {slot.add ? (
                       <Button

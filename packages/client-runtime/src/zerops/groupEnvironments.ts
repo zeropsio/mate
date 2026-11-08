@@ -122,7 +122,10 @@ export function halfMadeGroupEnvironments(input: {
   return out;
 }
 
-/** A slot's line while the tier is absent and could be added. */
+/**
+ * What a tier the application does not have says, on its card and its slot: never the words of one
+ * declared with nothing deployed in it ("Not released yet").
+ */
 export const ENVIRONMENT_NOT_ADDED = "Not added";
 /** A slot's line where the recipe on `main` does not hold the tier yet: the Mate composes it. */
 export const ENVIRONMENT_AWAITS_RECIPE = "Waiting for the Mate's recipe";

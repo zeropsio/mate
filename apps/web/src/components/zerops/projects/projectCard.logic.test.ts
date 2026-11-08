@@ -25,7 +25,6 @@ import {
   cardSecondWords,
   cardPeople,
   cardReady,
-  environmentSlotWord,
   foldMates,
   foldWords,
   mateChangeForReview,
@@ -343,7 +342,7 @@ describe("production's line at a card's foot", () => {
       chip: undefined,
       lines: [
         { dot: "running", words: "Running · v2.3.1", name: "stage" },
-        { dot: "none", words: "Not released yet", name: "prod" },
+        { dot: "none", words: "Not added", name: "prod" },
       ],
     },
     {
@@ -355,7 +354,7 @@ describe("production's line at a card's foot", () => {
       chip: undefined,
       lines: [
         { dot: "failed", words: "Deploy failed", name: "stage" },
-        { dot: "none", words: "Not released yet", name: "prod" },
+        { dot: "none", words: "Not added", name: "prod" },
       ],
     },
   ] as const)("says $case", ({ flow, chip: read, lines }) => {
@@ -1883,7 +1882,7 @@ describe("a card's unread places", () => {
       flow: { production: { kind: "absent" }, unreadStages: ["stage"] },
       lines: [
         { name: "stage", words: "Could not be read by this version" },
-        { name: "prod", words: "Not released yet" },
+        { name: "prod", words: "Not added" },
       ],
     },
   ] as const)(
@@ -2015,23 +2014,6 @@ describe("a place's services", () => {
     ({ status, state, ...rest }) => {
       const down = "down" in rest ? rest.down : [];
       expect(placeServices([status], down)).toEqual([{ hostname: status.hostname, state }]);
-    },
-  );
-});
-
-describe("a tier an application does not have, on its page's column", () => {
-  it.each([
-    { tier: "production", line: "Not added", word: "Not released yet" },
-    { tier: "stage", line: "Not added", word: "Not deployed yet" },
-    {
-      tier: "production",
-      line: "Waiting for the Mate's recipe",
-      word: "Waiting for the Mate's recipe",
-    },
-  ] as const)(
-    "An absent environment says the word its card says, beside its way to add it: $tier, $line",
-    ({ tier, line, word }) => {
-      expect(environmentSlotWord(tier, line)).toBe(word);
     },
   );
 });
