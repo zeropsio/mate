@@ -2091,11 +2091,12 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       return fingerprints;
     };
     const fingerprints = fingerprintsFor(lane);
+    // The base ref is shared with every worktree and moves on any fetch; the gate checks against
+    // the ancestor it resolved at start, so only this worktree's own inputs can invalidate a run.
     const unchanged = async () => {
       const after = await laneSnapshot(root, comparison);
       return (
         after.headSha === lane.headSha &&
-        comparisonBase(root, base) === comparison &&
         diffHash(root, baseTree, after.paths) === hash &&
         selectionHash(root) === selection &&
         JSON.stringify(fingerprintsFor(after)) === JSON.stringify(fingerprints) &&
