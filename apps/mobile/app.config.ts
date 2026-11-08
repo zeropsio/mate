@@ -196,9 +196,6 @@ const config: ExpoConfig = {
   ios: {
     icon: variant.assets.iosIcon,
     supportsTablet: true,
-    // Multitasking-capable iPad apps cannot rotate programmatically, so the
-    // showcase capture build requires full screen (see infoPlist below).
-    requireFullScreen: process.env.T3_SHOWCASE_CAPTURE_BUILD === "1",
     bundleIdentifier: iosBundleIdentifier,
     // Release automation retains its configured team. A sanctioned local
     // Personal Team build supplies its own team through the gitignored env so
@@ -223,21 +220,6 @@ const config: ExpoConfig = {
         "Allow Zerops Mate to connect to Zerops Mate servers on your local network.",
       NSPhotoLibraryAddUsageDescription: "Allow Zerops Mate to save images to your photo library.",
       ITSAppUsesNonExemptEncryption: false,
-      // The App Store screenshot harness rotates the iPad interface from
-      // inside the app (CI denies osascript the Accessibility access that
-      // Simulator menu scripting needs), and iPadOS ignores programmatic
-      // orientation requests for multitasking-capable apps — so the capture
-      // build opts out of multitasking and declares landscape support.
-      ...(process.env.T3_SHOWCASE_CAPTURE_BUILD === "1"
-        ? {
-            "UISupportedInterfaceOrientations~ipad": [
-              "UIInterfaceOrientationPortrait",
-              "UIInterfaceOrientationPortraitUpsideDown",
-              "UIInterfaceOrientationLandscapeLeft",
-              "UIInterfaceOrientationLandscapeRight",
-            ],
-          }
-        : {}),
     },
   },
   android: {

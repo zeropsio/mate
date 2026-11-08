@@ -81,7 +81,6 @@ import { cacheTerminalGridSize, getCachedTerminalGridSize } from "./terminalUiSt
 const DEFAULT_TERMINAL_COLS = 80;
 const DEFAULT_TERMINAL_ROWS = 24;
 const TERMINAL_ACCESSORY_HEIGHT = 52;
-const SHOWCASE_ENABLED = process.env.EXPO_PUBLIC_SHOWCASE === "1";
 
 class TerminalClipboardReadError extends Schema.TaggedError<TerminalClipboardReadError>()(
   "TerminalClipboardReadError",
@@ -1295,7 +1294,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
                 }}
               />
               <TerminalSurface
-                autoFocus={!SHOWCASE_ENABLED}
+                autoFocus
                 buffer={terminalSurfaceBuffer}
                 fontSize={fontSize}
                 isRunning={isRunning}

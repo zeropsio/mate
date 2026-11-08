@@ -182,12 +182,13 @@ table keeps the decisions.
     client on upstream's EAS project), app version bumps, `6cc7f7006`/`c0912debc`,
     `da6a85b13`/`7c2702d68` (no panel-animation setting), `b3de243d5` (Windows setup action),
     `b9199617d` (Tailwind 4.3.0 emits one block per class — take it with `1f7a3c11c` in any 4.3.3+
-    bump), `82cd1d1aa` (model favourites the fork never took). **Deferred with a reason:**
+    bump), `82cd1d1aa` (model favourites the fork never took), `11e91f126`/`9c524d577` (store
+    screenshot capture, deleted in the fork). **Deferred with a reason:**
     `9a609a4e4` (the undo notice moves into the sidebar, the fork's redesigned surface — the toast
     stays), `dca84efb5`/`9030a60ea`/`266d70cc4` (Tiptap composer), `0f1b572b9` (mobile theme on the
     Material redesign), the Material-redesign dependents (`dec073228`, `7230f6b1b`, `4fb9dfc8b`'s
     ScreenHeader with `989bde889`/`54bbed660`/`7ee60f4bc`/`aba1c6352`/`88b9226d2`, `21be723ad`),
-    `11e91f126`/`9c524d577` (showcase captures need Android push), `1c1270663` (project icons).
+    `1c1270663` (project icons).
     **Partial:** `568c9bc4d` (Effect language-service suggestions: 94 files take the rewrite, 48
     hunks on fork-diverged code keep the fork's version; `schemaNumber` off as upstream). **Open for
     the owner:** the in-app CLI updaters still exist although the image owns the CLIs;

@@ -12,12 +12,6 @@ import { ConnectionEnvironmentRow } from "../connection/ConnectionEnvironmentRow
 import { cn } from "../../lib/cn";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { useRemoteConnections } from "../../state/use-remote-environment-registry";
-import {
-  applyShowcaseLocalEnvironmentDisplayUrls,
-  resolveShowcaseEnvironmentUpdateDisplayUrl,
-} from "../showcase/showcaseEnvironmentRows";
-
-const SHOWCASE_ENABLED = process.env.EXPO_PUBLIC_SHOWCASE === "1";
 
 export function SettingsEnvironmentsRouteScreen() {
   const {
@@ -28,42 +22,13 @@ export function SettingsEnvironmentsRouteScreen() {
   } = useRemoteConnections();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
-  const presentedEnvironments = SHOWCASE_ENABLED
-    ? applyShowcaseLocalEnvironmentDisplayUrls(connectedEnvironments)
-    : connectedEnvironments;
-  const hasEnvironments = presentedEnvironments.length > 0;
+  const hasEnvironments = connectedEnvironments.length > 0;
   const [expandedId, setExpandedId] = useState<EnvironmentId | null>(null);
   const headerIconColor = useUniwindTheme()["--color-icon"];
 
   const handleToggle = useCallback((environmentId: EnvironmentId) => {
     setExpandedId((prev) => (prev === environmentId ? null : environmentId));
   }, []);
-  const handleUpdateEnvironment = useCallback(
-    (
-      environmentId: EnvironmentId,
-      updates: { readonly label: string; readonly displayUrl: string },
-    ) => {
-      if (!SHOWCASE_ENABLED) return onUpdateEnvironment(environmentId, updates);
-      const actualEnvironment = connectedEnvironments.find(
-        (environment) => environment.environmentId === environmentId,
-      );
-      const presentedEnvironment = presentedEnvironments.find(
-        (environment) => environment.environmentId === environmentId,
-      );
-      return onUpdateEnvironment(environmentId, {
-        ...updates,
-        displayUrl:
-          actualEnvironment && presentedEnvironment
-            ? resolveShowcaseEnvironmentUpdateDisplayUrl({
-                actualDisplayUrl: actualEnvironment.displayUrl,
-                presentedDisplayUrl: presentedEnvironment.displayUrl,
-                submittedDisplayUrl: updates.displayUrl,
-              })
-            : updates.displayUrl,
-      });
-    },
-    [connectedEnvironments, presentedEnvironments, onUpdateEnvironment],
-  );
 
   return (
     <View collapsable={false} className="flex-1 bg-sheet">
@@ -113,7 +78,7 @@ export function SettingsEnvironmentsRouteScreen() {
       >
         {hasEnvironments ? (
           <View collapsable={false} className="overflow-hidden rounded-[24px] bg-card">
-            {presentedEnvironments.map((environment, index) => (
+            {connectedEnvironments.map((environment, index) => (
               <View
                 key={environment.environmentId}
                 collapsable={false}
@@ -125,7 +90,7 @@ export function SettingsEnvironmentsRouteScreen() {
                   onToggle={() => handleToggle(environment.environmentId)}
                   onReconnect={onReconnectEnvironment}
                   onRemove={onRemoveEnvironmentPress}
-                  onUpdate={handleUpdateEnvironment}
+                  onUpdate={onUpdateEnvironment}
                 />
               </View>
             ))}
