@@ -843,9 +843,12 @@ export function ZeropsGroupPane({
         {repo === undefined ? (
           <EmptyState
             action={
-              <Button onClick={onSetUp} size="sm" variant="secondary">
-                Set up an environment
-              </Button>
+              // Offered only where the Environments section offers adding a tier to this person.
+              slots.some((slot) => slot.kind === "slot" && slot.add) ? (
+                <Button onClick={onSetUp} size="sm" variant="secondary">
+                  Set up an environment
+                </Button>
+              ) : null
             }
             size="row"
           >
