@@ -353,6 +353,7 @@ function RoutedOutlet({
   gates.push(gate.kind);
   return (
     <RouteGateView
+      environmentId={null}
       gate={gate}
       phrase={routeGatePhrase(gate, { nowMs, mateName: inputs.mateName })}
       projectId={inputs.projectId}

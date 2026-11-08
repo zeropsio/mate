@@ -12,6 +12,7 @@ import {
 import type { PressElsewhere } from "../../zerops/hq/index.ts";
 import {
   isTerminalReachability,
+  opensQuietly,
   type Reachability,
   reachabilityPhrase,
 } from "../../zerops/environments/reachability.ts";
@@ -826,11 +827,7 @@ export function mateNoticeDecision(input: {
         ? "recovery"
         : (notice?.level === "restarting" || notice?.level === "updating") && !notice.overdue
           ? notice.level
-          : reachability === null ||
-              reachability.kind === "resolving" ||
-              (reachability.kind === "connecting" &&
-                reachability.waitingOn !== "visible" &&
-                reachability.waitingOn !== "mate-link")
+          : reachability === null || opensQuietly(reachability)
             ? input.conversationShown
               ? "none"
               : "opening"

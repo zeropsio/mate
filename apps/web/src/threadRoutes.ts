@@ -1,5 +1,6 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentShellStatus } from "@t3tools/client-runtime/state/shell";
+import type { OpeningEnd } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import type { DraftId } from "./composerDraftStore";
 
@@ -58,8 +59,12 @@ export function resolveThreadRouteRenderState(input: {
  */
 export const THREAD_READ_PATIENCE_MS = 3_000;
 
-/** What a thread's route draws: the Mate's opening, the conversation, its absence, or nothing. */
-export type ThreadRouteStage = "opening" | "conversation" | "missing" | "quiet";
+/**
+ * What a thread's route draws: the Mate's opening, the conversation, nothing where nobody lives,
+ * or the opening's end without it — its absence read, or the route's deadline passed with nothing
+ * naming it (`openingEndPhrase`).
+ */
+export type ThreadRouteStage = "opening" | "conversation" | "quiet" | OpeningEnd;
 
 /**
  * The thread route's stage. Arriving (no conversation on screen yet in this pane), it holds the
@@ -68,7 +73,9 @@ export type ThreadRouteStage = "opening" | "conversation" | "missing" | "quiet";
  * already showing a conversation keeps it while the next one's messages are read (it repaints that
  * thread's last timeline meanwhile). Arriving, it also waits for HQ's answer, which names the
  * header and adds rows of its own. Where nobody lives, there is no Mate's view to hold; where the
- * messages or HQ's answer do not come, the opening hands over after a short wait.
+ * messages or HQ's answer do not come, the opening hands over after a short wait; where nothing
+ * names the thread by the route's deadline, the opening ends saying why: its Mate not answering,
+ * or, where it answers, the conversation not found.
  */
 export function resolveThreadRouteStage(input: {
   readonly renderState: ThreadRouteRenderState;
@@ -82,6 +89,13 @@ export function resolveThreadRouteStage(input: {
    * the list named the thread.
    */
   readonly readGivenUp: boolean;
+  /**
+   * The route's deadline (`STILL_READING_PATIENCE_MS`) passed while nothing named the thread: no
+   * row of it in its environment's shell and no detail of it.
+   */
+  readonly findGivenUp: boolean;
+  /** Its environment's shell is live: its Mate answers, and has not named this conversation. */
+  readonly shellLive: boolean;
   /**
    * HQ has answered for the directory (or refused, or stopped being asked often): until then the
    * header's identity and the rows HQ's facts add are the last visit's, and land after the reveal.
@@ -104,7 +118,10 @@ export function resolveThreadRouteStage(input: {
   ) {
     return "conversation";
   }
-  return input.nobodyLivesHere ? "quiet" : "opening";
+  if (input.nobodyLivesHere) return "quiet";
+  if (input.findGivenUp && !input.serverThreadShellExists)
+    return input.shellLive ? "not-found" : "not-answering";
+  return "opening";
 }
 
 export function buildThreadRouteParams(ref: ScopedThreadRef): {

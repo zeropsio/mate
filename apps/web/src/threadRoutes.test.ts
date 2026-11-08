@@ -166,6 +166,8 @@ describe("resolveThreadRouteStage", () => {
     conversationShown: false,
     nobodyLivesHere: false,
     readGivenUp: false,
+    findGivenUp: false,
+    shellLive: false,
     directoryAnswered: true,
     promotedDraft: false,
   };
