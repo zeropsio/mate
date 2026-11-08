@@ -1,7 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { WS_METHODS, ZeropsAgentId } from "@t3tools/contracts";
-import { SHOWCASE_SCENE_ID_PATTERN, SHOWCASE_SCENE_IDS } from "@t3tools/shared/showcaseScenes";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -9,7 +8,6 @@ import type { PlatformError } from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 
 import surfaceManifestJson from "../docs/internals/zerops/surfaces.json" with { type: "json" };
-import { SHOWCASE_SCENES } from "./mobile-showcase-environment.ts";
 
 const repoRootUrl = new URL("..", import.meta.url);
 const repoRoot = Effect.service(Path.Path).pipe(
@@ -85,16 +83,13 @@ const ReverseState = Schema.Struct({
   reverse: Schema.NonEmptyString,
 });
 
-const WebCaptureId = Schema.NonEmptyString.check(Schema.isPattern(SHOWCASE_SCENE_ID_PATTERN));
-
 /**
  * Manifest connection vocabulary maps `zerops-door` to the wire's
  * `zerops-identity` and `manual-link` to the wire's `one-time-token` plus the
  * web connection-origin `pairing`. `providers` names coding-agent ids only
  * when a surface renders per-agent state, actions, or phrases; neutral output
  * uses `n/a`, while a parent inherits ids from a per-agent surface it renders.
- * Capture ids are the mobile showcase scene ids plus reserved `web:<id>` ids
- * for the later web showcase. Component discovery covers web TSX files only;
+ * Component discovery covers web TSX files only;
  * declared mobile components, including the manual-link surface, are
  * existence-checked but are not scan roots.
  */
@@ -116,7 +111,6 @@ const CommonSurfaceFields = {
   ]),
   tests: Schema.Array(RepoRelativePath),
   untested: Schema.optional(Schema.NonEmptyString),
-  captures: Schema.Array(Schema.Union([Schema.Literals(SHOWCASE_SCENES), WebCaptureId])),
 } as const;
 
 const RoutedSurface = Schema.Struct({
@@ -240,7 +234,6 @@ const VALID_SURFACE_FIXTURE = {
   ],
   docs: { none: "The fixture has no user documentation." },
   tests: ["packages/client-runtime/src/zerops/mateSetup.test.ts"],
-  captures: [],
 } as const;
 
 const VALID_COMPONENT_SET_FIXTURE = {
@@ -256,7 +249,6 @@ const VALID_COMPONENT_SET_FIXTURE = {
   providers: "n/a",
   docs: { none: "The fixture has no user documentation." },
   tests: ["packages/client-runtime/src/zerops/mateSetup.test.ts"],
-  captures: [],
 } as const;
 
 function collectNonTestTsxFiles(
@@ -312,7 +304,6 @@ describe("surface manifest schema", () => {
         contracts: VALID_SURFACE_FIXTURE.contracts,
         docs: VALID_SURFACE_FIXTURE.docs,
         tests: VALID_SURFACE_FIXTURE.tests,
-        captures: VALID_SURFACE_FIXTURE.captures,
       }),
     );
   });
@@ -375,46 +366,6 @@ describe("surface manifest schema", () => {
 
   it("rejects an empty reverse-state list", () => {
     assert.throws(() => decodeSurface({ ...VALID_SURFACE_FIXTURE, reverseStates: [] }));
-  });
-
-  it("accepts mobile and reserved web capture ids", () => {
-    assert.doesNotThrow(() =>
-      decodeSurface({
-        ...VALID_SURFACE_FIXTURE,
-        captures: ["threads", "web:fixture-surface"],
-      }),
-    );
-  });
-
-  it("rejects a capture id outside the mobile and reserved web vocabularies", () => {
-    assert.throws(() =>
-      decodeSurface({
-        ...VALID_SURFACE_FIXTURE,
-        captures: ["fixture-surface"],
-      }),
-    );
-  });
-
-  it("claims every showcase scene and reserves no unknown web capture", () => {
-    const manifest = decodeSurfaceManifest(surfaceManifestJson);
-    const webCaptures = manifest.surfaces
-      .flatMap(({ captures }) => captures)
-      .filter((capture) => capture.startsWith("web:"));
-    const claimed = new Set(webCaptures);
-
-    assert.deepStrictEqual(
-      webCaptures.filter(
-        (capture): capture is `web:${string}` =>
-          !SHOWCASE_SCENE_IDS.includes(capture as (typeof SHOWCASE_SCENE_IDS)[number]),
-      ),
-      [],
-      "every manifest web capture must name a checked-in scene",
-    );
-    assert.deepStrictEqual(
-      SHOWCASE_SCENE_IDS.filter((id) => !claimed.has(id)),
-      [],
-      "every checked-in scene must be claimed by at least one surface",
-    );
   });
 });
 

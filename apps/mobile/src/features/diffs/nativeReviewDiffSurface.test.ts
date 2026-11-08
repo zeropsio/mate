@@ -90,13 +90,3 @@ describe("isPendingNativeViewRegistration", () => {
     ).toBe(true);
   });
 });
-
-describe("isNativeReviewDiffDrawEvent", () => {
-  it("accepts only native events emitted after diff rows draw", async () => {
-    const { isNativeReviewDiffDrawEvent } = await import("./nativeReviewDiffSurface");
-
-    expect(isNativeReviewDiffDrawEvent({ message: "draw-metrics" })).toBe(true);
-    expect(isNativeReviewDiffDrawEvent({ message: "visible-range" })).toBe(true);
-    expect(isNativeReviewDiffDrawEvent({ message: "rows-decoded" })).toBe(false);
-  });
-});

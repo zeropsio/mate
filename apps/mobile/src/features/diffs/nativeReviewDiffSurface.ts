@@ -149,10 +149,6 @@ export interface NativeReviewDiffViewHandle {
   readonly scrollToTop: (animated?: boolean) => Promise<void>;
 }
 
-export function isNativeReviewDiffDrawEvent(payload: Readonly<Record<string, unknown>>): boolean {
-  return payload.message === "draw-metrics" || payload.message === "visible-range";
-}
-
 interface NativeReviewDiffViewRef {
   readonly setRowsJson: (rowsJson: string) => Promise<void>;
   readonly setTokensJson: (tokensJson: string) => Promise<void>;
