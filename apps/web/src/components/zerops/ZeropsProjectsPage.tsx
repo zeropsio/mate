@@ -2737,6 +2737,7 @@ export function ZeropsProjectsContent({
                   openPutLive(group.groupId);
                 }
         }
+        stageDevstage={(entry) => environmentsOf(entry.group)?.devstages[0]?.line}
         // A stage being added says how far it has got on its card's Stage line, where it stands.
         stageSettingUp={({ group }) =>
           creation?.tier === "stage" &&

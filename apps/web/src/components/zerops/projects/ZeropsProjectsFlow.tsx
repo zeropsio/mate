@@ -209,6 +209,11 @@ export interface ZeropsProjectsFlowProps<T> {
     | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
     | undefined;
   /**
+   * The line of a Mate that is also the project's stage, where one is (`applicationEnvironments`):
+   * its card's Stage says it, as the project's *Environments* does, and offers no second stage.
+   */
+  readonly stageDevstage?: ((entry: ProjectsFlowGroup<T>) => string | undefined) | undefined;
+  /**
    * A stage this page is adding to a project, while it is: the step under way and when the adding
    * began (`creationNow`), said on the card's Stage line, where the stage stands — never in a card
    * of its own at the page's foot.
