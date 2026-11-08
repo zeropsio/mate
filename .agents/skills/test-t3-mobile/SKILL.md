@@ -1,11 +1,11 @@
 ---
 name: test-t3-mobile
-description: Launch and test T3 Code Mobile on an iOS Simulator or Android Emulator against disposable local T3 environments, including Metro and dev-client reuse, native rebuild decisions, per-client pairing, seeded projects, semantic UI control, screenshots, and iOS serve-sim streaming. Use after mobile UI or native changes, when reproducing phone or tablet behavior, pairing an emulator to isolated state, or verifying mobile behavior on macOS, Linux, or Windows.
+description: Launch and test T3 Code Mobile on an iOS Simulator or Android Emulator against disposable local T3 environments, including Metro and dev-client reuse, native rebuild decisions, seeded projects, semantic UI control, screenshots, and iOS serve-sim streaming. Use after mobile UI or native changes, when reproducing phone or tablet behavior, or verifying mobile behavior on macOS, Linux, or Windows.
 ---
 
 # Test T3 Mobile
 
-Run one focused, end-to-end mobile verification pass against disposable T3 state. Use the sibling [`test-t3-app`](../test-t3-app/SKILL.md) skill as the detailed reference for pairing-token semantics and SQLite fixtures.
+Run one focused, end-to-end mobile verification pass against disposable T3 state. Use the sibling [`test-t3-app`](../test-t3-app/SKILL.md) skill as the detailed reference for the Zerops door and SQLite fixtures.
 
 Command examples use POSIX shell syntax. On Windows, use PowerShell equivalents: set variables with `$env:NAME = "value"`, use an explicit temporary directory from `[System.IO.Path]::GetTempPath()`, and run multiline examples on one line or with PowerShell backticks. Use `$env:ANDROID_HOME\platform-tools\adb.exe` when `adb` is not already on `PATH`.
 
@@ -123,33 +123,11 @@ adb -s <emulator-serial> shell am start -W \
 
 Do not start, stop, erase, or reconfigure an emulator owned by another task. Track and later stop only processes owned by this test.
 
-## Pair each client once
+## Sign the app in through the Zerops door
 
-Use the bundled helper from the repository root. It issues a fresh credential against the running backend's exact base directory, opens the existing Add Environment route with the credential in an encoded query parameter, and asks that route to connect once:
+The server mints no credential and accepts no pairing: its only door is a Zerops account. The app signs in on its "Sign in to Zerops" screen and connects to that account's Mates (`apps/mobile/src/features/zerops/`); no route connects it to a local backend by credential.
 
-```bash
-.agents/skills/test-t3-mobile/scripts/pair-client.sh \
-  ios <simulator-udid> <server-port> <base-dir>
-
-.agents/skills/test-t3-mobile/scripts/pair-client.sh \
-  android <emulator-serial> <server-port> <base-dir>
-```
-
-Run only the command for the selected platform. The helper uses `http://127.0.0.1:<server-port>` for iOS and `http://10.0.2.2:<server-port>` for Android. Pass a fifth argument only when testing a non-development URL scheme.
-
-The helper opens this registered route:
-
-```text
-t3code-dev://connections/new?pairingUrl=<encoded-pairing-url>&autoConnect=1
-```
-
-The Add Environment route owns the behavior: `pairingUrl` prefills its normal host and token inputs, while `autoConnect=1` submits once in development builds and returns to Home after success. Without `autoConnect`, the same route only prefills the form for manual inspection.
-
-Do not enter pairing hosts or tokens through simulator keyboard automation. Xcode's semantic typer sends HID-style key events through the simulator's active keyboard state, which can corrupt uppercase tokens and punctuation even when the host Mac uses a U.S. input source. The one-shot route is the deterministic pairing path. Use the visible form only as a fallback, and paste credentials rather than typing them character by character.
-
-Verify the expected seeded projects appear before exercising the affected flow.
-
-Pairing credentials are secret, short-lived, and single-use. Create a different credential for every simulator, emulator, physical device, or browser. If an attempt fails, issue a new credential rather than retrying the old one. Do not expose tokens in screenshots, commits, or final responses.
+Never type a password into the simulator or emulator yourself; ask the person to sign the app in. Never expose a Zerops token in screenshots, logs, commits or final responses.
 
 ## Drive and observe the affected flow
 
@@ -167,7 +145,7 @@ Android does not use serve-sim. Use a browser-compatible Android mirror when the
 
 Exercise only the affected flow on one representative device unless the change specifically concerns platform, OS version, or screen size. Before finishing:
 
-1. Confirm the app connected to the intended disposable environment instead of merely rendering an empty disconnected state.
+1. Confirm the app connected to the intended Mate instead of merely rendering an empty disconnected state.
 2. Capture the relevant final state.
 3. Remove the disposable environment from T3 Code Dev.
 4. Remove any `adb reverse` rule created for this test with `adb -s <emulator-serial> reverse --remove tcp:<metro-port>`.
@@ -179,10 +157,7 @@ Keep local verification focused. Do not turn this workflow into a full repositor
 ## Troubleshoot predictable failures
 
 - **Old UI or an old error appears:** verify Metro's worktree, variant, URL, and port before diagnosing the app.
-- **The environment remains empty:** verify the platform-specific HTTP origin, use a fresh token, and confirm project seeding used the identical base directory.
-- **A second client cannot pair:** pairing tokens are single-use; issue another token.
-- **The pairing form opens but does not connect:** confirm the deep link uses the existing `connections/new` route, includes `autoConnect=1`, and carries a freshly minted encoded `pairingUrl`.
-- **Pairing text changes case or punctuation:** do not retry semantic typing. Use `scripts/pair-client.sh`; the simulator keyboard layout and HID input path are not reliable for credentials.
+- **The environment remains empty:** verify the platform-specific HTTP origin and confirm project seeding used the identical base directory.
 - **iOS semantic actions fail:** set explicit XcodeBuildMCP defaults and refresh with `snapshot_ui`.
 - **Android cannot reach Metro:** verify `adb reverse` for the exact Metro port and relaunch the development-client URL.
 - **Android cannot reach the backend:** use `10.0.2.2`, not `127.0.0.1`, for the Android Emulator.
