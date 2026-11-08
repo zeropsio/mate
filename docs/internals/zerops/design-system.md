@@ -65,6 +65,8 @@ One word for each thing:
 - **Owner**, **Admin**, **Developer**, **Guest** — the roles, as the invite names them; the menu's foot says
   "{organization} · {role}" for every role. A Zerops role no preset names reads by what it reaches (**Works on every
   project**, **Sees every project**); a Zerops role code appears only where a Zerops role itself is chosen.
+- **Invited — accept from the Zerops email** — an organization whose Zerops invitation the account has not
+  accepted: listed with the organizations, never chosen, because only the email's link accepts it.
 - **Put it on your domain** — the first own domain, everywhere it is offered; **Manage addresses** once
   there is one.
 - **page** — what the side panel opens; never surface.
