@@ -523,7 +523,8 @@ function UnreadGroupDetail({
 
 /**
  * A project HQ knows that the tree draws nothing of: it says why, with the way to its repositories
- * where it has some. HQ unanswered says so first: what it last told may be out of date.
+ * where it has some. HQ unanswered says so first: what it last told may be out of date. Untold
+ * environments are not an empty list, so they never read as "no environment".
  */
 function UndrawnGroupDetail({ groupId }: { readonly groupId: string }) {
   const orgId = useAccountOrgId();
@@ -542,12 +543,20 @@ function UndrawnGroupDetail({ groupId }: { readonly groupId: string }) {
   return (
     <div className="flex flex-col items-start gap-2">
       <Note>
-        {unreadEnvironmentsWords(read.unread) ?? `${name} has no environment of yours yet.`}
+        {unreadEnvironmentsWords(read.unread) ??
+          (read.environments === undefined
+            ? `${name}'s environments could not be read. Reload to update them.`
+            : `${name} has no environment of yours yet.`)}
       </Note>
       {repos !== undefined && repos.length > 0 ? (
         <Button
           onClick={() => {
-            void navigate({ to: "/git", search: { appId: groupId } });
+            // The Git page opens one repository by app and name; with several, its overview.
+            const only = repos.length === 1 ? repos[0] : undefined;
+            void navigate({
+              to: "/git",
+              search: only === undefined ? {} : { appId: groupId, repo: only.name },
+            });
           }}
           size="sm"
           variant="secondary"

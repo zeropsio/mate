@@ -24,8 +24,8 @@ export interface InventoryGroupsKey extends InventoryKey {
 }
 export interface InventoryGroupsView<T> extends CanonicalGroupTreeView<T> {
   /**
-   * The applications HQ has said in full that the tree leaves out — none of their environments is
-   * the viewer's and they hold records — so a page opened on one says so instead of waiting.
+   * The applications HQ's complete apps scope knows that the tree draws no group for, so a page
+   * opened on one says why instead of waiting.
    */
   readonly undrawn: ReadonlyArray<string>;
 }
@@ -41,23 +41,21 @@ export const canonicalInventoryGroups: Projection<
       .derive(read, key)
       .projects.filter(({ id }) => key.projectIds.includes(id));
     const scope = hqAppsScope(key.organization.organizationId);
-    const undrawn: Array<string> = [];
+    const known: Array<string> = [];
     const apps = read.members(scope).ids.flatMap((id) => {
       const app = read.fact("hqApp", id);
       if (app.kind !== "known") return [];
+      known.push(id);
       const { environments } = canonicalAppEnvironments.derive(read, {
         orgId: key.organization.organizationId,
         appId: id,
       });
       // Missing roster members never prove an empty application. Recorded rows need no carrier.
-      if (
-        (environments?.length ?? 0) > 0 ||
+      return (environments?.length ?? 0) > 0 ||
         app.value.contents?.empty === true ||
         (app.value.contents?.deletingProjectIds.length ?? 0) > 0
-      )
-        return [{ id, name: app.value.name ?? "Unknown", environments }];
-      undrawn.push(id);
-      return [];
+        ? [{ id, name: app.value.name ?? "Unknown", environments }]
+        : [];
     });
     const tree = buildCanonicalGroupTree(
       projects.map((project) => ({ project })),
@@ -68,7 +66,9 @@ export const canonicalInventoryGroups: Projection<
         apps,
       },
     );
-    return { ...tree, undrawn: scopeFreshness(read, scope).complete ? undrawn : [] };
+    if (!scopeFreshness(read, scope).complete) return { ...tree, undrawn: [] };
+    const drawn = new Set(tree.groups.map(({ group }) => group.groupId));
+    return { ...tree, undrawn: known.filter((id) => !drawn.has(id)) };
   },
   equals: sameValue,
 };
