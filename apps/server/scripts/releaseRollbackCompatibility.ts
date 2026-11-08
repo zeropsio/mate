@@ -93,7 +93,6 @@ export const BLOCKING_PATHS: ReadonlyArray<readonly [path: string, reason: strin
   ["apps/server/src/engine/updateDrain.ts", "update drain"],
   ["apps/server/src/engine/updateIdle.ts", "update idle barrier"],
   ["apps/server/src/RpcUpdateAdmission.ts", "update admission"],
-  ["apps/server/src/ws.ts", "refuses changing calls while an update waits"],
   ["apps/server/src/mateUpdateBoot.ts", "update boot"],
   ["apps/server/src/serverRuntimeStartup.ts", "startup"],
   ["apps/server/src/server.ts", "wires startup, the update route and admission"],
