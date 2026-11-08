@@ -38,7 +38,8 @@ export type HqLifecycleIntent = typeof HqLifecycleIntent.Type;
 export const HqLifecycleRecord = Schema.Struct({
   requestId: Schema.String,
   intent: HqLifecycleIntent,
-  projectName: Schema.optionalKey(Schema.String),
+  /** When HQ received the request; a deleted Mate's name is kept by no one, so this tells its deletions apart. */
+  at: Schema.String,
   productionRemoval: Schema.optionalKey(Schema.Struct({ deleteProject: Schema.Boolean })),
   result: Schema.optionalKey(
     Schema.Struct({ keyTokenId: Schema.NullOr(Schema.String), completion: Schema.String }),

@@ -182,7 +182,12 @@ describe("a removed environment's deploy token", () => {
         {
           lifecycleWrite: async (requestId) => {
             log.push("remove");
-            return { requestId, intent: REMOVE, productionRemoval: { deleteProject: false } };
+            return {
+              requestId,
+              intent: REMOVE,
+              at: "2026-11-05T14:02:00.000Z",
+              productionRemoval: { deleteProject: false },
+            };
           },
         },
         log,
@@ -235,7 +240,7 @@ describe("a removed environment's deploy token", () => {
           {
             lifecycleWrite: async (requestId) => {
               log.push("move");
-              return { requestId, intent: move };
+              return { requestId, intent: move, at: "2026-11-05T14:02:00.000Z" };
             },
           },
           log,

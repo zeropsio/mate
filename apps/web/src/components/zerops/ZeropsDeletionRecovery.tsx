@@ -7,6 +7,13 @@ import { useLifecycleRemainders } from "~/zerops/useLifecycleRemainders";
 import { useDetailDemand } from "~/zerops/ZeropsAccountData";
 import { Button } from "../ui/button";
 
+const deletedAt = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function UnprovenDeletion({ projectId }: { projectId: string }) {
   useDetailDemand("project", "project", projectId);
   return null;
@@ -98,7 +105,7 @@ export function ZeropsDeletionRecovery() {
           {deletions.map((record) => (
             <div key={record.requestId} className="flex items-center gap-2">
               <span>
-                {record.projectName ?? "This Mate"} was deleted. Its cleanup still needs
+                A Mate deleted on {deletedAt.format(new Date(record.at))} — its cleanup still needs
                 confirmation.
               </span>
               <Button
