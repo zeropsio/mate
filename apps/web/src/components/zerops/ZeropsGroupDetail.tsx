@@ -120,7 +120,7 @@ import {
 import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
-import { useHqAppFailure } from "~/zerops/useHqAppDetail";
+import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { useAddEnvironment, useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { useOpenPutLive } from "~/zerops/putLive";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
@@ -450,7 +450,7 @@ export function ZeropsGroupDetailPage({
       onAddMate: () => {
         addMate(groupId);
       },
-      unread: <UnreadGroupDetail groupId={groupId} />,
+      unread: (undrawn: boolean) => <UnreadGroupDetail groupId={groupId} undrawn={undrawn} />,
     }),
     [addMate, groupId],
   );
@@ -481,7 +481,14 @@ function ZeropsGroupAside({ groupId }: { readonly groupId: string }) {
   return <KnownGroupAside groupId={groupId} flow={flow} recipeFailure={recipeFailure} />;
 }
 
-function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
+function UnreadGroupDetail({
+  groupId,
+  undrawn,
+}: {
+  readonly groupId: string;
+  /** The tree leaves the project out for good (`ProjectPageSlot.unread`). */
+  readonly undrawn: boolean;
+}) {
   const deployments = useStopDeploymentsShown();
   const runtimeStops = useRuntimeStops(groupId);
   const navigate = useNavigate();
@@ -489,14 +496,18 @@ function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
   // already read stand as the page's own Environments will.
   return (
     <div className="ov-page">
-      <UnreadDetail
-        groupId={groupId}
-        standIn={
-          <Loading label="This project">
-            <ProjectCardStandIn page />
-          </Loading>
-        }
-      />
+      {undrawn ? (
+        <UndrawnGroupDetail groupId={groupId} />
+      ) : (
+        <UnreadDetail
+          groupId={groupId}
+          standIn={
+            <Loading label="This project">
+              <ProjectCardStandIn page />
+            </Loading>
+          }
+        />
+      )}
       <div className="ov-page-aside">
         <ZeropsRuntimeStops
           stops={runtimeStops}
@@ -506,6 +517,53 @@ function UnreadGroupDetail({ groupId }: { readonly groupId: string }) {
           }}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * A project HQ knows that the tree draws nothing of: it says why, with the way to its repositories
+ * where it has some. HQ unanswered says so first: what it last told may be out of date. Untold
+ * environments are not an empty list, so they never read as "no environment".
+ */
+function UndrawnGroupDetail({ groupId }: { readonly groupId: string }) {
+  const orgId = useAccountOrgId();
+  const navigate = useNavigate();
+  const failure = useFlowNavigation(orgId).readFailure;
+  const navigation = useProjection(canonicalHqNavigation, orgId, NO_ROUTE_NAVIGATION);
+  const read = useProjection(
+    canonicalAppEnvironments,
+    orgId === null ? null : { orgId, appId: groupId },
+    NO_ROUTE_ENVIRONMENTS,
+  );
+  const repos = useHqAppDetail(groupId).repos;
+  if (failure !== undefined) return <Note>{failure}</Note>;
+  const name =
+    navigation?.structure?.apps.find((app) => app.id === groupId)?.name ?? "This project";
+  return (
+    <div className="flex flex-col items-start gap-2">
+      <Note>
+        {unreadEnvironmentsWords(read.unread) ??
+          (read.environments === undefined
+            ? `${name}'s environments could not be read. Reload to update them.`
+            : `${name} has no environment of yours yet.`)}
+      </Note>
+      {repos !== undefined && repos.length > 0 ? (
+        <Button
+          onClick={() => {
+            // The Git page opens one repository by app and name; with several, its overview.
+            const only = repos.length === 1 ? repos[0] : undefined;
+            void navigate({
+              to: "/git",
+              search: only === undefined ? {} : { appId: groupId, repo: only.name },
+            });
+          }}
+          size="sm"
+          variant="secondary"
+        >
+          See its repositories
+        </Button>
+      ) : null}
     </div>
   );
 }

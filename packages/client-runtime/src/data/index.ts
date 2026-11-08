@@ -688,6 +688,7 @@ export {
   canonicalInventoryGroups,
   inventoryGroups,
   type InventoryGroupsKey,
+  type InventoryGroupsView,
 } from "./projections/inventoryGroups.ts";
 
 export { hqProjectPerson } from "./projections/hqProjectPeople.ts";
