@@ -8,6 +8,7 @@ import { isModelCostUnknown, type ModelTotals } from "@t3tools/shared/usageMerge
 import { useMemo } from "react";
 
 import { useAgentUsage } from "../../state/usage";
+import { usageCostsHidden } from "../../state/usage.logic";
 import type { UsageReportQuery, UsageSummaryInput } from "@t3tools/contracts";
 import type { UsageScope } from "./usageDimensions";
 import {
@@ -74,7 +75,14 @@ export function UsageModelDialog({
   const hitRate = componentsKnown ? cacheHitRate(model) : null;
   const perMillion = costPerMillionTokens(model);
   const stats = [
-    { label: "Cost", value: costUnknown ? "Unpriced" : formatUsageCost(model) },
+    {
+      label: "Cost",
+      value: costUnknown
+        ? usageCostsHidden(report)
+          ? "Hidden"
+          : "Unpriced"
+        : formatUsageCost(model),
+    },
     { label: "Tokens", value: formatTokens(model.totalTokens) },
     perMillion === null ? null : { label: "Per 1M tokens", value: formatUsd(perMillion) },
     hitRate === null ? null : { label: "Cache hit", value: formatPercent(hitRate) },

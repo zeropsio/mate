@@ -19,6 +19,7 @@ import type {
   Release,
   ReleaseServicePlan,
 } from "@t3tools/shared/hqRelease";
+import { releasePlanCreates } from "@t3tools/shared/hqRelease";
 
 import { canonicalEnvironmentsOf, jobsByService } from "../../zerops/hq/environments.ts";
 import { hqRefusalWords } from "../../zerops/hq/refusals.ts";
@@ -150,14 +151,16 @@ const NO_GROUP_MAIN = hqRefusalWords({ code: "conflict", reason: "no_group_main"
 
 /**
  * What a release of the offer asks HQ — its entries, named `tag` (the offer's suggestion by
- * default), tagging the `groupHead` read with the offer, and for a branch production the
- * attachment and HQ's ready preflight HQ accepts it by — or why nothing is sent: what the offer's
- * gate says, that the preflight has not vouched for it yet, or that the recipe has nothing on
- * `main`, which the verbs say where they are.
+ * default), tagging the `groupHead` read with the offer, the reviewed `plan`'s hash and production
+ * when that plan creates services, and for a branch production the attachment and HQ's ready
+ * preflight HQ accepts it by — or why nothing is sent: what the offer's gate says, that the
+ * preflight has not vouched for it yet, or that the recipe has nothing on `main`, which the verbs
+ * say where they are. Without a reviewed plan HQ itself refuses a release that would create one
+ * (`release_creation_review_required`).
  */
 export function releaseRequestOf(
   offer: Pick<ZeropsReleaseOffer, "git" | "gate" | "groupHead" | "suggestion" | "entries"> &
-    Partial<Pick<ZeropsReleaseOffer, "permission" | "missingServices" | "releaseTarget">>,
+    Partial<Pick<ZeropsReleaseOffer, "releaseTarget">>,
   tag?: string,
   plan?: ReleaseServicePlan,
 ):
@@ -168,16 +171,8 @@ export function releaseRequestOf(
       refused: offer.git.delivery?.release.reason ?? "Checking what can be released…",
       says: false,
     };
-  const creates = offer.git === undefined && (offer.missingServices?.length ?? 0) > 0;
-  if (creates && offer.permission?.allowed !== true)
-    return {
-      refused:
-        offer.permission?.allowed === false ? offer.permission.reason : "Checking who can release…",
-      says: false,
-    };
-  if (creates && plan === undefined)
-    return { refused: "Review the production services this release will create.", says: false };
-  if (!creates && !offer.gate.allowed) return { refused: offer.gate.reason, says: false };
+  if (!offer.gate.allowed) return { refused: offer.gate.reason, says: false };
+  const creates = offer.git === undefined && plan !== undefined && releasePlanCreates(plan);
   if (offer.groupHead === undefined) return { refused: NO_GROUP_MAIN, says: true };
   if (offer.git !== undefined && offer.git.preflight === undefined)
     return { refused: offer.git.check ?? GIT_PREFLIGHT_PENDING, says: false };

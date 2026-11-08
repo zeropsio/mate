@@ -218,6 +218,10 @@ export const ReleaseServicePlan = Schema.Struct({
 });
 export type ReleaseServicePlan = typeof ReleaseServicePlan.Type;
 
+/** Whether the reviewed release creates a production service: its approval then carries `planHash`. */
+export const releasePlanCreates = (plan: ReleaseServicePlan): boolean =>
+  plan.operations.some((operation) => operation.kind === "create");
+
 /**
  * A release as the person was offered it: its name, the recipe repository's `main` head read with
  * the offer (never one read at the press), and each production service at its repository's `main`

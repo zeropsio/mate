@@ -155,8 +155,6 @@ export interface GroupFlowInput {
   readonly release: {
     /** The flow's own gate (`ZeropsReleaseOffer.gate`). */
     readonly gate: ReleaseGate;
-    /** Whether its review is offered, even when approval is refused. */
-    readonly reviewable?: boolean | undefined;
     /** The tag a release would take (`releaseOffer`). */
     readonly suggestion: string;
     /** How many changes are merged and not live (`releaseContentsSummary(...).total`). */
@@ -534,7 +532,7 @@ function releaseOffered(input: GroupFlowInput): boolean {
 
 function releaseAllowed(input: GroupFlowInput): boolean {
   return (
-    (input.release.reviewable ?? input.release.gate.allowed) &&
+    input.release.gate.allowed &&
     !input.stops.some((stop) => stop.tier === "production" && stop.row?.git?.blocked)
   );
 }
