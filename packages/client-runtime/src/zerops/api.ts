@@ -625,6 +625,37 @@ export function zeropsClientsFromUser(user: ZeropsUser): ReadonlyArray<ZeropsOrg
   return organizations;
 }
 
+/** An organization that invited the account, and the account has not yet accepted. */
+export interface ZeropsOrganizationInvitation {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * Every organization whose invitation the account has not accepted yet: a `clientUserList` row
+ * in `WAITING_AUTHORIZATION` (measured on test-ro's KRLS row, 2026-11-08). The row carries no
+ * accept token. Only the invitation email has one (`PUT /user/authorize-client`), so Mate can
+ * show the invitation but cannot accept it.
+ */
+export function zeropsInvitationsFromUser(
+  user: ZeropsUser,
+): ReadonlyArray<ZeropsOrganizationInvitation> {
+  const joined = new Set(zeropsClientsFromUser(user).map((organization) => organization.id));
+  const seen = new Set<string>();
+  const invitations: ZeropsOrganizationInvitation[] = [];
+  for (const membership of user.clientUserList ?? []) {
+    if (membership.status !== "WAITING_AUTHORIZATION") continue;
+    const id = membership.clientId ?? membership.client?.id ?? "";
+    if (!id || joined.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    invitations.push({
+      id,
+      name: membership.client?.accountName ?? membership.client?.companyName ?? "Organization",
+    });
+  }
+  return invitations;
+}
+
 export type FetchImplementation = (input: string, init?: RequestInit) => Promise<Response>;
 
 function findString(value: unknown, keys: ReadonlyArray<string>): string | null {

@@ -15,9 +15,13 @@
 
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { EllipsisIcon, LogOutIcon } from "lucide-react";
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
 
-import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
+import {
+  zeropsInvitationsFromUser,
+  type ZeropsOrganization,
+  type ZeropsOrganizationInvitation,
+} from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import {
@@ -33,6 +37,7 @@ import {
   Menu,
   MenuGroupLabel,
   MenuItem,
+  MenuItemText,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
@@ -71,6 +76,8 @@ export function SidebarAccountMenuProvider({ children }: { readonly children: Re
 export interface SidebarZeropsAccountProps {
   readonly account: ZeropsAccountDisplay;
   readonly organizations: ReadonlyArray<ZeropsOrganization>;
+  /** Organizations that invited the account and wait for it to accept, listed but never chosen. */
+  readonly invitations?: ReadonlyArray<ZeropsOrganizationInvitation>;
   readonly activeOrganization: ZeropsOrganization | null;
   /** The page open now, so the menu lights the row that names it. */
   readonly destination: SidebarAccountDestination["id"] | null;
@@ -93,6 +100,7 @@ export interface SidebarZeropsAccountProps {
 export function SidebarZeropsAccount({
   account,
   organizations,
+  invitations = [],
   activeOrganization,
   destination,
   destinationIcon,
@@ -122,6 +130,7 @@ export function SidebarZeropsAccount({
         activeOrganization={activeOrganization}
         destination={destination}
         destinationIcon={destinationIcon}
+        invitations={invitations}
         onGo={onGo}
         onSelectOrganization={onSelectOrganization}
         onSignOut={onSignOut}
@@ -191,6 +200,32 @@ export function SidebarZeropsAccount({
 }
 
 /**
+ * An organization that invited the account: listed beside the ones it can switch to, so the
+ * invitation is seen, but never chosen. Only the invitation email can accept it
+ * (`zeropsInvitationsFromUser`), so the row says where to go instead.
+ */
+function InvitationRow({ invitation }: { readonly invitation: ZeropsOrganizationInvitation }) {
+  const descriptionId = useId();
+  return (
+    <MenuRadioItem
+      aria-describedby={descriptionId}
+      data-zerops-account-invitation={invitation.id}
+      disabled
+      value={`invitation:${invitation.id}`}
+      variant="check"
+    >
+      <MenuItemText
+        description={INVITATION_HINT}
+        descriptionId={descriptionId}
+        label={invitation.name}
+      />
+    </MenuRadioItem>
+  );
+}
+
+const INVITATION_HINT = "Invited — accept from the Zerops email";
+
+/**
  * The menu's body: who, then how the list above reads, then which
  * organization, then where to go, then the way out. Split from the trigger so
  * it can be rendered — and read — without a popup being open.
@@ -198,6 +233,7 @@ export function SidebarZeropsAccount({
 export function SidebarZeropsAccountMenu({
   account,
   organizations,
+  invitations = [],
   activeOrganization,
   destination,
   destinationIcon,
@@ -282,7 +318,7 @@ export function SidebarZeropsAccountMenu({
         ))}
       </MenuSwitch>
 
-      {choices.length === 0 ? null : (
+      {choices.length === 0 && invitations.length === 0 ? null : (
         <>
           <MenuSeparator />
           <MenuRadioGroup
@@ -303,6 +339,9 @@ export function SidebarZeropsAccountMenu({
               >
                 {organization.name}
               </MenuRadioItem>
+            ))}
+            {invitations.map((invitation) => (
+              <InvitationRow invitation={invitation} key={invitation.id} />
             ))}
           </MenuRadioGroup>
         </>
@@ -380,6 +419,11 @@ export function SidebarZeropsAccountRow({
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const chiefOffer = useChiefOffer();
+  const signedInUser = session?.status === "signed-in" ? session.user : null;
+  const invitations = useMemo(
+    () => (signedInUser ? zeropsInvitationsFromUser(signedInUser) : []),
+    [signedInUser],
+  );
 
   if (session === null || session.status !== "signed-in") return null;
   const { user, organizations, activeOrganization, selectOrganization, signOut } = session;
@@ -395,6 +439,7 @@ export function SidebarZeropsAccountRow({
       collapsed={!isMobile && collapsed}
       destination={destination}
       destinationIcon={destinationIcon}
+      invitations={invitations}
       onGo={(entry) => {
         closeMobile();
         void navigate({ to: entry.to });
