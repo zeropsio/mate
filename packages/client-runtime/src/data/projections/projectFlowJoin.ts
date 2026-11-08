@@ -58,7 +58,6 @@ type ComparedCommits = MovedCommits & { readonly again?: (() => void) | undefine
 /** What *Release* offers on a project, when it is offered at all. */
 export interface ZeropsReleaseOffer {
   readonly problems?: CanonicalHqNavigationApp["problems"] | undefined;
-  readonly missingServices?: ReadonlyArray<string> | undefined;
   readonly releaseTarget?: HqReleaseTarget | undefined;
   readonly git?: GitReleaseReviewFacts | undefined;
   readonly comparisonFailure?:
@@ -68,8 +67,6 @@ export interface ZeropsReleaseOffer {
   /** "pending" while HQ has not read what a release would carry: `summary` then counts nothing. */
   readonly summaryRead?: "pending" | undefined;
   readonly gate: ReleaseGate;
-  /** A refusal for missing Production services still has a review; approval reads `gate`. */
-  readonly reviewable?: boolean | undefined;
   /**
    * HQ's offer to this person (`can`'s `release`), its refusal in words; `undefined` while HQ
    * has not said. HQ asks it again at the press.
@@ -588,12 +585,7 @@ function projectFlow(
             ...offer,
             ...(navigation?.problems !== undefined ? { problems: navigation.problems } : {}),
             releaseTarget: attachment,
-            missingServices: navigation?.missingServices,
             gate,
-            reviewable:
-              gate.allowed ||
-              // Absences stay reviewable to whoever may release; a refusal of that wins.
-              (permission?.allowed !== false && (navigation?.missingServices?.length ?? 0) > 0),
             suggestion: navigation?.suggestion ?? offer.suggestion,
             summary: navigation?.summary,
             summaryRead: navigation?.summaryRead,
@@ -622,7 +614,6 @@ function projectFlow(
         : {
             ...offer,
             gate: { allowed: false, reason: productionWithheld },
-            reviewable: false,
             permission,
             groupHead: undefined,
             comparison: [],

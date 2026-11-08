@@ -49,9 +49,7 @@ const REQUEST: ReleaseReviewRequest = {
   },
 };
 const offer = {
-  gate: { allowed: false as const, reason: "Production has no service worker." },
-  permission: { allowed: true as const },
-  missingServices: ["database", "worker"],
+  gate: { allowed: true as const },
   groupHead: HEAD,
   suggestion: "v1.0.1",
   entries: [{ service: "worker", commit: COMMIT }],
@@ -214,10 +212,7 @@ it.live(
       );
       expect(
         releaseRequestOf(
-          {
-            ...offer,
-            permission: { allowed: false, reason: "You cannot release this application." },
-          },
+          { ...offer, gate: { allowed: false, reason: "You cannot release this application." } },
           "v1.0.2",
           reloaded.plan,
         ),
@@ -226,7 +221,7 @@ it.live(
 );
 
 it("A release that needs no creation reviews and approves exactly as today.", () => {
-  const ready = { ...offer, gate: { allowed: true as const }, missingServices: [] };
+  const ready = offer;
   const expected = {
     kind: "release",
     tag: "v1.0.1",
@@ -234,7 +229,12 @@ it("A release that needs no creation reviews and approves exactly as today.", ()
     entries: [{ service: "worker", sha: COMMIT }],
   };
   expect(releaseRequestOf(ready)).toEqual(expected);
-  expect(releaseRequestOf(ready, undefined, PLAN)).toEqual(expected);
+  expect(
+    releaseRequestOf(ready, undefined, {
+      hash: HASH,
+      operations: [{ kind: "deploy", service: "worker", sha: COMMIT }],
+    }),
+  ).toEqual(expected);
   expect(
     releaseRequestOf({ ...ready, gate: { allowed: false, reason: "Production is busy." } }),
   ).toEqual({ refused: "Production is busy.", says: false });

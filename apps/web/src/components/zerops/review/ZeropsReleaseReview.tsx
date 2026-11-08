@@ -65,7 +65,7 @@ import {
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Input } from "~/components/ui/input";
-import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
+import { releasePlanCreates, type ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { putLiveAddress } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
@@ -509,11 +509,12 @@ function ReleaseData({
   const reviewedRequest = releaseRequestOf(flow.release, chosen.tag, reviewedPlan);
   const releaseGate =
     "refused" in reviewedRequest
-      ? {
-          allowed: false as const,
-          reason: planPending ? "Reading production operations…" : reviewedRequest.refused,
-        }
-      : { allowed: true as const };
+      ? { allowed: false as const, reason: reviewedRequest.refused }
+      : planPending
+        ? { allowed: false as const, reason: "Reading production operations…" }
+        : planFailure !== undefined
+          ? { allowed: false as const, reason: planFailure }
+          : { allowed: true as const };
 
   const release = async () => {
     if (chosen.tag === undefined || chosen.error !== undefined) return;
@@ -1148,7 +1149,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
             again={props.onRetryServicePlan}
           />
         </ReviewSection>
-      ) : props.servicePlan === undefined ? null : (
+      ) : props.servicePlan === undefined || !releasePlanCreates(props.servicePlan) ? null : (
         <ReviewSection title="Production operations">
           <ol className="rv-service-plan">
             {props.servicePlan.operations.map((operation, index) => (

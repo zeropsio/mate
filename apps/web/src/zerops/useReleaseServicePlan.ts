@@ -14,7 +14,11 @@ import type { ZeropsProjectFlow } from "./projectFlows";
 
 const PENDING = Atom.make<HqReleaseReview>({ kind: "pending" });
 
-/** Creation alone adds a review read; ordinary releases retain their existing approval path. */
+/**
+ * HQ's review of a release to a Zerops production: what it creates and deploys there. Only the
+ * review reads Production's services (navigation names none), so the release waits for it while
+ * its gate allows; a Git production has its preflight instead.
+ */
 export function useReleaseServicePlan(
   flow: ZeropsProjectFlow,
   tag: string | undefined,
@@ -23,7 +27,7 @@ export function useReleaseServicePlan(
   const account = useAccountDataOptional();
   const orgId = useAccountOrgId();
   const offer = flow.release;
-  const required = offer.git === undefined && (offer.missingServices?.length ?? 0) > 0;
+  const required = offer.git === undefined && offer.gate.allowed;
   const owner =
     required &&
     reviewing &&
