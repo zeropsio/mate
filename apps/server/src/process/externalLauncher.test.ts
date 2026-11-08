@@ -12,7 +12,6 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import * as PlatformError from "effect/PlatformError";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
@@ -1137,127 +1136,9 @@ it.effect.skipIf(windowsHost)("ignores unusable app bundles and keeps PATH launc
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-it.effect("memoizes editor discovery and refreshes after the cache window", () => {
-  let statCalls = 0;
-  const fileInfo = { type: "File" } as FileSystem.File.Info;
-  const launcherLayer = ExternalLauncher.layer.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        FileSystem.layerNoop({
-          stat: () =>
-            Effect.sync(() => {
-              statCalls += 1;
-              return fileInfo;
-            }),
-        }),
-        Path.layer,
-        Layer.succeed(
-          ChildProcessSpawner.ChildProcessSpawner,
-          ChildProcessSpawner.make(() => Effect.sync(() => makeMockDetachedHandle())),
-        ),
-      ),
-    ),
-  );
-
-  return Effect.gen(function* () {
-    const launcher = yield* ExternalLauncher.ExternalLauncher;
-
-    const first = yield* launcher.resolveAvailableEditors();
-    assert.equal(first.includes("vscode"), true);
-    const statCallsAfterFirstScan = statCalls;
-    assert.isAbove(statCallsAfterFirstScan, 0);
-
-    // Past the shared command-resolution cache TTL (30s) but within the
-    // discovery cache window: the memoized set is reused without any scan.
-    yield* TestClock.adjust("31 seconds");
-    const second = yield* launcher.resolveAvailableEditors();
-    assert.deepEqual([...second], [...first]);
-    assert.equal(statCalls, statCallsAfterFirstScan);
-
-    // Past the discovery cache window the next call rescans.
-    yield* TestClock.adjust("30 seconds");
-    yield* launcher.resolveAvailableEditors();
-    assert.isAbove(statCalls, statCallsAfterFirstScan);
-  }).pipe(
-    Effect.provide(
-      Layer.mergeAll(
-        launcherLayer,
-        Layer.succeed(HostProcessPlatform, "win32"),
-        ConfigProvider.layer(
-          ConfigProvider.fromEnv({
-            env: {
-              PATH: "C:\\t3-editor-discovery-cache-test",
-              PATHEXT: ".COM;.EXE;.BAT;.CMD",
-            },
-          }),
-        ),
-        TestClock.layer(),
-      ),
-    ),
-  );
-});
-
-/** A launcher on a Windows host whose PATH lookups are counted, its editors installed or not. */
-const countedDiscovery = (host: { installed: boolean; stats: number }, path: string) =>
-  Layer.mergeAll(
-    ExternalLauncher.layer.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          FileSystem.layerNoop({
-            stat: (path) =>
-              Effect.suspend(() => {
-                host.stats += 1;
-                return host.installed
-                  ? Effect.succeed({ type: "File" } as FileSystem.File.Info)
-                  : Effect.fail(
-                      PlatformError.systemError({
-                        _tag: "NotFound",
-                        module: "FileSystem",
-                        method: "stat",
-                        pathOrDescriptor: path,
-                      }),
-                    );
-              }),
-          }),
-          Path.layer,
-          Layer.succeed(
-            ChildProcessSpawner.ChildProcessSpawner,
-            ChildProcessSpawner.make(() => Effect.sync(() => makeMockDetachedHandle())),
-          ),
-        ),
-      ),
-    ),
-    Layer.succeed(HostProcessPlatform, "win32"),
-    ConfigProvider.layer(
-      ConfigProvider.fromEnv({
-        env: { PATH: path, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
-      }),
-    ),
-    TestClock.layer(),
-  );
-
-// A connect after a quiet spell is answered from the editors last found, never made to wait on
-// a fresh scan of PATH; the scan runs behind it, and the next connect hears what it found.
-it.effect(
-  "answers a connect after the cache window from the editors it found, looking again behind it",
-  () => {
-    const host = { installed: false, stats: 0 };
-    return Effect.gen(function* () {
-      const launcher = yield* ExternalLauncher.ExternalLauncher;
-      const first = yield* launcher.resolveAvailableEditors();
-      assert.isFalse(first.includes("vscode"));
-      host.installed = true;
-      yield* TestClock.adjust("61 seconds");
-      assert.deepEqual([...(yield* launcher.resolveAvailableEditors())], [...first]);
-      yield* TestClock.adjust(0);
-      assert.isTrue((yield* launcher.resolveAvailableEditors()).includes("vscode"));
-    }).pipe(Effect.provide(countedDiscovery(host, "C:\\t3-editor-discovery-stale")));
-  },
-);
-
 // A client that disconnects mid-scan interrupts its wait on the connection
-// fiber. The cache must not retain that interrupt: doing so once replayed it to
-// every later connect for the whole TTL, so `server.getConfig` failed and no
+// fiber. The launcher must not keep that interrupt as its answer: doing so once
+// replayed it to every later connect, so `server.getConfig` failed and no
 // client could reconnect until the server restarted. A scan that never comes
 // back is let go at its own timeout, and the next connect scans again.
 it.effect("rescans after an interrupted discovery instead of caching the interrupt", () => {
@@ -1296,7 +1177,7 @@ it.effect("rescans after an interrupted discovery instead of caching the interru
     yield* Effect.yieldNow;
     yield* Fiber.interrupt(fiber);
 
-    // The next connect must still get a real answer well inside the TTL.
+    // The next connect must still get a real answer.
     blockFirstScan = false;
     yield* TestClock.adjust("10 seconds");
     scans = 0;
