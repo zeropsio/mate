@@ -273,6 +273,7 @@ function FirstRun({
 
 /** What a container outside every project shows on the overview for: it needs the person. */
 const CONTAINER_NEEDS_PERSON: ReadonlySet<ZeropsRowAction["kind"]> = new Set([
+  "enable",
   "retry-probe",
   "start",
   "restart",
@@ -312,7 +313,8 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
     !started &&
     props.placementNotice === undefined;
   // Containers no project holds are the organization's inner workings, and HQ is Settings': the
-  // overview names a container only while it needs the person — not answering, stopped.
+  // overview names a container only while it needs the person — no Mate enabled yet, not
+  // answering, stopped.
   const containers = ungrouped.filter((row) => CONTAINER_NEEDS_PERSON.has(row.action));
   // With nothing drawn, why: placement still on its way says so once it takes a beat — never on a
   // quick reload — and HQ's trouble says so at once, with HQ's card.
