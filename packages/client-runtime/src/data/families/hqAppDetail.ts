@@ -93,7 +93,14 @@ declare module "../model.ts" {
 export const hqAppDetailFamily: FamilySpec<"hqAppDetail"> = {
   family: "hqAppDetail",
   authority: "hq",
-  scope: { source: "hq", suffix: "hq-app-detail", leaving: "removed", demand: "detail" },
+  // Kept through a release: a card scrolled back reads its last detail, not "none" (small records).
+  scope: {
+    source: "hq",
+    suffix: "hq-app-detail",
+    leaving: "removed",
+    demand: "detail",
+    released: "kept",
+  },
   // An older/partial repository record does not prove that a known connection disappeared.
   keepUnsaid: (held, row) =>
     held?.kind === "repos" && row.kind === "repos"
