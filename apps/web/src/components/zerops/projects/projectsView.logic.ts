@@ -601,6 +601,7 @@ export function groupFlowInputOf(input: {
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
 }): GroupFlowInput {
   const { flow } = input;
+  const listedIds = new Set(input.members.map((member) => member.projectId));
   return {
     groupId: input.groupId,
     mates: input.members.flatMap((member) =>
@@ -642,22 +643,24 @@ export function groupFlowInputOf(input: {
           },
         ];
       }),
-      // An environment HQ delivers to a Git branch has no Zerops project, so no member of the
-      // group tree stands for it: its row alone is the stop.
-      ...(flow?.environments ?? []).flatMap((row) =>
-        row.target.kind === "git"
-          ? [
-              {
-                projectId: row.id,
-                name: row.name,
-                tier: row.tier,
-                row,
-                deployment: undefined,
-                addresses: [],
-              },
-            ]
-          : [],
-      ),
+      // An environment HQ records that no member of the group tree stands for — delivered to a Git
+      // branch, or a Zerops project the account does not list — is its row alone, as the project's
+      // *Environments* draws it.
+      ...(flow?.environments ?? []).flatMap((row) => {
+        const { target } = row;
+        if (target.kind === "zerops" && listedIds.has(target.projectId)) return [];
+        return [
+          {
+            projectId: row.id,
+            name: row.name,
+            tier: row.tier,
+            row,
+            deployment:
+              target.kind === "zerops" ? input.deployments?.get(target.projectId) : undefined,
+            addresses: [],
+          },
+        ];
+      }),
     ],
     release:
       flow === undefined
