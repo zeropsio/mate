@@ -964,7 +964,7 @@ export function ZeropsProjectsContent({
   }, [presses, candidates, connectingOrigin, finishBirth, opening]);
   // Every row's container as the container store holds it (DESIGN §4.5): the
   // platform's processes hold a boot's cap (H7/R9), and the Mate flag is read
-  // only for a container that predates Mate (H9).
+  // once no Mate answers a container (H9).
   const {
     health: candidateHealth,
     serverVersions,
@@ -1520,9 +1520,9 @@ export function ZeropsProjectsContent({
       case "set-up-mate":
         setConfirmingSetUp(candidate);
         return;
-      // A harmless re-probe (H9) — `unreachable`/`stalled` cannot be told
-      // apart from `predates-mate` by a browser, so nothing here writes;
-      // this only asks for the container to be read again.
+      // A harmless re-probe (H9) — a container that does not answer while its
+      // flag reads on, or could not be read, is away or stalled, so nothing
+      // here writes; this only asks for the container to be read again.
       case "retry-probe":
         readContainerAgain(candidate);
         return;

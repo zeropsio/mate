@@ -218,7 +218,7 @@ export const CONTAINERS_NOT_IN_A_PROJECT = "Not in a project";
 /**
  * The containers no project holds, as one line: how many are in each state,
  * and how many a re-probe (*Try again*) would ask again — the ones not
- * answering, which a browser cannot tell from one that predates Mate (H9).
+ * answering (H9).
  */
 export function containersSummary(
   kinds: ReadonlyArray<ZeropsRowAction["kind"]>,

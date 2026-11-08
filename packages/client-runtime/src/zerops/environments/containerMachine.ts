@@ -120,7 +120,7 @@ export interface ContainerMachine {
    * left, or its socket dropped. Null before either.
    */
   readonly upAt: Instant | null;
-  /** Read only for a container that predates Mate; null before the read. */
+  /** Read once no Mate answers its probe (`noMateAnswers`); null before the read. */
   readonly mateFlag: MateFlag | null;
   /** Our verb's expectation while its level holds; null once a read fact settled it. */
   readonly intent: ContainerIntent | null;
@@ -178,7 +178,7 @@ export type ContainerEffect =
       readonly event: { readonly type: "TICK" };
     }
   | { readonly kind: "cancel"; readonly key: typeof CONTAINER_TIMER_KEY }
-  /** Read `ZCP_MATE_ENABLED`: a container predating Mate is Enable only when the flag is off. */
+  /** Read `ZCP_MATE_ENABLED`: a container no Mate answers on is Enable only when the flag is off. */
   | { readonly kind: "read-mate-flag" }
   /**
    * Read the container now, `/healthz` beside it: its cap ran out and only a reading since says
@@ -433,17 +433,23 @@ const fromReading = (machine: ContainerMachine, reading: ProbeReading | null): C
   if (machine.connectedSince !== null) return { level: "ready" };
   const current = machine.state;
   if (reading === null || machine.reading === null) return current;
+  if (noMateAnswers(reading)) {
+    // A container that was up is given `READY_SILENCE_MS` for the platform's status to say why;
+    // the link meanwhile says it reconnects (§4.4 row 10).
+    if (reading.kind !== "predates-mate" && current.level === "ready" && !silent(machine)) {
+      return current;
+    }
+    // The flag reads off: no Mate is here yet, whatever its address answered or did not.
+    if (machine.mateFlag === false) return { level: "needs-enable" };
+  }
   switch (reading.kind) {
     case "ready":
       return { level: "ready" };
     case "initializing":
       return booting(machine, false);
     case "unreachable":
-      // A container that was up is given `READY_SILENCE_MS` for the platform's status to say
-      // why; the link meanwhile says it reconnects (§4.4 row 10).
-      return current.level === "ready" && !silent(machine) ? current : booting(machine, true);
+      return booting(machine, true);
     case "not-answering": {
-      if (current.level === "ready" && !silent(machine)) return current;
       // zcp's init is complete and its Mate does not answer: whatever vouched for a boot (its
       // init running) is over, and only the Mate's silence is left — a guess, which its link's
       // words speak for, never a start. A process the platform runs still says it starts.
@@ -456,10 +462,20 @@ const fromReading = (machine: ContainerMachine, reading: ProbeReading | null): C
       // A restart of ours already came back to this: the zcp release there does not carry Mate.
       if (machine.restartTried) return { level: "not-yet-available" };
       // Unread or unreadable, the flag keeps the container booting: never Enable on a guess.
-      if (machine.mateFlag === false) return { level: "needs-enable" };
       return machine.mateFlag === true ? { level: "needs-update" } : booting(machine, true);
   }
 };
+
+/**
+ * No Mate answered the probe: its container is away, or serves none. A browser cannot tell the
+ * two apart by the answer — a container serving no Mate answers `/mate/` with code-server's
+ * redirect, sent without CORS headers, which reads as no answer at all — so `ZCP_MATE_ENABLED`,
+ * read once, is what says no Mate is here yet.
+ */
+const noMateAnswers = (reading: ProbeReading): boolean =>
+  reading.kind === "unreachable" ||
+  reading.kind === "not-answering" ||
+  reading.kind === "predates-mate";
 
 /** The held probe went unanswered `READY_SILENCE_MS` or more after the container was last up. */
 const silent = (machine: ContainerMachine): boolean =>
@@ -796,9 +812,9 @@ export function transitionContainer(
         : { kind: "schedule", key: CONTAINER_TIMER_KEY, at: next.timer, event: { type: "TICK" } },
     );
   }
-  const predates = next.reading?.reading.kind === "predates-mate";
-  const predatedBefore = machine.reading?.reading.kind === "predates-mate";
-  if (predates && next.mateFlag === null && !(predatedBefore && machine.mateFlag === null)) {
+  const unanswered = next.reading !== null && noMateAnswers(next.reading.reading);
+  const unansweredBefore = machine.reading !== null && noMateAnswers(machine.reading.reading);
+  if (unanswered && next.mateFlag === null && !(unansweredBefore && machine.mateFlag === null)) {
     effects.push({ kind: "read-mate-flag" });
   }
   return { state: next === machine ? machine : next, effects };
