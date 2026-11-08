@@ -70,6 +70,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
+import { useMateReadOnly } from "~/zerops/useMateReadOnly";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 
@@ -332,6 +333,7 @@ export const ChatHeader = memo(function ChatHeader({
   // A crewmate's chat is headed by the crewmate, and it is the crew engine's:
   // no rename, no archive, no new session, no commit from here.
   const crewOrigin = activeThreadShell?.crew ?? null;
+  const mateReadOnly = useMateReadOnly(activeThreadEnvironmentId);
   // A Mate's chat is headed by what the Mate is on in it — the subject its
   // row shows for the main chat (`agentActivity.ts`): the last task as the
   // person put it, not the chat's title, which names its first task forever.
@@ -498,8 +500,9 @@ export const ChatHeader = memo(function ChatHeader({
   const showGitActions =
     Boolean(activeProjectName) && stackedActionsSupported && crewOrigin === null;
   // The header's one menu: upstream's project actions on a narrow header,
-  // and a Mate's own start-over wherever the Mate lives.
-  const startsFresh = mate !== undefined && crewOrigin === null;
+  // and a Mate's own start-over wherever the Mate lives — its owner's, as its
+  // server rules: a colleague reading along archives nothing.
+  const startsFresh = mate !== undefined && crewOrigin === null && !mateReadOnly;
   const projectActionsInMenu =
     actionsCollapsed && (showProjectScripts || showOpenInPicker || showGitActions);
   const menuShown = startsFresh || projectActionsInMenu;
