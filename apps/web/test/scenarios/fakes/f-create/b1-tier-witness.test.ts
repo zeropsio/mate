@@ -115,7 +115,13 @@ async function world(shape: "envVariables" | "vault", role: "dev" | "stage" = "d
       registry,
       active: () => true,
       viewerOf: () => ({ id: "ORG", name: "Org", membershipId: "member", roleCode: "ADMIN" }),
-      hqApiOf: () => ({ establishZcpAuthorization: async () => undefined }),
+      hqApiOf: () => ({
+        establishZcpAuthorization: async () => ({
+          authorized: false,
+          userId: null,
+          expiresAt: null,
+        }),
+      }),
       readDetail: async () => true,
       demandDetail: () => () => undefined,
       revalidate: () => undefined,
