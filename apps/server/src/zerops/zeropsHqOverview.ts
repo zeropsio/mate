@@ -45,6 +45,7 @@ import {
   type ThreadDigest,
 } from "@t3tools/shared/mateLink";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
+import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 
@@ -373,7 +374,7 @@ function lastSignInOf(
 }
 
 /**
- * Whose each login is and what its lock reads, by the key its signer goes by: the agents' own
+ * Whose each login is, what its lock reads and whether it can run a turn, by the key its signer goes by: the agents' own
  * rows first, then every other login, {@link MATE_LOGINS_MAX} at most.
  */
 function loginsOf(
@@ -390,6 +391,7 @@ function loginsOf(
           ...lastSignInOf(agent.agentId, lastSigners, signedAt),
           present: agent.credPresent,
           token: agent.flagToken,
+          state: classifyZeropsAgentAuth(agent).kind,
         },
       ] as const,
   );
@@ -404,6 +406,7 @@ function loginsOf(
             ...lastSignInOf(login.id, lastSigners, signedAt),
             present: LOGIN_PRESENT[login.state],
             token: login.token,
+            state: login.state,
           },
         ] as const,
     );

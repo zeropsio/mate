@@ -9,6 +9,7 @@ import type {
   ZeropsAgentAuthSnapshot,
   AgentAdmissionRefusal,
   RunEnd,
+  ZeropsLoginState,
 } from "@t3tools/contracts";
 import { agentIdForDriverKind, agentIdForProviderInstance } from "@t3tools/contracts";
 import type { Known } from "../../zerops/knowledge/index.ts";
@@ -147,18 +148,17 @@ export function agentAdmission(input: {
     pending.phase !== "cancelled";
   const cause = cold
     ? null
-    : auth === "authorized" || auth === "registering"
+    : auth !== null && loginSignInCause(auth) === null
       ? null
       : inProgress
         ? "sign-in-in-progress"
-        : auth === "needs-reauth" || auth === "reconnect"
-          ? "expired-login"
-          : auth === "not-authorized" ||
-              (spent === undefined &&
-                provider !== null &&
-                (providerNeedsSignIn(provider) ||
-                  configAuthKind(provider, snapshot, input.providers) === "not-authorized" ||
-                  configAuthKind(provider, snapshot, input.providers) === "needs-reauth"))
+        : auth !== null
+          ? loginSignInCause(auth)
+          : spent === undefined &&
+              provider !== null &&
+              (providerNeedsSignIn(provider) ||
+                configAuthKind(provider, snapshot, input.providers) === "not-authorized" ||
+                configAuthKind(provider, snapshot, input.providers) === "needs-reauth")
             ? "missing-sign-in"
             : null;
   const anotherStarted =
@@ -220,6 +220,21 @@ export function agentAdmission(input: {
     readOnly,
     holdsComposer,
   };
+}
+
+/**
+ * What a login's state asks of its person, wherever a Mate's admission is drawn — its composer from
+ * the live agent rows, its menu row and overview card from the overview's digest: nothing while
+ * it can run, a sign-in again once its login no longer works, a sign-in where it has none.
+ */
+function loginSignInCause(
+  state: ZeropsLoginState,
+): Exclude<AgentAdmissionAttention["cause"], "sign-in-in-progress"> | null {
+  return state === "authorized" || state === "registering"
+    ? null
+    : state === "needs-reauth" || state === "reconnect"
+      ? "expired-login"
+      : "missing-sign-in";
 }
 
 /** Why a composer its person's stand-up holds takes no message yet. */
@@ -350,7 +365,11 @@ function admissionAttention(input: {
   };
 }
 
-/** HQ's existing compact login facts can show absence, never infer permission from a signer. */
+/**
+ * A Mate no login of which can run, from its overview's digest as HQ forwards it: the composer's
+ * cause (`loginSignInCause`) and words for its agent's login. It never infers permission from a
+ * signer; a Mate older than the digest's `state` says only whether a credential is there.
+ */
 export const mateAdmissionSummary: Projection<
   MateProjectKey & { readonly viewerSubject: string | undefined; readonly mateName: string },
   AgentAdmissionAttention | null
@@ -372,17 +391,26 @@ export const mateAdmissionSummary: Projection<
       overview.identity.runsWithoutSignIn
     )
       return null;
-    const entries = Object.entries(overview.logins);
-    if (entries.some(([, login]) => login.present)) return null;
-    const entry = entries.find(([id]) => id === "claude-code" || id === "codex");
+    const entries = Object.entries(overview.logins).map(([id, login]) => ({
+      id,
+      cause:
+        login.state === undefined
+          ? login.present
+            ? null
+            : ("missing-sign-in" as const)
+          : loginSignInCause(login.state),
+    }));
+    if (entries.some((login) => login.cause === null)) return null;
+    const agents = entries.filter(({ id }) => id === "claude-code" || id === "codex");
+    const entry = agents.find(({ cause }) => cause === "expired-login") ?? agents[0];
     if (entry === undefined) return null;
-    const agentId = entry[0] as ZeropsAgentId;
+    const agentId = entry.id as ZeropsAgentId;
     return admissionAttention({
       environmentId: overview.identity.environmentId,
       instanceId: agentId === "claude-code" ? "claudeAgent" : "codex",
       loginKey: agentId,
       agentId,
-      cause: "missing-sign-in",
+      cause: entry.cause ?? "missing-sign-in",
       mateName: key.mateName,
       agentName: "coding agent",
       action: "sign-in",

@@ -30,7 +30,7 @@ import type { MateMarkState } from "@t3tools/shared/brand";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 
 import { mateFaceOf, restingWhenFree, type ZeropsAgentActivity } from "~/zerops/agentActivity";
-import type { MateComing } from "@t3tools/client-runtime/data";
+import type { AgentAdmissionAttention, MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 import { backgroundWorkWords, nowLineWords } from "../chat/runCard.logic";
 import { STOPPING_WORDS } from "~/zerops/conversationStop.logic";
@@ -199,6 +199,12 @@ export function mateOwnerView(input: {
    * the page cannot offer yet.
    */
   readonly linked?: boolean | undefined;
+  /**
+   * What its admission says (`mateAdmissionSummary`), the verdict its composer says too. A login
+   * that no longer works is said even under an ask: its owner reads the composer's words, anybody
+   * else that it waits for a sign-in.
+   */
+  readonly admission?: Pick<AgentAdmissionAttention, "cause" | "text"> | null | undefined;
 }): MateOwnerView {
   const { owner, records } = input;
   const seat: OwnerSeat =
@@ -207,6 +213,19 @@ export function mateOwnerView(input: {
       : records.named === false
         ? { kind: "nobody", label: NOBODY_OWNS }
         : { kind: "unnamed" };
+  const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
+  // Its owner acts in it alone, so its sign-in waits on them; its maker or stand-up asker stands in
+  // only while HQ has not named one.
+  const awaited = input.ownerUserId ?? input.madeBy ?? input.standUpBy;
+  if (input.admission?.cause === "expired-login" && records.runsWithoutSignIn !== true) {
+    if (viewer === undefined) return { seat, signInLine: undefined, waitsOnViewer: false };
+    const yours = awaited === viewer;
+    return {
+      seat,
+      signInLine: yours ? input.admission.text : WAITING_FOR_SIGN_IN,
+      waitsOnViewer: yours && input.linked === true,
+    };
+  }
   if (
     records.signedIn ||
     input.hqSigners !== "none" ||
@@ -216,10 +235,6 @@ export function mateOwnerView(input: {
   ) {
     return { seat, signInLine: undefined, waitsOnViewer: false };
   }
-  const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
-  // Its owner acts in it alone, so its sign-in waits on them; its maker or stand-up asker stands in
-  // only while HQ has not named one.
-  const awaited = input.ownerUserId ?? input.madeBy ?? input.standUpBy;
   if (awaited === undefined) {
     return { seat, signInLine: NOBODY_SIGNED_IN, waitsOnViewer: false };
   }

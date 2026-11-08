@@ -3507,11 +3507,25 @@ function useMateRowState<T extends RosterCandidate>({
     view.reply?.kind === "words" && view.reply.lastKnown === true ? view.reply : undefined;
   // Whose seat it is, and whether anybody has signed its agent in — read off
   // its own records, so from the first paint (`mateOwnerView`).
+  const admissionOrgId = useAccountOrgId();
+  const admission = useProjection(
+    mateAdmissionSummary,
+    admissionOrgId === null
+      ? null
+      : {
+          orgId: admissionOrgId,
+          projectId: candidate.project.id,
+          viewerSubject: viewer,
+          mateName: name,
+        },
+    NO_ADMISSION,
+  );
   const records = mateOwnerRecords(candidate.project, hqPeople?.owned);
   const signers = hqPeople?.everSignedIn;
   const seated = mateOwnerView({
     owner,
     records,
+    admission,
     asked: view.ask !== undefined,
     hqSigners:
       signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
@@ -3532,19 +3546,6 @@ function useMateRowState<T extends RosterCandidate>({
     outsideHq || deleting || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
-  const admissionOrgId = useAccountOrgId();
-  const admission = useProjection(
-    mateAdmissionSummary,
-    admissionOrgId === null
-      ? null
-      : {
-          orgId: admissionOrgId,
-          projectId: candidate.project.id,
-          viewerSubject: viewer,
-          mateName: name,
-        },
-    NO_ADMISSION,
-  );
   const status = deleting || view.coming !== undefined ? null : mateStatus(activity, admission);
   const dot =
     (status?.severity === "attention" &&
