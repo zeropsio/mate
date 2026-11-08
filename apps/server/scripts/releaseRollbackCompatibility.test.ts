@@ -6,7 +6,12 @@ import * as Path from "effect/Path";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
-  BLOCKING_PATHS,
+  READ_BACK_CONTRACTS,
+  type RollbackEvidence,
+  RUNTIME_DECLARATION,
+  RUNTIME_DEPENDENCIES,
+  UPDATE_PROTOCOL,
+  contractFingerprints,
   rollbackBlocker,
   rollbackCompatibility,
   readRollbackCompatibility,
@@ -20,423 +25,13 @@ const previousPackage = JSON.stringify({
   version: "0.15.0",
   dependencies: { effect: "4.0.1" },
 });
-const evidence = {
-  previousTag: "v0.15.0",
-  candidateVersion: "0.15.1",
-  ancestor: true,
-  previousProtocol: 1,
-  currentProtocol: 1,
-  previousPackage,
-  currentPackage: previousPackage.replace("0.15.0", "0.15.1"),
-  changedPaths: ["apps/web/src/components/RunChat.tsx", "apps/server/package.json"],
-};
 
-describe("a release may update automatically only inside its proved rollback range", () => {
-  it.effect(
-    "reads the last stable ancestor and permits a UI release until persisted server behavior changes",
-    () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const root = yield* fs.makeTempDirectoryScoped();
-        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-        const git = Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
-          expect(
-            yield* spawner.exitCode(
-              ChildProcess.make("git", args, { cwd: root, stdout: "ignore", stderr: "ignore" }),
-            ),
-          ).toBe(0);
-        });
-        yield* fs.makeDirectory(path.join(root, "apps/server/src/engine/domain"), {
-          recursive: true,
-        });
-        yield* fs.makeDirectory(path.join(root, "apps/web"), { recursive: true });
-        const serverPackage = path.join(root, "apps/server/package.json");
-        yield* fs.writeFileString(serverPackage, previousPackage);
-        yield* fs.writeFileString(
-          path.join(root, "apps/server/update-protocol.json"),
-          '{"protocol":1}',
-        );
-        yield* fs.writeFileString(
-          path.join(root, "apps/server/src/engine/domain/state.ts"),
-          "old format",
-        );
-        yield* git(["init", "--quiet"]);
-        yield* git(["config", "user.name", "Mate release gate test"]);
-        yield* git(["config", "user.email", "mate-release-test@example.invalid"]);
-        yield* git(["add", "."]);
-        yield* git(["commit", "--quiet", "-m", "updater baseline"]);
-        yield* git(["tag", "v0.15.0"]);
-        yield* fs.writeFileString(serverPackage, evidence.currentPackage);
-        yield* fs.writeFileString(path.join(root, "apps/web/copy.ts"), "new copy");
-        yield* git(["add", "."]);
-        yield* git(["commit", "--quiet", "-m", "UI release"]);
-        expect(yield* readRollbackCompatibility(["v0.15.0"], "0.15.1", root)).toEqual({
-          rollbackCompatible: true,
-          compatibleFrom: "0.15.0",
-        });
-        yield* fs.writeFileString(
-          path.join(root, "apps/server/src/engine/domain/state.ts"),
-          "new format",
-        );
-        yield* git(["add", "."]);
-        yield* git(["commit", "--quiet", "-m", "persisted format change"]);
-        expect(yield* readRollbackCompatibility(["v0.15.0"], "0.15.1", root)).toEqual({
-          rollbackCompatible: false,
-        });
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
-  );
-  it.effect("sibling version-only releases prove ancestry through their main source commits", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const root = yield* fs.makeTempDirectoryScoped();
-      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-      const git = Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
-        expect(
-          yield* spawner.exitCode(
-            ChildProcess.make("git", args, { cwd: root, stdout: "ignore", stderr: "ignore" }),
-          ),
-        ).toBe(0);
-      });
-      const files = [
-        "apps/server/package.json",
-        "apps/desktop/package.json",
-        "apps/web/package.json",
-      ];
-      for (const file of files) {
-        yield* fs.makeDirectory(path.dirname(path.join(root, file)), { recursive: true });
-        yield* fs.writeFileString(path.join(root, file), previousPackage);
-      }
-      yield* fs.writeFileString(
-        path.join(root, "apps/server/update-protocol.json"),
-        '{"protocol":1}',
-      );
-      yield* git(["init", "--quiet", "--initial-branch=main"]);
-      yield* git(["config", "user.name", "Release source test"]);
-      yield* git(["config", "user.email", "release@example.invalid"]);
-      yield* git(["add", "."]);
-      yield* git(["commit", "--quiet", "-m", "source baseline"]);
-      yield* git(["checkout", "--quiet", "--detach"]);
-      for (const file of files)
-        yield* fs.writeFileString(
-          path.join(root, file),
-          previousPackage.replace("0.15.0", "0.15.1"),
-        );
-      yield* git(["add", "."]);
-      yield* git(["commit", "--quiet", "-m", "chore(release): mate 0.15.1"]);
-      yield* git(["tag", "v0.15.1"]);
-      yield* git(["checkout", "--quiet", "main"]);
-      yield* fs.writeFileString(path.join(root, "apps/web/copy.ts"), "new copy");
-      yield* git(["add", "."]);
-      yield* git(["commit", "--quiet", "-m", "UI change"]);
-      yield* git(["checkout", "--quiet", "--detach"]);
-      for (const file of files)
-        yield* fs.writeFileString(
-          path.join(root, file),
-          previousPackage.replace("0.15.0", "0.15.2"),
-        );
-      yield* git(["add", "."]);
-      yield* git(["commit", "--quiet", "-m", "chore(release): mate 0.15.2"]);
-      expect(
-        yield* readRollbackCompatibility(["v0.15.1"], "0.15.2", root),
-        "ASSERTION: sibling releases with unchanged server runtime must retain automatic updates",
-      ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.1" });
-      yield* fs.writeFileString(path.join(root, "apps/server/extra.ts"), "hidden release change");
-      yield* git(["add", "."]);
-      yield* git(["commit", "--quiet", "--amend", "-m", "chore(release): mate 0.15.2"]);
-      expect(yield* readRollbackCompatibility(["v0.15.1"], "0.15.2", root)).toEqual({
-        rollbackCompatible: false,
-      });
-    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
-  );
-  it.effect(
-    "compatibleFrom reaches back over every compatible published release and stops at the first manual one",
-    () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const root = yield* fs.makeTempDirectoryScoped();
-        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-        const git = Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
-          expect(
-            yield* spawner.exitCode(
-              ChildProcess.make("git", args, { cwd: root, stdout: "ignore", stderr: "ignore" }),
-            ),
-          ).toBe(0);
-        });
-        const release = Effect.fnUntraced(function* (version: string, file: string, tag: boolean) {
-          yield* fs.makeDirectory(path.dirname(path.join(root, file)), { recursive: true });
-          yield* fs.writeFileString(path.join(root, file), version);
-          yield* fs.writeFileString(
-            path.join(root, "apps/server/package.json"),
-            previousPackage.replace("0.15.0", version),
-          );
-          yield* git(["add", "."]);
-          yield* git(["commit", "--quiet", "-m", `release ${version}`]);
-          if (tag) yield* git(["tag", `v${version}`]);
-        });
-        yield* fs.makeDirectory(path.join(root, "apps/server"), { recursive: true });
-        yield* fs.writeFileString(
-          path.join(root, "apps/server/update-protocol.json"),
-          '{"protocol":1}',
-        );
-        yield* git(["init", "--quiet"]);
-        yield* git(["config", "user.name", "Mate release gate test"]);
-        yield* git(["config", "user.email", "mate-release-test@example.invalid"]);
-        yield* release("0.15.0", "apps/web/copy.ts", true);
-        yield* release("0.15.1", "apps/server/src/persistence/Migrations/064_Next.ts", true);
-        yield* release("0.15.2", "apps/web/copy.ts", true);
-        yield* release("0.15.3", "apps/server/src/zerops/ZeropsHqLink.ts", true);
-        yield* release("0.15.4", "apps/web/copy.ts", false);
-        const published = ["v0.15.3", "v0.15.2", "v0.15.1", "v0.15.0", "v0.15.5", "v0.15.4-beta.1"];
-        expect(
-          yield* readRollbackCompatibility(published, "0.15.4", root),
-          "ASSERTION: a Mate on 0.15.1 or later updates automatically; 0.15.0 → 0.15.1 was manual",
-        ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.1" });
-        expect(
-          yield* readRollbackCompatibility(["v0.15.3", "v0.15.1", "v0.15.0"], "0.15.4", root),
-          "an unpublished release is no step of the walk",
-        ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.1" });
-        expect(yield* readRollbackCompatibility([], "0.15.4", root)).toEqual({
-          rollbackCompatible: false,
-        });
-        yield* release("0.15.4", "apps/server/src/serverSettings.ts", false);
-        expect(yield* readRollbackCompatibility(published, "0.15.4", root)).toEqual({
-          rollbackCompatible: false,
-        });
-      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
-  );
-  it("allows a UI change with the same updater, storage, events and native resume code", () => {
-    expect(rollbackCompatibility(evidence)).toEqual({
-      rollbackCompatible: true,
-      compatibleFrom: "0.15.0",
-    });
-  });
-  it.each(
-    Array.from(
-      [
-        ["old Mate without the updater", { previousProtocol: undefined }],
-        ["unknown updater protocol", { previousProtocol: 2 }],
-        ["another release lineage", { ancestor: false }],
-        ["no previous stable release", { previousTag: "" }],
-        ["a prerelease previous version", { previousTag: "v0.15.0-beta.1" }],
-        ["a candidate older than last-good", { candidateVersion: "0.14.0" }],
-        [
-          "changed runtime dependencies",
-          { currentPackage: previousPackage.replace("4.0.1", "4.0.2") },
-        ],
-        ["unreadable old runtime declaration", { previousPackage: "broken" }],
-      ] as const,
-      ([name, patch]) => ({ title: `requires confirmation for ${name}`, patch }),
-    ),
-  )("$title", ({ patch }) => {
-    expect(rollbackCompatibility({ ...evidence, ...patch })).toEqual({
-      rollbackCompatible: false,
-    });
-  });
-  it.each(
-    Array.from(
-      [
-        "apps/server/src/engine/store/migrations.ts",
-        "apps/server/src/engine/domain/command.ts",
-        "apps/server/src/provider/Layers/CodexSessionRuntime.ts",
-        "apps/server/src/persistence/ProviderSessionRuntimeRepository.ts",
-        "apps/server/src/auth/ServerSecretStore.ts",
-        "packages/contracts/src/engine.ts",
-        "apps/server/src/update/NativeResume.ts",
-        "pnpm-lock.yaml",
-      ],
-      (changedPath) => ({
-        title: `requires confirmation when ${changedPath} changes the server's rollback surface`,
-        changedPath,
-      }),
-    ),
-  )("$title", ({ changedPath }) => {
-    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
-      rollbackCompatible: false,
-    });
-  });
-  it.each(
-    Array.from(
-      [
-        "apps/server/src/git/GitManager.ts",
-        "apps/server/src/ws.ts",
-        "apps/server/src/textGeneration/CodexTextGeneration.ts",
-        "apps/server/src/engine/store/EngineStore.test.ts",
-        "apps/hq/src/main.ts",
-        "packages/hq-git/src/index.ts",
-        "packages/shared/src/hqStream.ts",
-        "package.json",
-        "pnpm-workspace.yaml",
-      ],
-      (changedPath) => ({
-        title: `allows a release that changes ${changedPath} and no stored or seam state`,
-        changedPath,
-      }),
-    ),
-  )("$title", ({ changedPath }) => {
-    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
-      rollbackCompatible: true,
-      compatibleFrom: "0.15.0",
-    });
-  });
-  it.each(
-    Array.from(
-      [
-        "apps/server/src/persistence/Migrations/064_Next.ts",
-        "apps/server/src/persistence/Migrations.ts",
-        "apps/server/src/engine/store/Migrations/0014_Next.ts",
-        "packages/contracts/src/settings.ts",
-        "packages/contracts/src/orchestration.ts",
-        "apps/server/src/serverSettings.ts",
-        "apps/server/src/zerops/ZeropsGitCredentialFile.ts",
-        "apps/server/src/environment/ServerEnvironment.ts",
-        "apps/server/src/cli/config.ts",
-        "apps/server/src/server.ts",
-        "apps/server/src/serverRuntimeStartup.ts",
-        "apps/server/src/spi/ProviderUpdateSafety.ts",
-      ],
-      (changedPath) => ({
-        title: `requires confirmation when ${changedPath} adds a migration, a stored schema or a seam change`,
-        changedPath,
-      }),
-    ),
-  )("$title", ({ changedPath }) => {
-    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
-      rollbackCompatible: false,
-    });
-  });
-  it.each(
-    Array.from(
-      [
-        "AGENTS.md",
-        "CLAUDE.md",
-        "README.md",
-        "CONTRIBUTING.md",
-        "MERGE.md",
-        "docs/internals/zerops/fork.md",
-        "infra/relay/README.md",
-        ".claude/agents/scout.md",
-      ],
-      (changedPath) => ({
-        title: `allows a release that changes ${changedPath}, a repository document outside the Mate artifact`,
-        changedPath,
-      }),
-    ),
-  )("$title", ({ changedPath }) => {
-    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
-      rollbackCompatible: true,
-      compatibleFrom: "0.15.0",
-    });
-  });
-  it("names every blocking path of a manual release, up to twenty, and counts the rest", () => {
-    const blocking = Array.from(
-      { length: 25 },
-      (_, index) => `apps/server/src/persistence/Migrations/${100 + index}_Next.ts`,
-    );
-    const blocker = rollbackBlocker({
-      ...evidence,
-      changedPaths: ["AGENTS.md", ...blocking, "apps/web/src/main.tsx", "packages/new-pkg/a.ts"],
-    });
-    for (const path of blocking.slice(0, 20)) expect(blocker).toContain(path);
-    expect(blocker).not.toContain("120_Next.ts");
-    expect(blocker).toContain("and 5 more");
-    expect(blocker).not.toContain("AGENTS.md");
-    expect(blocker).not.toContain("apps/web/");
-    expect(blocker).not.toContain("packages/new-pkg/");
-  });
-  it.each([
-    "scripts/lib/cli-external-packages.ts",
-    "scripts/lib/resolve-catalog.ts",
-    "scripts/lib/public-config.ts",
-  ])(
-    "requires confirmation when %s, which shapes the released artifact, changes",
-    (changedPath) => {
-      expect(rollbackBlocker({ ...evidence, changedPaths: [changedPath] })).toContain(changedPath);
-      expect(
-        rollbackCompatibility({ ...evidence, changedPaths: ["scripts/gate-changed.ts"] }),
-      ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.0" });
-    },
-  );
-  it.each([
-    "apps/server/src/persistence/Layers/NewRepository.ts",
-    "apps/server/src/engine/store/Migrations/0099_Next.ts",
-    "apps/server/src/persistence/Migrations/064_Next.ts",
-    "apps/server/src/update/NewFence.ts",
-  ])("requires confirmation for %s, a path the rule has never seen", (changedPath) => {
-    expect(rollbackBlocker({ ...evidence, changedPaths: [changedPath] })).toContain(changedPath);
-  });
-  it.each([
-    "apps/server/src/newdir/Store.ts",
-    "apps/server/src/newTopLevelStore.ts",
-    "packages/new-pkg/src/index.ts",
-    ".github/workflows/release.yml",
-    "packages/effect-acp/src/client.ts",
-    "apps/server/src/provider/acp/AcpSessionRuntime.ts",
-    "apps/server/src/engine/domain/decide.ts",
-    "apps/server/src/zerops/crew/engine/decide.ts",
-  ])("allows a release that changes %s, which no earlier release reads back", (changedPath) => {
-    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
-      rollbackCompatible: true,
-      compatibleFrom: "0.15.0",
-    });
-  });
-  it.each([
-    "apps/server/scripts/cli.ts",
-    "apps/server/scripts/releaseRollbackCompatibility.ts",
-    "apps/server/scripts/releaseManifestAsset.ts",
-  ])("a release script, %s, never makes a release manual", (changedPath) => {
-    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
-      rollbackCompatible: true,
-      compatibleFrom: "0.15.0",
-    });
-  });
-  it("updates automatically from v0.16.9 to v0.16.10, which changed HQ link and role modules", () => {
-    expect(
-      rollbackCompatibility({
-        ...evidence,
-        changedPaths: [
-          "apps/server/scripts/releaseRollbackCompatibility.ts",
-          "apps/server/src/zerops/ZeropsHqLink.ts",
-          "packages/shared/src/zeropsPermissions.ts",
-          "packages/shared/src/zeropsRoles.ts",
-          "packages/shared/src/hqStream.ts",
-          "apps/hq/src/main.ts",
-          "packages/hq-git/src/index.ts",
-          "packages/client-runtime/src/zerops/api.ts",
-          "apps/web/src/components/ChatView.tsx",
-          "scripts/gate-changed.ts",
-          "zerops.yml",
-        ],
-      }),
-    ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.0" });
-  });
-  it.effect("every blocklisted path names a file or directory in the repository", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const root = path.resolve(import.meta.dirname, "../../..");
-      const missing: Array<string> = [];
-      for (const [blocked] of BLOCKING_PATHS)
-        if (!(yield* fs.exists(path.join(root, blocked)))) missing.push(blocked);
-      expect(missing).toEqual([]);
-    }).pipe(Effect.provide(NodeServices.layer)),
-  );
-  it.each([
-    ["the update protocol changed", { currentProtocol: 2 }],
-    ["the runtime declaration changed", { previousPackage: "broken" }],
-    ["not an ancestor", { ancestor: false }],
-  ] as const)("names the cause when %s", (cause, patch) => {
-    expect(rollbackBlocker({ ...evidence, ...patch }), cause).toBeTruthy();
-  });
-  describe("a changed lockfile counts only when the server's runtime dependencies moved", () => {
-    const lock = (options: {
-      readonly runtime: string;
-      readonly dev: string;
-      readonly bundled?: string;
-      readonly web?: string;
-    }) => `
+const lock = (options: {
+  readonly runtime: string;
+  readonly dev: string;
+  readonly bundled?: string;
+  readonly web?: string;
+}) => `
 lockfileVersion: '9.0'
 importers:
   .:
@@ -485,51 +80,558 @@ snapshots:
   vitest@1.0.0: {}
   vitest@1.0.1: {}
 `;
-    const base = lock({ runtime: "1.0.0", dev: "1.0.0" });
-    const changedLock = (current: string | undefined) => ({
-      ...evidence,
-      changedPaths: ["pnpm-lock.yaml"],
-      ...(current === undefined ? {} : { lockfiles: { previous: base, current } }),
-    });
-    it("allows a dev-only lockfile change", () => {
-      expect(rollbackCompatibility(changedLock(lock({ runtime: "1.0.0", dev: "1.0.1" })))).toEqual({
+const baseLock = lock({ runtime: "1.0.0", dev: "1.0.0" });
+
+const SCHEMA_IMPORT = 'import * as Schema from "effect/Schema";\n';
+const row = (name: string) => `export const ${name} = Schema.Struct({ id: Schema.String });\n`;
+
+/**
+ * A release tree in which every read-back contract root is declared, the stored settings shape
+ * reached through a workspace package import.
+ */
+const baseline: Readonly<Record<string, string>> = (() => {
+  const files: Record<string, string> = {
+    "apps/server/package.json": previousPackage,
+    "apps/server/update-protocol.json": '{"protocol":1}',
+    "pnpm-lock.yaml": baseLock,
+    "packages/contracts/package.json": JSON.stringify({
+      name: "@t3tools/contracts",
+      exports: { "./settings": { import: "./src/settings.ts" } },
+    }),
+    "packages/contracts/src/settings.ts": SCHEMA_IMPORT + row("ServerSettings"),
+  };
+  for (const { roots } of READ_BACK_CONTRACTS)
+    for (const [path, selector] of roots) {
+      if (path.endsWith("/")) files[`${path}Rows.ts`] = SCHEMA_IMPORT + row("Rows");
+      else
+        files[path] =
+          (files[path] ?? SCHEMA_IMPORT) +
+          (typeof selector === "string"
+            ? row("Shape")
+            : selector.map((name) => `export const ${name} = 1;\n`).join(""));
+    }
+  files["apps/server/src/serverSettings.ts"] +=
+    'import { ServerSettings } from "@t3tools/contracts/settings";\n' +
+    "export const decodeServerSettings = Schema.decodeUnknownEffect(ServerSettings);\n";
+  return files;
+})();
+
+/** The baseline with `path` changed: a declaration's value or shape, or a new stored row module. */
+const changed = (path: string, files = baseline): Record<string, string> => {
+  if (path === "pnpm-lock.yaml")
+    return { ...files, [path]: lock({ runtime: "1.0.1", dev: "1.0.0" }) };
+  const source = files[path];
+  if (source === undefined) return { ...files, [path]: SCHEMA_IMPORT + row("Next") };
+  const next = source.includes("Schema.String")
+    ? source.replace("Schema.String", "Schema.Number")
+    : source.replace("= 1;", "= 2;");
+  return { ...files, [path]: next };
+};
+
+/** The baseline with `path` edited or added as code that declares nothing a contract reaches. */
+const touched = (...paths: ReadonlyArray<string>): Record<string, string> => ({
+  ...baseline,
+  ...Object.fromEntries(
+    paths.map((path) => [path, `${baseline[path] ?? ""}export const touched = 2;\n`]),
+  ),
+});
+
+const fingerprintsOf = (files: Readonly<Record<string, string>>) =>
+  contractFingerprints({
+    paths: new Set(Object.keys(files)),
+    read: (path) => Effect.succeed(files[path]),
+  });
+/** The step from v0.15.0 with the previous files to 0.15.1 with the current ones. */
+const stepBetween = Effect.fnUntraced(function* (
+  previousFiles: Readonly<Record<string, string>>,
+  currentFiles: Readonly<Record<string, string>>,
+) {
+  return {
+    previousTag: "v0.15.0",
+    candidateVersion: "0.15.1",
+    ancestor: true,
+    previous: yield* fingerprintsOf(previousFiles),
+    current: yield* fingerprintsOf(currentFiles),
+  } satisfies RollbackEvidence;
+});
+/** The step from the baseline release to one with these files. */
+const step = (files: Readonly<Record<string, string>> = baseline) => stepBetween(baseline, files);
+const patched = (patch: (evidence: RollbackEvidence) => RollbackEvidence) =>
+  Effect.map(step(), patch);
+
+const writeTree = Effect.fnUntraced(function* (
+  root: string,
+  files: Readonly<Record<string, string>>,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  for (const [file, content] of Object.entries(files)) {
+    yield* fs.makeDirectory(path.dirname(path.join(root, file)), { recursive: true });
+    yield* fs.writeFileString(path.join(root, file), content);
+  }
+});
+
+describe("a release may update automatically only inside its proved rollback range", () => {
+  it.effect(
+    "reads the last stable ancestor and permits a UI release until persisted server behavior changes",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const root = yield* fs.makeTempDirectoryScoped();
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const git = Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
+          expect(
+            yield* spawner.exitCode(
+              ChildProcess.make("git", args, { cwd: root, stdout: "ignore", stderr: "ignore" }),
+            ),
+          ).toBe(0);
+        });
+        yield* writeTree(root, baseline);
+        yield* git(["init", "--quiet"]);
+        yield* git(["config", "user.name", "Mate release gate test"]);
+        yield* git(["config", "user.email", "mate-release-test@example.invalid"]);
+        yield* git(["add", "."]);
+        yield* git(["commit", "--quiet", "-m", "updater baseline"]);
+        yield* git(["tag", "v0.15.0"]);
+        yield* writeTree(root, {
+          "apps/server/package.json": previousPackage.replace("0.15.0", "0.15.1"),
+          "apps/web/copy.ts": "new copy",
+        });
+        yield* git(["add", "."]);
+        yield* git(["commit", "--quiet", "-m", "UI release"]);
+        expect(yield* readRollbackCompatibility(["v0.15.0"], "0.15.1", root)).toEqual({
+          rollbackCompatible: true,
+          compatibleFrom: "0.15.0",
+        });
+        const state = "apps/server/src/engine/domain/state.ts";
+        yield* writeTree(root, { [state]: changed(state)[state]! });
+        yield* git(["add", "."]);
+        yield* git(["commit", "--quiet", "-m", "persisted format change"]);
+        expect(yield* readRollbackCompatibility(["v0.15.0"], "0.15.1", root)).toEqual({
+          rollbackCompatible: false,
+        });
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+  it.effect("sibling version-only releases prove ancestry through their main source commits", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fs.makeTempDirectoryScoped();
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const git = Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
+        expect(
+          yield* spawner.exitCode(
+            ChildProcess.make("git", args, { cwd: root, stdout: "ignore", stderr: "ignore" }),
+          ),
+        ).toBe(0);
+      });
+      const files = [
+        "apps/server/package.json",
+        "apps/desktop/package.json",
+        "apps/web/package.json",
+      ];
+      yield* writeTree(root, baseline);
+      for (const file of files) yield* writeTree(root, { [file]: previousPackage });
+      yield* git(["init", "--quiet", "--initial-branch=main"]);
+      yield* git(["config", "user.name", "Release source test"]);
+      yield* git(["config", "user.email", "release@example.invalid"]);
+      yield* git(["add", "."]);
+      yield* git(["commit", "--quiet", "-m", "source baseline"]);
+      yield* git(["checkout", "--quiet", "--detach"]);
+      for (const file of files)
+        yield* fs.writeFileString(
+          path.join(root, file),
+          previousPackage.replace("0.15.0", "0.15.1"),
+        );
+      yield* git(["add", "."]);
+      yield* git(["commit", "--quiet", "-m", "chore(release): mate 0.15.1"]);
+      yield* git(["tag", "v0.15.1"]);
+      yield* git(["checkout", "--quiet", "main"]);
+      yield* writeTree(root, { "apps/web/copy.ts": "new copy" });
+      yield* git(["add", "."]);
+      yield* git(["commit", "--quiet", "-m", "UI change"]);
+      yield* git(["checkout", "--quiet", "--detach"]);
+      for (const file of files)
+        yield* fs.writeFileString(
+          path.join(root, file),
+          previousPackage.replace("0.15.0", "0.15.2"),
+        );
+      yield* git(["add", "."]);
+      yield* git(["commit", "--quiet", "-m", "chore(release): mate 0.15.2"]);
+      expect(
+        yield* readRollbackCompatibility(["v0.15.1"], "0.15.2", root),
+        "ASSERTION: sibling releases with unchanged server runtime must retain automatic updates",
+      ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.1" });
+      yield* fs.writeFileString(path.join(root, "apps/server/extra.ts"), "hidden release change");
+      yield* git(["add", "."]);
+      yield* git(["commit", "--quiet", "--amend", "-m", "chore(release): mate 0.15.2"]);
+      expect(yield* readRollbackCompatibility(["v0.15.1"], "0.15.2", root)).toEqual({
+        rollbackCompatible: false,
+      });
+    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+  it.effect(
+    "compatibleFrom reaches back over every compatible published release and stops at the first manual one",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const root = yield* fs.makeTempDirectoryScoped();
+        const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const git = Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
+          expect(
+            yield* spawner.exitCode(
+              ChildProcess.make("git", args, { cwd: root, stdout: "ignore", stderr: "ignore" }),
+            ),
+          ).toBe(0);
+        });
+        let files: Record<string, string> = { ...baseline };
+        const release = Effect.fnUntraced(function* (
+          version: string,
+          next: Record<string, string>,
+          tag: boolean,
+        ) {
+          files = {
+            ...next,
+            "apps/server/package.json": previousPackage.replace("0.15.0", version),
+          };
+          yield* writeTree(root, files);
+          yield* git(["add", "."]);
+          yield* git(["commit", "--quiet", "-m", `release ${version}`]);
+          if (tag) yield* git(["tag", `v${version}`]);
+        });
+        yield* git(["init", "--quiet"]);
+        yield* git(["config", "user.name", "Mate release gate test"]);
+        yield* git(["config", "user.email", "mate-release-test@example.invalid"]);
+        const copy = (version: string) => ({ ...files, "apps/web/copy.ts": version });
+        yield* release("0.15.0", copy("0.15.0"), true);
+        yield* release(
+          "0.15.1",
+          changed("apps/server/src/persistence/Migrations.ts", {
+            ...files,
+            "apps/server/src/persistence/Migrations/064_Next.ts": "export default 64;\n",
+          }),
+          true,
+        );
+        yield* release("0.15.2", copy("0.15.2"), true);
+        yield* release(
+          "0.15.3",
+          { ...files, "apps/server/src/zerops/ZeropsHqLink.ts": "export const link = 3;\n" },
+          true,
+        );
+        yield* release("0.15.4", copy("0.15.4"), false);
+        const published = ["v0.15.3", "v0.15.2", "v0.15.1", "v0.15.0", "v0.15.5", "v0.15.4-beta.1"];
+        expect(
+          yield* readRollbackCompatibility(published, "0.15.4", root),
+          "ASSERTION: a Mate on 0.15.1 or later updates automatically; 0.15.0 → 0.15.1 was manual",
+        ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.1" });
+        expect(
+          yield* readRollbackCompatibility(["v0.15.3", "v0.15.1", "v0.15.0"], "0.15.4", root),
+          "an unpublished release is no step of the walk",
+        ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.1" });
+        expect(yield* readRollbackCompatibility([], "0.15.4", root)).toEqual({
+          rollbackCompatible: false,
+        });
+        yield* release("0.15.4", changed("apps/server/src/serverSettings.ts", files), false);
+        expect(yield* readRollbackCompatibility(published, "0.15.4", root)).toEqual({
+          rollbackCompatible: false,
+        });
+      }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
+  );
+  it.effect(
+    "allows a UI change with the same updater, storage, events and native resume code",
+    () =>
+      Effect.gen(function* () {
+        expect(
+          rollbackCompatibility(yield* step(touched("apps/web/src/components/RunChat.tsx"))),
+        ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.0" });
+      }),
+  );
+  it.effect.each(
+    Array.from(
+      [
+        [
+          "old Mate without the updater",
+          patched((e) => ({ ...e, previous: { ...e.previous, [UPDATE_PROTOCOL]: undefined } })),
+        ],
+        [
+          "unknown updater protocol",
+          patched((e) => ({ ...e, previous: { ...e.previous, [UPDATE_PROTOCOL]: "2" } })),
+        ],
+        ["another release lineage", patched((e) => ({ ...e, ancestor: false }))],
+        ["no previous stable release", patched((e) => ({ ...e, previousTag: "" }))],
+        [
+          "a prerelease previous version",
+          patched((e) => ({ ...e, previousTag: "v0.15.0-beta.1" })),
+        ],
+        [
+          "a candidate older than last-good",
+          patched((e) => ({ ...e, candidateVersion: "0.14.0" })),
+        ],
+        [
+          "changed runtime dependencies",
+          step({
+            ...baseline,
+            "apps/server/package.json": previousPackage.replace("4.0.1", "4.0.2"),
+          }),
+        ],
+        [
+          "unreadable old runtime declaration",
+          stepBetween({ ...baseline, "apps/server/package.json": "broken" }, baseline),
+        ],
+      ] as const,
+      ([name, evidence]) => ({ title: `requires confirmation for ${name}`, evidence }),
+    ),
+  )("$title", ({ evidence }) =>
+    Effect.gen(function* () {
+      expect(rollbackCompatibility(yield* evidence)).toEqual({ rollbackCompatible: false });
+    }),
+  );
+  it.effect.each(
+    Array.from(
+      [
+        "apps/server/src/engine/store/migrations.ts",
+        "apps/server/src/engine/domain/command.ts",
+        "apps/server/src/provider/Layers/CodexSessionRuntime.ts",
+        "apps/server/src/persistence/ProviderSessionRuntimeRepository.ts",
+        "apps/server/src/auth/ServerSecretStore.ts",
+        "packages/contracts/src/engine.ts",
+        "apps/server/src/update/NativeResume.ts",
+        "pnpm-lock.yaml",
+      ],
+      (changedPath) => ({
+        title: `requires confirmation when ${changedPath} changes the server's rollback surface`,
+        changedPath,
+      }),
+    ),
+  )("$title", ({ changedPath }) =>
+    Effect.gen(function* () {
+      expect(rollbackCompatibility(yield* step(changed(changedPath)))).toEqual({
+        rollbackCompatible: false,
+      });
+    }),
+  );
+  it.effect.each(
+    Array.from(
+      [
+        "apps/server/src/git/GitManager.ts",
+        "apps/server/src/ws.ts",
+        "apps/server/src/textGeneration/CodexTextGeneration.ts",
+        "apps/server/src/engine/store/EngineStore.test.ts",
+        "apps/hq/src/main.ts",
+        "packages/hq-git/src/index.ts",
+        "packages/shared/src/hqStream.ts",
+        "package.json",
+        "pnpm-workspace.yaml",
+      ],
+      (changedPath) => ({
+        title: `allows a release that changes ${changedPath} and no stored or seam state`,
+        changedPath,
+      }),
+    ),
+  )("$title", ({ changedPath }) =>
+    Effect.gen(function* () {
+      expect(rollbackCompatibility(yield* step(touched(changedPath)))).toEqual({
         rollbackCompatible: true,
         compatibleFrom: "0.15.0",
       });
-    });
-    it("requires confirmation when a transitive runtime dependency changes", () => {
-      expect(rollbackCompatibility(changedLock(lock({ runtime: "1.0.1", dev: "1.0.0" })))).toEqual({
-        rollbackCompatible: false,
+    }),
+  );
+  it.effect.each(
+    Array.from(
+      [
+        "apps/server/src/persistence/Migrations/064_Next.ts",
+        "apps/server/src/persistence/Migrations.ts",
+        "apps/server/src/engine/store/Migrations/0014_Next.ts",
+        "packages/contracts/src/settings.ts",
+        "packages/contracts/src/orchestration.ts",
+        "apps/server/src/serverSettings.ts",
+        "apps/server/src/zerops/ZeropsGitCredentialFile.ts",
+        "apps/server/src/environment/ServerEnvironment.ts",
+      ],
+      (changedPath) => ({
+        title: `requires confirmation when ${changedPath} adds a migration, a stored schema or a seam change`,
+        changedPath,
+      }),
+    ),
+  )("$title", ({ changedPath }) =>
+    Effect.gen(function* () {
+      // A new migration runs once its track's registry lists it.
+      const registry = changedPath.includes("/engine/")
+        ? "apps/server/src/engine/store/migrations.ts"
+        : "apps/server/src/persistence/Migrations.ts";
+      const files = changedPath.includes("/Migrations/")
+        ? changed(registry, { ...baseline, [changedPath]: "export default 1;\n" })
+        : changed(changedPath);
+      expect(rollbackCompatibility(yield* step(files))).toEqual({ rollbackCompatible: false });
+    }),
+  );
+  it.effect.each(
+    Array.from(
+      [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "README.md",
+        "CONTRIBUTING.md",
+        "MERGE.md",
+        "docs/internals/zerops/fork.md",
+        "infra/relay/README.md",
+        ".claude/agents/scout.md",
+      ],
+      (changedPath) => ({
+        title: `allows a release that changes ${changedPath}, a repository document outside the Mate artifact`,
+        changedPath,
+      }),
+    ),
+  )("$title", ({ changedPath }) =>
+    Effect.gen(function* () {
+      expect(rollbackCompatibility(yield* step(touched(changedPath)))).toEqual({
+        rollbackCompatible: true,
+        compatibleFrom: "0.15.0",
       });
-    });
-    it("requires confirmation when a dependency of a bundled workspace package changes", () => {
-      expect(
-        rollbackCompatibility(
-          changedLock(lock({ runtime: "1.0.0", dev: "1.0.0", bundled: "6.0.1" })),
-        ),
-      ).toEqual({ rollbackCompatible: false });
-    });
-    it("allows a lockfile change that moves only the web client's dependencies", () => {
-      expect(
-        rollbackCompatibility(changedLock(lock({ runtime: "1.0.0", dev: "1.0.0", web: "19.0.1" }))),
-      ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.0" });
-    });
-    it("names a moved lockfile beside the other blocking paths", () => {
-      const blocker = rollbackBlocker({
-        ...changedLock(lock({ runtime: "1.0.1", dev: "1.0.0" })),
-        changedPaths: ["apps/server/src/persistence/Migrations.ts", "pnpm-lock.yaml"],
+    }),
+  );
+  it.effect.each([
+    "scripts/lib/cli-external-packages.ts",
+    "scripts/lib/resolve-catalog.ts",
+    "scripts/lib/public-config.ts",
+  ])("requires confirmation when %s, which shapes the released artifact, changes", (changedPath) =>
+    Effect.gen(function* () {
+      expect(rollbackBlocker(yield* step(changed(changedPath)))).toContain("the artifact's build");
+      expect(rollbackCompatibility(yield* step(touched("scripts/gate-changed.ts")))).toEqual({
+        rollbackCompatible: true,
+        compatibleFrom: "0.15.0",
       });
-      expect(blocker).toContain("apps/server/src/persistence/Migrations.ts");
-      expect(blocker).toContain("pnpm-lock.yaml");
-    });
-    it("requires confirmation when the lockfile cannot be read", () => {
-      expect(rollbackCompatibility(changedLock("not: [a lockfile"))).toEqual({
-        rollbackCompatible: false,
+    }),
+  );
+  it.effect.each([
+    "apps/server/src/newdir/Store.ts",
+    "apps/server/src/newTopLevelStore.ts",
+    "packages/new-pkg/src/index.ts",
+    ".github/workflows/release.yml",
+    "packages/effect-acp/src/client.ts",
+    "apps/server/src/provider/acp/AcpSessionRuntime.ts",
+    "apps/server/src/engine/domain/decide.ts",
+    "apps/server/src/zerops/crew/engine/decide.ts",
+  ])("allows a release that changes %s, which no earlier release reads back", (changedPath) =>
+    Effect.gen(function* () {
+      expect(rollbackCompatibility(yield* step(touched(changedPath)))).toEqual({
+        rollbackCompatible: true,
+        compatibleFrom: "0.15.0",
       });
-      expect(rollbackCompatibility(changedLock(undefined))).toEqual({
-        rollbackCompatible: false,
+    }),
+  );
+  it.effect.each([
+    "apps/server/scripts/cli.ts",
+    "apps/server/scripts/releaseRollbackCompatibility.ts",
+    "apps/server/scripts/releaseManifestAsset.ts",
+  ])("a release script, %s, never makes a release manual", (changedPath) =>
+    Effect.gen(function* () {
+      expect(rollbackCompatibility(yield* step(touched(changedPath)))).toEqual({
+        rollbackCompatible: true,
+        compatibleFrom: "0.15.0",
       });
-    });
+    }),
+  );
+  it.effect(
+    "updates automatically from v0.16.9 to v0.16.10, which changed HQ link and role modules",
+    () =>
+      Effect.gen(function* () {
+        const evidence = yield* step(
+          touched(
+            "apps/server/scripts/releaseRollbackCompatibility.ts",
+            "apps/server/src/zerops/ZeropsHqLink.ts",
+            "packages/shared/src/zeropsPermissions.ts",
+            "packages/shared/src/zeropsRoles.ts",
+            "packages/shared/src/hqStream.ts",
+            "apps/hq/src/main.ts",
+            "packages/hq-git/src/index.ts",
+            "packages/client-runtime/src/zerops/api.ts",
+            "apps/web/src/components/ChatView.tsx",
+            "scripts/gate-changed.ts",
+            "zerops.yml",
+          ),
+        );
+        expect(rollbackCompatibility(evidence)).toEqual({
+          rollbackCompatible: true,
+          compatibleFrom: "0.15.0",
+        });
+      }),
+  );
+  it.effect.each([
+    [
+      "the update protocol changed",
+      patched((e) => ({ ...e, current: { ...e.current, [UPDATE_PROTOCOL]: "2" } })),
+    ],
+    [
+      "the runtime declaration changed",
+      stepBetween({ ...baseline, "apps/server/package.json": "broken" }, baseline),
+    ],
+    ["not an ancestor", patched((e) => ({ ...e, ancestor: false }))],
+  ] as const)("names the cause when %s", ([cause, evidence]) =>
+    Effect.gen(function* () {
+      expect(rollbackBlocker(yield* evidence), cause).toBeTruthy();
+    }),
+  );
+  describe("a changed lockfile counts only when the server's runtime dependencies moved", () => {
+    const changedLock = (current: string | undefined) => {
+      const { "pnpm-lock.yaml": _lock, ...rest } = baseline;
+      return step(current === undefined ? rest : { ...rest, "pnpm-lock.yaml": current });
+    };
+    it.effect("allows a dev-only lockfile change", () =>
+      Effect.gen(function* () {
+        expect(
+          rollbackCompatibility(yield* changedLock(lock({ runtime: "1.0.0", dev: "1.0.1" }))),
+        ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.0" });
+      }),
+    );
+    it.effect("requires confirmation when a transitive runtime dependency changes", () =>
+      Effect.gen(function* () {
+        expect(
+          rollbackCompatibility(yield* changedLock(lock({ runtime: "1.0.1", dev: "1.0.0" }))),
+        ).toEqual({ rollbackCompatible: false });
+      }),
+    );
+    it.effect(
+      "requires confirmation when a dependency of a bundled workspace package changes",
+      () =>
+        Effect.gen(function* () {
+          expect(
+            rollbackCompatibility(
+              yield* changedLock(lock({ runtime: "1.0.0", dev: "1.0.0", bundled: "6.0.1" })),
+            ),
+          ).toEqual({ rollbackCompatible: false });
+        }),
+    );
+    it.effect("allows a lockfile change that moves only the web client's dependencies", () =>
+      Effect.gen(function* () {
+        expect(
+          rollbackCompatibility(
+            yield* changedLock(lock({ runtime: "1.0.0", dev: "1.0.0", web: "19.0.1" })),
+          ),
+        ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.0" });
+      }),
+    );
+    it.effect("names a moved lockfile beside the other blocking paths", () =>
+      Effect.gen(function* () {
+        const blocker = rollbackBlocker(
+          yield* step(
+            changed("pnpm-lock.yaml", changed("apps/server/src/persistence/Migrations.ts")),
+          ),
+        );
+        expect(blocker).toContain("SQL migrations");
+        expect(blocker).toContain(RUNTIME_DEPENDENCIES);
+      }),
+    );
+    it.effect("requires confirmation when the lockfile cannot be read", () =>
+      Effect.gen(function* () {
+        expect(rollbackCompatibility(yield* changedLock("not: [a lockfile"))).toEqual({
+          rollbackCompatible: false,
+        });
+        expect(rollbackCompatibility(yield* changedLock(undefined))).toEqual({
+          rollbackCompatible: false,
+        });
+      }),
+    );
   });
 });
 
@@ -579,19 +681,21 @@ describe("the allowlisted HQ wire modules stay free of stored state", () => {
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
-  it.each([
+  it.effect.each([
     "packages/shared/src/hqStream.ts",
     "packages/shared/src/hqGitBrowse/tree.ts",
     "packages/shared/src/hqStore/nested/index.ts",
-  ])("the hq guard checks %s, a path the hq allowlist entry admits", (file) => {
-    expect(rollbackCompatibility({ ...evidence, changedPaths: [file] })).toEqual({
-      rollbackCompatible: true,
-      compatibleFrom: "0.15.0",
-    });
-    expect(hqOffenders([{ file, imports: ["../persistence/Store.ts"] }])).toEqual([
-      `${file} imports ../persistence/Store.ts`,
-    ]);
-  });
+  ])("the hq guard checks %s, a path the hq allowlist entry admits", (file) =>
+    Effect.gen(function* () {
+      expect(rollbackCompatibility(yield* step(touched(file)))).toEqual({
+        rollbackCompatible: true,
+        compatibleFrom: "0.15.0",
+      });
+      expect(hqOffenders([{ file, imports: ["../persistence/Store.ts"] }])).toEqual([
+        `${file} imports ../persistence/Store.ts`,
+      ]);
+    }),
+  );
 
   it.effect("the server reaches an hq module only from zerops/, which is never allowlisted", () =>
     Effect.gen(function* () {
