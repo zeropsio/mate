@@ -1030,19 +1030,19 @@ export function makeHqExecutor(ports: {
               outcome: "definitive-refusal",
               message: "Update HQ to manage observe authorization.",
             });
-          const answer = yield* Effect.tryPromise({
+          yield* Effect.tryPromise({
             try: () => establish(intent.projectId, {}),
             catch: faultOf,
           });
           const key = { orgId: intent.orgId, projectId: intent.projectId };
-          // HQ's answer is the status now, over any read begun before it.
+          // The status reader must discard any read begun before HQ acknowledged it.
           if (ports.store !== undefined && ports.active?.() !== false)
             commitOwn(
               ports.store,
               "hqObserveCredentialRequest",
               observeRequestScope(key),
               observeCredentialId(key),
-              { requestId, answer },
+              { requestId },
             );
           return answered(requestId, intent.projectId);
         }

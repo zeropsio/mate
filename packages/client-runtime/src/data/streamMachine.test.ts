@@ -224,6 +224,19 @@ describe("transition", () => {
     expect(sampled.next).toEqual({ kind: "revalidate", at: 5 + STREAM_POLICY.sampledIntervalMs });
   });
 
+  it("revalidates a source read once on the cadence while its answer says it still changes", () => {
+    const ageing = run(
+      initialStream({ parent: null, mode: "once" }),
+      [
+        { kind: "demand", demanded: true },
+        { kind: "handshake" },
+        { kind: "baseline-committed", ages: true },
+      ],
+      5,
+    );
+    expect(ageing.next).toEqual({ kind: "revalidate", at: 5 + STREAM_POLICY.sampledIntervalMs });
+  });
+
   it("names no revalidation for a source read once: only an input change reads it again", () => {
     const once = run(
       initialStream({ parent: null, mode: "once" }),

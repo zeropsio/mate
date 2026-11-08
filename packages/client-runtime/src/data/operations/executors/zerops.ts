@@ -1,7 +1,6 @@
 import { admitPlatformOperation } from "./platformAdmission.ts";
 import { commitOwn } from "../../adapters/hqSettingsReads.ts";
 import { observeCredentialId, observeRequestScope } from "../../families/hqObserveCredential.ts";
-import type { ObserveCredential } from "../../../zerops/hq/observeCredential.ts";
 import type { ZeropsOrganization } from "../../../zerops/api.ts";
 /**
  * Zerops as an operation's owner, over the account's REST client: each Zerops kind's executor,
@@ -482,9 +481,8 @@ export function makeZeropsExecutor(input: {
                 outcome: "definitive-refusal",
                 message: "HQ is not ready to record this Mate's ZCP authorization.",
               });
-            let answer: ObserveCredential;
             try {
-              answer = await establish(context.projectId, { keyHash: context.keyHash });
+              await establish(context.projectId, { keyHash: context.keyHash });
             } catch (cause) {
               if (cause instanceof HqError && cause.kind === "refused")
                 throw new ZeropsWriteNotSent({
@@ -498,14 +496,14 @@ export function makeZeropsExecutor(input: {
               );
             }
             await checkCredentialAccount();
-            // HQ's answer is the status now, over any read begun before it.
+            // The status reader must discard any read begun before HQ acknowledged this context.
             const key = { orgId: container.clientId, projectId: context.projectId };
             commitOwn(
               input.store,
               "hqObserveCredentialRequest",
               observeRequestScope(key),
               observeCredentialId(key),
-              { requestId, answer },
+              { requestId },
             );
           }),
         hardenMate: (orgId, projectId, signal, _before, tokenId) =>

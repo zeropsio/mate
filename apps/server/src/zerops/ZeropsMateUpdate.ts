@@ -21,7 +21,6 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Equal from "effect/Equal";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Random from "effect/Random";
@@ -148,13 +147,6 @@ const toDescriptorUpdate = (status: MateStatusResult): ExecutionEnvironmentUpdat
       }),
 });
 
-/** Whether two `mate status` answers say the same, whenever each was run. */
-const sameAnswer = (held: MateStatusResult, next: MateStatusResult): boolean => {
-  const { checkedAt: _held, ...heldSays } = held;
-  const { checkedAt: _next, ...nextSays } = next;
-  return Equal.equals(heldSays, nextSays);
-};
-
 export interface ZeropsMateUpdateOptions {
   readonly cli: ZeropsCli["Service"];
   readonly isZeropsEnvironment: boolean;
@@ -193,32 +185,17 @@ export const make = (options: ZeropsMateUpdateOptions) =>
         ? mapped
         : { ...mapped, restart: { ...(mapped.restart ?? { needed: false }), ...progress } };
     };
-    // The line as last published: a line that says nothing new is not published again, so neither
-    // the link to HQ nor any client hears a re-read that found nothing.
-    let published: ExecutionEnvironmentUpdate | undefined;
-    const publish = Effect.suspend(() => {
-      const next = line();
-      if (Equal.equals(next, published)) return Effect.void;
-      published = next;
-      return SubscriptionRef.set(state, next);
-    });
     const setReading = (status: MateStatusResult | undefined) =>
       Effect.suspend(() => {
-        // zcp stamps every answer with the moment it ran, `--local` too, and the watched files
-        // are written several times per update: an answer that says nothing new keeps the stamp of
-        // the one that last did.
-        reading =
-          status !== undefined && reading !== undefined && sameAnswer(reading, status)
-            ? reading
-            : status;
+        reading = status;
         // A restart called off for a reading that no longer needs one says nothing any more.
         if (!restartUnderWay && status?.restartNeeded !== true) progress = undefined;
-        return publish;
+        return SubscriptionRef.set(state, line());
       });
     const setProgress = (next: RestartProgress) =>
       Effect.suspend(() => {
         progress = next;
-        return publish;
+        return SubscriptionRef.set(state, line());
       });
 
     const restartPorts = options.restart;
@@ -419,7 +396,7 @@ export const make = (options: ZeropsMateUpdateOptions) =>
         // unless a press waits on its attempt: the line lets zcp's own phase outrank it.
         if (!restartUnderWay && progress?.phase === "postponed" && progress.attempt === undefined) {
           progress = undefined;
-          yield* publish;
+          yield* SubscriptionRef.set(state, line());
         }
         launching = true;
         yield* options.cli.mateUpdate({ automatic: true }).pipe(

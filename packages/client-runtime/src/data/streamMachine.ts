@@ -141,10 +141,16 @@ export type StreamEvent =
    */
   | { readonly kind: "socket-created" }
   /**
-   * `freshUntil`: when the value read stops being fresh by its family's own age; a sampled source
-   * is read again then, on the cadence where it names none.
+   * `ages`: a source read once answered with a value that still changes without any write of
+   * ours (an invitation waiting on its invitee), so it is read again on the cadence until it
+   * answers settled. `freshUntil`: when the value read stops being fresh by its family's own age;
+   * a sampled source is read again then, on the cadence where it names none.
    */
-  | { readonly kind: "baseline-committed"; readonly freshUntil?: number | undefined }
+  | {
+      readonly kind: "baseline-committed";
+      readonly ages?: boolean;
+      readonly freshUntil?: number | undefined;
+    }
   /** `jitter` is a uniform draw in [0, 1] the caller supplies, so the function stays pure. */
   | { readonly kind: "fault"; readonly fault: StreamFault; readonly jitter: number }
   /** The retry the stream named came due. */
@@ -445,7 +451,7 @@ function step(state: StreamState, event: StreamEvent, now: number): StreamTransi
             repaired: false,
             fault: null,
             next:
-              state.mode === "sampled"
+              state.mode === "sampled" || (state.mode === "once" && event.ages === true)
                 ? {
                     kind: "revalidate",
                     at: event.freshUntil ?? now + STREAM_POLICY.sampledIntervalMs,
