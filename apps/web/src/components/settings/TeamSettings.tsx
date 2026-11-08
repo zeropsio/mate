@@ -265,22 +265,9 @@ function PersonCard({
         {person.name === person.email ? <Address address={person.name} /> : person.name}
       </span>
       <span className="tm-card-badges">
-        {person.badgeHint === null ? (
-          <span className="tm-badge" data-part="role">
-            {person.badge}
-          </span>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <span className="tm-badge" data-part="role">
-                  {person.badge}
-                </span>
-              }
-            />
-            <TooltipPopup>{person.badgeHint}</TooltipPopup>
-          </Tooltip>
-        )}
+        <span className="tm-badge" data-part="role">
+          {person.role}
+        </span>
         {person.you ? (
           <span className="tm-badge" data-part="you" data-tone="muted">
             You
