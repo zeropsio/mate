@@ -22,7 +22,12 @@ import { shortcutLabelForCommand } from "../../keybindings";
 import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAgentUsage } from "../../state/usage";
-import { usageChartDays, usageNativeCosts, type UsageWindow } from "../../state/usage.logic";
+import {
+  usageChartDays,
+  usageCostsHidden,
+  usageNativeCosts,
+  type UsageWindow,
+} from "../../state/usage.logic";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   isAutomatedMatesOwner,
@@ -120,6 +125,9 @@ function withoutScope(scope: UsageScope, dimension: UsageDimension): UsageScope 
   };
 }
 
+/** Why a reader sees no costs: HQ shows them as Zerops gates its own. */
+const COSTS_HIDDEN = "Costs show only to people who can view the organisation's finances in Zerops";
+
 export function UsagePage({
   scope: requestedScope,
   onScopeChange,
@@ -143,8 +151,6 @@ export function UsagePage({
       preferences.windowDays === 1 ? "hour" : "day",
     ),
   }));
-  const metric = preferences.metric;
-  const showingLimits = metric === "limits";
   const [provenance, setProvenance] = useState<"live-responses" | "legacy-scanner">(
     "live-responses",
   );
@@ -168,7 +174,12 @@ export function UsagePage({
     refresh,
     scope,
     canSeeOtherPeople,
-  } = useAgentUsage(window, requestedScope, !showingLimits, provenance);
+  } = useAgentUsage(window, requestedScope, preferences.metric !== "limits", provenance);
+  // Costs HQ hides from this reader are not offered: Cost then shows tokens, and no cost reads $0.
+  const costsHidden = usageCostsHidden(report);
+  const metric = costsHidden && preferences.metric === "cost" ? "tokens" : preferences.metric;
+  const showingLimits = metric === "limits";
+  const unpriced = costsHidden ? "Hidden" : "Unpriced";
   const { identities, labels } = useMemo(
     () =>
       createUsageIdentityIndex({
@@ -284,7 +295,7 @@ export function UsagePage({
     });
   const selectWindow = (days: number) => {
     if (!isUsageWindowDays(days) || (provenance === "legacy-scanner" && days === 1)) return;
-    const nextPreferences = { metric, windowDays: days };
+    const nextPreferences = { metric: preferences.metric, windowDays: days };
     setPreferences(nextPreferences);
     saveUsagePagePreferences(nextPreferences);
     setWindowSelection({
@@ -400,7 +411,9 @@ export function UsagePage({
         >
           {METRIC_OPTIONS.map((option) => (
             <ShortcutHint key={option.value} shortcut={shortcutOf(option)}>
-              <Toggle value={option.value}>{option.label}</Toggle>
+              <Toggle value={option.value} disabled={costsHidden && option.value === "cost"}>
+                {option.label}
+              </Toggle>
             </ShortcutHint>
           ))}
         </ToggleGroup>
@@ -458,7 +471,11 @@ export function UsagePage({
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
             {METRIC_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                disabled={costsHidden && option.value === "cost"}
+              >
                 {option.label}
               </SelectItem>
             ))}
@@ -613,6 +630,7 @@ export function UsagePage({
                             </>
                           )}
                           {whoSummary}
+                          {costsHidden ? ` · ${COSTS_HIDDEN}` : ""}
                         </span>
                       </div>
 
@@ -673,15 +691,15 @@ export function UsagePage({
                               <span className="shrink-0 text-sm font-medium text-foreground tabular-nums">
                                 {metric === "cost"
                                   ? totals?.costKnown === false
-                                    ? "Unpriced"
+                                    ? unpriced
                                     : formatUsageCost(totals)
                                   : formatTokens(totals?.totalTokens ?? 0)}
                               </span>
                             </div>
                             <span className="text-xs text-muted-foreground">
                               {metric === "cost"
-                                ? `${totals.costKnown === false ? "Unpriced" : `${formatPercent(share)} of priced cost`} · ${formatTokens(totals.totalTokens)} tokens`
-                                : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? "Unpriced" : formatUsageCost(totals)}`}
+                                ? `${totals.costKnown === false ? unpriced : `${formatPercent(share)} of priced cost`} · ${formatTokens(totals.totalTokens)} tokens`
+                                : `${formatPercent(share)} of tokens · ${totals?.costKnown === false ? unpriced : formatUsageCost(totals)}`}
                             </span>
                           </div>
                         );
@@ -746,6 +764,8 @@ export function UsagePage({
                   <div className="min-h-5 text-sm tabular-nums">
                     {settling ? (
                       <div className="h-5 w-36 rounded-sm bg-muted" />
+                    ) : costsHidden ? (
+                      <p className="text-muted-foreground">{COSTS_HIDDEN}.</p>
                     ) : nativeCosts.length === 0 ? (
                       <p className="text-muted-foreground">
                         No agent-reported amount is available in this report.
@@ -875,7 +895,7 @@ export function UsagePage({
                                 </td>
                                 <td className="py-2 text-right text-foreground tabular-nums">
                                   {isModelCostUnknown(model) ? (
-                                    <span className="text-muted-foreground">Unpriced</span>
+                                    <span className="text-muted-foreground">{unpriced}</span>
                                   ) : (
                                     formatUsageCost(model)
                                   )}
@@ -951,7 +971,7 @@ export function UsagePage({
                                 </td>
                               ))}
                               <td className="py-2 text-right text-foreground tabular-nums">
-                                {period.costKnown === false ? "Unpriced" : formatUsageCost(period)}
+                                {period.costKnown === false ? unpriced : formatUsageCost(period)}
                               </td>
                               <td className="py-2 text-right text-muted-foreground tabular-nums">
                                 {formatTokens(period.totalTokens)}

@@ -50,6 +50,14 @@ export function usageReportQuery(
     groupBy: "mate",
   };
 }
+/**
+ * Whether HQ hides the report's costs from this reader (no finances view in Zerops): its costs are
+ * then neither zero nor unpriced, and nothing derived from them is shown.
+ */
+export function usageCostsHidden(report: UsageReport | null): boolean {
+  return report !== null && report.nativeCosts === undefined;
+}
+
 export function usageReportTotals(report: UsageReport | null) {
   const records = Number(report?.totals.records ?? 0);
   const priced = Number(report?.pricing.pricedModelEntries ?? 0);

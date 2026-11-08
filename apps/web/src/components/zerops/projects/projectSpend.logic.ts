@@ -11,6 +11,7 @@ import { USAGE_AUTOMATED_OWNER, type UsageReport, type UsageReportQuery } from "
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 
 import { AUTOMATED_KEY_PROVIDER } from "~/zerops/automatedMate.logic";
+import { usageCostsHidden } from "~/state/usage.logic";
 
 export interface SpendDayRow {
   readonly day: SpendDay;
@@ -115,6 +116,8 @@ export function spendState(
 ): SpendState {
   if (compute.kind === "unknown" || tokens.kind === "unavailable") return { kind: "unknown" };
   if (compute.kind === "reading" || tokens.kind === "reading") return { kind: "loading" };
+  // Token costs HQ hides from this reader are no zero: the spend is not known to them.
+  if (usageCostsHidden(tokens.report)) return { kind: "unknown" };
   return { kind: "loaded", series: joinSpend(compute, tokenSpendByDay(tokens.report), today) };
 }
 
