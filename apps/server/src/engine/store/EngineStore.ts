@@ -35,6 +35,7 @@ import type { Command, EventDraft } from "../domain/command.ts";
 import { conversationDomain } from "../domain/conversationDomain.ts";
 import type { ConversationState } from "../domain/state.ts";
 import type { Domain, OwnerDecision, OwnerEnvelope, OwnerEvent } from "../owners.ts";
+import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";
 
 /** The record could not be read or written, or held a row this build cannot decode. */
 export class EngineStoreError extends Schema.TaggedError<EngineStoreError>()("EngineStoreError", {
@@ -253,6 +254,9 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
   options: EngineStoreOptions = {},
 ) {
   const sql = yield* SqlClient.SqlClient;
+  // A load is the boot's long work when a history is folded: each page folded is its progress.
+  const boot = yield* Effect.serviceOption(ServerCommandReadiness);
+  const folded = Option.isSome(boot) ? boot.value.advance : Effect.void;
   const snapshotEvery = options.snapshotEvery ?? DEFAULT_SNAPSHOT_EVERY;
   const fault = (stage: CommitStage) => (options.fault ? options.fault(stage) : Effect.void);
   const storeError = (operation: string) => (cause: unknown) =>
@@ -457,6 +461,7 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
         for (;;) {
           const page = yield* readEvents(owner, state.headSeq, DEFAULT_EVENTS_PAGE);
           for (const event of page) state = domain.evolve(state, event);
+          yield* folded;
           if (Math.floor(state.headSeq / snapshotEvery) > Math.floor(snapshotSeq / snapshotEvery)) {
             yield* sql`
               UPDATE engine_conversation
