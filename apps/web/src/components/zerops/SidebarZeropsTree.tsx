@@ -3515,6 +3515,7 @@ function useMateRowState<T extends RosterCandidate>({
     hqSigners:
       signers === undefined ? undefined : Object.keys(signers).length > 0 ? "some" : "none",
     overview: overviewInHq,
+    ownerUserId: hqPeople?.owner?.userId,
     standUpBy: tags.standUp?.by,
     madeBy: tags.madeBy,
     viewer,

@@ -8,6 +8,7 @@
  */
 import {
   isCardAsk,
+  isRefusedAttempt,
   type BackgroundWork,
   type ConversationRow,
   type ConversationRowState,
@@ -61,7 +62,7 @@ export const restartLine = (end: Extract<RunEnd, { readonly kind: "cut-by-restar
 export const brokeOffLine = (end: RunEnd | null): string | null => {
   switch (end?.kind) {
     case "failed":
-      return end.reason;
+      return isRefusedAttempt(end) ? null : end.reason;
     case "crashed":
       return end.reason;
     case "cut-by-restart":

@@ -256,6 +256,14 @@ export type RunEnd = typeof RunEnd.Type;
 export type RunEndKind = RunEnd["kind"];
 
 /**
+ * A run admission refused because its sender is not the person signed in to its agent: a fact
+ * about that one attempt and its sender, never a failure of the conversation — no reader's row,
+ * status or notice turns on it.
+ */
+export const isRefusedAttempt = (end: RunEnd | null | undefined): boolean =>
+  end?.kind === "failed" && end.admission?.reason === "not-permitted";
+
+/**
  * Who says a turn ended, as the bridge reports it:
  * - `agent`: the driver reported the end, and no Stop was asked;
  * - `stop-confirmed`: a Stop was asked and the agent itself acknowledged it;

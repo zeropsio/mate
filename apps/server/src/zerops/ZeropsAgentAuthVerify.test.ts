@@ -4,12 +4,13 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Layer from "effect/Layer";
 
 import * as ProcessRunner from "../processRunner.ts";
+import { codexAccountAuthStatus } from "../spi/codexAccount.ts";
 import { layerVerifyAgentAuth } from "./ZeropsAgentAuth.ts";
 import {
   parseClaudeAuthStatus,
-  parseCodexLoginStatus,
   spawnAgentAuthProbe,
   verifyAgentAuth,
+  type AgentAuthChecks,
   type AgentAuthProbeOutcome,
   type AgentAuthProbeSpawn,
 } from "./ZeropsAgentAuthVerify.ts";
@@ -50,32 +51,6 @@ describe("parseClaudeAuthStatus", () => {
   });
 });
 
-describe("parseCodexLoginStatus", () => {
-  it('reads "Not logged in" as unauthenticated', () => {
-    expect(parseCodexLoginStatus("Not logged in\n", "")).toBe("unauthenticated");
-  });
-
-  it('reads "Logged in using ChatGPT" as authenticated', () => {
-    expect(parseCodexLoginStatus("Logged in using ChatGPT\n", "")).toBe("authenticated");
-  });
-
-  it('reads "Logged in using API key" as authenticated (method name is not gated)', () => {
-    expect(parseCodexLoginStatus("Logged in using API key\n", "")).toBe("authenticated");
-  });
-
-  it("checks stderr too, in case Codex writes status there", () => {
-    expect(parseCodexLoginStatus("", "Not logged in\n")).toBe("unauthenticated");
-  });
-
-  it("reads unrecognized text as unknown rather than guessing", () => {
-    expect(parseCodexLoginStatus("something unexpected\n", "")).toBe("unknown");
-  });
-
-  it("reads empty output as unknown", () => {
-    expect(parseCodexLoginStatus("", "")).toBe("unknown");
-  });
-});
-
 const outcome = (partial: Partial<AgentAuthProbeOutcome>): AgentAuthProbeOutcome => ({
   stdout: "",
   stderr: "",
@@ -93,11 +68,17 @@ const makeFakeSpawn = (answer: AgentAuthProbeOutcome) => {
   return { spawn, calls };
 };
 
+/** A Claude check never asks Codex. */
+const claudeOnly = (spawn: AgentAuthProbeSpawn): AgentAuthChecks => ({
+  spawn,
+  codexAccount: Effect.die("a Claude check asked Codex"),
+});
+
 describe("verifyAgentAuth", () => {
   it.effect("claude-code: loggedIn true -> authenticated, spawns `claude auth status`", () =>
     Effect.gen(function* () {
       const fake = makeFakeSpawn(outcome({ stdout: '{"loggedIn":true,"authMethod":"claude.ai"}' }));
-      const status = yield* verifyAgentAuth("claude-code", fake.spawn);
+      const status = yield* verifyAgentAuth("claude-code", claudeOnly(fake.spawn));
       expect(status.status).toBe("authenticated");
       expect(fake.calls).toEqual([{ command: "claude", args: ["auth", "status"] }]);
     }),
@@ -106,7 +87,7 @@ describe("verifyAgentAuth", () => {
   it.effect("claude-code: loggedIn false -> unauthenticated", () =>
     Effect.gen(function* () {
       const fake = makeFakeSpawn(outcome({ stdout: '{"loggedIn":false,"authMethod":"none"}' }));
-      const status = yield* verifyAgentAuth("claude-code", fake.spawn);
+      const status = yield* verifyAgentAuth("claude-code", claudeOnly(fake.spawn));
       expect(status.status).toBe("unauthenticated");
     }),
   );
@@ -114,7 +95,7 @@ describe("verifyAgentAuth", () => {
   it.effect("claude-code: a spawn outcome with no usable output (binary missing) -> unknown", () =>
     Effect.gen(function* () {
       const fake = makeFakeSpawn(outcome({ stdout: "", stderr: "", code: null }));
-      const status = yield* verifyAgentAuth("claude-code", fake.spawn);
+      const status = yield* verifyAgentAuth("claude-code", claudeOnly(fake.spawn));
       expect(status.status).toBe("unknown");
     }),
   );
@@ -122,7 +103,7 @@ describe("verifyAgentAuth", () => {
   it.effect("an ended probe preserves a sanitized cause and never trusts timed-out output", () =>
     Effect.gen(function* () {
       const fake = makeFakeSpawn(outcome({ stdout: '{"loggedIn":true}', timedOut: true }));
-      const result = yield* verifyAgentAuth("claude-code", fake.spawn);
+      const result = yield* verifyAgentAuth("claude-code", claudeOnly(fake.spawn));
       expect(result.status).toBe("unknown");
       expect(result.reason).toBe("The login check timed out.");
       expect(result.checkedAt).toBeTypeOf("number");
@@ -130,19 +111,15 @@ describe("verifyAgentAuth", () => {
     }),
   );
 
-  it.effect("codex: spawns `codex login status` and reads the text answer", () =>
-    Effect.gen(function* () {
-      const fake = makeFakeSpawn(outcome({ stdout: "Logged in using ChatGPT\n" }));
-      const status = yield* verifyAgentAuth("codex", fake.spawn);
-      expect(status.status).toBe("authenticated");
-      expect(fake.calls).toEqual([{ command: "codex", args: ["login", "status"] }]);
-    }),
-  );
-
   it.effect("codex: Not logged in -> unauthenticated", () =>
     Effect.gen(function* () {
-      const fake = makeFakeSpawn(outcome({ stdout: "Not logged in\n" }));
-      const status = yield* verifyAgentAuth("codex", fake.spawn);
+      const fake = makeFakeSpawn(outcome({}));
+      const status = yield* verifyAgentAuth("codex", {
+        spawn: fake.spawn,
+        codexAccount: Effect.succeed({
+          status: codexAccountAuthStatus({ account: null, requiresOpenaiAuth: true }),
+        }),
+      });
       expect(status.status).toBe("unauthenticated");
     }),
   );
@@ -221,7 +198,7 @@ describe("layerVerifyAgentAuth", () => {
         calls.push({ command, args });
         return Effect.succeed({ stdout: '{"loggedIn":true}', stderr: "", code: 0 });
       };
-      const status = yield* layerVerifyAgentAuth(spawn)("claude-code");
+      const status = yield* layerVerifyAgentAuth(claudeOnly(spawn))("claude-code");
       expect(status.status).toBe("authenticated");
       expect(calls).toEqual([{ command: "claude", args: ["auth", "status"] }]);
     }),

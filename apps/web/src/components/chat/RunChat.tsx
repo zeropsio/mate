@@ -3564,14 +3564,23 @@ function BrokeOffLine({
   const ctx = use(TimelineRowCtx);
   const [heldNext, setHeldNext] = useState(brokeOff.next);
   if (brokeOff.next !== null && brokeOff.next !== heldNext) setHeldNext(brokeOff.next);
-  // A usage limit or a refused sign-in in the voice the Mate's other surfaces use.
-  const reason = mateFailureWords(brokeOff.reason, ctx.driver, ctx.speaker.name);
+  // A usage limit or a refused sign-in in the voice the Mate's other surfaces use; a refused
+  // attempt is a quiet record in its own words.
+  const reason =
+    brokeOff.quiet === true
+      ? brokeOff.reason
+      : mateFailureWords(brokeOff.reason, ctx.driver, ctx.speaker.name);
   return (
     <div
       className={cn("grid min-w-0 [grid-column:2/-1]", rises && "motion-safe:animate-room-open")}
       data-run-broke-off
     >
-      <p className="min-h-0 min-w-0 overflow-hidden pt-0.5 text-sm leading-5 text-status-failed-text">
+      <p
+        className={cn(
+          "min-h-0 min-w-0 overflow-hidden pt-0.5 text-sm leading-5",
+          brokeOff.quiet === true ? "text-muted-foreground" : "text-status-failed-text",
+        )}
+      >
         {reason}
         {heldNext === null ? null : (
           <span

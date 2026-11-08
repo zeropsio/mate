@@ -15,6 +15,7 @@ import {
   MATE_TASKS_CONVERSATION_ID,
   MessageId,
   PROVIDER_DISPLAY_NAMES,
+  isRefusedAttempt,
   queuedBehind,
   STEP_ITEM_KINDS,
   TurnId,
@@ -1020,7 +1021,8 @@ export function engineThreadOf(
     lastError:
       header.runStatus === undefined || header.runStatus === "unknown"
         ? RUN_STATE_UNAVAILABLE
-        : latest?.end?.kind === "failed" || latest?.end?.kind === "crashed"
+        : (latest?.end?.kind === "failed" && !isRefusedAttempt(latest.end)) ||
+            latest?.end?.kind === "crashed"
           ? (latest.end.reason as OrchestrationSession["lastError"])
           : null,
     updatedAt,

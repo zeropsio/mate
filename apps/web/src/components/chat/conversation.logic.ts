@@ -21,6 +21,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import {
   isEngineItemId,
+  isRefusedAttempt,
   TurnId,
   type CrewCard as ContractCrewCard,
   type RunRecord,
@@ -749,7 +750,18 @@ export interface BrokeOff {
   readonly entryId: string | null;
   readonly reason: string;
   readonly next: string | null;
+  /** A refused attempt (`isRefusedAttempt`): a quiet record of it, never an alarm. */
+  readonly quiet?: true;
 }
+
+/**
+ * A run admission refused over whose agent login it is. The engine keeps the words its sender was
+ * told ("…only they can run it"), which read as addressed to whoever opens the conversation later,
+ * the login's own signer included: every reader is told the fact, quietly, and the composer tells
+ * the person writing now what stops them.
+ */
+const NOT_THE_SENDERS_LOGIN =
+  "This message did not run: only the person signed in to this agent can run it.";
 
 function brokeOffOn(input: {
   readonly entries: ReadonlyArray<TimelineEntry>;
@@ -1081,13 +1093,15 @@ export function deriveConversationStructure(given: {
       live || waiting
         ? null
         : typed
-          ? run?.end?.kind === "failed" || run?.end?.kind === "crashed"
-            ? {
-                entryId: null,
-                reason: run.end.reason,
-                next: run.end.kind === "failed" && isLatestTurn ? run.end.next : null,
-              }
-            : null
+          ? isRefusedAttempt(run?.end)
+            ? { entryId: null, reason: NOT_THE_SENDERS_LOGIN, next: null, quiet: true as const }
+            : run?.end?.kind === "failed" || run?.end?.kind === "crashed"
+              ? {
+                  entryId: null,
+                  reason: run.end.reason,
+                  next: run.end.kind === "failed" && isLatestTurn ? run.end.next : null,
+                }
+              : null
           : brokeOffOn({
               entries: turnEntries,
               latest: span === spans.at(-1),
@@ -1957,7 +1971,7 @@ export function stretchFace(input: {
 }): WorkLineFace {
   const { stretch, turn } = input;
   if (stretch.live) return "working";
-  if (turn.brokeOff !== null && stretch.last) return "brokeOff";
+  if (turn.brokeOff !== null && turn.brokeOff.quiet !== true && stretch.last) return "brokeOff";
   if (turn.interruption?.continuation === "manual" && stretch.last) return "interrupted";
   if (turn.interrupted && stretch.last) return turn.byMessage ? "interrupted" : "stopped";
   if (input.pausedHere) return "paused";
