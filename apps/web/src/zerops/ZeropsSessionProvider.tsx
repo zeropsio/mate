@@ -244,7 +244,9 @@ function makeSession(storage: ZeropsStorageAdapter) {
       return () => browser.clearTimeout(timer);
     },
     random: Math.random,
-    awake: () => browser.document.visibilityState === "visible" && browser.navigator.onLine,
+    // Not `navigator.onLine`: it can say offline while requests flow, and a renewal skipped for it
+    // lets the token lapse; through a real outage the renewal only fails and is asked again.
+    awake: () => browser.document.visibilityState === "visible",
     newGeneration: randomUUID,
     reauth: browserZeropsReauth.ask,
     reauthSettled: browserZeropsReauth.settled,

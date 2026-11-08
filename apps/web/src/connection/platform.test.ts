@@ -44,6 +44,7 @@ import { FetchHttpClient } from "effect/http";
 
 import type { AuthGateState } from "../environments/primary/auth";
 import {
+  browserNetworkStatus,
   canReuseCachedPlatformRegistration,
   primaryPlatformRegistrationStream,
   primaryRegistrationToRetainAfterTopologyRead,
@@ -404,6 +405,15 @@ function wakeupsFor(steps: ReadonlyArray<readonly [atMs: number, event: PageEven
   unlisten();
   return wakeups;
 }
+
+describe("browser network status", () => {
+  // witness: apps/web/src/connection/platform.ts | return onLine === true ? "online" : "unknown"; → return onLine === true ? "online" : "offline";
+  it("a browser that calls itself offline still connects its Mates", () => {
+    expect(browserNetworkStatus(true)).toBe("online");
+    expect(browserNetworkStatus(false)).toBe("unknown");
+    expect(browserNetworkStatus(undefined)).toBe("unknown");
+  });
+});
 
 describe("connection wakeups: the account's visible wake (DESIGN §6.4)", () => {
   it.each([
