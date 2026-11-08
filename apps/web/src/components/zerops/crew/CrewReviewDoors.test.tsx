@@ -46,6 +46,7 @@ it.each([
     },
   };
   const access = crewAccess({
+    readsAlong: false,
     snapshot,
     lockOf: () => null,
     defaultLogin: "claudeAgent",

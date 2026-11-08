@@ -19,7 +19,11 @@
  * its place otherwise.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
+import type {
+  CrewAccess,
+  CrewLock,
+  CrewLoginLock,
+} from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import {
   crewClearConfirm,
   crewDeliverAsk,
@@ -79,7 +83,7 @@ export interface CrewSectionHostProps {
   /** The chat an ask for the Mate goes to is not this viewer's to run; `null` where it is. */
   readonly askLock: CrewLock | null;
   /** A closed crew's one way out: the viewer's own sign-in. */
-  readonly onSignIn: (lock: CrewLock) => void;
+  readonly onSignIn: (lock: CrewLoginLock) => void;
   /** Where the setup's *Let Fen suggest a crew* runs, or why it can't for this viewer. */
   readonly proposeWith: CrewProposeWith;
 }

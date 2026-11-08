@@ -567,6 +567,7 @@ describe("crewActionOffered — a row's presses for a viewer who may not run its
   } as const;
   /** Backend's login is closed to the viewer; the rest of the crew is theirs. */
   const access = crewAccess({
+    readsAlong: false,
     snapshot: crewSnapshotFixture({
       crewmates: base.crewmates.map((mate) =>
         mate.handle === "backend"

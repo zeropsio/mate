@@ -802,6 +802,7 @@ function Tab() {
 function Column() {
   const crew = crewRead();
   const access = crewAccess({
+    readsAlong: false,
     snapshot: crew.snapshot,
     lockOf,
     defaultLogin: "claudeAgent",

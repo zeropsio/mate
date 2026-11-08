@@ -36,6 +36,7 @@ vi.mock("~/zerops/crew/useCrewAccess", async () => {
   return {
     useCrewAccess: (_environmentId: unknown, snapshot: CrewSnapshot | null) =>
       crewAccess({
+        readsAlong: false,
         snapshot,
         lockOf: (login) =>
           state.closed ? { login, agentId: "claude-code", ownership: "someone-else" } : null,

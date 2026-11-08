@@ -593,6 +593,7 @@ function Pane({
 
 /** The column beside the conversation, open: the empty state's own lock is what this page shows. */
 const OPEN_CREW = crewAccess({
+  readsAlong: false,
   snapshot: CREW.snapshot,
   lockOf: (): CrewLock | null => null,
   defaultLogin: "claudeAgent",
