@@ -2248,20 +2248,15 @@ const workflowFiles = NodeFS.readdirSync(NodePath.join(root, ".github/workflows"
 );
 const actionlint = (files: string[], input?: string) =>
   NodeChildProcess.spawnSync(
-    process.execPath,
+    "go",
     [
-      NodePath.join(root, "scripts/node_modules/github-actionlint/dist/bin/actionlint.js"),
+      "run",
+      "github.com/rhysd/actionlint/cmd/actionlint@v1.7.12",
       "-shellcheck=",
       "-pyflakes=",
       ...files,
     ],
-    {
-      cwd: root,
-      encoding: "utf8",
-      input,
-      timeout: 60_000,
-      env: { ...process.env, ACTIONLINT_RELEASE: "1.7.12" },
-    },
+    { cwd: root, encoding: "utf8", input, timeout: 60_000 },
   );
 
 it.each(workflowFiles)(
@@ -2297,14 +2292,9 @@ it("CI and local Check validate every workflow with pinned actionlint", () => {
   const step = checkSteps(workflow).find((step) => step.name === "Check workflow schema");
   expect(step, "ASSERTION: CI and ci-local must share workflow schema validation").toBeDefined();
   expect(step?.run).toBe(
-    "vp exec github-actionlint -shellcheck= -pyflakes= ../.github/workflows/*.yml",
+    "go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck= -pyflakes= .github/workflows/*.yml",
   );
-  expect(step?.workingDirectory).toBe("scripts");
-  expect(step?.env.ACTIONLINT_RELEASE).toBe("1.7.12");
-  const manifest = JSON.parse(
-    NodeFS.readFileSync(NodePath.join(root, "scripts/package.json"), "utf8"),
-  );
-  expect(manifest.devDependencies["github-actionlint"]).toBe("1.7.12");
+  expect(step?.workingDirectory).toBeUndefined();
 });
 
 it("Decision: a diag ref never costs more than one live CI run", () => {
