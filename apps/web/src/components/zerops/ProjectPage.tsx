@@ -35,6 +35,8 @@ import { GitMirrorDialog } from "./GitMirrorDialog";
 import { ProjectRepositories } from "./github/GithubRepoRows";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ProjectPeople } from "./projects/ProjectPeople";
+import { ProjectPageBody } from "./project/ProjectPageBody";
+import type { ProjectPageSlot } from "./projects/ZeropsProjectsFlow";
 import { ProjectCardStandIn } from "./projects/OverviewStandIn";
 import { ProjectPageSpend } from "./projects/ProjectSpend";
 import { ProjectPageHistory } from "./projects/ProjectHistory";
@@ -90,13 +92,24 @@ export function ZeropsGroupDetailPage({
   // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
   const addMate = useAddMate();
   const project = useMemo(
-    () => ({
+    (): ProjectPageSlot => ({
       groupId,
-      aside: <ZeropsGroupAside groupId={groupId} />,
-      people: <ProjectPeople groupId={groupId} />,
-      onAddMate: () => {
-        addMate(groupId);
-      },
+      render: ({ entry, props, addMateWhy }) => (
+        <ProjectPageBody
+          addMateWhy={addMateWhy}
+          entry={entry}
+          onAddMate={() => {
+            addMate(groupId);
+          }}
+          props={props}
+          side={
+            <>
+              <ZeropsGroupAside groupId={groupId} />
+              <ProjectPeople groupId={groupId} />
+            </>
+          }
+        />
+      ),
       unread: (undrawn: boolean) => <UnreadGroupDetail groupId={groupId} undrawn={undrawn} />,
     }),
     [addMate, groupId],

@@ -41,12 +41,8 @@ import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "~/components/zerops/projects/PlacePanel";
 import { MateAutomatedMark } from "~/components/zerops/MateAutomatedMark";
-import {
-  CardChanges,
-  CardMate,
-  CardMateLiftActions,
-  CardMateTime,
-} from "~/components/zerops/projects/ProjectCards";
+import { CardChanges, CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
+import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
 import {
   CARD_CHANGES,
   cardChanges,
@@ -61,7 +57,7 @@ import {
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { placeAddresses, withPlaceAddresses } from "~/zerops/__fixtures__/placeAddresses";
 import "../index.css";
-import { ProjectPageAside, ProjectPagePeople } from "./projectPageFixtures";
+import { harnessProjectPage } from "./projectPageFixtures";
 import { Button } from "~/components/ui/button";
 
 const params = new URLSearchParams(location.search);
@@ -667,9 +663,7 @@ function HarnessPage() {
                 ? undefined
                 : {
                     groupId: PAGE,
-                    aside: <ProjectPageAside groupId={PAGE} />,
-                    people: <ProjectPagePeople />,
-                    onAddMate: () => acted.push(`add-mate:${PAGE}`),
+                    render: harnessProjectPage(PAGE, () => acted.push(`add-mate:${PAGE}`)),
                     unread: () => null,
                   }
             }
@@ -763,7 +757,7 @@ function HarnessPage() {
                 review: options.review,
               });
               return (
-                <CardMate
+                <MateRow
                   actions={
                     reading.lift === undefined ? null : (
                       <CardMateLiftActions
@@ -788,7 +782,7 @@ function HarnessPage() {
                   onOpen={() => acted.push(`open:${entry.id}`)}
                   parts={options.parts}
                   reading={reading}
-                  time={<CardMateTime dot={entry.view.dot}>{entry.time}</CardMateTime>}
+                  time={<MateRowTime dot={entry.view.dot}>{entry.time}</MateRowTime>}
                 />
               );
             }}

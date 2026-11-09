@@ -49,7 +49,96 @@ import {
   type MateRowView,
 } from "../SidebarMateRow.logic";
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
+import type { WaitingChange, WaitingItem, WaitingMate } from "../SidebarWaiting.logic";
+import { mergedChangeWords, openChangeWords, releaseIsLive } from "../system/ChangeRow.logic";
 import { releaseOfLanding, type HistoryReleaseInput } from "./projectHistory.logic";
+
+/**
+ * One thing in a project that waits on the viewer, beside its release: a Mate of theirs that asks
+ * (a question, a plan, a run stopped on an error), or its changes waiting for their review.
+ */
+export type ProjectWait =
+  | {
+      readonly kind: "ask";
+      readonly key: string;
+      readonly ask: "question" | "plan" | "failed";
+      readonly mate: WaitingMate;
+    }
+  | {
+      readonly kind: "review";
+      readonly key: string;
+      readonly mate: WaitingMate;
+      /** The newest of its changes waiting, which *Review* opens. */
+      readonly change: WaitingChange | undefined;
+      /** How many of its changes wait for review; at least one. */
+      readonly count: number;
+    };
+
+/**
+ * What waits on the viewer in one project, read off the menu's Waiting on you list
+ * (`useSidebarWaiting`) so the menu, the overview card and the project page say the same: its
+ * Mates' asks first, the most urgent, then their changes to review. Its release is not here: it is
+ * production's next release, said where production is.
+ */
+export function projectWaits(input: {
+  readonly items: ReadonlyArray<WaitingItem>;
+  /** The project's Mates, by project id. */
+  readonly mateIds: ReadonlyArray<string>;
+  /** How many of a Mate's changes wait for review (`mateReviewCount`). */
+  readonly reviewCount: (mateProjectId: string) => number;
+}): ReadonlyArray<ProjectWait> {
+  const mates = new Set(input.mateIds);
+  const asks: Array<ProjectWait> = [];
+  const reviews: Array<ProjectWait> = [];
+  for (const item of input.items) {
+    if (item.kind === "release" || !mates.has(item.mate.projectId)) continue;
+    if (item.kind === "change")
+      reviews.push({
+        kind: "review",
+        key: item.key,
+        mate: item.mate,
+        change: item.mate.change,
+        count: Math.max(1, input.reviewCount(item.mate.projectId)),
+      });
+    else asks.push({ kind: "ask", key: item.key, ask: item.kind, mate: item.mate });
+  }
+  return [...asks, ...reviews];
+}
+
+/** The verb a wait offers, one each. */
+export type ProjectWaitVerb = "Answer" | "See plan" | "Ask to fix it" | "Review";
+
+/** A wait in words: what waits, in a sentence, and its one verb. */
+export function projectWaitWords(wait: ProjectWait): {
+  readonly text: string;
+  readonly verb: ProjectWaitVerb;
+} {
+  const { name, text } = wait.mate;
+  if (wait.kind === "review")
+    return {
+      text:
+        wait.count > 1
+          ? `${String(wait.count)} changes from ${name} to review`
+          : wait.change === undefined
+            ? `A change from ${name} to review`
+            : `${name}'s change: ${wait.change.title}`,
+      verb: "Review",
+    };
+  switch (wait.ask) {
+    case "question":
+      return {
+        text: text === undefined ? `${name} asks you` : `${name} asks: ${text}`,
+        verb: "Answer",
+      };
+    case "plan":
+      return {
+        text: text === undefined ? `${name} has a plan for you` : `${name}'s plan: ${text}`,
+        verb: "See plan",
+      };
+    case "failed":
+      return { text: `${name} stopped on an error`, verb: "Ask to fix it" };
+  }
+}
 
 /** At most this many Mates stand on a card; past it the quiet ones fold. */
 export const CARD_MATES_SHOWN = 4;
@@ -1034,12 +1123,12 @@ export function cardChanges(input: {
   const open = input.open
     .toSorted((left, right) => newestFirst(left.updatedAt, right.updatedAt))
     .map((pull): CardChange => {
-      const state = changeState(pull);
+      const state = openChangeWords(pull);
       return {
         pull,
         open: true,
-        words: setupChangeWaits(pull) ? setupChangeWords(undefined) : (state?.word ?? "Open"),
-        tone: state?.tone ?? "off",
+        words: setupChangeWaits(pull) ? setupChangeWords(undefined) : state.words,
+        tone: state.tone,
         at: pull.updatedAt,
         ...(setupChangeWaits(pull) ? { setup: true as const } : {}),
       };
@@ -1063,18 +1152,19 @@ export function cardChanges(input: {
         pull,
         open: false,
         // Every change to the setup repository, as `broughtBy` leaves them out of a release.
-        words:
+        words: mergedChangeWords(
           pull.kind === "recipe"
-            ? "Setup files, not part of a release"
+            ? { kind: "setup" }
             : took !== undefined
-              ? `In ${took.tag}`
+              ? { kind: "released", tag: took.tag, live: releaseIsLive(took.tag, input.releases) }
               : on(stage?.runs)
-                ? "On stage"
+                ? { kind: "on-stage" }
                 : on(stage?.deploying)
-                  ? "Deploying to stage…"
+                  ? { kind: "deploying-to-stage" }
                   : input.production && input.releases.length > 0
-                    ? "Not released yet"
-                    : "Merged",
+                    ? { kind: "waits-for-production" }
+                    : { kind: "merged" },
+        ),
         tone: "off",
         at: pull.mergedAt,
       };

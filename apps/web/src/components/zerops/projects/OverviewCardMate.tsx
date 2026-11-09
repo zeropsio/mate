@@ -70,7 +70,7 @@ import {
   ownerBadge,
 } from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
-import { CardMate, CardMateTime } from "./ProjectCards";
+import { MateRow, MateRowTime } from "../system/MateRow";
 import { cardMateReading, cardSecondWords, type CardMateReading } from "./projectCard.logic";
 
 const NO_ADMISSION = Atom.make<AgentAdmissionAttention | null>(null);
@@ -322,7 +322,7 @@ export function OverviewCardMate({
       </button>
     );
   return (
-    <CardMate
+    <MateRow
       actions={
         reading.lift === undefined ? (
           containerActions
@@ -386,9 +386,9 @@ export function OverviewCardMate({
         reading.lift?.kind === "review" ? null : reviewButton !== null && !marked ? (
           reviewButton
         ) : (
-          <CardMateTime dot={view.dot}>
+          <MateRowTime dot={view.dot}>
             <CardMateSlot at={time.at} slot={time.slot} />
-          </CardMateTime>
+          </MateRowTime>
         )
       }
     />

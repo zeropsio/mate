@@ -3,7 +3,7 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
 import { GitBrowserLink, type GitRepoAt } from "./gitBrowser/GitBrowserLink";
 import type { HistoryChange } from "./ZeropsHistoryView";
-import { ChangeAge } from "./projects/ChangeRow";
+import { ChangeAge } from "./system/ChangeRow";
 
 export interface RecordedStageHistoryProps {
   readonly repo: GitRepoAt;
