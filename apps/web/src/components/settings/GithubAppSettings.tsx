@@ -39,6 +39,7 @@ import {
   GITHUB_ONE_LINE,
   GITHUB_WHO_CAN,
   githubConnected,
+  githubInstallReturnTo,
   type GithubAppRow,
   githubReturnLine,
   githubReturnTo,
@@ -80,10 +81,13 @@ const NO_APPLICATIONS: ApplicationNameOf = () => undefined;
 export function GithubAppSettings({
   admin,
   returned,
+  returnedApp = null,
 }: {
   readonly admin: boolean;
   /** How GitHub brought the person back here, if it did. */
   readonly returned: GithubReturn;
+  /** The app whose install trip brought the person back, if one did. */
+  readonly returnedApp?: number | null;
 }) {
   const { read, write, manifest, install, again, forget, confirm } = useGithubApp();
   const { activeOrganization } = useZeropsSession();
@@ -124,6 +128,7 @@ export function GithubAppSettings({
       organization={activeOrganization?.name ?? null}
       returnTo={githubReturnTo(window.location.origin, appBasePath())}
       returned={returned}
+      returnedApp={returnedApp}
     />
   );
 }
@@ -140,6 +145,7 @@ export function GithubAppView({
   organization,
   returnTo,
   returned,
+  returnedApp = null,
   onPost,
   onOpen,
   nameOf = NOBODY_NAMED,
@@ -157,6 +163,8 @@ export function GithubAppView({
   readonly organization: string | null;
   readonly returnTo: string;
   readonly returned: GithubReturn;
+  /** The app whose install trip brought the person back, if one did. */
+  readonly returnedApp?: number | null;
   /** Hands GitHub the manifest: the page leaves for GitHub's. */
   readonly onPost: (view: HqGithubManifestView) => void;
   /** Opens GitHub's install page in this tab: GitHub brings the person back here. */
@@ -180,7 +188,7 @@ export function GithubAppView({
       ? workingWords(verb)
       : idle;
   const problem = taskSourceProblem(read.action);
-  const back = githubReturnLine(returned, section);
+  const back = githubReturnLine(returned, section, returnedApp);
   const apps = section.kind === "apps" ? section.apps : [];
   const manage = section.kind === "apps" && section.manage;
   const connected = read.setting.state === "known" && githubConnected(read.setting.held);
@@ -246,9 +254,11 @@ export function GithubAppView({
                   }}
                   onInstall={() => {
                     setPressed({ appId: app.appId, verb: "github-install" });
-                    void controls.install(app.appId, returnTo).then((url) => {
-                      if (url !== null) onOpen(url);
-                    });
+                    void controls
+                      .install(app.appId, githubInstallReturnTo(returnTo, app.appId))
+                      .then((url) => {
+                        if (url !== null) onOpen(url);
+                      });
                   }}
                   onRemove={() => {
                     setPressed({ appId: app.appId, verb: "github-forget" });
