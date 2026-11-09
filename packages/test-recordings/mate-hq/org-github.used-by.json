@@ -1,14 +1,14 @@
 {
   "$provenance": {
     "producer": "mate-hq",
-    "revision": "095038f73398946a4b0bdd2f316c2393f95dafa1",
+    "revision": "6090626f4b7bd9363c36df169d95b0b0f23fb71c",
     "via": "s17a-app.test.ts",
     "schema": "GET /api/org/github"
   },
   "value": {
     "apps": [
       {
-        "appId": 1008,
+        "appId": 1009,
         "slug": "s17a-used-by",
         "name": "s17a-used-by",
         "botLogin": "s17a-used-by[bot]",
@@ -21,7 +21,7 @@
         "sealedAt": "2026-01-01T00:00:01Z",
         "installations": [
           {
-            "id": 50020,
+            "id": 50023,
             "account": "acme",
             "accountType": "Organization",
             "repositorySelection": "selected",
@@ -41,12 +41,15 @@
                 "fullName": "acme/repo-6100002",
                 "private": true,
                 "defaultBranch": "main",
-                "usedBy": null
+                "usedBy": {
+                  "application": null,
+                  "repo": null
+                }
               }
             ],
             "suspended": false,
             "state": "accepted",
-            "manageUrl": "https://github.com/organizations/acme/settings/installations/50020",
+            "manageUrl": "https://github.com/organizations/acme/settings/installations/50023",
             "addedBy": "owner"
           }
         ]
