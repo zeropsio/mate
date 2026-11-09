@@ -177,13 +177,17 @@ function ReleaseRow({
         ? rolledBackDescription(back, release.line)
         : release.history !== undefined
           ? {
+              // A release of commits that belong to no change is titled by what it carried, never
+              // "No changes" over a count of commits.
               primary:
-                release.history.changes[0] === undefined
-                  ? "No changes"
-                  : changeTitle(release.history.changes[0].title),
+                release.history.changes[0] !== undefined
+                  ? changeTitle(release.history.changes[0].title)
+                  : release.history.commitCount > 0
+                    ? plural(release.history.commitCount, "commit", "commits")
+                    : "No changes",
               secondary: [
                 release.history.changes.length === 0
-                  ? plural(release.history.commitCount, "commit", "commits")
+                  ? undefined
                   : plural(release.history.changes.length, "change", "changes"),
                 by,
               ]

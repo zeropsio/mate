@@ -671,9 +671,12 @@ function ProjectCard<T>({
         <div className="ov-card-h1">
           <h2 className="ov-card-name">
             {/* The name opens the project's page; ··· and every other control keep their own. */}
+            {/* Its page's code is fetched as the pointer nears the name, so the first visit
+                cross-fades like every later one. */}
             <Link
               className="ov-card-title"
               params={{ groupId: group.groupId }}
+              preload="intent"
               to="/group/$groupId/flow"
             >
               <GroupName entry={entry} />
