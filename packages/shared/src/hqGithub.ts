@@ -108,7 +108,7 @@ export const HqGithubApp = Schema.Struct({
   /**
    * The Zerops user id of the Owner or Admin who sealed the app's secrets or confirmed it, and when
    * (ISO). Both `null` for an app nobody vouched for: HQ acts with it on nothing
-   * (`needs_owner_seal`) until an Owner or Admin confirms it.
+   * (`needs_owner_seal`) until an Owner or Admin makes it again from its manifest.
    */
   sealedBy: Schema.NullOr(Schema.String),
   sealedAt: Schema.NullOr(Schema.String),

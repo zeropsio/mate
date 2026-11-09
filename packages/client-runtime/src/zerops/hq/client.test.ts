@@ -3218,12 +3218,6 @@ describe("Every HQ verb that decides on the person's role carries their current 
       ask: (api) => api.githubForget?.(42),
     },
     {
-      call: "githubConfirm",
-      method: "POST",
-      path: "/api/org/github/apps/42/confirm",
-      ask: (api) => api.githubConfirm?.(42),
-    },
-    {
       call: "githubInstall",
       method: "POST",
       path: "/api/org/github/apps/42/install",

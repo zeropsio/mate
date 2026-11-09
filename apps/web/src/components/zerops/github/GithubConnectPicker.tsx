@@ -1069,7 +1069,7 @@ function explainStep(
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {disabled
-                          ? "Waits for an Owner or Admin to confirm it in Settings › GitHub"
+                          ? "Not in use · an Owner or Admin makes it again in Settings › GitHub"
                           : `Owned by ${app.owner} · set up by ${app.setUpBy === viewerId ? "you" : (nameOf(app.setUpBy ?? "") ?? "a teammate")}`}
                       </span>
                     </span>

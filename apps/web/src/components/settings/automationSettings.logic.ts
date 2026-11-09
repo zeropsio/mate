@@ -97,8 +97,9 @@ export type GithubSeal =
   | { readonly kind: "sealed"; readonly by: string; readonly at: string | null }
   | { readonly kind: "needed" };
 
-export const NEEDS_CONFIRM = "Needs an Owner or Admin to confirm it before Mate uses it.";
-export const CONFIRM_WHO_CAN = "Ask one of them to confirm it here.";
+export const NEEDS_REMAKE =
+  "Not in use: nobody is recorded to have set it up, so Mate uses it for nothing. An Owner or Admin makes it again.";
+export const REMAKE_WHO_CAN = "Ask an Owner or Admin to make it again here.";
 
 function githubSeal(app: HqGithubApp): GithubSeal {
   return app.sealedBy === null

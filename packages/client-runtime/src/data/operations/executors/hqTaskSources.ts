@@ -27,7 +27,6 @@ export type TaskSourceWrites = Pick<
   | "stopAppTask"
   | "githubManifest"
   | "githubForget"
-  | "githubConfirm"
   | "githubInstall"
   | "githubAcceptInstallation"
   | "githubSuspendInstallation"
@@ -165,8 +164,6 @@ export function makeTaskSourceExecutor(options: {
               );
             case "github-forget":
               return api.githubForget?.(write.githubAppId) ?? null;
-            case "github-confirm":
-              return api.githubConfirm?.(write.githubAppId) ?? null;
             case "github-install":
               return (
                 api
@@ -205,9 +202,7 @@ export function makeTaskSourceExecutor(options: {
                   refused(
                     (write.kind === "task-stop"
                       ? taskStopRefusal(cause)
-                      : write.kind === "github-install" ||
-                          write.kind === "github-confirm" ||
-                          write.kind === "github-forget"
+                      : write.kind === "github-install" || write.kind === "github-forget"
                         ? installationRefusal(cause, "app")
                         : write.kind === "github-accept" ||
                             write.kind === "github-suspend" ||

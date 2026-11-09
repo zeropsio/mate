@@ -274,7 +274,6 @@ function Automation({
         manifest: async () => null,
         install: async () => null,
         forget: nothing,
-        confirm: nothing,
         accept: nothing,
         suspend: nothing,
         resume: nothing,
