@@ -179,12 +179,11 @@ const SLACK = {
   eventsUrl: "https://hq-acme.zerops.app/api/intake/slack/acme",
 };
 // As HQ answers before a connection: it makes Discord's address as it connects.
-const DISCORD_OFF = { connected: false, interactionsUrl: "", inviteUrl: null, allowed: [] };
+const DISCORD_OFF = { connected: false, interactionsUrl: "", inviteUrl: null };
 const DISCORD_ON = {
   connected: true,
   interactionsUrl: "https://hq-acme.zerops.app/api/intake/discord/acme",
   inviteUrl: "https://discord.com/oauth2/authorize?client_id=1",
-  allowed: ["123456789012345678"],
 };
 // As HQ makes it (`mate-hq apps/hq/src/slack.ts`).
 const SLACK_MANIFEST = JSON.stringify({

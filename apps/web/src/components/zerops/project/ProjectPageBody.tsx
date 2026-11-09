@@ -828,10 +828,15 @@ function ProjectChanges<T>({
   );
 }
 
-/** Every public address the project serves at, production's first, each opened beside the page. */
+/**
+ * Every public address the project serves at, production's first, each opened beside the page.
+ * Where more than one place serves, each says whose it is: a stage's subdomain beside production's
+ * domain otherwise reads as production's.
+ */
 function AddressesRow({ lines }: { readonly lines: ReadonlyArray<PlaceLineData> }) {
   const addresses = pageAddresses(lines);
   if (addresses.length === 0) return null;
+  const places = new Set(addresses.map((address) => address.place)).size;
   return (
     <SetupRow label="Addresses" surface="project-addresses">
       <ul className="pp-addresses">
@@ -841,6 +846,7 @@ function AddressesRow({ lines }: { readonly lines: ReadonlyArray<PlaceLineData> 
               <span className="truncate">{address.host}</span>
               <span aria-hidden="true">↗</span>
             </a>
+            {places > 1 ? <span className="pp-site-place">{address.place}</span> : null}
           </li>
         ))}
       </ul>

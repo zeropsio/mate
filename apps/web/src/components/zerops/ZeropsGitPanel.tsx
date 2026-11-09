@@ -130,6 +130,11 @@ export function ZeropsGitPanel({
                   </ChangeList>
                 </div>
               </Card>
+              {/* Its commits and what is not committed sit under the change they belong to. */}
+              <ZeropsGitBlock
+                block={repository.block}
+                commits={renderBlockCommits?.(repository.block)}
+              />
             </section>
           ))
         )}
@@ -159,15 +164,6 @@ export function ZeropsGitPanel({
             )}
           </div>
         ) : null}
-
-        {repositories.map((repository) => (
-          <ZeropsGitBlock
-            block={repository.block}
-            commits={renderBlockCommits?.(repository.block)}
-            key={repository.block.repository}
-            named={several}
-          />
-        ))}
       </div>
     </ScrollArea>
   );
@@ -224,6 +220,12 @@ function WorkRow({
 }
 
 /** A repository's state on GitHub in one quiet line, with Connect where it is not there yet. */
+/** The line's words: "GitHub: In sync", but "Not on GitHub" alone, never "GitHub: Not on GitHub". */
+function githubWords(line: string, name: string | undefined): string {
+  if (line.includes("GitHub")) return name === undefined ? line : `${name}: ${line}`;
+  return `${name === undefined ? "GitHub" : `${name} on GitHub`}: ${line}`;
+}
+
 function GithubLine({
   state,
   name,
@@ -245,9 +247,7 @@ function GithubLine({
   return (
     // The words give way in a narrow panel; the verb that fixes them never does.
     <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
-      <span className="min-w-0 truncate">
-        {name === undefined ? "GitHub" : `${name} on GitHub`}: {state.line}
-      </span>
+      <span className="min-w-0 truncate">{githubWords(state.line, name)}</span>
       {verb === undefined ? null : (
         <span className="flex shrink-0 items-baseline gap-1">
           <span aria-hidden="true">·</span>

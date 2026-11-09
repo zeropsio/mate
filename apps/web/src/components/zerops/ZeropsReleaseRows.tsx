@@ -178,7 +178,7 @@ function CarriedReleaseRow({
         : carried.onExpandedChange === undefined
           ? releaseDescription(moved, release.line, now, carried.names)
           : release.history === undefined
-            ? { primary: release.line, secondary: "Earlier membership not recorded · Open History" }
+            ? { primary: release.line, secondary: "Which changes it carried was not recorded" }
             : {
                 primary:
                   release.history.changes.map((change) => change.title).join(" · ") || "No changes",
