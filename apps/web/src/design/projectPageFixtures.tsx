@@ -1,34 +1,58 @@
 /**
- * A project page's column for the overview harness (`?page=`): its environments, spend,
- * automation, repositories and history, as `ZeropsGroupPane` draws them once every read is in.
- * Acme Store runs a production and three stages with two automated Mates; Tea Shop runs a stage
- * and a production; any other project has nothing released yet. Fixtures only: nothing here ships.
+ * A project's own page for the overview harness (`?page=`): what its places, changes and side
+ * column read beyond the overview's group — its environments, what its release brought, its
+ * changes, repositories, automation, people and spend — as `ProjectPageBody` draws them once every
+ * read is in. Acme Store runs a production and three stages with two automated Mates; Tea Shop runs
+ * a stage and a production; any other project has nothing released yet. Fixtures only: nothing
+ * here ships.
  */
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
-import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-runtime/zerops";
+import type {
+  CanonicalEnvironmentRow as EnvironmentRow,
+  EnvironmentSlotRow,
+  FlowPullRequest,
+  FlowReleaseRow,
+  GroupFlow,
+} from "@t3tools/client-runtime/zerops";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
-import type { FlowPullRequest, FlowReleaseRow } from "@t3tools/client-runtime/zerops";
-import type { MateTintId } from "@t3tools/shared/brand";
+import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
 
 import {
+  PoolFaceView,
+  ProjectAutomationRowView,
   ProjectAutomationView,
   type AutomationControls,
   type PoolMate,
 } from "~/components/zerops/projectAutomation/ProjectAutomation";
 import type { SourceRow } from "~/components/zerops/projectAutomation/projectAutomation.logic";
 import { boardOf } from "~/components/zerops/projectAutomation/taskBoard.logic";
+import type { AccessTableView } from "~/components/zerops/projects/accessTable.logic";
 import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessChips";
 import { ProjectHistoryView } from "~/components/zerops/projects/ProjectHistory";
 import { historyReleases } from "~/components/zerops/projects/projectHistory.logic";
+import {
+  broughtBy,
+  cardChanges,
+  mateChangesForReview,
+} from "~/components/zerops/projects/projectCard.logic";
+import { ProjectPeopleRowView } from "~/components/zerops/projects/ProjectPeople";
 import { MateFace } from "~/components/zerops/primitives";
-import { ProjectSpendSectionView } from "~/components/zerops/projects/ProjectSpend";
+import { ProjectSpendRowView } from "~/components/zerops/projects/ProjectSpend";
 import type { ProjectPerson } from "~/components/zerops/projects/projectPeople.logic";
 import { joinSpend } from "~/components/zerops/projects/projectSpend.logic";
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
-import { ZeropsGroupPane } from "~/components/zerops/ProjectPage";
-import { ProjectPageBody } from "~/components/zerops/project/ProjectPageBody";
-import type { ProjectPageSlot } from "~/components/zerops/projects/ZeropsProjectsFlow";
+import {
+  ProjectPageBody,
+  type ProjectPageFacts,
+} from "~/components/zerops/project/ProjectPageBody";
+import { PAGE_CHANGES } from "~/components/zerops/project/projectPage.logic";
+import { SetupRow } from "~/components/zerops/project/SetupCard";
+import type {
+  CardWait,
+  ProjectPageSlot,
+  ProjectsFlowGroup,
+} from "~/components/zerops/projects/ZeropsProjectsFlow";
 import { RepoRowsView } from "~/components/zerops/github/GithubRepoRows";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
@@ -67,7 +91,7 @@ function environment(
 /** Every Mate a page's History names, as the harness's cards draw them. */
 const MATES: Readonly<Record<string, { readonly name: string; readonly tint: MateTintId }>> = {
   "raya-t": { name: "Raya", tint: "olive" },
-  "vale-t": { name: "Vale", tint: "amber" },
+  "wren-t": { name: "Wren", tint: "amber" },
   odo: { name: "Odo", tint: "slate" },
   tess: { name: "Tess", tint: "rose" },
   "juno-s": { name: "Juno", tint: "sky" },
@@ -112,8 +136,18 @@ function shipped(
   tag: string,
   minutes: number,
   over: Partial<FlowReleaseRow> = {},
-): Pick<FlowReleaseRow, "tag" | "taggedAt" | "verdict" | "rollbackOf" | "standing" | "history"> {
-  return { tag, taggedAt: ago(minutes), verdict: "approved", standing: undefined, ...over };
+): Pick<
+  FlowReleaseRow,
+  "tag" | "taggedAt" | "verdict" | "rollbackOf" | "standing" | "history" | "rollBack"
+> {
+  return {
+    tag,
+    taggedAt: ago(minutes),
+    verdict: "approved",
+    standing: undefined,
+    rollBack: false,
+    ...over,
+  };
 }
 
 /** Recorded release membership for the overview fixtures. */
@@ -144,50 +178,52 @@ function recordedHistory(
 }
 
 const DAY = 24 * 60;
+const TEA_INPUT = {
+  releases: [
+    shipped("v0.1.3", 6 * DAY, { standing: "live" }),
+    shipped("v0.1.2", 6.5 * DAY),
+    shipped("v0.1.1", 7 * DAY),
+    shipped("v0.1.0", 8 * DAY),
+  ],
+  merged: [
+    landed(17, "Centre the shop so a cropped demo frame shows it all", "raya-t", 6 * DAY + 15),
+    landed(16, "Hide sold out switch remembered across visits", "wren-t", 6 * DAY + 18),
+    landed(13, "Price per 100 g leads on tea cards", "wren-t", 6 * DAY + 40),
+    landed(11, "Add a Surprise me chip to the tea sommelier", "tess", 6 * DAY + 90),
+    landed(10, "Back to top link in the footer, reading “↑ Top”", "wren-t", 6.6 * DAY),
+    landed(7, "Teas in PostgreSQL, a Valkey cache and a tea-house redesign", "raya-t", 6.8 * DAY),
+    landed(5, "In stock and Sold out labels with a Hide sold out switch", "wren-t", 7.2 * DAY),
+    landed(6, "Footer with opening hours and contact email", "tess", 7.4 * DAY),
+    landed(4, "Let the tea sommelier answer tea questions from the web", "raya-t", 8.2 * DAY),
+  ],
+};
 const TEA_HISTORY = recordedHistory(
-  {
-    releases: [
-      shipped("v0.1.3", 6 * DAY, { standing: "live" }),
-      shipped("v0.1.2", 6.5 * DAY),
-      shipped("v0.1.1", 7 * DAY),
-      shipped("v0.1.0", 8 * DAY),
-    ],
-    merged: [
-      landed(17, "Centre the shop so a cropped demo frame shows it all", "raya-t", 6 * DAY + 15),
-      landed(16, "Hide sold out switch remembered across visits", "vale-t", 6 * DAY + 18),
-      landed(13, "Price per 100 g leads on tea cards", "vale-t", 6 * DAY + 40),
-      landed(11, "Add a Surprise me chip to the tea sommelier", "tess", 6 * DAY + 90),
-      landed(10, "Back to top link in the footer, reading “↑ Top”", "vale-t", 6.6 * DAY),
-      landed(7, "Teas in PostgreSQL, a Valkey cache and a tea-house redesign", "raya-t", 6.8 * DAY),
-      landed(5, "In stock and Sold out labels with a Hide sold out switch", "vale-t", 7.2 * DAY),
-      landed(6, "Footer with opening hours and contact email", "tess", 7.4 * DAY),
-      landed(4, "Let the tea sommelier answer tea questions from the web", "raya-t", 8.2 * DAY),
-    ],
-  },
+  TEA_INPUT,
   [[17, 16, 13, 11], [10, 7], [5, 6], [4]],
   [0, 1, 0, 0],
 );
 
 /** Acme Store: seven releases, the newest five shown, one rolled back from. */
+const ACME_INPUT = {
+  releases: [
+    shipped("v0.1.59", 60, { standing: "live", rollbackOf: "v0.1.57" }),
+    shipped("v0.1.58", 3 * 60),
+    shipped("v0.1.57", 20 * 60),
+    shipped("v0.1.56", 2 * 24 * 60),
+    shipped("v0.1.55", 3 * 24 * 60),
+    shipped("v0.1.54", 5 * 24 * 60),
+    shipped("v0.1.53", 8 * 24 * 60),
+  ],
+  merged: [
+    landed(14, "Prices no longer round down in the cart", "tess-s", 5 * 60),
+    landed(12, "Fix the VAT rate table for Ireland", "toby-s", 21 * 60),
+    landed(11, "Fix the sold-out badge on mobile", "odo-s", 8.5 * 24 * 60),
+    landed(10, "Gift cards at checkout", "toby-s", 30 * 60),
+    landed(9, "Czech names for every product", "ines-s", 4 * 24 * 60),
+  ],
+};
 const ACME_HISTORY = recordedHistory(
-  {
-    releases: [
-      shipped("v0.1.59", 60, { standing: "live", rollbackOf: "v0.1.57" }),
-      shipped("v0.1.58", 3 * 60),
-      shipped("v0.1.57", 20 * 60),
-      shipped("v0.1.56", 2 * 24 * 60),
-      shipped("v0.1.55", 3 * 24 * 60),
-      shipped("v0.1.54", 5 * 24 * 60),
-      shipped("v0.1.53", 8 * 24 * 60),
-    ],
-    merged: [
-      landed(14, "Prices no longer round down in the cart", "tess-s", 5 * 60),
-      landed(12, "Fix the VAT rate table for Ireland", "toby-s", 21 * 60),
-      landed(11, "Fix the sold-out badge on mobile", "odo-s", 8.5 * 24 * 60),
-      landed(10, "Gift cards at checkout", "toby-s", 30 * 60),
-      landed(9, "Czech names for every product", "ines-s", 4 * 24 * 60),
-    ],
-  },
+  ACME_INPUT,
   [[], [14], [12, 10], [], [9], [], [11]],
   [0, 0, 0, 1, 0, 0, 0],
 );
@@ -367,16 +403,29 @@ function Standins({ children }: { readonly children: ReactNode }) {
   );
 }
 
-const ACME_ENVIRONMENTS = [
-  environment("store-prod", "production", "production", "v0.1.59"),
-  environment("store-stage", "stage", "stage", "3f9c1b2"),
-  environment("store-checkout", "stage-checkout", "stage", "a1b2c3d", "checkout-redesign"),
-  environment("store-perf", "stage-perf", "stage", "9d8e7f6", "perf-budget"),
-];
+/** Who reaches a project: four people, three of them on its production. */
+const PEOPLE_VIEW = {
+  kind: "table",
+  editable: true,
+  invite: true,
+  candidates: [],
+  columns: [
+    { projectId: "prod", kind: "production", label: "Production", owner: null, unread: false },
+    { projectId: "stage", kind: "stage", label: "Stage", owner: null, unread: false },
+  ],
+  rows: ["Nova Dev", "Ines Vale", "Toby Holt", "Theo Lind"].map((name, index) => ({
+    key: `cu-${String(index)}`,
+    name,
+    cells: [
+      { projectId: "prod", level: index === 3 ? "none" : "full" },
+      { projectId: "stage", level: "full" },
+    ],
+  })),
+} as unknown as AccessTableView;
 
-/** Who reaches a project, as its card's People draws them. */
-export function ProjectPagePeople() {
-  const people = ["Nova Dev", "Ines Vale", "Lena Holt", "Theo Lind"].map((name, index) => ({
+/** Who reaches a project, as its access chips draw them: the harness's *Manage*. */
+function PageAccess() {
+  const people = ["Nova Dev", "Ines Vale", "Toby Holt", "Theo Lind"].map((name, index) => ({
     key: `cu-${String(index)}`,
     name,
     short: `${name.split(" ")[0] ?? name} ${name.split(" ")[1]?.[0] ?? ""}.`,
@@ -406,94 +455,140 @@ export function ProjectPagePeople() {
   );
 }
 
-/** The column beside a project's card on its page, by the project the harness opened. */
-export function ProjectPageAside({ groupId }: { readonly groupId: string }) {
-  const running = groupId === "acme-store" || groupId === "tea";
-  const environments = groupId === "acme-store" ? ACME_ENVIRONMENTS : [];
+/** The project's whole Automation section, as its row's *Manage* opens it. */
+function PageAutomation({ groupId }: { readonly groupId: string }) {
   return (
-    <Standins>
-      <ZeropsGroupPane
-        automation={
-          <ProjectAutomationView
-            admin={ADMIN}
-            board={
-              groupId === "acme-store"
-                ? {
-                    read: { state: "known", board: boardOf(TASKS, NOW, "acme-store") },
-                    spend: "$21.40 of $40 this month",
-                    onReadAgain: nothing,
-                    onOpen: nothing,
-                  }
-                : undefined
+    <ProjectAutomationView
+      admin={ADMIN}
+      board={
+        groupId === "acme-store"
+          ? {
+              read: { state: "known", board: boardOf(TASKS, NOW, "acme-store") },
+              spend: "$21.40 of $40 this month",
+              onReadAgain: nothing,
+              onOpen: nothing,
             }
-            onOpenMate={nothing}
-            pool={groupId === "acme-store" ? POOL : []}
-            sources={{
-              rows: groupId === "acme-store" ? SOURCES : [],
-              reading: false,
-              withheld: false,
-            }}
-            workingOf={(projectId) => projectId === "odo-s"}
-          />
-        }
-        environments={environments}
-        finishing={false}
-        groupId={groupId}
-        history={running ? <PageHistory groupId={groupId} /> : null}
-        name={groupId}
-        onAdd={nothing}
-        onFinish={nothing}
-        onSetUp={nothing}
-        release={running ? RELEASE_WAITING : RELEASE_NONE}
-        repo={running ? "appdev" : undefined}
-        repos={running ? REPOS : []}
-        repositories={
-          running ? (
-            <RepoRowsView
-              actions={{}}
-              admin
-              apps={null}
-              authority={null}
-              dependencies={[]}
-              now={NOW}
-              onConnect={nothing}
-              onSetUpGithub={nothing}
-              orgId="org-acme"
-              orgName="Acme"
-              project={groupId}
-              projectName={groupId}
-              repos={REPOS}
-            />
-          ) : undefined
-        }
-        slots={
-          groupId === "acme-store"
-            ? [
-                {
-                  kind: "environment",
-                  tier: "production",
-                  id: "store-prod",
-                  note: { text: "2 changes waiting for production", review: true },
-                },
-                { kind: "environment", tier: "stage", id: "store-stage", note: undefined },
-                { kind: "environment", tier: "stage", id: "store-checkout", note: undefined },
-                { kind: "environment", tier: "stage", id: "store-perf", note: undefined },
-              ]
-            : [
-                { kind: "slot", tier: "stage", name: "Stage", line: "Not added", add: true },
-                {
-                  kind: "slot",
-                  tier: "production",
-                  name: "Production",
-                  line: "Not added",
-                  add: true,
-                },
-              ]
-        }
-        spend={<ProjectSpendSectionView state={running ? SPEND : SPEND_TODAY} />}
-      />
-    </Standins>
+          : undefined
+      }
+      onOpenMate={nothing}
+      pool={groupId === "acme-store" ? POOL : []}
+      sources={{
+        rows: groupId === "acme-store" ? SOURCES : [],
+        reading: false,
+        withheld: false,
+      }}
+      workingOf={(projectId) => projectId === "odo-s"}
+    />
   );
+}
+
+/** What the page reads beyond the overview's group, from fixtures, for the project it opened. */
+function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
+  const input = groupId === "acme-store" ? ACME_INPUT : groupId === "tea" ? TEA_INPUT : undefined;
+  const production = "stop" in flow.production ? flow.production.stop : undefined;
+  const environments = [
+    ...(production === undefined
+      ? []
+      : [
+          environment(
+            production.projectId,
+            "production",
+            "production",
+            production.version?.label ?? "",
+          ),
+        ]),
+    ...flow.stages.map((stage) =>
+      environment(stage.projectId, stage.name, "stage", stage.version?.label ?? ""),
+    ),
+  ];
+  const slots: ReadonlyArray<EnvironmentSlotRow> = [
+    production === undefined
+      ? { kind: "slot", tier: "production", name: "Production", line: "Not live yet", add: true }
+      : { kind: "environment", tier: "production", id: production.projectId, note: undefined },
+    ...(flow.stages.length === 0
+      ? [{ kind: "slot", tier: "stage", name: "Stage", line: "Not added", add: true } as const]
+      : flow.stages.map(
+          (stage) =>
+            ({ kind: "environment", tier: "stage", id: stage.projectId, note: undefined }) as const,
+        )),
+  ];
+  return {
+    brought: input === undefined ? [] : broughtBy(input.merged, input.releases),
+    changes: cardChanges({
+      open: flow.pullRequests.map((change) => change.pull),
+      merged: input?.merged ?? [],
+      releases: input?.releases ?? [],
+      stage: undefined,
+      production: production !== undefined,
+      limit: PAGE_CHANGES,
+    }),
+    changesUnknown: undefined,
+    repos: input === undefined ? [] : REPOS,
+    environments,
+    slots,
+    release:
+      flow.production.kind === "ready-to-release" || flow.production.kind === "deploy-failed"
+        ? RELEASE_WAITING
+        : RELEASE_NONE,
+    onAdd: nothing,
+    onFinish: nothing,
+    finishing: false,
+    repo: input === undefined ? undefined : "appdev",
+  };
+}
+
+/**
+ * What waits on the person in a harness project: Juno's question on Acme Store, then each Mate's
+ * changes to review, as `projectWaits` lists them from the menu's list.
+ */
+function harnessWaits<T>(entry: ProjectsFlowGroup<T>): ReadonlyArray<CardWait> {
+  const face = (tint: MateTintId) => <MateFace size={20} state="needs" tint={tint} />;
+  const waiting = (projectId: string, name: string, tint: MateTintId) => ({
+    projectId,
+    name,
+    tint,
+    shape: MATE_SHAPE_OF_TINT[tint],
+    face: "needs" as const,
+  });
+  const asks: ReadonlyArray<CardWait> =
+    entry.group.groupId === "acme-store"
+      ? [
+          {
+            wait: {
+              kind: "ask",
+              key: "ask:juno-s",
+              ask: "question",
+              mate: {
+                ...waiting("juno-s", "Juno", "sky"),
+                kind: "question",
+                text: "Should checkout keep the guest option?",
+              },
+            },
+            face: face("sky"),
+            onVerb: nothing,
+          },
+        ]
+      : [];
+  const reviews = entry.flow.mates.flatMap((mate): ReadonlyArray<CardWait> => {
+    const count = mateChangesForReview(entry.flow, mate.projectId).length;
+    const tint = MATES[mate.projectId]?.tint ?? "slate";
+    return count === 0
+      ? []
+      : [
+          {
+            wait: {
+              kind: "review",
+              key: `review:${mate.projectId}`,
+              mate: { ...waiting(mate.projectId, mate.name, tint), kind: "change" },
+              change: undefined,
+              count,
+            },
+            face: face(tint),
+            onVerb: nothing,
+          },
+        ];
+  });
+  return [...asks, ...reviews];
 }
 
 /** The harness's project page body, as the page draws it from the flow's group and slots. */
@@ -501,18 +596,63 @@ export function harnessProjectPage(
   groupId: string,
   onAddMate: () => void,
 ): ProjectPageSlot["render"] {
+  const running = groupId === "acme-store" || groupId === "tea";
   return ({ entry, props, addMateWhy }) => (
-    <ProjectPageBody
-      addMateWhy={addMateWhy}
-      entry={entry}
-      onAddMate={onAddMate}
-      props={props}
-      side={
-        <>
-          <ProjectPageAside groupId={groupId} />
-          <ProjectPagePeople />
-        </>
-      }
-    />
+    <Standins>
+      <ProjectPageBody
+        addMateWhy={addMateWhy}
+        entry={entry}
+        facts={harnessFacts(groupId, entry.flow)}
+        onAddMate={onAddMate}
+        // Its History, drawn from the fixtures' releases, and what waits on the person.
+        props={{
+          ...props,
+          renderHistory: () => <PageHistory groupId={groupId} />,
+          cardWaits: harnessWaits,
+        }}
+        setup={{
+          rows: (open) => (
+            <>
+              {running ? (
+                <SetupRow label="Repositories">
+                  <RepoRowsView
+                    actions={{}}
+                    admin
+                    apps={null}
+                    authority={null}
+                    dependencies={[]}
+                    now={NOW}
+                    onConnect={nothing}
+                    onSetUpGithub={nothing}
+                    orgId="org-acme"
+                    orgName="Acme"
+                    project={groupId}
+                    projectName={groupId}
+                    repos={REPOS}
+                  />
+                </SetupRow>
+              ) : null}
+              <ProjectAutomationRowView
+                face={(mate) => (
+                  <PoolFaceView
+                    key={mate.projectId}
+                    mate={mate}
+                    onOpen={nothing}
+                    working={mate.projectId === "odo-s"}
+                  />
+                )}
+                onAdd={nothing}
+                onManage={open.automation}
+                pool={groupId === "acme-store" ? POOL : []}
+              />
+              <ProjectPeopleRowView onManage={open.access} view={PEOPLE_VIEW} />
+              <ProjectSpendRowView state={running ? SPEND : SPEND_TODAY} />
+            </>
+          ),
+          access: <PageAccess />,
+          automation: <PageAutomation groupId={groupId} />,
+        }}
+      />
+    </Standins>
   );
 }
