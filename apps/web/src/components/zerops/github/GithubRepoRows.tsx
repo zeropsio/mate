@@ -11,7 +11,7 @@ import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useNavigate } from "@tanstack/react-router";
-import { MoreHorizontalIcon } from "lucide-react";
+import { GitBranchIcon, MoreHorizontalIcon } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { GitHubIcon } from "~/components/Icons";
@@ -136,7 +136,7 @@ export function RepoRowsView(props: RepoRowsViewProps) {
   const someUnconnected = listed.some((entry) => entry.remote == null);
   return (
     <div className="grid" data-zerops-surface="git-remotes">
-      <ul className="grid">
+      <ul className="@container grid">
         {listed.map((entry) => (
           <RepoRow entry={entry} key={entry.name} {...props} />
         ))}
@@ -223,10 +223,14 @@ function RepoRow({
   };
   const menu = Object.values(items).some((item) => item !== null && item !== false);
   return (
-    <li className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border/70 px-2 py-2.5 first:border-t-0">
+    // Wide, the name stands in its own column as the board's rows do; narrow, it leads the line.
+    <li className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border/70 px-2 py-2.5 first:border-t-0 @lg:grid-cols-[7.5rem_minmax(0,1fr)_auto] @lg:gap-4">
+      <span className="hidden truncate font-mono text-sm text-foreground @lg:block">
+        {entry.name}
+      </span>
       <div className="grid min-w-0 gap-0.5">
         <p className="flex min-w-0 items-baseline gap-2 text-sm">
-          <span className="shrink-0 font-mono text-foreground">{entry.name}</span>
+          <span className="shrink-0 font-mono text-foreground @lg:hidden">{entry.name}</span>
           {state.destination === null ? null : (
             <a
               className={cn(
@@ -237,7 +241,11 @@ function RepoRow({
               rel="noreferrer"
               target="_blank"
             >
-              <GitHubIcon aria-hidden="true" className="size-3.5 shrink-0 self-center" />
+              {state.destination.href.startsWith("https://github.com/") ? (
+                <GitHubIcon aria-hidden="true" className="size-3.5 shrink-0 self-center" />
+              ) : (
+                <GitBranchIcon aria-hidden="true" className="size-3.5 shrink-0 self-center" />
+              )}
               <span className="truncate">{state.destination.label}</span>
             </a>
           )}
