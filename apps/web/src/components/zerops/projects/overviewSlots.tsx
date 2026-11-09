@@ -24,24 +24,23 @@ import { useOpenReview } from "~/zerops/review";
 import { mateDecision } from "../mateDecision.logic";
 import { SidebarMateAge } from "../SidebarMateAge";
 import type { MateRowSlot } from "../SidebarMateRow.logic";
+import type { FixProblem } from "~/zerops/fixRequest";
+import { fixProblemOf } from "../SidebarProductionChip.logic";
 import {
   applicationPlaceFacts,
   applicationStage,
   type PlaceItem,
 } from "../system/applicationPlaces.logic";
 import type { CardProductionVerbs } from "./CardGroupMenu";
-import { CardChanges, CardMateLiftActions } from "./ProjectCards";
+import { CardMateLiftActions } from "./ProjectCards";
 import { ProjectHistory } from "./ProjectHistory";
 import {
   historyOffered,
   placeLines,
-  CARD_CHANGES,
-  cardChanges,
   releaseProductionRuns,
   rollBackTarget,
   type CardMateReading,
 } from "./projectCard.logic";
-import { CHANGES_UNKNOWN_LINE } from "./projectsView.logic";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
 
 export function useOverviewSlots<T extends PlaceItem>(input: {
@@ -50,8 +49,6 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   /** A Mate's face, small: whose a change is, beside it. */
   readonly mateFace: (item: T) => ReactNode;
   readonly nowMs: number;
-  /** Drawn on the project's own page, whose column already holds its history. */
-  readonly onPage?: boolean | undefined;
 }) {
   const { flows, deployments, nowMs } = input;
   const openReview = useOpenReview();
@@ -88,6 +85,20 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   };
 
   /**
+   * What a Mate is told of a broken production when asked to fix it, as the menu's production chip
+   * tells it (`fixProblemOf`); `undefined` where the chip is unread or production is well.
+   */
+  const productionFix = (entry: ProjectsFlowGroup<T>): FixProblem | undefined => {
+    const { chip, releases, down, prodStop } = placesOf(entry);
+    if (chip === undefined) return undefined;
+    return fixProblemOf({
+      chip,
+      failure: releases.kind === "answered" ? releases.failure : undefined,
+      down: prodStop === undefined ? [] : (down.get(prodStop.projectId) ?? []),
+    });
+  };
+
+  /**
    * What production's rarer verbs need on its card's ···: its place, the release it would roll
    * back to while it runs well, and whether it has a history to open — `undefined` with no
    * production to speak of.
@@ -110,69 +121,6 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       }),
       runs: production.stop.version !== undefined || production.stop.state === "deployed",
     };
-  };
-
-  /**
-   * A project's latest changes (`cardChanges`): its open ones, read for every project, and — while
-   * the card holds its detail — the merged ones, each with where it went. A click opens its review.
-   */
-  const renderChanges = (entry: ProjectsFlowGroup<T>): ReactNode => {
-    const read = flows.get(entry.group.groupId);
-    const changes = cardChanges({
-      open: entry.flow.pullRequests.map((change) => change.pull),
-      merged: read?.merged ?? [],
-      releases: read?.releasesKnown === true ? read.releases : [],
-      // A stage whose deploys are unread runs nothing this can tell.
-      stage:
-        entry.flow.stages.length === 0
-          ? undefined
-          : (stageOf(entry)?.stage ?? { runs: [], deploying: [], mainHeads: new Map() }),
-      production: entry.flow.production.kind !== "absent",
-      limit: CARD_CHANGES,
-      // On the project's page its History says what each release put live.
-      unreleased: input.onPage === true,
-    });
-    const mateName = (projectId: string) =>
-      entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
-    const releases =
-      read?.releasesKnown === true && input.onPage !== true
-        ? read.releases.map((release) => ({
-            tag: release.tag,
-            taggedAt: release.taggedAt,
-            live: release.standing === "live",
-          }))
-        : [];
-    return (
-      <CardChanges
-        changes={changes}
-        changesFailure={read?.changesFailure}
-        changesKnown={read?.changesKnown === true}
-        setupReview={
-          read === undefined
-            ? undefined
-            : {
-                appId: entry.group.groupId,
-                repos: read.repos,
-                merged: read.merged,
-                environments: read.environmentInputs,
-              }
-        }
-        face={(projectId) => {
-          const item = entry.mates.get(projectId);
-          return item === undefined ? undefined : input.mateFace(item);
-        }}
-        mateName={mateName}
-        releases={releases}
-        unknown={
-          entry.changesUnknown === undefined
-            ? undefined
-            : CHANGES_UNKNOWN_LINE[entry.changesUnknown]
-        }
-        onOpen={(change, from) => {
-          openChange(entry.group.groupId, change.pull, from);
-        }}
-      />
-    );
   };
 
   const openChange = (groupId: string, change: FlowPullRequest, from: HTMLElement) => {
@@ -202,7 +150,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     cardPlaces,
     productionBroken,
     productionVerbs,
-    renderChanges,
+    productionFix,
     renderHistory,
   };
 }

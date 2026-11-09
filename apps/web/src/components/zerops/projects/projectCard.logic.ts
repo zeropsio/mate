@@ -9,14 +9,12 @@
  *
  * Pure: no React, no clock of its own.
  */
-import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/data";
 import {
   addressComing,
   changeAsksForReview,
   changeInMateReview,
   changeState,
   ENVIRONMENT_NOT_ADDED,
-  placeAddresses,
   PRODUCTION_DEPLOYING,
   pullRequestBlocked,
   type FlowPullRequest,
@@ -31,7 +29,6 @@ import {
 import { UNREAD_ENVIRONMENT_LINE } from "@t3tools/client-runtime/zerops/hq";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
-import { domainFaceWords } from "../addresses/addresses.logic";
 import { environmentTitle } from "../place/place.logic";
 import {
   PLACE_RUNNING_WORD,
@@ -69,7 +66,7 @@ export type ProjectWait =
       readonly mate: WaitingMate;
       /** The newest of its changes waiting, which *Review* opens. */
       readonly change: WaitingChange | undefined;
-      /** How many of its changes wait for review; at least one. */
+      /** How many of its changes wait for review, as the rows list them (`mateChangesForReview`). */
       readonly count: number;
     };
 
@@ -81,12 +78,10 @@ export type ProjectWait =
  */
 export function projectWaits(input: {
   readonly items: ReadonlyArray<WaitingItem>;
-  /** The project's Mates, by project id. */
-  readonly mateIds: ReadonlyArray<string>;
-  /** How many of a Mate's changes wait for review (`mateReviewCount`). */
-  readonly reviewCount: (mateProjectId: string) => number;
+  /** The project's flow: its Mates, and the changes that wait for review. */
+  readonly flow: Pick<GroupFlow, "mates" | "pullRequests">;
 }): ReadonlyArray<ProjectWait> {
-  const mates = new Set(input.mateIds);
+  const mates = new Set(input.flow.mates.map((mate) => mate.projectId));
   const asks: Array<ProjectWait> = [];
   const reviews: Array<ProjectWait> = [];
   for (const item of input.items) {
@@ -97,7 +92,7 @@ export function projectWaits(input: {
         key: item.key,
         mate: item.mate,
         change: item.mate.change,
-        count: Math.max(1, input.reviewCount(item.mate.projectId)),
+        count: mateChangesForReview(input.flow, item.mate.projectId).length,
       });
     else asks.push({ kind: "ask", key: item.key, ask: item.kind, mate: item.mate });
   }
@@ -134,6 +129,43 @@ export function projectWaitWords(wait: ProjectWait): {
     case "failed":
       return { text: `${name} stopped on an error`, verb: "Ask to fix it" };
   }
+}
+
+/** A wait's verb named for a screen reader: whose, and in which project. */
+export function projectWaitLabel(wait: ProjectWait, project: string): string {
+  const { name } = wait.mate;
+  if (wait.kind === "review")
+    return `Review ${name}'s ${wait.count > 1 ? "changes" : "change"} in ${project}`;
+  switch (wait.ask) {
+    case "question":
+      return `Answer ${name} in ${project}`;
+    case "plan":
+      return `See ${name}'s plan in ${project}`;
+    case "failed":
+      return `Ask ${name} to fix it in ${project}`;
+  }
+}
+
+/**
+ * A broken place as what waits on the viewer: production down, its release or deploy failed — in
+ * its own words, and the one verb: their Mate asked to fix it, or, with no Mate of theirs there,
+ * the place's page, which says why.
+ */
+export function placeFixWords(
+  line: Pick<PlaceLine, "kind" | "name" | "dot" | "words">,
+  fixer: string | undefined,
+  project: string,
+): { readonly text: string; readonly verb: string; readonly label: string } {
+  const place = placeLabel(line);
+  const what = line.words[0];
+  const text = line.dot === "down" || what === undefined ? `${place} is down` : `${place}: ${what}`;
+  return fixer === undefined
+    ? { text, verb: "See why", label: `See why in ${project}'s ${place.toLowerCase()}` }
+    : {
+        text,
+        verb: `Ask ${fixer} to fix it`,
+        label: `Ask ${fixer} to fix ${place.toLowerCase()} in ${project}`,
+      };
 }
 
 /** At most this many Mates stand on a card; past it the quiet ones fold. */
@@ -199,27 +231,6 @@ const joined = (names: ReadonlyArray<string>): string =>
 /** A release on its way, as production's line says it: a roll back by the release it goes back to. */
 function releasingWords(tag: string, rollsBackTo: string | undefined): string {
   return rollsBackTo === undefined ? `Releasing ${tag}` : `Rolling back to ${rollsBackTo}`;
-}
-
-/**
- * What production's line opens while it says a release on its way: that release's review, or a
- * roll back's by the release it goes back to — the door the card's "Putting v2.4.0 live" block
- * had. The platform's build is on its way before HQ names it, and its line opens the same review
- * from that frame, its words only what the build or HQ reports. Nothing while none is on its way,
- * or while the line says production's trouble instead.
- */
-export function releaseLineOpens(
-  line: PlaceLine,
-  production: GroupFlowProduction,
-  rollsBackTo: string | undefined,
-): { readonly kind: "release" } | { readonly kind: "rollback"; readonly tag: string } | undefined {
-  if (
-    line.kind !== "production" ||
-    line.dot !== "releasing" ||
-    (production.kind !== "releasing" && production.kind !== "deploying")
-  )
-    return undefined;
-  return rollsBackTo === undefined ? { kind: "release" } : { kind: "rollback", tag: rollsBackTo };
 }
 
 /** What production's line says from its chip, the menu's reading of it. */
@@ -525,42 +536,6 @@ export function placeLines(input: {
   ];
 }
 
-/** One service of a place, as its panel shows it. */
-export interface PlacePanelService {
-  readonly hostname: string;
-  /**
-   * Up; up with nothing deployed in it (`idle`), never drawn as up; stopped; or failed, as the
-   * place's serving says it.
-   */
-  readonly state: "up" | "idle" | "stopped" | "down";
-}
-
-/**
- * A place's services as its panel shows them, from the platform's listing
- * (`summarizeEnvironmentServices`): failed where the place's serving says so, stopped where the
- * platform stopped it, idle where a runtime holds no deploy — its container runs, nothing deployed
- * does — and up otherwise.
- */
-export function placeServices(
-  statuses: ReadonlyArray<{
-    readonly hostname: string;
-    readonly status: string;
-    readonly nothingDeployed?: true;
-  }>,
-  down: ReadonlyArray<string>,
-): ReadonlyArray<PlacePanelService> {
-  return statuses.map((service) => ({
-    hostname: service.hostname,
-    state: down.includes(service.hostname)
-      ? "down"
-      : service.status === "STOPPED"
-        ? "stopped"
-        : service.nothingDeployed === true
-          ? "idle"
-          : "up",
-  }));
-}
-
 /** What a place is called on its card: production in full, a stage by its own name, capitalised. */
 export function placeLabel(line: Pick<PlaceLine, "kind" | "name">): string {
   return environmentTitle(line.kind, line.name);
@@ -614,26 +589,6 @@ export function historyOffered(input: {
   readonly runs: boolean;
 }): boolean {
   return input.releases > 0 && input.runs;
-}
-
-/**
- * Whether production's panel holds History's room where it does not offer it yet: while a release
- * is on its way, whichever names it first (the platform's build says Deploying before HQ's accepted
- * release says Releasing), and while it runs a version it can name. One release on its way keeps
- * one height: CI's held card drew the build without the room and HQ's release with it, 44 px apart.
- */
-export function historyHeld(input: {
-  readonly kind: GroupFlowProduction["kind"];
-  readonly dot: PlaceLine["dot"];
-  /** It runs a version it can name. */
-  readonly runsNamed: boolean;
-}): boolean {
-  return (
-    input.kind === "releasing" ||
-    input.kind === "deploying" ||
-    input.dot === "releasing" ||
-    (input.dot === "running" && input.runsNamed)
-  );
 }
 
 /**
@@ -853,11 +808,6 @@ export function foldMates<M>(
   };
 }
 
-/** "2 more Mates", "1 more Mate". */
-export function foldWords(count: number): string {
-  return `${String(count)} more Mate${count === 1 ? "" : "s"}`;
-}
-
 /** Production's address as a person reads it: no scheme, no trailing slash. */
 export function siteOf(route: string | undefined): string | undefined {
   if (route === undefined) return undefined;
@@ -869,105 +819,6 @@ export function siteOf(route: string | undefined): string | undefined {
 export function soleSite(addresses: ReadonlyArray<GroupFlowAddress>): string | undefined {
   return addresses.length === 1 ? siteOf(addresses[0]?.url) : undefined;
 }
-
-/** A domain of a place's own not answering yet, and how far it is, in the addresses sheet's words. */
-export interface PanelPendingDomain {
-  readonly name: string;
-  readonly word: string;
-  /** Attention where it waits on the person or went wrong; muted while it is on its way. */
-  readonly tone: "muted" | "attention";
-}
-
-/** A place's addresses on its panel, as the addresses sheet and the globe's popover read them. */
-export interface PanelAddresses {
-  /** The address that stands for the place: its own domain where one answers, else its sole service's. */
-  readonly head: { readonly host: string; readonly url: string } | undefined;
-  /** Several services serving: a door each, by its service, at its own domain where it has one. */
-  readonly doors: ReadonlyArray<GroupFlowAddress>;
-  readonly pending: ReadonlyArray<PanelPendingDomain>;
-  /**
-   * The card's door into the addresses sheet: only once the place runs something and its addresses
-   * are read and it has one — before, there is nothing to put on a domain, and a door read early
-   * would change its words once they are (the run: "Manage addresses", then "Put it on your domain").
-   */
-  readonly door: boolean;
-  /** That door is production's "Put it on your domain": it has none of its own (`lacksOwnDomain`). */
-  readonly offerDomain: boolean;
-}
-
-/**
- * What a place's panel says of its addresses. Read from the place's addresses (the sheet's
- * projection) once read; until then — or outside an account — as its listing says them. A service
- * answering at a domain of the place's own is opened there, its zerops.app address otherwise; the
- * place's own domain heads the panel wherever one answers.
- */
-export function panelAddresses(input: {
-  readonly kind: PlaceLine["kind"];
-  /** The place's listed doors (`PlaceLine.addresses`). */
-  readonly listed: ReadonlyArray<GroupFlowAddress>;
-  /** The place's addresses as read; `undefined` outside an account. */
-  readonly place: PlaceAddresses | undefined;
-  /** Something runs there: a release on production, a deploy on a stage. */
-  readonly runs: boolean;
-}): PanelAddresses {
-  const { place } = input;
-  if (place?.state !== "ready") {
-    const host = soleSite(input.listed);
-    const first = input.listed[0];
-    return {
-      head: host === undefined || first === undefined ? undefined : { host, url: first.url },
-      doors: input.listed.length < 2 ? [] : input.listed,
-      pending: [],
-      door: false,
-      offerDomain: false,
-    };
-  }
-  const live = place.domains.filter((domain) => domain.face === "live");
-  // Each service's own domains before its zerops.app address, services by name as the popover lists them.
-  const routes = [
-    ...live.flatMap((domain) =>
-      domain.targets.map((target) => ({ service: target.serviceName, url: domain.url, own: true })),
-    ),
-    ...place.zerops.flatMap((address) =>
-      address.hosts.map((host) => ({ service: address.serviceName, url: host.url, own: false })),
-    ),
-  ].toSorted((left, right) => left.service.localeCompare(right.service, "en"));
-  const doors = placeAddresses(routes);
-  const own = routes.find((route) => route.own);
-  const headUrl = own?.url ?? (doors.length === 1 ? doors[0]?.url : undefined);
-  const host = siteOf(headUrl);
-  const seen = new Set<string>();
-  const door = input.runs && routes.length > 0;
-  return {
-    head: host === undefined || headUrl === undefined ? undefined : { host, url: headUrl },
-    doors: doors.length < 2 ? [] : doors,
-    pending: place.domains.flatMap((domain): ReadonlyArray<PanelPendingDomain> => {
-      if (domain.face === "live" || seen.has(domain.domainName)) return [];
-      seen.add(domain.domainName);
-      const { word, tone } = domainFaceWords(domain.face);
-      return [{ name: domain.domainName, word, tone: tone === "warn" ? "attention" : "muted" }];
-    }),
-    door,
-    offerDomain: door && input.kind === "production" && lacksOwnDomain(place),
-  };
-}
-
-/** The people on a project, once each, in order; drawn only when more than one. */
-export function cardPeople<P extends { readonly userId: string }>(
-  owners: ReadonlyArray<P | null | undefined>,
-): ReadonlyArray<P> {
-  const seen = new Set<string>();
-  const people: P[] = [];
-  for (const owner of owners) {
-    if (owner == null || seen.has(owner.userId)) continue;
-    seen.add(owner.userId);
-    people.push(owner);
-  }
-  return people.length > 1 ? people : [];
-}
-
-/** How many of its latest changes a card shows. */
-export const CARD_CHANGES = 5;
 
 /** One of a card's latest changes: open, with what stops it; or merged, with where it went. */
 export interface CardChange {
@@ -1134,48 +985,6 @@ export function cardChanges(input: {
       };
     });
   return [...open, ...merged].slice(0, input.limit);
-}
-
-/** A row of a card's changes: a change, or a release cut among them. */
-export type CardChangeRow =
-  | { readonly kind: "change"; readonly change: CardChange }
-  | { readonly kind: "release"; readonly tag: string; readonly live: boolean };
-
-/**
- * A card's changes with the releases cut among them (the owner, 2026-10-12: the changes "should
- * show where tags were marked, where the prod is"): the open ones first, on no release yet; each
- * release over the merged changes it took, newest first — one that took none of them left out —
- * and production's always, closing the list where it is older than every change shown.
- */
-export function cardChangeRows(
-  changes: ReadonlyArray<CardChange>,
-  /** Newest first, as the flow lists them. */
-  releases: ReadonlyArray<{
-    readonly tag: string;
-    readonly taggedAt: string;
-    readonly live: boolean;
-  }>,
-): ReadonlyArray<CardChangeRow> {
-  const rows: CardChangeRow[] = [];
-  let next = 0;
-  for (const change of changes) {
-    const mergedAt = change.open ? undefined : change.at;
-    if (mergedAt !== undefined) {
-      const cut: Array<(typeof releases)[number]> = [];
-      while (next < releases.length && releases[next]!.taggedAt >= mergedAt) {
-        cut.push(releases[next]!);
-        next += 1;
-      }
-      // The oldest of them took this change; one that took none shown is noise, but production's.
-      for (const [index, release] of cut.entries())
-        if (release.live || index === cut.length - 1)
-          rows.push({ kind: "release", tag: release.tag, live: release.live });
-    }
-    rows.push({ kind: "change", change });
-  }
-  const live = releases.slice(next).find((release) => release.live);
-  if (live !== undefined) rows.push({ kind: "release", tag: live.tag, live: true });
-  return rows;
 }
 
 /** A release as production's panel reads it: newest first, as the flow lists them. */
