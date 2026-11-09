@@ -47,7 +47,6 @@ import {
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
 import {
   WAITING_VERBS,
-  waitingPhrase,
   type WaitingChange,
   type WaitingItem,
   type WaitingMate,
@@ -118,27 +117,39 @@ function waitingItemOf(wait: ProjectWait): WaitingItem {
 }
 
 /**
- * A wait in words: the one list's phrase (`waitingPhrase`), the menu's own leading words, then what
- * it is about — the question, the error, its one change's title — and its kind's one verb.
+ * A wait in words, beside its verb: what waits, said from the Mate — "Juno asks: …", "Tess has a
+ * plan for you to approve". The menu leads with the verb ("Answer Juno") because its rows carry no
+ * button; here the button says it (`WAITING_VERBS`, the one table), so the line does not repeat it.
  */
 export function projectWaitWords(wait: ProjectWait): {
   readonly text: string;
   readonly verb: WaitingVerb;
 } {
   const item = waitingItemOf(wait);
-  const phrase = waitingPhrase(item);
-  const about =
-    wait.kind === "review"
-      ? (wait.mate.changes ?? 1) > 1
-        ? undefined
-        : wait.change?.title
-      : wait.ask === "question" || wait.ask === "failed"
-        ? wait.mate.text
-        : undefined;
-  return {
-    text: about === undefined ? phrase : `${phrase}: ${about}`,
-    verb: WAITING_VERBS[item.kind],
-  };
+  const { name, text } = wait.mate;
+  const verb = WAITING_VERBS[item.kind];
+  if (wait.kind === "review") {
+    const count = wait.mate.changes ?? 1;
+    return {
+      text:
+        count > 1
+          ? `${String(count)} changes from ${name} to review`
+          : wait.change === undefined
+            ? `A change from ${name} to review`
+            : `${name}'s change: ${wait.change.title}`,
+      verb,
+    };
+  }
+  switch (wait.ask) {
+    case "question":
+      return { text: text === undefined ? `${name} asks you` : `${name} asks: ${text}`, verb };
+    case "plan":
+      return { text: `${name} has a plan for you to approve`, verb };
+    case "failed":
+      return { text: `${name} stopped on an error`, verb };
+    case "sign-in":
+      return { text: `${name} waits for your sign-in`, verb };
+  }
 }
 
 /** A wait's verb named for a screen reader: whose, and in which project. */
