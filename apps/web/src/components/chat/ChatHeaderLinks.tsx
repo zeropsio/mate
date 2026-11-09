@@ -119,12 +119,14 @@ export function ProjectPageLink({ sites }: { readonly sites: ProjectSitesInput |
             data-chat-header-ghost
             data-zerops-surface="header-project-page"
             onClick={open}
-            size="icon-sm"
+            size="sm"
             variant="ghost"
           />
         }
       >
-        <LayoutDashboardIcon aria-hidden="true" className="size-3.5" />
+        <LayoutDashboardIcon aria-hidden="true" className="size-3.5 shrink-0" />
+        {/* Its word as Sites has its own, given way together in a narrow header. */}
+        <span className="hidden text-line @3xl/header-actions:inline">Project</span>
       </TooltipTrigger>
       <TooltipPopup side="bottom">{label}</TooltipPopup>
     </Tooltip>
