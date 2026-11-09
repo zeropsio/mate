@@ -121,35 +121,6 @@
   margin: 0;
 }
 
-/* A place: its line, then what its release brought, then what goes to it next. */
-.pp-place {
-  gap: 10px;
-  padding: 12px 16px;
-}
-
-.pp-place + .pp-place {
-  margin-top: 4px;
-}
-
-.pp-brought {
-  color: var(--muted-foreground);
-  font-size: var(--text-line);
-  line-height: 20px;
-  text-wrap: pretty;
-}
-
-.pp-brought-more {
-  color: var(--primary);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.pp-brought-more:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.pp-place-note,
 .pp-empty {
   color: var(--muted-foreground);
   font-size: var(--text-line);
@@ -223,76 +194,35 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Going live, on a project not live yet: what it gives, its one verb; a stage, optional, under it. */
-.pp-golive {
-  overflow: hidden;
-}
-
-.pp-golive-hero {
+/* Under the line: what a missing place would give, with its one verb, on one quiet line. */
+.pp-line-note {
   display: flex;
   min-width: 0;
+  min-height: 28px;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 18px;
-  padding: 20px;
-}
-
-.pp-golive-icon {
-  display: flex;
-  width: 40px;
-  height: 40px;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  background: color-mix(in oklab, var(--primary) 14%, transparent);
-  color: var(--primary);
-}
-
-.pp-golive-text {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 4px;
-}
-
-.pp-golive-title {
-  color: var(--foreground);
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 22px;
-}
-
-.pp-golive-why {
+  gap: 2px 12px;
+  padding: 6px 4px 0;
   color: var(--muted-foreground);
-  font-size: 13.5px;
-  line-height: 1.45;
-  text-wrap: pretty;
+  font-size: var(--text-caption);
+  line-height: 16px;
 }
 
-.pp-golive-stage {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 20px;
-  border-top: 1px solid var(--ov-rule);
-  color: var(--muted-foreground);
-  font-size: var(--text-line);
-  line-height: 20px;
-}
-
-.pp-golive-stage strong {
-  color: var(--foreground);
+.pp-line-note strong {
+  color: color-mix(in oklab, var(--foreground) 82%, transparent);
   font-weight: 500;
 }
 
-.pp-golive > .pp-golive-run {
-  padding: 0 20px 16px;
+.pp-line-note > :last-child:not(:first-child) {
+  margin-left: auto;
 }
 
-/* The run's slot holds what is under way (a first deploy); nothing under way draws no strip. */
-.pp-golive > .pp-golive-run:empty {
+/* A Put it live run under the line while it goes; nothing under way draws no strip. */
+.pp-line-run {
+  padding: 8px 4px 0;
+}
+
+.pp-line-run:empty {
   display: none;
 }
 
