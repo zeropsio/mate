@@ -393,17 +393,22 @@ export const hqNeedsUpdate = (toDo: string): string => `HQ needs an update to ${
  * The one sentence for an answer HQ gave in a shape this Mate does not decode: a version mismatch
  * about `what` ("the Slack app"), and either side may be the older one.
  */
+const DISAGREES_LEAD = "HQ and this Mate disagree on ";
+
 export const hqDisagreesOn = (what: string): string =>
-  `HQ and this Mate disagree on ${what}: one of them needs an update.`;
+  `${DISAGREES_LEAD}${what}: one of them needs an update.`;
 
 /**
  * The one failure line of a read, from HQ or the platform: what could not be read, then the
  * reason the source gave, when it gave one. The surface puts its *Try again* beside it.
  */
-export const couldntRead = (what: string, reason?: string | null): string =>
-  reason === undefined || reason === null || reason.trim() === ""
-    ? `Couldn't read ${what}.`
-    : `Couldn't read ${what}. ${reason.trim()}`;
+export const couldntRead = (what: string, reason?: string | null): string => {
+  const why = reason?.trim() ?? "";
+  if (why === "") return `Couldn't read ${what}.`;
+  // A disagreement already says what could not be read, and why: said once, not after itself.
+  if (why.startsWith(DISAGREES_LEAD)) return why;
+  return `Couldn't read ${what}. ${why}`;
+};
 
 export function hqRefusalWords(refusal: {
   readonly code: string;
