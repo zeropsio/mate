@@ -1,7 +1,7 @@
 /**
  * What a place's page says beyond its header: what is live now and what that release brought, and
  * the changes that go next — merged ones waiting for production's next release, or a stage's open
- * changes waiting to be merged to it.
+ * changes waiting to be approved for it.
  *
  * Pure: no React.
  */
@@ -85,12 +85,12 @@ export function changesWaitingForStage(
 /** An open change nothing stops, in `changeState`'s words. */
 const READY_TO_MERGE = "Ready to merge";
 
-/** "2 changes ready to merge to stage", or how many are open where none is ready yet. */
-export function stageNextTitle(open: ReadonlyArray<FlowPullRequest>): string {
+/** "2 changes to approve for Stage", or how many are open where none asks for approval yet. */
+export function stageNextTitle(open: ReadonlyArray<FlowPullRequest>, stage: string): string {
   const ready = open.filter((pull) => changeState(pull)?.word === READY_TO_MERGE).length;
   const count = ready > 0 ? ready : open.length;
   const changes = `${String(count)} ${count === 1 ? "change" : "changes"}`;
-  return ready > 0 ? `${changes} ready to merge to stage` : `${changes} open, not ready to merge`;
+  return ready > 0 ? `${changes} to approve for ${stage}` : `${changes} open, none ready yet`;
 }
 
 /**

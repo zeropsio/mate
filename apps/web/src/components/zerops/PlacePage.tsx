@@ -215,6 +215,8 @@ export function ZeropsStopDetailPage({
     here:
       environment === undefined ? undefined : environmentTitle(environment.tier, environment.name),
   });
+  // A Git place's line, as every surface says it: production's one, or the stage of its name.
+  const places = useApplicationPlaces(groupId).places;
   if (environment?.target.kind === "zerops") {
     const notice = withheldProjectNotice(
       inventory,
@@ -233,6 +235,15 @@ export function ZeropsStopDetailPage({
     );
   }
   const note = unreadEnvironmentsWords(read.unread) ?? unread;
+  const gitPlaceLine =
+    environment === undefined
+      ? undefined
+      : places.find(
+          (line) =>
+            line.git !== undefined &&
+            line.kind === environment.tier &&
+            (environment.tier === "production" || line.name === environment.name),
+        );
   if (environment === undefined) {
     return (
       <ZeropsUnresolvedStopDetailPage
@@ -244,7 +255,13 @@ export function ZeropsStopDetailPage({
     );
   }
   return (
-    <DetailShell title={environmentTitle(environment.tier, environment.name)} trail={trail}>
+    <DetailShell
+      summary={
+        gitPlaceLine === undefined ? undefined : <PlaceLine density="header" line={gitPlaceLine} />
+      }
+      title={environmentTitle(environment.tier, environment.name)}
+      trail={trail}
+    >
       <GitStopDetailPage
         appId={groupId}
         environment={{ ...environment, target: environment.target }}
@@ -1018,7 +1035,7 @@ export function ZeropsStopPane({
   const nextRows =
     changeRows.length + subjectRows.length === 0 && untold.length === 0 ? undefined : (
       <>
-        <ChangeList label={production ? "Changes in the next release" : "Changes to merge"}>
+        <ChangeList label={production ? "Changes in the next release" : "Changes to approve"}>
           {changeRows}
           {subjectRows}
         </ChangeList>
@@ -1106,8 +1123,8 @@ export function ZeropsStopPane({
               )}
             </PlaceSection>
           ) : (
-            <PlaceSection label={<SectionLabel>Next merge</SectionLabel>}>
-              <NextBlock state="stage" title={stageNextTitle(nextChanges)}>
+            <PlaceSection label={<SectionLabel>Next on {head.title}</SectionLabel>}>
+              <NextBlock state="stage" title={stageNextTitle(nextChanges, head.title)}>
                 {nextRows}
               </NextBlock>
             </PlaceSection>
