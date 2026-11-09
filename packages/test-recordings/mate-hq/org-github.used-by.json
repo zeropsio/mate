@@ -1,7 +1,7 @@
 {
   "$provenance": {
     "producer": "mate-hq",
-    "revision": "6090626f4b7bd9363c36df169d95b0b0f23fb71c",
+    "revision": "b07ef429a0df07d8615816fadb5800ca1ff87c27",
     "via": "s17a-app.test.ts",
     "schema": "GET /api/org/github"
   },
@@ -33,7 +33,8 @@
                 "defaultBranch": "main",
                 "usedBy": {
                   "application": "00000000-0000-4000-8000-000000000001",
-                  "repo": "code"
+                  "repo": "code",
+                  "githubAppId": 1009
                 }
               },
               {
@@ -43,7 +44,19 @@
                 "defaultBranch": "main",
                 "usedBy": {
                   "application": null,
-                  "repo": null
+                  "repo": null,
+                  "githubAppId": 1009
+                }
+              },
+              {
+                "id": 6100003,
+                "fullName": "acme/repo-6100003",
+                "private": true,
+                "defaultBranch": "main",
+                "usedBy": {
+                  "application": null,
+                  "repo": null,
+                  "githubAppId": null
                 }
               }
             ],
