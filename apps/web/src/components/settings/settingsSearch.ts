@@ -33,15 +33,48 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/general": "General",
   "/settings/appearance": "Appearance",
   "/settings/keybindings": "Keybindings",
+  "/settings/archived": "Archive",
+  "/settings/zerops": "Zerops",
+  "/settings/team": "Team",
+  "/settings/automation": "Automation",
+  "/settings/personas": "Personas",
   "/settings/providers": "Providers",
   "/settings/source-control": "Source Control",
   "/settings/connections": "Environments",
-  "/settings/zerops": "Zerops",
-  "/settings/automation": "Automation",
-  "/settings/team": "Team",
-  "/settings/personas": "Personas",
-  "/settings/archived": "Archive",
 };
+
+/**
+ * The sections grouped by whose settings they are: the person's own, their organization's, and
+ * the Mates' agents and code. The nav draws a group's label over its sections, in this order.
+ */
+export const SETTINGS_NAV_GROUPS: ReadonlyArray<{
+  readonly label: string;
+  readonly sections: ReadonlyArray<SettingsPath>;
+}> = [
+  {
+    label: "You",
+    sections: [
+      "/settings/general",
+      "/settings/appearance",
+      "/settings/keybindings",
+      "/settings/archived",
+    ],
+  },
+  {
+    label: "Organization",
+    sections: ["/settings/zerops", "/settings/team", "/settings/automation", "/settings/personas"],
+  },
+  {
+    label: "Mates and code",
+    sections: ["/settings/providers", "/settings/source-control", "/settings/connections"],
+  },
+];
+
+/** The team and the persona templates are an organization's: offered only signed in with one. */
+export const ORGANIZATION_PAGES: ReadonlySet<SettingsPath> = new Set([
+  "/settings/team",
+  "/settings/personas",
+]);
 
 /**
  * Every searchable setting, in result order. This catalog is the single

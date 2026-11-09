@@ -1,7 +1,8 @@
 /**
  * The jump box: one field that finds anything the left menu holds — a Mate, a
- * project, a change, a stop, words inside a conversation — with what matched
- * marked, and, after `@`, writes to a Mate without opening it.
+ * project, a change, a place, words inside a conversation — and the app's own
+ * pages and settings, with what matched marked, and, after `@`, writes to a
+ * Mate without opening it.
  *
  * ⌘K opens it, and `/` anywhere nothing is being typed. `@nova`, then Tab or
  * Enter, picks Nova: Nova's chip — its face and name — stands in the field,
@@ -12,7 +13,7 @@
  *
  * It is the app's own palette — the same field, list and keys row
  * (`CommandPaletteContent`) — with the menu's own glyphs in its rows: a
- * Mate's face, a stop's badge; a change's row is its title and whose it is. `>` hands over to the
+ * Mate's face, a place's dot, a settings section's glyph; a change's row is its title and whose it is. `>` hands over to the
  * palette's commands.
  *
  * `useJumpBoxState` keeps what is typed and which Mate the words are for,
@@ -32,6 +33,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 
 import { CommandPaletteContent } from "../CommandPaletteContent";
@@ -43,6 +45,8 @@ import {
   CommandItem,
   CommandList,
 } from "../ui/command";
+import { SETTINGS_SECTION_ICONS } from "../settings/settingsSectionIcons";
+import { sidebarAccountDestinationIcon } from "../sidebar/SidebarChrome";
 import { Kbd, KbdGroup } from "../ui/kbd";
 import {
   highlightParts,
@@ -55,9 +59,11 @@ import {
   type JumpHit,
   type JumpItem,
   type JumpMate,
+  type JumpPage,
   type JumpStop,
   type SidebarJumpIndex,
 } from "./JumpBox.logic";
+import { findJumpPages } from "./jumpPages";
 import { MateFace } from "./primitives";
 import { EnvDot } from "./SidebarProductionChip";
 
@@ -112,9 +118,16 @@ export function useJumpBoxModel(
   const target =
     targetId === null ? undefined : index.mates.find((mate) => mate.projectId === targetId);
   const newProject = useRoleOffers().newProject;
+  // The team and persona templates are found where the settings nav offers them: in an organization.
+  const withOrganization = useZeropsSessionOptional()?.activeOrganization != null;
   const groups = useMemo(
-    () => (target === undefined ? jumpGroups(index, value, hits, readOnly, newProject) : []),
-    [hits, index, newProject, readOnly, target, value],
+    () =>
+      target === undefined
+        ? jumpGroups(index, value, hits, readOnly, newProject, (text) =>
+            findJumpPages(text, withOrganization),
+          )
+        : [],
+    [hits, index, newProject, readOnly, target, value, withOrganization],
   );
   const items = groups.flatMap((group) => group.items);
   const highlighted = items.find((item) => item.value === highlightedValue) ?? items[0];
@@ -162,6 +175,8 @@ export interface JumpPages {
   readonly openProject: (groupId: string) => void;
   readonly openStop: (stop: JumpStop) => void;
   readonly openChange: (change: JumpChange) => void;
+  /** The app's own page: the overview, a settings section, or one setting scrolled to. */
+  readonly openPage: (page: JumpPage) => void;
   /** Starts a new project, where projects are made. */
   readonly newProject: () => void;
 }
@@ -169,8 +184,9 @@ export interface JumpPages {
 /**
  * What choosing a row does. `@`'s Mate with a conversation becomes the one
  * written to; any other Mate, or words in its conversation, open it. A
- * project, a stop or a change is shown in the menu, which comes out to show
- * it (`showable`), and opens its own page where the menu cannot.
+ * project, a place or a change is shown in the menu, which comes out to show
+ * it (`showable`), and opens its own page where the menu cannot. The app's own
+ * pages open.
  */
 export function chooseJumpItem(
   item: JumpItem,
@@ -202,6 +218,9 @@ export function chooseJumpItem(
       if (showable)
         reveal({ kind: "stop", groupId: item.stop.groupId, projectId: item.stop.projectId });
       else pages.openStop(item.stop);
+      return;
+    case "page":
+      pages.openPage(item.page);
       return;
     case "change":
       if (showable) {
@@ -341,7 +360,7 @@ function JumpFindView({
         ) : null
       }
       inputProps={{
-        placeholder: "Jump to a Mate, project, change or stop. Type @ to write to a Mate",
+        placeholder: "Jump to a Mate, project, place, change or setting. Type @ to write to a Mate",
         "aria-label": "Jump to, or write to a Mate",
         onKeyDown: (event) => {
           const action = jumpKey({
@@ -573,14 +592,30 @@ function JumpRow({ item, match }: { readonly item: JumpItem; readonly match: str
           <EnvDot dot={item.stop.dot} />
         </span>
       );
-      title = <Marked match={match} text={item.stop.title} />;
-      sub = (
+      title = (
         <Marked
           match={match}
-          text={[item.stop.projectName, item.stop.line].filter((part) => part !== "").join(" · ")}
+          text={[item.stop.projectName, item.stop.title].filter((part) => part !== "").join(" · ")}
         />
       );
+      sub = item.stop.line === "" ? "" : <Marked match={match} text={item.stop.line} />;
       break;
+    case "page": {
+      const { page } = item;
+      if (page.glyph.kind === "section") {
+        const Icon = SETTINGS_SECTION_ICONS[page.glyph.section];
+        lead = <Icon className="size-4" />;
+      } else {
+        lead = (
+          <span className="inline-flex [&>svg]:size-4">
+            {sidebarAccountDestinationIcon(page.glyph.id)}
+          </span>
+        );
+      }
+      title = <Marked match={match} text={page.title} />;
+      sub = page.where ?? "";
+      break;
+    }
     case "text":
       lead = (
         <MateFace shape={item.mate.shape} size={20} state={item.mate.face} tint={item.mate.tint} />
