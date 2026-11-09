@@ -6,9 +6,9 @@ import { entry, UMA, WREN } from "./flowTestFixtures";
 
 describe("a group's Mates", () => {
   const VERA = {
-    projectId: "vera-dev",
+    projectId: "vale-dev",
     kind: "mate" as const,
-    name: "Vera",
+    name: "Vale",
     startedAt: 5,
   };
   const pairs = (value: ReturnType<typeof entry>) =>
@@ -45,7 +45,7 @@ describe("a group's Mates", () => {
       value: entry([WREN], { pending: [VERA] }),
       want: [
         ["wren-dev", "wren-dev", "Wren", undefined],
-        [undefined, "vera-dev", "Vera", "coming"],
+        [undefined, "vale-dev", "Vale", "coming"],
       ],
     },
     {

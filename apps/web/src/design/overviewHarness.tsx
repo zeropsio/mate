@@ -292,7 +292,7 @@ const PROJECTS: ReadonlyArray<Project> = [
     ],
     production: { kind: "absent" },
   }),
-  // (b) Needs you: Juno asks, Raya works, Vera is free; merged work waits for production.
+  // (b) Needs you: Juno asks, Raya works, Vale is free; merged work waits for production.
   project({
     id: "playwisely",
     name: "PlayWisely",
@@ -310,13 +310,13 @@ const PROJECTS: ReadonlyArray<Project> = [
           dot: "attention",
         },
       }),
-      mate("vera", "Vera", "violet", { owner: INES, time: "1h" }),
+      mate("vale", "Vale", "violet", { owner: INES, time: "1h" }),
     ],
     production: { kind: "absent" },
     notLive: 4,
     canPutLive: true,
     merged: {
-      by: mate("vera", "Vera", "violet"),
+      by: mate("vale", "Vale", "violet"),
       title: "Share a score with a link",
       at: ago(60),
     },
@@ -332,8 +332,8 @@ const PROJECTS: ReadonlyArray<Project> = [
       },
       // Seven parts on dev pools, one with no public preview: they wrap inside the card.
       {
-        ...working("vera-t", "Vera", "amber", "Tea of the month email", "11m"),
-        flow: partsOf(["api", "edge", "embedder", "geo", "runner", "site", "web"], "vera-tea"),
+        ...working("vale-t", "Vale", "amber", "Tea of the month email", "11m"),
+        flow: partsOf(["api", "edge", "embedder", "geo", "runner", "site", "web"], "vale-tea"),
       },
       {
         ...working("odo", "Odo", "slate", "#42 Prices round wrong in the cart", "12m"),
@@ -343,7 +343,7 @@ const PROJECTS: ReadonlyArray<Project> = [
     ],
     pullRequests: [
       inReview(51, "Gift cards at checkout", "raya-t"),
-      inReview(52, "Tea of the month banner", "vera-t"),
+      inReview(52, "Tea of the month banner", "vale-t"),
     ],
     production: {
       kind: "ready-to-release",
@@ -357,7 +357,7 @@ const PROJECTS: ReadonlyArray<Project> = [
     stages: [stop("tea-stage", "stage", { version: version("main") })],
     notLive: 3,
     since: ago(60 * 24 * 6),
-    merged: { by: mate("vera-t", "Vera", "amber"), title: "Prices per 100 g", at: ago(25) },
+    merged: { by: mate("vale-t", "Vale", "amber"), title: "Prices per 100 g", at: ago(25) },
   }),
   // (e) Many places: production runs six services, three stages each follow their own source.
   project({
@@ -365,7 +365,7 @@ const PROJECTS: ReadonlyArray<Project> = [
     name: "Acme Store",
     mates: [
       { ...JUNO_ASKS, id: "juno-s", view: { ...JUNO_ASKS.view, ask: "Checkout" } },
-      mate("mira-s", "Mira", "amber", { time: "2h" }),
+      mate("toby-s", "Toby", "amber", { time: "2h" }),
       mate("ines-s", "Ines", "olive", { owner: INES, time: "1d" }),
       {
         ...working("odo-s", "Odo", "slate", "#42 Prices round wrong in the cart", "12m"),
@@ -422,7 +422,7 @@ const PROJECTS: ReadonlyArray<Project> = [
     notLive: 2,
     since: ago(60 * 24 * 19),
     merged: {
-      by: mate("mira-s", "Mira", "amber"),
+      by: mate("toby-s", "Toby", "amber"),
       title: "Gift cards at checkout",
       at: ago(60 * 5),
     },
@@ -457,14 +457,14 @@ const PROJECTS: ReadonlyArray<Project> = [
   // its title and its word, no services shown as up, no address doors.
   project({
     id: "larkspur",
-    name: "Flip Studio",
-    mates: [mate("filip", "Filip", "sky", { time: "12m" })],
+    name: "Lark Studio",
+    mates: [mate("fen", "Fen", "sky", { time: "12m" })],
     production: {
       kind: "empty",
-      stop: stop("flip-prod", "production", { state: "empty" }),
+      stop: stop("lark-prod", "production", { state: "empty" }),
       line: "",
     },
-    stages: [stop("flip-stage", "stage", { state: "empty" })],
+    stages: [stop("lark-stage", "stage", { state: "empty" })],
     chip: { label: "prod", state: "empty" },
   }),
   // (h) Production down, and a Mate asks: the most urgent card, first in the grid.
@@ -483,7 +483,7 @@ const PROJECTS: ReadonlyArray<Project> = [
           dot: "attention",
         },
       }),
-      mate("oak", "Oak", "olive", { time: "2d" }),
+      mate("pell", "Pell", "olive", { time: "2d" }),
       mate("pim", "Pim", "sky", { owner: INES, time: "3d" }),
     ],
     production: {

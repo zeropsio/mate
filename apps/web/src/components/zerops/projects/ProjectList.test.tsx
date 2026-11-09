@@ -245,7 +245,7 @@ describe("a row's Mates", () => {
     const at = row.indexOf('data-zerops-surface="mate-coming"');
     const coming = row.slice(row.lastIndexOf("<div", at));
     expect(coming).toContain('data-mate-face-state="waking"');
-    expect(coming).toContain(">Vera<");
+    expect(coming).toContain(">Vale<");
     expect(coming).not.toContain('aria-label="Open ');
   });
 

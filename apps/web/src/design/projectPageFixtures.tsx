@@ -67,11 +67,11 @@ function environment(
 /** Every Mate a page's History names, as the harness's cards draw them. */
 const MATES: Readonly<Record<string, { readonly name: string; readonly tint: MateTintId }>> = {
   "raya-t": { name: "Raya", tint: "olive" },
-  "vera-t": { name: "Vera", tint: "amber" },
+  "vale-t": { name: "Vale", tint: "amber" },
   odo: { name: "Odo", tint: "slate" },
   tess: { name: "Tess", tint: "rose" },
   "juno-s": { name: "Juno", tint: "sky" },
-  "mira-s": { name: "Mira", tint: "amber" },
+  "toby-s": { name: "Toby", tint: "amber" },
   "ines-s": { name: "Ines", tint: "olive" },
   "odo-s": { name: "Odo", tint: "slate" },
   "tess-s": { name: "Tess", tint: "rose" },
@@ -154,12 +154,12 @@ const TEA_HISTORY = recordedHistory(
     ],
     merged: [
       landed(17, "Centre the shop so a cropped demo frame shows it all", "raya-t", 6 * DAY + 15),
-      landed(16, "Hide sold out switch remembered across visits", "vera-t", 6 * DAY + 18),
-      landed(13, "Price per 100 g leads on tea cards", "vera-t", 6 * DAY + 40),
+      landed(16, "Hide sold out switch remembered across visits", "vale-t", 6 * DAY + 18),
+      landed(13, "Price per 100 g leads on tea cards", "vale-t", 6 * DAY + 40),
       landed(11, "Add a Surprise me chip to the tea sommelier", "tess", 6 * DAY + 90),
-      landed(10, "Back to top link in the footer, reading “↑ Top”", "vera-t", 6.6 * DAY),
+      landed(10, "Back to top link in the footer, reading “↑ Top”", "vale-t", 6.6 * DAY),
       landed(7, "Teas in PostgreSQL, a Valkey cache and a tea-house redesign", "raya-t", 6.8 * DAY),
-      landed(5, "In stock and Sold out labels with a Hide sold out switch", "vera-t", 7.2 * DAY),
+      landed(5, "In stock and Sold out labels with a Hide sold out switch", "vale-t", 7.2 * DAY),
       landed(6, "Footer with opening hours and contact email", "tess", 7.4 * DAY),
       landed(4, "Let the tea sommelier answer tea questions from the web", "raya-t", 8.2 * DAY),
     ],
@@ -182,9 +182,9 @@ const ACME_HISTORY = recordedHistory(
     ],
     merged: [
       landed(14, "Prices no longer round down in the cart", "tess-s", 5 * 60),
-      landed(12, "Fix the VAT rate table for Ireland", "mira-s", 21 * 60),
+      landed(12, "Fix the VAT rate table for Ireland", "toby-s", 21 * 60),
       landed(11, "Fix the sold-out badge on mobile", "odo-s", 8.5 * 24 * 60),
-      landed(10, "Gift cards at checkout", "mira-s", 30 * 60),
+      landed(10, "Gift cards at checkout", "toby-s", 30 * 60),
       landed(9, "Czech names for every product", "ines-s", 4 * 24 * 60),
     ],
   },
@@ -376,7 +376,7 @@ const ACME_ENVIRONMENTS = [
 
 /** Who reaches a project, as its card's People draws them. */
 export function ProjectPagePeople() {
-  const people = ["Nova Dev", "Ines Vale", "Mira Holt", "Theo Lind"].map((name, index) => ({
+  const people = ["Nova Dev", "Ines Vale", "Lena Holt", "Theo Lind"].map((name, index) => ({
     key: `cu-${String(index)}`,
     name,
     short: `${name.split(" ")[0] ?? name} ${name.split(" ")[1]?.[0] ?? ""}.`,

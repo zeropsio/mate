@@ -1359,7 +1359,7 @@ describe("a card's latest changes", () => {
       stage: stageOn(6),
       rows: [["Raise the stage's memory", false, "Setup files, not part of a release"]],
     },
-    // Larkspur, 2026-10-28: Core held Filip's zcp's import files for a person, as their merge
+    // Larkspur, 2026-10-28: Core held a Mate's setup files for a person, as their merge
     // would change the stage and production built from them. Its Mate's Review leaves it out; its
     // row says what it changes once its review's files are read (`setupChangeWords`).
     {

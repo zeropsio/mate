@@ -102,9 +102,9 @@ export function entry(
 
 /** A Mate being created, as the group tree carries it and the flow reads it. */
 export const VERA_COMING = {
-  projectId: "vera-dev",
+  projectId: "vale-dev",
   kind: "mate" as const,
-  name: "Vera",
+  name: "Vale",
   startedAt: 5,
 };
 
@@ -119,7 +119,7 @@ export function born(members: ReadonlyArray<Item> = []): ReadonlyArray<ProjectsF
       {
         projectId: VERA_COMING.projectId,
         startedAt: Date.parse("2026-09-24T12:00:00.000Z"),
-        placement: { groupId: "ccc", groupName: "Todo", kind: "mate", displayName: "Vera" },
+        placement: { groupId: "ccc", groupName: "Todo", kind: "mate", displayName: "Vale" },
       },
     ],
   });
