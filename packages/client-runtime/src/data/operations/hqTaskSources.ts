@@ -22,7 +22,6 @@ export type TaskSourceWrite =
   /** The bot token goes to the executor alone; the id and the public key are not secret. */
   | { readonly kind: "discord-connect"; readonly applicationId: string; readonly publicKey: string }
   | { readonly kind: "discord-disconnect" }
-  | { readonly kind: "discord-allow"; readonly userIds: ReadonlyArray<string> }
   | {
       readonly kind: "channel";
       readonly source: "slack" | "discord";
@@ -74,7 +73,6 @@ export function taskSourceWriteSetting(write: TaskSourceWrite): TaskSourceSettin
       return "hqSlack";
     case "discord-connect":
     case "discord-disconnect":
-    case "discord-allow":
       return "hqDiscord";
     case "channel":
     case "channel-stop":

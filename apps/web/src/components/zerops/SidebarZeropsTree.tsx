@@ -313,6 +313,7 @@ import {
   type BadgeSeat,
 } from "./SidebarMateRow.logic";
 import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
+import { environmentTitle } from "./place/place.logic";
 import { useMatePress } from "~/zerops/matePress";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "~/zerops/sidebarJump";
@@ -1437,7 +1438,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             return {
               projectId: stop.projectId,
               groupId: id,
-              title: name,
+              title: environmentTitle("stage", name),
               projectName,
               line: stop.version?.label ?? "",
               dot: own === undefined ? STOP_DOT[stop.state] : chipDot(own),
@@ -1453,7 +1454,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             {
               projectId: productionStop.projectId,
               groupId: id,
-              title: stopName(productionStop),
+              title: environmentTitle("production", stopName(productionStop)),
               projectName,
               line: productionStop.version?.label ?? "",
               dot: chipDot(prodChip),

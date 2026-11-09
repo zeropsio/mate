@@ -26,6 +26,11 @@ export interface ZeropsPublicRoute {
   readonly host: string;
 }
 
+/** Whether an address is the platform's own subdomain (`*.zerops.app`) rather than a domain of the project's. */
+export function isPlatformSubdomain(address: string): boolean {
+  return /\.zerops\.app(?::\d+)?(?:\/|$)/u.test(address.replace(/^https?:\/\//u, ""));
+}
+
 function byServiceThenPort(left: ZeropsPublicRoute, right: ZeropsPublicRoute): number {
   return left.service.localeCompare(right.service, "en") || left.port - right.port;
 }

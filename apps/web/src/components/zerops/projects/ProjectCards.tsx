@@ -1,5 +1,6 @@
 /**
- * The overview's cards: a card per project with Mates, in a grid that wraps.
+ * The overview's cards: a card per project with Mates, side by side in a row that scrolls sideways;
+ * the row fits the window, and a card taller than it scrolls inside.
  *
  * A card carries the project's state and what waits on the viewer, never lists or rare verbs: its
  * name and menu, a line per place, its waits lifted, its Mates (`ProjectCard`).
@@ -8,8 +9,19 @@
  * its waits' verbs are the page's slots (`ZeropsProjectsFlowProps`).
  */
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
-import { PackageIcon, PlusIcon } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { ChevronLeftIcon, ChevronRightIcon, PackageIcon, PlusIcon } from "lucide-react";
+import {
+  createContext,
+  Fragment,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
 import { Link } from "@tanstack/react-router";
@@ -45,21 +57,144 @@ import { Button } from "~/components/ui/button";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
-/**
- * How far past the window's edge a card's detail is read ahead: about one card's height, so the
- * next row down is read before it scrolls into sight.
- */
-const READ_AHEAD_PX = 400;
+/** One card's width and the gap between cards: a step of the back and forward buttons. */
+const CARD_STEP = 380 + 16;
+
+/** The row never shrinks below this, however little window is left under the page's head. */
+const ROW_MIN_PX = 320;
+
+/** Room kept under the row, for the cards' shadow and the window's edge. */
+const ROW_FOOT_PX = 20;
 
 /**
- * The cards: a grid of one width each that wraps — four across at the owner's 1786 px with the menu
- * open, three at 1280, one in a conversation's panel — each as tall as what it holds. The page
- * scrolls down, never sideways (P1: a sideways row showed 3½ of 25 projects).
+ * At most this much of what follows the row in the page (its padding, a note) is kept in sight;
+ * a longer section after it (projects without Mates) is scrolled to, never squeezes the row.
  */
-function CardGrid({ children }: { readonly children: ReactNode }) {
+const BELOW_KEPT_PX = 64;
+
+/**
+ * The row the cards scroll in, which a card watches itself come into sight against: a row that
+ * scrolls sideways is the only reliable root for that (the window missed cards scrolled into sight).
+ */
+const CardRowRoot = createContext<HTMLElement | null>(null);
+
+/** The nearest ancestor that scrolls down: the page's own scroll, or a panel's. */
+function scrollingParent(element: HTMLElement): HTMLElement | null {
+  for (let at = element.parentElement; at !== null; at = at.parentElement) {
+    const overflow = getComputedStyle(at).overflowY;
+    if (overflow === "auto" || overflow === "scroll") return at;
+  }
+  return null;
+}
+
+/**
+ * The row of cards: one width each, side by side; past the window's edge the row scrolls sideways
+ * under a fade, with a round back and forward button on the side there is more. The row is as tall
+ * as the window leaves under the page's head, so reading a card never scrolls the page; a card
+ * taller than the row scrolls inside (`.ov-card-body`).
+ */
+function CardRow({
+  children,
+  contentsKey,
+}: {
+  readonly children: ReactNode;
+  readonly contentsKey: string;
+}) {
+  const row = useRef<HTMLDivElement>(null);
+  const [rowElement, setRowElement] = useState<HTMLDivElement | null>(null);
+  const rowRef = useCallback((element: HTMLDivElement | null) => {
+    row.current = element;
+    setRowElement(element);
+  }, []);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const measure = useCallback(() => {
+    const element = row.current;
+    if (element === null) return;
+    const max = element.scrollWidth - element.clientWidth;
+    const next = { left: element.scrollLeft > 2, right: element.scrollLeft < max - 2 };
+    setEdges((current) =>
+      current.left === next.left && current.right === next.right ? current : next,
+    );
+  }, []);
+  // The row's height: what the scroll's visible height leaves under the row's top, measured in the
+  // scroll's own content so scrolling does not move it.
+  const fit = useCallback(() => {
+    const element = row.current;
+    if (element === null) return;
+    const scroller = scrollingParent(element);
+    const viewTop = scroller === null ? 0 : scroller.getBoundingClientRect().top;
+    const scrolled = scroller === null ? window.scrollY : scroller.scrollTop;
+    const top = element.getBoundingClientRect().top - viewTop + scrolled;
+    const visible = scroller === null ? window.innerHeight : scroller.clientHeight;
+    const content =
+      scroller === null ? document.documentElement.scrollHeight : scroller.scrollHeight;
+    const below = Math.min(BELOW_KEPT_PX, Math.max(0, content - (top + element.offsetHeight)));
+    const height = Math.max(ROW_MIN_PX, Math.floor(visible - top - Math.max(below, ROW_FOOT_PX)));
+    element.style.setProperty("--ov-row-height", `${String(height)}px`);
+  }, []);
+  useLayoutEffect(() => {
+    const element = row.current;
+    // A different set starts at its first card; scroll snap must not retain a filtered card.
+    if (element === null) return;
+    element.scrollLeft = 0;
+    measure();
+    fit();
+    const scroller = scrollingParent(element);
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => {
+            measure();
+            fit();
+          });
+    observer?.observe(element);
+    if (scroller !== null) observer?.observe(scroller);
+    if (element.parentElement !== null) observer?.observe(element.parentElement);
+    window.addEventListener("resize", fit);
+    element.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", fit);
+      element.removeEventListener("scroll", measure);
+    };
+  }, [measure, fit, contentsKey]);
+  const step = (direction: -1 | 1) => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    row.current?.scrollBy({ left: direction * CARD_STEP, behavior: reduced ? "auto" : "smooth" });
+  };
   return (
-    <div aria-label="Projects" className="ov-grid" data-zerops-surface="project-cards" role="list">
-      {children}
+    <div
+      className="ov-rail"
+      data-can-left={edges.left ? "true" : undefined}
+      data-can-right={edges.right ? "true" : undefined}
+    >
+      <div
+        aria-label="Projects"
+        className="ov-row"
+        data-zerops-surface="project-cards"
+        ref={rowRef}
+        role="list"
+      >
+        <CardRowRoot value={rowElement}>{children}</CardRowRoot>
+      </div>
+      <button
+        aria-label="Back"
+        className="ov-nav ov-nav-left"
+        onClick={() => step(-1)}
+        tabIndex={-1}
+        type="button"
+      >
+        <ChevronLeftIcon aria-hidden="true" className="size-4" />
+      </button>
+      <button
+        aria-label="More projects"
+        className="ov-nav ov-nav-right"
+        onClick={() => step(1)}
+        tabIndex={-1}
+        type="button"
+      >
+        <ChevronRightIcon aria-hidden="true" className="size-4" />
+      </button>
     </div>
   );
 }
@@ -85,6 +220,7 @@ function useDetailWhileSeen(groupId: string) {
   // The element the card stands as — its stand-in, then itself: watched whichever it is.
   const [element, ref] = useState<HTMLElement | null>(null);
   const [seen, setSeen] = useState(false);
+  const root = useContext(CardRowRoot);
   const [waitedOut, setWaitedOut] = useState(false);
   const [painted, setPainted] = useState(false);
   const orgId = useAccountOrgId();
@@ -113,16 +249,18 @@ function useDetailWhileSeen(groupId: string) {
       // A busy page gets several of its reports in one call, oldest first: the last says where it
       // stands now. Read first, a card mounted out of sight under the overview's wait stood in
       // for good once it came into sight (State Smoke, 2026-10-27).
+      // Once seen, a card keeps its detail while it is on the page: scrolling it out of sight and
+      // back must not drop it to its stand-in and read it again.
       (records) => {
-        setSeen(records.at(-1)?.isIntersecting === true);
+        if (records.at(-1)?.isIntersecting === true) setSeen(true);
       },
-      { rootMargin: `${String(READ_AHEAD_PX)}px 0px` },
+      { root, rootMargin: `0px ${String(CARD_STEP)}px` },
     );
     observer.observe(element);
     return () => {
       observer.disconnect();
     };
-  }, [element]);
+  }, [element, root]);
   useHqAppDetailHold(seen ? [groupId] : NO_GROUPS);
   return { ref, answered };
 }
@@ -576,33 +714,67 @@ function ProjectCard<T>({
           <QuietPlace>No stage</QuietPlace>
         ) : null}
       </div>
-      <CardWaits groupId={group.groupId} project={group.name} waits={waits} />
-      <CardMates
-        addWhy={addMate?.why ?? null}
-        entry={entry}
-        moreLinked={waits.length <= CARD_WAITS}
-        onAdd={addMate?.onAdd}
-        props={props}
-      />
-      {putLive === undefined ? null : (
-        <div className="ov-card-foot" data-zerops-place-setup="production">
-          <Button
-            disabled={putLive === "busy"}
-            onClick={putLive === "busy" ? undefined : putLive}
-            size="sm"
-            variant="secondary"
-          >
-            {environmentDoorLabel("production", "production")}
-          </Button>
-          {putLive === "busy" ? (
-            <p className="ov-card-note" role="status">
-              {PUT_LIVE_AFTER_CREATION}
-            </p>
-          ) : null}
-        </div>
-      )}
-      <StopReads entry={entry} />
+      <CardBody>
+        <CardWaits groupId={group.groupId} project={group.name} waits={waits} />
+        <CardMates
+          addWhy={addMate?.why ?? null}
+          entry={entry}
+          moreLinked={waits.length <= CARD_WAITS}
+          onAdd={addMate?.onAdd}
+          props={props}
+        />
+        {putLive === undefined ? null : (
+          <div className="ov-card-foot" data-zerops-place-setup="production">
+            <Button
+              disabled={putLive === "busy"}
+              onClick={putLive === "busy" ? undefined : putLive}
+              size="sm"
+              variant="secondary"
+            >
+              {environmentDoorLabel("production", "production")}
+            </Button>
+            {putLive === "busy" ? (
+              <p className="ov-card-note" role="status">
+                {PUT_LIVE_AFTER_CREATION}
+              </p>
+            ) : null}
+          </div>
+        )}
+        <StopReads entry={entry} />
+      </CardBody>
     </article>
+  );
+}
+
+/**
+ * What a card holds under its name and places. It scrolls inside the card once the card meets the
+ * row's height, its bottom edge fading while more lies below (`data-more`) so a cut row reads as
+ * one that continues.
+ */
+function CardBody({ children }: { readonly children: ReactNode }) {
+  const body = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const element = body.current;
+    if (element === null) return;
+    const mark = () => {
+      const more = element.scrollTop + element.clientHeight < element.scrollHeight - 1;
+      if (more) element.dataset.more = "";
+      else delete element.dataset.more;
+    };
+    mark();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(mark);
+    observer?.observe(element);
+    for (const child of element.children) observer?.observe(child);
+    element.addEventListener("scroll", mark, { passive: true });
+    return () => {
+      observer?.disconnect();
+      element.removeEventListener("scroll", mark);
+    };
+  }, []);
+  return (
+    <div className="ov-card-body" ref={body}>
+      {children}
+    </div>
   );
 }
 
@@ -644,7 +816,9 @@ export function ProjectCards<T>({
       scrolledTo.current = focusGroup;
       setPulsed(focusGroup);
     } else if (!following.current) return;
-    document.getElementById(cardId(focusGroup))?.scrollIntoView({ block: "nearest" });
+    document
+      .getElementById(cardId(focusGroup))
+      ?.scrollIntoView({ block: "nearest", inline: "start" });
   }, [focusGroup, shown, orderKey]);
   // What the next load's stand-in draws (`OverviewCardsStandIn`).
   useEffect(() => {
@@ -652,7 +826,7 @@ export function ProjectCards<T>({
   }, [groups.length]);
   if (groups.length === 0) return null;
   return (
-    <CardGrid>
+    <CardRow contentsKey={orderKey}>
       {groups.map((entry) => (
         <ProjectCard
           entry={entry}
@@ -661,7 +835,7 @@ export function ProjectCards<T>({
           props={props}
         />
       ))}
-    </CardGrid>
+    </CardRow>
   );
 }
 

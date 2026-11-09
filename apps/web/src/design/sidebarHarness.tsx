@@ -1623,6 +1623,9 @@ function HarnessJumpBox({
     openChange: (change: { readonly key: string }) => {
       jumpActions.push(`page ${change.key}`);
     },
+    openPage: (page: { readonly key: string }) => {
+      jumpActions.push(`page ${page.key}`);
+    },
     newProject: () => {
       jumpActions.push("new project");
     },

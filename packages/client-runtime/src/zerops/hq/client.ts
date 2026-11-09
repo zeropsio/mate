@@ -69,7 +69,6 @@ import {
   type HqAppTask,
   type HqAiKeyRequest,
   type HqChannelRequest,
-  type HqDiscordAllowRequest,
   type HqDiscordConnectRequest,
   type HqIntakeRequest,
   type HqScheduleRequest,
@@ -530,8 +529,6 @@ export interface HqApi {
   /** Connects the organization's Discord application; its bot token is sealed. */
   readonly connectDiscord?: (request: HqDiscordConnectRequest) => Promise<HqDiscordView>;
   readonly disconnectDiscord?: () => Promise<void>;
-  /** The Discord users allowed to start and steer tasks (`PUT /api/org/discord/allow`). */
-  readonly allowDiscord?: (request: HqDiscordAllowRequest) => Promise<HqDiscordView>;
   /**
    * The channel an application takes tasks from on Slack or Discord (`GET
    * /api/apps/:appId/{slack,discord}`), `null` for none.
@@ -1826,17 +1823,6 @@ export function makeHqApi(input: {
         true,
       );
     },
-    allowDiscord: async (request) =>
-      readDiscord(
-        await authorized(
-          "/api/org/discord/allow",
-          {
-            method: "PUT",
-            body: JSON.stringify(await withAccess(request satisfies HqDiscordAllowRequest)),
-          },
-          true,
-        ),
-      ),
     appChannel: async (appId, source) =>
       readAppChannel(await authorized(`/api/apps/${encodeURIComponent(appId)}/${source}`)),
     setAppChannel: async (appId, source, request) =>

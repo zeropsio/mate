@@ -75,7 +75,7 @@ import {
   type ChangeState,
   type FlowPullRequest,
 } from "./projectFlow.ts";
-import type { ZeropsPublicRoute } from "./publicRoutes.ts";
+import { isPlatformSubdomain, type ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
 import type { MatePart } from "./mateParts.ts";
@@ -735,12 +735,14 @@ export interface GroupFlowAddress {
 export function placeAddresses(
   routes: ReadonlyArray<Pick<ZeropsPublicRoute, "service" | "url">>,
 ): ReadonlyArray<GroupFlowAddress> {
-  const seen = new Set<string>();
-  const addresses: GroupFlowAddress[] = [];
+  // A service's own domain is its door over the platform's subdomain, which its routes list first:
+  // people reach a production at the domain its owner gave it.
+  const doorOf = new Map<string, GroupFlowAddress>();
   for (const route of routes) {
-    if (seen.has(route.service)) continue;
-    seen.add(route.service);
-    addresses.push({ service: route.service, url: route.url });
+    const held = doorOf.get(route.service);
+    if (held !== undefined && !(isPlatformSubdomain(held.url) && !isPlatformSubdomain(route.url)))
+      continue;
+    doorOf.set(route.service, { service: route.service, url: route.url });
   }
-  return addresses;
+  return [...doorOf.values()];
 }
