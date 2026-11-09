@@ -243,15 +243,18 @@ function GithubLine({
           ? "Reconnect"
           : undefined;
   return (
-    <p className="min-w-0 truncate text-xs text-muted-foreground">
-      {name === undefined ? "GitHub" : `${name} on GitHub`}: {state.line}
+    // The words give way in a narrow panel; the verb that fixes them never does.
+    <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
+      <span className="min-w-0 truncate">
+        {name === undefined ? "GitHub" : `${name} on GitHub`}: {state.line}
+      </span>
       {verb === undefined ? null : (
-        <>
-          {" · "}
+        <span className="flex shrink-0 items-baseline gap-1">
+          <span aria-hidden="true">·</span>
           <InlineButton data-zerops-surface="git-github-connect" onClick={onConnect}>
             {verb}
           </InlineButton>
-        </>
+        </span>
       )}
     </p>
   );
