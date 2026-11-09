@@ -27,7 +27,7 @@ import type { ProjectPerson } from "~/components/zerops/projects/projectPeople.l
 import { joinSpend } from "~/components/zerops/projects/projectSpend.logic";
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
 import { ZeropsGroupPane } from "~/components/zerops/ProjectPage";
-import { ProjectPage as ProjectCardPage } from "~/components/zerops/projects/ProjectCards";
+import { ProjectPageBody } from "~/components/zerops/project/ProjectPageBody";
 import type { ProjectPageSlot } from "~/components/zerops/projects/ZeropsProjectsFlow";
 import { RepoRowsView } from "~/components/zerops/github/GithubRepoRows";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
@@ -502,13 +502,17 @@ export function harnessProjectPage(
   onAddMate: () => void,
 ): ProjectPageSlot["render"] {
   return ({ entry, props, addMateWhy }) => (
-    <ProjectCardPage
+    <ProjectPageBody
       addMateWhy={addMateWhy}
-      aside={<ProjectPageAside groupId={groupId} />}
       entry={entry}
       onAddMate={onAddMate}
-      people={<ProjectPagePeople />}
       props={props}
+      side={
+        <>
+          <ProjectPageAside groupId={groupId} />
+          <ProjectPagePeople />
+        </>
+      }
     />
   );
 }

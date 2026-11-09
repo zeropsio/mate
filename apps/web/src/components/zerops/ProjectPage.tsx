@@ -35,7 +35,7 @@ import { GitMirrorDialog } from "./GitMirrorDialog";
 import { ProjectRepositories } from "./github/GithubRepoRows";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { ProjectPeople } from "./projects/ProjectPeople";
-import { ProjectPage as ProjectCardPage } from "./projects/ProjectCards";
+import { ProjectPageBody } from "./project/ProjectPageBody";
 import type { ProjectPageSlot } from "./projects/ZeropsProjectsFlow";
 import { ProjectCardStandIn } from "./projects/OverviewStandIn";
 import { ProjectPageSpend } from "./projects/ProjectSpend";
@@ -95,15 +95,19 @@ export function ZeropsGroupDetailPage({
     (): ProjectPageSlot => ({
       groupId,
       render: ({ entry, props, addMateWhy }) => (
-        <ProjectCardPage
+        <ProjectPageBody
           addMateWhy={addMateWhy}
-          aside={<ZeropsGroupAside groupId={groupId} />}
           entry={entry}
           onAddMate={() => {
             addMate(groupId);
           }}
-          people={<ProjectPeople groupId={groupId} />}
           props={props}
+          side={
+            <>
+              <ZeropsGroupAside groupId={groupId} />
+              <ProjectPeople groupId={groupId} />
+            </>
+          }
         />
       ),
       unread: (undrawn: boolean) => <UnreadGroupDetail groupId={groupId} undrawn={undrawn} />,
