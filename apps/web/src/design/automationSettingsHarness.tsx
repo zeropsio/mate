@@ -16,7 +16,6 @@
  */
 import type { OrgAiKeysRead, TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqGithubView } from "@t3tools/shared/hqGithub";
-import type { HqApplicationOffers } from "@t3tools/shared/hqOffers";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import type { HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import { StrictMode, useState, type ReactNode } from "react";
@@ -33,7 +32,6 @@ import {
   SlackSettingsView,
   TaskLimitsView,
 } from "~/components/settings/TaskSourcesSettings";
-import { GitRemoteSettings, type GitMirrorApp } from "~/components/zerops/GitRemoteSettings";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
@@ -334,268 +332,6 @@ function Automation({
   );
 }
 
-const REMOTE = {
-  url: "https://github.com/acme/tea-shop.git",
-  repositoryId: "7",
-  keptAt: "2026-10-17T09:00:00Z",
-  keptBy: "Ales",
-  expiresAt: "2027-10-17T09:00:00Z",
-  invalidSince: null,
-};
-const APP = {
-  kind: "connected",
-  name: "Acme Mate",
-  repositories: ["acme/api", "acme/tea-shop", "acme/web"],
-  installUrl: ACME.installUrl,
-  installTrip: true,
-  appId: 123456,
-} satisfies GitMirrorApp;
-/** HQ's application offers to an Owner or Admin, as its navigation streams them. */
-const OFFERS = {
-  add_mate: { allow: true },
-  structure: { allow: true },
-  release: { allow: true },
-  add_git_environment: { allow: true },
-} as const satisfies HqApplicationOffers;
-/** And to a member who is neither. */
-const MEMBER_OFFERS = {
-  add_mate: { allow: true },
-  structure: { allow: false, reason: "not_structure_writer" },
-  release: { allow: false, reason: "not_releaser" },
-  add_git_environment: { allow: false, reason: "not_structure_writer" },
-} as const satisfies HqApplicationOffers;
-const ACTIONS = {
-  connect: async () => ({ ok: false as const, reason: "Fixture." }),
-  replaceToken: async () => ({ ok: false as const, reason: "Fixture." }),
-  disconnect: async () => {},
-  viaApp: async () => {},
-  unfollow: async () => {},
-};
-const GIT_ENVIRONMENTS = [
-  { name: "tea-shop-production", target: { kind: "git" } },
-  { name: "tea-shop-stage", target: { kind: "git" } },
-];
-const repo = (name: string, remote: unknown, follows?: string) =>
-  ({
-    name,
-    mainHead: null,
-    updatedAt: null,
-    remote,
-    ...(follows === undefined ? {} : { follows }),
-  }) as never;
-
-/** The dialog's panel, drawn in place: the popup's width and padding, never its portal. */
-function DialogFrame({
-  title,
-  children,
-}: {
-  readonly title: string;
-  readonly children: ReactNode;
-}) {
-  return (
-    <section className="w-[32rem] rounded-2xl border border-border bg-popover p-6 shadow-lg">
-      <h2 className="text-base font-semibold">Mirror code to GitHub or GitLab</h2>
-      <p className="text-sm text-muted-foreground">
-        Each repository of Tea Shop pushes what lands on its main to a repository you own.
-      </p>
-      <p className="mt-1 text-xs text-muted-foreground uppercase">{title}</p>
-      <div className="mt-3">{children}</div>
-    </section>
-  );
-}
-
-function Dialogs() {
-  return (
-    <div className="flex min-h-screen flex-wrap content-start gap-6 bg-background p-8 text-foreground">
-      <DialogFrame title="App connected, not mirrored">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={APP}
-          admin
-          onInstall={nothing}
-          onOpenAutomation={nothing}
-          repos={[repo("appdev", null)]}
-        />
-      </DialogFrame>
-      <DialogFrame title="App connected, the person's account waits for an OK">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={{
-            ...APP,
-            waiting: [{ account: "lukas-dev", repositories: ["lukas-dev/tea-shop"] }],
-          }}
-          admin
-          onInstall={nothing}
-          onOpenAutomation={nothing}
-          repos={[repo("appdev", null)]}
-        />
-      </DialogFrame>
-      <DialogFrame title="App connected, read by a member">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={MEMBER_OFFERS}
-          github={APP}
-          repos={[repo("appdev", null)]}
-        />
-      </DialogFrame>
-      <DialogFrame title="No app, read by a member">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={MEMBER_OFFERS}
-          github={{ kind: "none" }}
-          onOpenAutomation={nothing}
-          repos={[repo("appdev", null)]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Followed, Mate keeps the code">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={APP}
-          repos={[repo("appdev", null, REMOTE.url)]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Followed, read by a member">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={MEMBER_OFFERS}
-          github={APP}
-          repos={[repo("appdev", null, REMOTE.url)]}
-        />
-      </DialogFrame>
-      <DialogFrame title="No app, not mirrored">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={{ kind: "none" }}
-          onOpenAutomation={nothing}
-          repos={[repo("appdev", null)]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Mirrored through the app">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={APP}
-          repos={[repo("appdev", { ...REMOTE, via: "app", expiresAt: null })]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Mirrored with a token, app connected">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={APP}
-          repos={[repo("appdev", { ...REMOTE, via: "token" })]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Mirrored with a token, Git environments use it">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          environments={GIT_ENVIRONMENTS}
-          github={APP}
-          repos={[repo("appdev", { ...REMOTE, via: "token" })]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Mirrored through the app, Git environments use it">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          environments={GIT_ENVIRONMENTS}
-          github={APP}
-          repos={[repo("appdev", { ...REMOTE, via: "app", governance: "no_ruleset" })]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Main protected">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={APP}
-          repos={[repo("appdev", { ...REMOTE, via: "app", governance: "governed" })]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Main not protected">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={APP}
-          repos={[repo("appdev", { ...REMOTE, via: "app", governance: "no_ruleset" })]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Main not protected — permissions not approved">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={APP}
-          repos={[repo("appdev", { ...REMOTE, via: "app", governance: "permission_not_approved" })]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Diverged">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={APP}
-          repos={[repo("appdev", { ...REMOTE, via: "app", divergedSince: "2026-10-16T12:00:00Z" })]}
-        />
-      </DialogFrame>
-      <DialogFrame title="Token refused">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={APP}
-          repos={[
-            repo("appdev", { ...REMOTE, via: "token", invalidSince: "2026-10-15T08:00:00Z" }),
-          ]}
-        />
-      </DialogFrame>
-      <DialogFrame title="App gone">
-        <GitRemoteSettings
-          actions={ACTIONS}
-          appId="tea-shop"
-          appName="Tea Shop"
-          can={OFFERS}
-          github={{ kind: "none" }}
-          repos={[repo("appdev", { ...REMOTE, via: "app" })]}
-        />
-      </DialogFrame>
-    </div>
-  );
-}
-
 document.documentElement.classList.toggle("dark", appearance === "dark");
 applyThemePalette(ZEROPS_THEME_ID, appearance);
 
@@ -603,35 +339,28 @@ const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
     <StrictMode>
-      {view === "dialog" ? (
-        <Dialogs />
-      ) : (
-        <Automation
-          admin={!view.endsWith("member")}
-          checking={view === "checking"}
-          open={view === "open" || view === "add"}
-          github={
-            view === "none" || view === "open"
-              ? known({ apps: [] })
-              : view === "failed"
-                ? { state: "failed", words: "HQ isn't answering right now." }
-                : view === "requested"
-                  ? known({ apps: [{ ...ACME, installations: [] }] })
-                  : view === "older"
-                    ? { state: "unsupported" }
-                    : view === "two" ||
-                        view === "remove" ||
-                        view === "add" ||
-                        view === "many-member"
-                      ? known(TWO)
-                      : view === "unsealed" || view === "unsealed-member"
-                        ? known({ apps: [UNSEALED] })
-                        : view === "private"
-                          ? known({ apps: [{ ...ACME, public: false }] })
-                          : known(ONE)
-          }
-        />
-      )}
+      <Automation
+        admin={!view.endsWith("member")}
+        checking={view === "checking"}
+        open={view === "open" || view === "add"}
+        github={
+          view === "none" || view === "open"
+            ? known({ apps: [] })
+            : view === "failed"
+              ? { state: "failed", words: "HQ isn't answering right now." }
+              : view === "requested"
+                ? known({ apps: [{ ...ACME, installations: [] }] })
+                : view === "older"
+                  ? { state: "unsupported" }
+                  : view === "two" || view === "remove" || view === "add" || view === "many-member"
+                    ? known(TWO)
+                    : view === "unsealed" || view === "unsealed-member"
+                      ? known({ apps: [UNSEALED] })
+                      : view === "private"
+                        ? known({ apps: [{ ...ACME, public: false }] })
+                        : known(ONE)
+        }
+      />
     </StrictMode>,
   );
 }

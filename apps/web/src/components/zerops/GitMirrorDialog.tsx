@@ -1,17 +1,16 @@
 /**
- * *Mirror code to GitHub or GitLab…*, from a project's ···: every repository its Mates ship code to,
- * each mirrored through the organization's GitHub app or with a token, its token replaced, its
- * address reviewed or disconnected, as HQ offers it (`GitRemoteSettings`). The page's column says
- * only the remotes that are connected.
+ * *Connect <repo> to GitHub*: the picker for one code repository, from its row on the project
+ * page, the overview card's ··· or the way back from GitHub's install page. Opened for a project
+ * with several code repositories and none named, it asks which one first. Upkeep — Disconnect,
+ * Replace token, Delete from Mate — is the row's, never the dialog's.
  */
-import { useNavigate, useRouter } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import { useMemo, useState } from "react";
 
 import { useProjectFlows } from "~/zerops/projectFlows";
-import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
-import { useGitMirrorApp } from "~/zerops/useGitMirrorApp";
-import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
+import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
+import { useNowMs } from "~/zerops/useNowMs";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 import {
   Dialog,
@@ -21,36 +20,30 @@ import {
   DialogPopup,
   DialogTitle,
 } from "../ui/dialog";
-import { GitRemoteSettings } from "./GitRemoteSettings";
+import { Row } from "../ui/row";
+import { connectLeadLine, repoState } from "./gitMirror.logic";
+import { GithubConnectPicker } from "./github/GithubConnectPicker";
 
 export function GitMirrorDialog({
   appId,
   appName,
+  repo: named,
   onClose,
 }: {
   readonly appId: string;
   readonly appName: string;
+  /** The code repository; absent: the project's only one, else asked first. */
+  readonly repo?: string | undefined;
   readonly onClose: () => void;
 }) {
-  const git = useGitTargetOperations(appId);
-  // The application's repositories and environments, read while the dialog is open.
+  // The application's repositories, read while the dialog is open.
   const flow = useProjectFlows(useMemo(() => [appId], [appId])).flows.get(appId);
-  // The organization's GitHub app, read while the dialog is open: its repositories need no token.
-  const mirrorApp = useGitMirrorApp();
-  const github = mirrorApp.app;
-  const admin = roleAtLeast(useZeropsSession().activeOrganization?.roleCode, "ADMIN");
-  const navigate = useNavigate();
-  const router = useRouter();
-  // Back from GitHub's install page, the project's page opens this dialog again (`?mirror=`).
-  const returnTo = () =>
-    new URL(
-      router.buildLocation({
-        to: "/group/$groupId/flow",
-        params: { groupId: appId },
-        search: { mirror: appId },
-      }).href,
-      window.location.origin,
-    ).toString();
+  const code = (flow?.codeRepos ?? flow?.repos)?.filter((entry) => entry.name !== RECIPE_REPO);
+  const [chosen, setChosen] = useState<string | undefined>(named);
+  const repo = chosen ?? (code?.length === 1 ? code[0]?.name : undefined);
+  const mirror = useGitMirrorApps(true);
+  const orgName = useZeropsSessionOptional()?.activeOrganization?.name;
+  const now = useNowMs();
   return (
     <Dialog
       onOpenChange={(open) => {
@@ -60,30 +53,56 @@ export function GitMirrorDialog({
     >
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle>Mirror code to GitHub or GitLab</DialogTitle>
+          <DialogTitle>
+            {repo === undefined ? `Connect ${appName} to GitHub` : `Connect ${repo} to GitHub`}
+          </DialogTitle>
           <DialogDescription>
-            Each repository of {appName} pushes what lands on its main to a repository you own.
+            {repo === undefined
+              ? "Each code repository connects on its own. Which one goes to GitHub?"
+              : connectLeadLine(repo)}
           </DialogDescription>
         </DialogHeader>
-        <DialogPanel>
-          <GitRemoteSettings
-            actions={git.actions}
-            appId={appId}
-            appName={appName}
-            can={git.can}
-            github={github}
-            admin={admin}
-            onInstall={() => mirrorApp.install(returnTo())}
-            onOpenAutomation={() => {
-              onClose();
-              void navigate({ to: "/settings/automation" });
-            }}
-            // Unread, the repositories are said to be read and no environment counts yet.
-            {...(flow === undefined ? {} : { environments: flow.environments })}
-            live={git.live}
-            repos={flow?.codeRepos ?? flow?.repos}
+        {repo === undefined || mirror.apps === null ? (
+          <DialogPanel>
+            <div className="grid min-h-72 content-start gap-1">
+              {code === undefined || (repo !== undefined && mirror.apps === null) ? (
+                <p className="text-sm text-muted-foreground">Reading repositories…</p>
+              ) : code.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No code repository yet.</p>
+              ) : (
+                code.map((entry) => {
+                  const state = repoState(entry, {
+                    apps: mirror.apps?.kind === "ready" ? mirror.apps : null,
+                    orgName,
+                    now,
+                  });
+                  return (
+                    <Row
+                      key={entry.name}
+                      line={
+                        state.destination === null
+                          ? state.line
+                          : `${state.destination.label} · ${state.line}`
+                      }
+                      onClick={() => setChosen(entry.name)}
+                      pressable
+                      render={<button type="button" />}
+                      size="sm"
+                      title={<span className="font-mono">{entry.name}</span>}
+                    />
+                  );
+                })
+              )}
+            </div>
+          </DialogPanel>
+        ) : (
+          <GithubConnectPicker
+            apps={mirror.apps}
+            onConnected={onClose}
+            project={appId}
+            repo={repo}
           />
-        </DialogPanel>
+        )}
       </DialogPopup>
     </Dialog>
   );

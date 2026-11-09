@@ -183,7 +183,7 @@ const slotsOf = (environments: ReadonlyArray<EnvironmentRow>) =>
 function render(
   stops: Pick<
     React.ComponentProps<typeof ZeropsGroupPane>,
-    "environments" | "withheldNotice" | "firstDeployOf" | "repos" | "onMirror"
+    "environments" | "withheldNotice" | "firstDeployOf" | "repos"
   > & { readonly slots?: React.ComponentProps<typeof ZeropsGroupPane>["slots"] } = {
     environments: [environment("stage", "stage"), environment("prod", "production", "production")],
   },
@@ -291,49 +291,6 @@ describe("runtime without HQ detail", () => {
 });
 
 describe("ZeropsGroupPane", () => {
-  it("says nothing of repositories until one mirrors somewhere, then names where", () => {
-    const environments = [environment("stage", "stage")];
-    const repo = (name: string, url: string | null) => ({
-      name,
-      mainHead: null,
-      updatedAt: "2026-10-13T10:00:00Z",
-      remote:
-        url === null
-          ? null
-          : {
-              url,
-              repositoryId: "1",
-              keptAt: "2026-10-13T10:00:00Z",
-              keptBy: "Zerops custodian",
-              expiresAt: null,
-              invalidSince: null,
-            },
-    });
-    expect(render({ environments, repos: [repo("mailpit", null)] })).not.toContain("Repositories");
-    const markup = render({
-      environments,
-      repos: [repo("mailpit", null), repo("medusadev", "https://github.com/acme/medusa.git")],
-    });
-    expect(markup).toContain("Repositories");
-    expect(markup).toContain("medusadev → github.com/acme/medusa");
-    expect(markup).not.toContain("mailpit");
-  });
-
-  it("offers mirroring a project's code from its page once it has a repository", () => {
-    const environments = [environment("stage", "stage")];
-    const mailpit = {
-      name: "mailpit",
-      mainHead: null,
-      updatedAt: "2026-10-13T10:00:00Z",
-      remote: null,
-    };
-    const onMirror = () => undefined;
-    expect(render({ environments, repos: [], onMirror })).not.toContain("Mirror code");
-    const markup = render({ environments, repos: [mailpit], onMirror });
-    expect(markup).toContain("Repositories");
-    expect(markup).toContain("Mirror code to GitHub or GitLab…");
-  });
-
   it("draws every line's content", () => {
     const markup = render();
 

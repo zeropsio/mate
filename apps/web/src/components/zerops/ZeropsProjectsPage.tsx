@@ -2565,12 +2565,12 @@ export function ZeropsProjectsContent({
                 finishing.finish(entry);
               },
             })),
-          // Where its code mirrors to: each repository's remote, connected or changed in a dialog.
+          // Where its code goes on GitHub: one code repository's connection, chosen in a dialog.
           ...(!groupIsEmpty(group)
             ? [
                 {
                   id: "mirror-code",
-                  label: "Mirror code to GitHub or GitLab…",
+                  label: "Connect to GitHub…",
                   onSelect: () => {
                     setRowDialog({ kind: "mirror-code", group });
                   },

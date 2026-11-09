@@ -183,15 +183,20 @@ export const newRepositoryUrl = (account: string, name: string) =>
 export function explainerWords(
   app: GitMirrorAppEntry,
   nameOf: (userId: string) => string | undefined,
+  viewerId: string | null,
 ): { readonly install: string; readonly about: string } {
   const owner = app.ownerType === "User" ? `${app.owner}, a personal account` : app.owner;
-  const setUp =
+  const by =
     app.setUpBy === null
-      ? "waits for an Owner or Admin to confirm it"
-      : `was set up by ${nameOf(app.setUpBy) ?? "someone in the organization"}`;
+      ? null
+      : app.setUpBy === viewerId
+        ? "you"
+        : (nameOf(app.setUpBy) ?? "someone in the organization");
+  const setUp = by === null ? "waits for an Owner or Admin to confirm it" : `was set up by ${by}`;
   return {
     install: `You'll install ${app.name} on the account you pick.`,
-    about: `${app.name} is owned by ${owner} on GitHub and ${setUp}.`,
+    // A name ending in its initial's period ends the sentence too.
+    about: `${app.name} is owned by ${owner} on GitHub and ${setUp}`.replace(/\.?$/u, "."),
   };
 }
 
@@ -262,23 +267,43 @@ export function rememberLeaving(project: string, repo: string, apps: GitMirrorAp
   });
 }
 
-/** Notes the installations an install trip carried back in its address (`had=`). */
-export function rememberReturn(
+/** The address parameter an install trip carries out and back: `<project>|<repo>|<installation ids>`. */
+export const SEEN_PARAM = "connect-seen";
+
+/** `returnTo` carrying the installations there now, so what the trip adds reads as new on return. */
+export function returnWithSeen(
+  returnTo: string,
   project: string,
   repo: string,
-  installations: ReadonlyArray<number>,
-): void {
-  seen.set(seenKey(project, repo), { installations: new Set(installations), names: null });
+  apps: GitMirrorApps | null,
+): string {
+  const url = new URL(returnTo, window.location.origin);
+  const ids = apps === null || apps.kind !== "ready" ? [] : apps.installations;
+  url.searchParams.set(
+    SEEN_PARAM,
+    [project, repo, ids.map((each) => String(each.installationId)).join(",")].join("|"),
+  );
+  return url.toString();
+}
+
+/** Notes the installations an install trip carried back (`SEEN_PARAM`); anything else is ignored. */
+export function rememberSeen(value: string | null | undefined): void {
+  const [project, repo, ids, ...rest] = (value ?? "").split("|");
+  if (project === undefined || repo === undefined || ids === undefined || rest.length > 0) return;
+  if (project === "" || repo === "") return;
+  seen.set(seenKey(project, repo), {
+    installations: new Set(
+      ids
+        .split(",")
+        .map(Number)
+        .filter((id) => Number.isSafeInteger(id) && id > 0),
+    ),
+    names: null,
+  });
 }
 
 export const seenBefore = (project: string, repo: string): SeenBefore | null =>
   seen.get(seenKey(project, repo)) ?? null;
-
-/** The installation ids an install trip carries out and back, so what it adds reads as new. */
-export const installationsNow = (apps: GitMirrorApps | null): ReadonlyArray<number> =>
-  apps === null || apps.kind !== "ready"
-    ? []
-    : apps.installations.map((each) => each.installationId);
 
 /** Repository names (lowercased) in `apps` the person had not seen before leaving. */
 export function freshNames(
