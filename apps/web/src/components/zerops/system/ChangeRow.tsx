@@ -23,14 +23,17 @@ const CUT_TEXT_DELAY_MS = 500;
 /**
  * A line of text cut at its box's end, as a card's rows are: the whole of it in a tooltip while it
  * is pointed at, only where it was cut — the menu's change rows read theirs the same way. The
- * tooltip is made only then: a card's rows hold no tooltip of their own.
+ * tooltip is made only then: a card's rows hold no tooltip of their own. `children`: the line as
+ * it is drawn where its words carry tones or marks; the tooltip says `text`.
  */
 export function CutText({
   className,
   text,
+  children,
 }: {
   readonly className: string;
   readonly text: string;
+  readonly children?: ReactNode;
 }) {
   const [shown, setShown] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -49,7 +52,7 @@ export function CutText({
       }}
     />
   );
-  if (!shown) return <span {...line.props}>{text}</span>;
+  if (!shown) return <span {...line.props}>{children ?? text}</span>;
   return (
     <Tooltip
       onOpenChange={(open) => {
@@ -57,7 +60,7 @@ export function CutText({
       }}
       open
     >
-      <TooltipTrigger render={line}>{text}</TooltipTrigger>
+      <TooltipTrigger render={line}>{children ?? text}</TooltipTrigger>
       <TooltipPopup side="top">{text}</TooltipPopup>
     </Tooltip>
   );

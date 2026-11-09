@@ -29,6 +29,7 @@ import { useHqAppDetailHold } from "../../zerops/useHqAppDetail";
 import { useFlowVerbs } from "../../zerops/flowVerbs";
 import { useProjectFlows } from "../../zerops/projectFlows";
 import { useOpenReview } from "../../zerops/review";
+import { useViewerWaits } from "../../zerops/useSidebarWaiting";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useZeropsInventory } from "../../zerops/ZeropsInventoryProvider";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
@@ -37,7 +38,8 @@ import { useGitTargetOperations } from "../../zerops/useGitTargetOperations";
 import { useNowMs } from "../../zerops/useNowMs";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { mirrorAuthorityLine, repoState } from "./gitMirror.logic";
-import { landedChangeWords } from "./matePanels.logic";
+import { landedChangeWords, mateLineInput } from "./matePanels.logic";
+import { pageChanges } from "./project/projectPage.logic";
 import { MateFace } from "./primitives";
 import { useMateOnPanel } from "./useMateOnPanel";
 import { useMatePanelProject } from "./useMatePanelProject";
@@ -110,6 +112,41 @@ export function ZeropsGitSurface({
     },
     [groupId, openReview],
   );
+  const onOpenPull = useCallback(
+    (pull: FlowPullRequest, from: HTMLElement) => {
+      if (groupId === undefined) return;
+      openReview(
+        { kind: "change", groupId, repository: pull.repository, number: pull.number },
+        { from },
+      );
+    },
+    [groupId, openReview],
+  );
+  // The project's line for this Mate: its changes as beads, everybody else's as a count. Its
+  // changes wait on the viewer where the one list says so.
+  const mateProjectId = mateProject?.id;
+  const waits = useViewerWaits().items.some(
+    (item) => item.kind === "change" && item.mate.projectId === mateProjectId,
+  );
+  const groupFlow = project?.groupFlow;
+  const tint = mate?.tint;
+  const line = useMemo(
+    () =>
+      groupFlow === undefined || project === undefined || mateProjectId === undefined
+        ? undefined
+        : mateLineInput({
+            flow: groupFlow,
+            places: project.places,
+            changes:
+              projectFlow?.changesKnown === true
+                ? pageChanges({ flow: groupFlow, read: projectFlow })
+                : undefined,
+            next: project.next,
+            mate: { projectId: mateProjectId, tint },
+            waits,
+          }),
+    [groupFlow, mateProjectId, project, projectFlow, tint, waits],
+  );
   const landedWords = useCallback(
     (change: FlowPullRequest) =>
       projectFlow === undefined ? undefined : landedChangeWords(projectFlow, change),
@@ -163,11 +200,13 @@ export function ZeropsGitSurface({
         github={github}
         isOwner={isOwner}
         landedWords={landedWords}
+        line={line}
         mateFace={mateFace}
         mateName={mateName}
         mateProjectId={mateProject?.id}
         onConnect={writes && project !== undefined ? setConnecting : undefined}
         onOpenChange={onOpenChange}
+        onOpenPull={onOpenPull}
         project={project}
         threadRef={threadRef}
       />

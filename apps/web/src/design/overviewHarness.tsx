@@ -64,7 +64,7 @@ import {
 } from "~/components/zerops/projects/ZeropsProjectsFlow";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
-import { harnessProjectPage } from "./projectPageFixtures";
+import { HarnessLineMine, harnessProjectPage } from "./projectPageFixtures";
 import { ZeropsProjectMenu } from "~/components/zerops/ZeropsProjectMenu";
 import { placeVaults, type PlaceVault } from "~/components/zerops/vault/placeVault.logic";
 import { usePlaceVaultDrawer } from "~/components/zerops/vault/StopVault";
@@ -541,7 +541,162 @@ const PROJECTS: ReadonlyArray<Project> = [
       at: ago(60),
     },
   }),
+  // The line's states stand on their own pages (`?page=line-calm`), never among the cards.
+  ...(params.get("page")?.startsWith("line-") === true ? lineProjects() : []),
 ];
+
+/** A change waiting for the viewer's review, as the flow lists it. */
+function toReview(number: number, title: string, mateProjectId: string) {
+  return { ...inReview(number, title, mateProjectId), review: true };
+}
+
+/** A change that no longer merges cleanly: its Mate's to fix. */
+function conflicting(number: number, title: string, mateProjectId: string) {
+  const pull: FlowPullRequest = {
+    ...change(number, title, mateProjectId),
+    mergeability: "conflicting",
+  };
+  return { ...inReview(number, title, mateProjectId), pull };
+}
+
+/**
+ * The line's states: (calm) a stage and a production, one change ready; (stuck) a release that did
+ * not go live; (busy) ten times the activity and three more places; (notlive) no production yet;
+ * (nostage) live without a stage. `line-mine` draws the busy one compact, for one Mate.
+ */
+function lineProjects(): ReadonlyArray<Project> {
+  const busy = project({
+    id: "line-busy",
+    name: "Tea House",
+    mates: [
+      mate("wren-b", "Wren", "amber"),
+      mate("odo-b", "Odo", "slate"),
+      mate("raya-b", "Raya", "olive"),
+      mate("tess-b", "Tess", "rose"),
+      mate("vale-b", "Vale", "sky"),
+      mate("juno-b", "Juno", "violet"),
+      mate("fen-b", "Fen", "coral"),
+      mate("ines-b", "Ines", "sand"),
+      mate("mira-b", "Mira", "olive"),
+    ],
+    pullRequests: [
+      toReview(61, "Sold-out switch remembered across visits", "wren-b"),
+      toReview(58, "Gift wrap at checkout", "wren-b"),
+      toReview(57, "Tea of the month on the home page", "fen-b"),
+      conflicting(55, "A tea quiz for new visitors", "tess-b"),
+      conflicting(52, "Prices in three currencies", "juno-b"),
+      inReview(60, "A steeping timer on each tea", "odo-b"),
+      inReview(59, "Reviews under every tea", "raya-b"),
+      inReview(56, "Subscriptions for a monthly box", "vale-b"),
+      inReview(54, "A map of where each tea grows", "ines-b"),
+      inReview(53, "Stock counts from the warehouse", "mira-b"),
+      inReview(51, "Pairings: what to eat with each tea", "odo-b"),
+      inReview(50, "A darker look for the evening", "raya-b"),
+      inReview(36, "Faster images on tea cards", "vale-b"),
+      inReview(35, "Weights in grams and ounces", "ines-b"),
+    ],
+    notLive: 12,
+    production: {
+      kind: "ready-to-release",
+      stop: stop("busy-prod", "production", {
+        version: version("v2.4.0"),
+        addresses: [{ service: "app", url: "https://teahouse.example" }],
+      }),
+      line: "",
+      candidate: { tag: "v2.5.0", waiting: 12 },
+    },
+    stages: [
+      stop("busy-stage", "stage", {
+        state: "deploying",
+        addresses: [{ service: "app", url: "https://app-teahouse-stage.prg1.zerops.app" }],
+      }),
+      stop("busy-perf", "stage-perf", { state: "failed" }),
+      stop("busy-demo", "demo", { version: version("v2.3.1") }),
+    ],
+    chip: { label: "prod", state: "ok", version: "v2.4.0" },
+    since: ago(60 * 24 * 3),
+  });
+  return [
+    project({
+      id: "line-calm",
+      name: "Pear Studio",
+      mates: [mate("milo-c", "Milo", "violet"), mate("kai-c", "Kai", "sky")],
+      notLive: 1,
+      production: {
+        kind: "ready-to-release",
+        stop: stop("calm-prod", "production", {
+          version: version("v0.1.5"),
+          addresses: [{ service: "app", url: "https://pear.studio.example" }],
+        }),
+        line: "",
+        candidate: { tag: "v0.1.6", waiting: 1 },
+      },
+      stages: [
+        stop("calm-stage", "stage", {
+          // `&stage=empty` (or `deploying`, `checking`, `failed`): what its station says of it.
+          state: (params.get("stage") ?? "deployed") as GroupFlowStop["state"],
+          addresses: [{ service: "app", url: "https://app-pear-7c2e.prg1.zerops.app" }],
+        }),
+      ],
+      chip: { label: "prod", state: "ok", version: "v0.1.5" },
+      since: ago(60 * 24 * 2),
+    }),
+    project({
+      id: "line-stuck",
+      name: "Relay Bot",
+      mates: [mate("pia-r", "Pia", "rose")],
+      pullRequests: [
+        inReview(36, "Answer in the thread it was asked in", "pia-r"),
+        inReview(35, "Remember each person's last question", "pia-r"),
+        inReview(34, "A daily digest of what was asked", "pia-r"),
+        inReview(33, "Quiet hours for the whole team", "pia-r"),
+      ],
+      notLive: 3,
+      production: {
+        kind: "deploy-failed",
+        stop: stop("stuck-prod", "production", {
+          version: version("v0.1.3"),
+          state: "failed",
+          addresses: [{ service: "bot", url: "https://relay.acme.example" }],
+        }),
+        line: "",
+        candidate: { tag: "v0.1.6", waiting: 3 },
+      },
+      chip: { label: "prod", state: "failed", version: "v0.1.3" },
+      since: ago(60 * 24 * 8),
+    }),
+    busy,
+    project({
+      id: "line-notlive",
+      name: "Swarm Lab",
+      mates: [mate("kara-l", "Kara", "coral")],
+      pullRequests: [toReview(5, "Agents hand work to each other", "kara-l")],
+      production: { kind: "absent" },
+      canPutLive: true,
+    }),
+    project({
+      id: "line-nostage",
+      name: "Field Notes",
+      mates: [mate("ines-f", "Ines", "olive"), mate("toby-f", "Toby", "amber")],
+      pullRequests: [
+        conflicting(21, "Notes shared with a link", "toby-f"),
+        inReview(20, "Voice notes, written out", "ines-f"),
+      ],
+      notLive: 2,
+      production: {
+        kind: "ready-to-release",
+        stop: stop("field-prod", "production", {
+          version: version("v1.2.0"),
+          addresses: [{ service: "app", url: "https://fieldnotes.example" }],
+        }),
+        line: "",
+        candidate: { tag: "v1.3.0", waiting: 2 },
+      },
+      chip: { label: "prod", state: "ok", version: "v1.2.0" },
+      since: ago(60 * 24 * 4),
+    }),
+  ];
+}
 
 const byId = new Map(PROJECTS.map((entry) => [entry.entry.group.groupId, entry]));
 const mineOf = (entry: Mate) => entry.owner === NOVA;
@@ -684,6 +839,17 @@ function harnessVault(place: PlaceVault) {
 function HarnessPage() {
   const placeVault = usePlaceVaultDrawer("harness", harnessVault);
   const { project: PAGE, place } = useHarnessPage();
+  const busy = FIRST_PAGE === "line-mine" ? byId.get("line-busy")?.entry : undefined;
+  if (busy !== undefined)
+    return (
+      <div className="min-h-dvh bg-background text-foreground">
+        <HarnessLineMine
+          entry={busy}
+          mine="wren-b"
+          tintOf={(projectId) => busy.mates.get(projectId)?.tint}
+        />
+      </div>
+    );
   return (
     <div className="flex h-dvh bg-background text-foreground">
       <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }}>
@@ -840,6 +1006,7 @@ function HarnessPage() {
                   />
                 );
               }}
+              mateTint={(entry) => entry.tint}
               renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
               renderReleaseVerb={(entry) =>
                 projectReleaseWait(ALL_WAITS, entry.group.groupId) === undefined ? null : (

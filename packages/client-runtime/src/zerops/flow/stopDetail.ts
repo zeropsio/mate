@@ -220,11 +220,7 @@ export function stopVerdict(input: {
   // One failure, said once, cause first: the release, what it lacked, and what still serves. HQ's
   // refusal of each deploy that followed says nothing more, so no part is named.
   if (input.notCreated !== undefined) {
-    const { tag, missing, reason, deployed } = input.notCreated;
-    const lacked =
-      missing.length === 0
-        ? "a service it needs could not be created in production"
-        : `${serviceNames(missing)} could not be created in production`;
+    const { tag, reason, deployed } = input.notCreated;
     const runs = view.version?.label;
     // What is still true, after the cause: what serves, and that nothing of the release does.
     const still =
@@ -237,7 +233,7 @@ export function stopVerdict(input: {
           : `${runs} still runs, and nothing was deployed.`;
     return {
       tone: "failed",
-      text: `${tag} didn't go live: ${lacked}.`,
+      text: `${releaseNotCreatedWords(input.notCreated)}.`,
       detail: still,
       verb: null,
       reviewNext: true,
@@ -827,6 +823,22 @@ export function releaseNotCreated(input: {
     reason: creation?.reason,
     deployed,
   };
+}
+
+/**
+ * A release that put nothing live for want of a service, cause first and without its full stop:
+ * "v0.1.5 didn't go live: db could not be created in production". The place's page says it as its
+ * one sentence (`stopVerdict`), the project's line as the caption of the segment before production.
+ */
+export function releaseNotCreatedWords(
+  notCreated: Pick<ReleaseNotCreated, "tag" | "missing">,
+): string {
+  const { tag, missing } = notCreated;
+  const lacked =
+    missing.length === 0
+      ? "a service it needs could not be created in production"
+      : `${serviceNames(missing)} could not be created in production`;
+  return `${tag} didn't go live: ${lacked}`;
 }
 
 /** What a release's row says where HQ refused it before anything of it deployed. */

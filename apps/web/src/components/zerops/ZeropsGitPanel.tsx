@@ -1,8 +1,10 @@
 /**
  * The top of the Code page: where this Mate's work is, above what changed (`CodePage`).
  *
- * First the project, as the Zerops panel opens with it (`MateProjectCard`): its places and what
- * waits for production. Then per code repository it works in, under its name and its state on
+ * First the page's title, with the way to the project's page, and the project's line for this Mate
+ * (`ProjectLine`, compact): its stations, this Mate's changes as beads — work on disk that is no
+ * change yet among them — everybody else's as a count, and *Review release* where one waits. Then
+ * per code repository it works in, under its name and its state on
  * GitHub, this Mate's work as a change row in plain words ("1 file not committed yet", "Ready to
  * merge", "Merged · waits for production"). The change's commits and its files are the page's
  * "What changed", below.
@@ -13,25 +15,37 @@
  * The project's flow was once left out on purpose: a tab that carried the project's stage,
  * production and releases read as "git for the whole project" in a Mate's own panel (the owner,
  * 2026-09-17). The pages pass reversed that (the owner, 2026-11-09): a panel that names a Mate's
- * change and never says where it goes is a dead end, so the places are here — the same lines the
- * project's pages show, each opening its place, with the project's page one press away. The rest of
- * the flow (releases, history, recipe changes) stays on the project's pages.
+ * change and never says where it goes is a dead end, so the places are here — the project's line,
+ * each place opening its page, with the project's page one press away. The rest of the flow
+ * (releases, history, recipe changes) stays on the project's pages.
  *
  * Every fact comes from the party that can prove it, and each one arrives on its own schedule: the
  * checkout is a live subscription, and the Mate's change comes down HQ's stream. Nothing here
  * decides anything — `gitTab.ts` and `matePanels.logic.ts` do, and this renders what they produced
  * (R5). It draws no scroller of its own: it stands in the page's.
  */
-import { NO_REPOSITORY_LINE, type GitBlock } from "@t3tools/client-runtime/zerops";
+import {
+  NO_REPOSITORY_LINE,
+  type FlowPullRequest,
+  type GitBlock,
+} from "@t3tools/client-runtime/zerops";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
+import { ChevronRightIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { InlineButton } from "~/components/ui/button";
 import { FailureDetails } from "~/components/ui/failure";
 import type { RepoState } from "./gitMirror.logic";
 import { possessive, WORK_AWAITS_REPOSITORY, type GitWorkRow } from "./matePanels.logic";
-import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
-import { ChangeList, ChangeRow, SectionLabel } from "./system";
+import type { MatePanelProject } from "./MatePanelPlaces";
+import {
+  ChangeList,
+  ChangeRow,
+  ProjectLine,
+  SectionAction,
+  SectionLabel,
+  type ProjectLineView,
+} from "./system";
 
 /** One code repository the Mate works in, as the tab draws it. */
 export interface ZeropsGitRepository {
@@ -52,8 +66,13 @@ export interface ZeropsGitPanelModel {
 
 export interface ZeropsGitPanelProps {
   readonly model: ZeropsGitPanelModel;
-  /** The Mate's project, once known: its places and the way to its page. */
+  /** The Mate's project, once known: the way to its page, and its release's review. */
   readonly project?: MatePanelProject | undefined;
+  /**
+   * The project's line for this Mate (`projectLine` with `mine` and its work on disk); `undefined`
+   * while the project's flow is unread: its card holds its room.
+   */
+  readonly line?: ProjectLineView | undefined;
   /** Whose work it is, as every surface names the Mate. */
   readonly mateName?: string | undefined;
   /** The Mate's face, small, at the start of each of its rows. */
@@ -62,6 +81,8 @@ export interface ZeropsGitPanelProps {
   readonly renderBlockAction?: (block: GitBlock) => ReactNode;
   /** Opens a change's sheet from its row: its review while open, what it became once landed. */
   readonly onOpenChange?: ((block: GitBlock, from: HTMLElement) => void) | undefined;
+  /** Opens a change's sheet from its bead on the line. */
+  readonly onOpenPull?: ((pull: FlowPullRequest, from: HTMLElement) => void) | undefined;
   /** Opens the dialog that connects a repository to GitHub. */
   readonly onConnect?: ((repository: string) => void) | undefined;
   /** Asks again whether a repository's remote answers; no *Check again* without it. */
@@ -71,10 +92,12 @@ export interface ZeropsGitPanelProps {
 export function ZeropsGitPanel({
   model,
   project,
+  line,
   mateName,
   mateFace,
   renderBlockAction,
   onOpenChange,
+  onOpenPull,
   onConnect,
   onCheckAgain,
 }: ZeropsGitPanelProps) {
@@ -82,8 +105,40 @@ export function ZeropsGitPanel({
   return (
     // Its sections stand in the page's column, spaced as the page spaces its own.
     <div className="contents" data-zerops-surface="git-panel">
-      {/* The project and where the work goes: the same card the Zerops panel opens with. */}
-      {project === undefined ? null : <MateProjectCard mateName={mateName} project={project} />}
+      {/* Where the work is: the project's line, this Mate's changes on it. */}
+      {project === undefined ? null : (
+        <section
+          aria-label={`${project.name}, ${possessive(mateName ?? "This Mate", "work")}`}
+          className="flex min-w-0 flex-col gap-3"
+          data-zerops-surface="panel-line"
+        >
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <h2 className="m-0 truncate text-base font-semibold text-foreground">Code</h2>
+              <span className="truncate text-caption text-muted-foreground">
+                Where {possessive(mateName ?? "this Mate", "work")} is, and what changed.
+              </span>
+            </span>
+            <SectionAction onClick={project.onOpenProject}>
+              Open project
+              <ChevronRightIcon aria-hidden="true" />
+            </SectionAction>
+          </div>
+          <ProjectLine
+            groupId={project.groupId}
+            onOpenChange={(pull, from) => {
+              onOpenPull?.(pull, from);
+            }}
+            // The way to put it live is the project's page.
+            onPutLive={project.onOpenProject}
+            onReviewRelease={(from) => {
+              project.next?.release.onReview(from);
+            }}
+            surface="panel"
+            view={line}
+          />
+        </section>
+      )}
       {repositories.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground">
           {model.emptyLine ?? NO_REPOSITORY_LINE}

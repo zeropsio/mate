@@ -53,7 +53,12 @@ import {
   type WaitingRelease,
   type WaitingVerb,
 } from "../SidebarWaiting.logic";
-import { mergedChangeWords, openChangeWords, releaseIsLive } from "../system/ChangeRow.logic";
+import {
+  mergedChangeWords,
+  openChangeWords,
+  releaseIsLive,
+  type MergedChangeWhere,
+} from "../system/ChangeRow.logic";
 import { releaseOfLanding, type HistoryReleaseInput } from "./projectHistory.logic";
 
 /**
@@ -856,6 +861,8 @@ export interface CardChange {
   readonly tone: NonNullable<ReturnType<typeof changeState>>["tone"];
   /** When it last moved: updated while open, merged once landed. */
   readonly at: string | undefined;
+  /** Where a merged one went, which its `words` say (`mergedChangeWords`). */
+  readonly where?: MergedChangeWhere | undefined;
   /**
    * A setup change waiting for a person: its row reads what it does from its review
    * (`setupChangeWords`), its `words` until then.
@@ -986,25 +993,26 @@ export function cardChanges(input: {
       const on = (shas: ReadonlyArray<string> | undefined) =>
         stage !== undefined &&
         (shas ?? []).some((sha) => holds(sha, pull, landed, stage.mainHeads));
+      // Every change to the setup repository: its files go to no place and no release.
+      const where: MergedChangeWhere =
+        pull.kind === "recipe"
+          ? { kind: "setup" }
+          : took !== undefined
+            ? { kind: "released", tag: took.tag, live: releaseIsLive(took.tag, input.releases) }
+            : on(stage?.runs)
+              ? { kind: "on-stage" }
+              : on(stage?.deploying)
+                ? { kind: "deploying-to-stage" }
+                : input.production && input.releases.length > 0
+                  ? { kind: "waits-for-production" }
+                  : { kind: "merged" };
       return {
         pull,
         open: false,
-        // Every change to the setup repository, as `broughtBy` leaves them out of a release.
-        words: mergedChangeWords(
-          pull.kind === "recipe"
-            ? { kind: "setup" }
-            : took !== undefined
-              ? { kind: "released", tag: took.tag, live: releaseIsLive(took.tag, input.releases) }
-              : on(stage?.runs)
-                ? { kind: "on-stage" }
-                : on(stage?.deploying)
-                  ? { kind: "deploying-to-stage" }
-                  : input.production && input.releases.length > 0
-                    ? { kind: "waits-for-production" }
-                    : { kind: "merged" },
-        ),
+        words: mergedChangeWords(where),
         tone: "off",
         at: pull.mergedAt,
+        where,
       };
     });
   return [...open, ...merged].slice(0, input.limit);
@@ -1012,27 +1020,6 @@ export function cardChanges(input: {
 
 /** A release as production's panel reads it: newest first, as the flow lists them. */
 type PanelRelease = Pick<FlowReleaseRow, "tag" | "taggedAt" | "standing" | "rollBack">;
-
-/**
- * The changes the release production runs brought: the app's own, merged after the one before it
- * was made. The group's setup (its import files) is no change a release ships.
- */
-export function broughtBy(
-  merged: ReadonlyArray<FlowPullRequest>,
-  releases: ReadonlyArray<PanelRelease>,
-): ReadonlyArray<FlowPullRequest> {
-  const at = releases.findIndex((release) => release.standing === "live");
-  const live = releases[at];
-  if (live === undefined) return [];
-  const before = releases[at + 1];
-  return merged.filter(
-    (pull) =>
-      pull.kind === "code" &&
-      pull.mergedAt !== undefined &&
-      pull.mergedAt <= live.taggedAt &&
-      (before === undefined || pull.mergedAt > before.taggedAt),
-  );
-}
 
 /** The release production goes back to: the newest one before what it runs that may be rolled back to. */
 export function rollBackTarget(releases: ReadonlyArray<PanelRelease>): string | undefined {

@@ -2740,6 +2740,9 @@ export function ZeropsProjectsContent({
                 ),
               };
         }}
+        mateTint={(candidate: ZeropsCandidatePresentation) =>
+          tints.get(candidate.project.id) ?? "slate"
+        }
         renderMateFace={(candidate: ZeropsCandidatePresentation, size) => {
           const tint = tints.get(candidate.project.id) ?? "slate";
           return (
