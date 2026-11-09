@@ -44,21 +44,21 @@
 
   html:active-view-transition-type(pages)::view-transition-group(zerops-page) {
     background: var(--background);
-    animation-duration: 180ms;
+    animation-duration: 200ms;
   }
 
   html:active-view-transition-type(pages)::view-transition-old(zerops-page) {
-    animation: zerops-page-out 120ms ease-out both;
+    animation: zerops-page-out 150ms ease-out both;
   }
 
   html:active-view-transition-type(pages)::view-transition-new(zerops-page) {
-    animation: zerops-page-in 180ms ease-out both;
+    animation: zerops-page-in 200ms ease-out both;
   }
 
-  /* The trail's two drawings fade over the same 180 ms, so what both hold never dims; each keeps
+  /* The trail's two drawings fade over the same 200 ms, so what both hold never dims; each keeps
      its own size at the row's start, so a longer trail is never a stretched one. */
   html:active-view-transition-type(pages)::view-transition-group(zerops-page-crumbs) {
-    animation-duration: 180ms;
+    animation-duration: 200ms;
     animation-timing-function: ease-out;
   }
 
