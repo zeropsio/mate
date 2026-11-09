@@ -32,7 +32,7 @@ import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
 import { readRetiredMateKey, retireMateKeyExecutor } from "./mateDeletion.ts";
 import { mateKeyRetirementAllowed } from "../mateDeletion.ts";
-import { creationWritesExecutor } from "./creationWrites.ts";
+import { createServicesExecutor, creationWritesExecutor } from "./creationWrites.ts";
 import { mateDeployExecutor } from "./mateDeploy.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
 import {
@@ -225,6 +225,11 @@ export function makeZeropsExecutor(input: {
       hardenMate: (clientId, projectId, keyTokenId) =>
         client.hardenMate(clientId, projectId, undefined, undefined, keyTokenId),
     });
+    const createMissing = createServicesExecutor({
+      importServicesIntoProject: (projectId, yaml) =>
+        client.importServicesIntoProject(projectId, yaml),
+      nowMs: input.nowMs,
+    });
     const publish = enableSubdomainAccessExecutor({
       enableSubdomainAccess: (serviceId) => client.enableSubdomainAccess(serviceId),
     });
@@ -385,6 +390,8 @@ export function makeZeropsExecutor(input: {
             case "import-container":
             case "harden-project":
               return creationWrite(requestId, intent);
+            case "create-services":
+              return createMissing(requestId, intent);
             case "vault-write":
               return vault(requestId, intent);
             case "service-restart":

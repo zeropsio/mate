@@ -1,0 +1,481 @@
+/* The line: one horizontal track through a project's stations, the changes between them as beads.
+   Its height is fixed per shape: 176 px, and 14 px plus 22 px a row where rows hang under `main`.
+   Under 700 px of its own width it is compact: names only, short captions, the same beads. */
+.ln {
+  --ln-ground: var(--ov-ground, var(--card));
+  --ln-track: color-mix(in oklab, var(--foreground) 30%, var(--ln-ground));
+  --ln-faint: color-mix(in oklab, var(--foreground) 20%, var(--ln-ground));
+  min-width: 0;
+  container: line / inline-size;
+}
+
+/* A column is a station and the segment after it; the last is production alone. The columns' shares
+   are the board's station offsets. */
+.ln-grid {
+  display: grid;
+  box-sizing: border-box;
+  min-width: 0;
+  grid-template-columns: 302fr 310fr 158fr;
+  grid-template-rows: 154px;
+  grid-auto-rows: auto;
+  padding: 20px 24px 2px 28px;
+}
+
+.ln[data-stations="4"] .ln-grid {
+  grid-template-columns: 262fr 160fr 190fr 158fr;
+}
+
+.ln-col {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 60px 16px minmax(0, 1fr);
+}
+
+.ln-head {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  padding-right: 18px;
+}
+
+/* A station's name, and what stands at its end (a place's vault): the row is the name's height. */
+.ln-namerow {
+  display: flex;
+  min-width: 0;
+  height: 20px;
+  align-items: center;
+  gap: 2px;
+}
+
+.ln-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.ln-name:hover,
+button.ln-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ln-name:focus-visible,
+.ln-words a:focus-visible,
+.ln-side a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* One line of words: a state, an address, a caption, a side row. */
+.ln-words {
+  display: block;
+  min-width: 0;
+  height: 16px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ln-words a {
+  color: var(--info-foreground);
+}
+
+.ln-words a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ln-words [data-tone="danger"] {
+  color: var(--destructive-foreground);
+}
+
+.ln-words [data-tone="info"] {
+  color: var(--info-foreground);
+}
+
+.ln-words [data-tone="warning"] {
+  color: var(--warning-foreground);
+}
+
+.ln-words [data-tone="dim"] {
+  color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+}
+
+.ln-words [data-strong] {
+  color: color-mix(in oklab, var(--foreground) 82%, var(--ln-ground));
+  font-weight: 500;
+}
+
+/* A Mate's tint as a face-shaped square, before the Mates' names. */
+.ln-face {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 3px;
+  border-radius: 36%;
+  background: var(--ln-tint, var(--ln-track));
+  vertical-align: -3px;
+}
+
+.ln-face:last-of-type {
+  margin-right: 6px;
+}
+
+[data-tint="coral"] {
+  --ln-tint: var(--zerops-mate-tint-coral);
+}
+
+[data-tint="amber"] {
+  --ln-tint: var(--zerops-mate-tint-amber);
+}
+
+[data-tint="olive"] {
+  --ln-tint: var(--zerops-mate-tint-olive);
+}
+
+[data-tint="sky"] {
+  --ln-tint: var(--zerops-mate-tint-sky);
+}
+
+[data-tint="violet"] {
+  --ln-tint: var(--zerops-mate-tint-violet);
+}
+
+[data-tint="rose"] {
+  --ln-tint: var(--zerops-mate-tint-rose);
+}
+
+[data-tint="sand"] {
+  --ln-tint: var(--zerops-mate-tint-sand);
+}
+
+[data-tint="slate"] {
+  --ln-tint: var(--zerops-mate-tint-slate);
+}
+
+/* The track: a station's dot at its column's start, the rail from its centre to the next one's. */
+.ln-track {
+  position: relative;
+  min-width: 0;
+}
+
+.ln-rail {
+  position: absolute;
+  top: 7px;
+  right: -6px;
+  left: 6px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--ln-track);
+}
+
+.ln-rail[data-track="auto"],
+.ln-rail[data-track="none"] {
+  background: repeating-linear-gradient(90deg, var(--ln-faint) 0 4px, transparent 4px 8px);
+}
+
+.ln-rail[data-track="ready"] {
+  background: color-mix(in oklab, var(--info) 62%, var(--ln-ground));
+}
+
+.ln-rail[data-track="failed"] {
+  background: color-mix(in oklab, var(--destructive) 52%, var(--ln-ground));
+}
+
+.ln-node {
+  --ln-node: var(--ln-track);
+  position: absolute;
+  top: 2px;
+  left: 0;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--ln-node);
+}
+
+.ln-node[data-tone="success"] {
+  --ln-node: var(--success);
+}
+
+.ln-node[data-tone="danger"] {
+  --ln-node: var(--destructive);
+}
+
+.ln-node[data-tone="info"] {
+  --ln-node: var(--info);
+}
+
+/* A place that runs something: its dot ringed. */
+.ln-node[data-node="live"] {
+  top: 0;
+  left: -2px;
+  width: 16px;
+  height: 16px;
+  border: 3px solid var(--ln-ground);
+  box-shadow: 0 0 0 1px var(--ln-node);
+}
+
+/* Not live yet: a dashed ring. */
+.ln-node[data-node="absent"] {
+  top: 1px;
+  left: -1px;
+  width: 14px;
+  height: 14px;
+  border: 2px dashed var(--ln-track);
+  background: var(--ln-ground);
+}
+
+/* Beads pack toward the next station, 12 px squares 5 px apart, the last 18 px before its dot. */
+.ln-beads {
+  position: absolute;
+  top: -1px;
+  right: 12px;
+  display: flex;
+  height: 18px;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ln-beads > li {
+  display: flex;
+}
+
+.ln-bead {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 33%;
+  background: var(--ln-tint, var(--ln-track));
+  box-shadow: 0 0 0 2px var(--ln-ground);
+  cursor: pointer;
+  transition: transform 150ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+/* Its press reaches the beads beside it and the track's whole height. */
+.ln-bead::after {
+  position: absolute;
+  inset: -8px -2.5px;
+  content: "";
+}
+
+.ln-bead:hover,
+.ln-bead:focus-visible {
+  transform: scale(1.25);
+}
+
+.ln-bead:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+.ln-bead[data-mark="waits"] {
+  box-shadow:
+    0 0 0 2px var(--ln-ground),
+    0 0 0 3.5px var(--info);
+}
+
+.ln-bead[data-mark="stuck"] {
+  box-shadow:
+    0 0 0 2px var(--ln-ground),
+    0 0 0 3.5px var(--warning);
+}
+
+.ln-bead[data-mark="work"] {
+  border: 1.5px dashed color-mix(in oklab, var(--ln-tint, var(--ln-track)) 70%, var(--foreground));
+  background: color-mix(in oklab, var(--foreground) 5%, var(--ln-ground));
+}
+
+span.ln-bead {
+  cursor: default;
+}
+
+/* Past the room a segment has: how many more. */
+.ln-more {
+  display: block;
+  box-sizing: border-box;
+  width: 28px;
+  height: 18px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 9%, var(--ln-ground));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--foreground) 12%, transparent),
+    0 0 0 2px var(--ln-ground);
+  color: var(--muted-foreground);
+  font-size: var(--text-3xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  text-align: center;
+}
+
+.ln-more[data-wide] {
+  width: 34px;
+}
+
+/* Under the track: a segment's caption and its one verb; production's address. */
+.ln-foot {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  justify-items: start;
+  gap: 8px;
+  padding-top: 12px;
+  padding-right: 18px;
+}
+
+.ln-foot > .ln-words {
+  max-width: 100%;
+}
+
+.ln-short {
+  display: none;
+}
+
+.ln-held {
+  width: 96px;
+  height: 8px;
+  margin-block: 4px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 8%, var(--ln-ground));
+}
+
+/* Rows hung under `main` on a dotted spine: each further place, each copy that is not calm. The
+   caption and verb under `main` step in to the rows' text edge. */
+.ln[data-sides] .ln-col[data-kind="main"] > .ln-foot {
+  padding-left: 28px;
+}
+
+.ln-sides {
+  position: relative;
+  grid-column: 2 / -1;
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 14px;
+  list-style: none;
+}
+
+.ln-sides::before {
+  position: absolute;
+  top: -76px;
+  bottom: 24px;
+  left: 5px;
+  width: 2px;
+  border-radius: 999px;
+  background: repeating-linear-gradient(180deg, var(--ln-faint) 0 4px, transparent 4px 7px);
+  content: "";
+}
+
+.ln-side {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 22px;
+  align-items: center;
+  padding-left: 28px;
+}
+
+.ln-side::before {
+  position: absolute;
+  top: 10px;
+  left: 6px;
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: repeating-linear-gradient(90deg, var(--ln-faint) 0 4px, transparent 4px 7px);
+  content: "";
+}
+
+.ln-side a {
+  color: inherit;
+}
+
+.ln-side a:hover [data-strong] {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* A release that did not go live, on a line with a stage: its one sentence takes production's room
+   under the track too; production's address stands in the page's Addresses. */
+.ln[data-stations="4"] .ln-col[data-seg="release"][data-track="failed"] > .ln-foot {
+  overflow: visible;
+  padding-right: 0;
+}
+
+.ln[data-stations="4"] .ln-col[data-seg="release"][data-track="failed"] > .ln-foot > .ln-words {
+  width: max-content;
+  max-width: calc((100cqw - 52px) * 0.4519);
+}
+
+.ln[data-stations="4"][data-release="failed"] .ln-col[data-kind="production"] > .ln-foot {
+  visibility: hidden;
+}
+
+/* Compact: station names only, short captions, no verbs; the track 30 px higher. */
+@container line (max-width: 699px) {
+  .ln-grid {
+    grid-template-columns: 170fr 182fr 100fr;
+    grid-template-rows: 90px;
+    padding: 20px 20px 2px;
+  }
+
+  .ln[data-stations="4"] .ln-grid {
+    grid-template-columns: 116fr 108fr 128fr 100fr;
+  }
+
+  .ln-col {
+    grid-template-rows: 30px 16px minmax(0, 1fr);
+  }
+
+  .ln-head {
+    padding-right: 8px;
+  }
+
+  .ln-head > .ln-words,
+  .ln-full {
+    display: none;
+  }
+
+  .ln-short {
+    display: block;
+  }
+
+  .ln-foot {
+    padding-right: 8px;
+  }
+
+  .ln-sides::before {
+    top: -42px;
+  }
+
+  .ln[data-stations="4"][data-release="failed"] .ln-col[data-kind="production"] > .ln-foot {
+    visibility: visible;
+  }
+
+  .ln[data-stations="4"] .ln-col[data-seg="release"][data-track="failed"] > .ln-foot > .ln-words {
+    width: auto;
+    max-width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ln-bead {
+    transition: none;
+  }
+}

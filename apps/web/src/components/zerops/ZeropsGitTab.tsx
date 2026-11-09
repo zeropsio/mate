@@ -66,8 +66,9 @@ import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsGitBlockCommits } from "./ZeropsGitBlockCommits";
 import { ZeropsGitCommitChanges, type OpenGitCommit } from "./ZeropsGitCommitChanges";
 import type { RepoState } from "./gitMirror.logic";
-import { gitWorkRows } from "./matePanels.logic";
+import { gitWorkRows, lineWork, type MateLine } from "./matePanels.logic";
 import type { MatePanelProject } from "./MatePanelPlaces";
+import { projectLine } from "./system";
 import { ZeropsGitPanel } from "./ZeropsGitPanel";
 import { ZeropsMateVerb } from "./ZeropsMateCard";
 
@@ -202,6 +203,10 @@ export interface ZeropsGitTabProps {
   readonly mateFace?: ReactNode;
   /** The Mate's project: its places and the way to its page. */
   readonly project?: MatePanelProject | undefined;
+  /** The project's line for this Mate (`mateLineInput`); its work on disk is read here. */
+  readonly line?: MateLine | undefined;
+  /** Opens a change's sheet from its bead on the line. */
+  readonly onOpenPull?: ((pull: FlowPullRequest, from: HTMLElement) => void) | undefined;
   /**
    * Where a landed change went, in the words the project's change rows use ("Merged · waits for
    * production"); `undefined` where they cannot say.
@@ -372,6 +377,15 @@ function KnownGitTab({
       repositories,
     ],
   );
+  // The project's line for this Mate, with its work on disk as the beads that are no change yet.
+  const line = props.line;
+  const lineView = useMemo(
+    () =>
+      line === undefined || line.mine === undefined
+        ? undefined
+        : projectLine({ ...line, work: lineWork(rows, line.mine) }),
+    [line, rows],
+  );
 
   /**
    * The words a block wants handed back, waiting on the person's *Send*.
@@ -496,7 +510,9 @@ function KnownGitTab({
             // Every remote is asked again: one round, as after a verb.
             onCheckAgain={() => setGeneration((current) => current + 1)}
             onConnect={props.onConnect}
+            line={lineView}
             onOpenChange={props.onOpenChange}
+            onOpenPull={props.onOpenPull}
             project={props.project}
             renderBlockAction={renderBlockVerbs}
           />

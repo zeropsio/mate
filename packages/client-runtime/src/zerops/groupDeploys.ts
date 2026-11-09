@@ -74,6 +74,8 @@ export interface ReleaseCreationFailure {
   readonly tag: string;
   /** HQ's words for how the creation ended, where it recorded some. */
   readonly reason: string | undefined;
+  /** The services it was to create, as HQ names them; empty where HQ names none. */
+  readonly services: ReadonlyArray<string>;
 }
 
 /** What one environment's row is built from, before the row itself. */
@@ -300,7 +302,13 @@ export function canonicalEnvironmentRowInputsOf(input: {
               job.cause === "release" &&
               job.ref !== null &&
               (jobFailed(job) || job.state === "unresolved")
-                ? [{ tag: job.ref, reason: creationReason(job.reason) }]
+                ? [
+                    {
+                      tag: job.ref,
+                      reason: creationReason(job.reason),
+                      services: job.services ?? [],
+                    },
+                  ]
                 : [],
             );
       return {

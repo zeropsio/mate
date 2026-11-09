@@ -66,4 +66,6 @@ export {
   type ZeropsMessageProposalParams,
   type ZeropsProposal,
   type ZeropsProposalKind,
+  type ZeropsReleaseOfferParams,
+  type ZeropsServiceCreateParams,
 } from "./proposal.ts";

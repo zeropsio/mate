@@ -1,6 +1,7 @@
 /**
- * A write Zerops answers with its process (a delete, a restart, a start): the process's row
- * reflects it and its terminal status ends it; its project's process history is held until then.
+ * A write Zerops answers with its process (a delete, a restart, a start) or processes (an import,
+ * one per service it creates): each process's row reflects it and their terminal statuses end it;
+ * its project's process history is held until then.
  * After a lost answer, a process of the write's own running in its project is what adopts it.
  *
  * @module data/operations/processEnd
@@ -12,26 +13,35 @@ import type { Settlement } from "./kind.ts";
 
 const FAILED_STATUSES: ReadonlySet<string> = new Set(["FAILED", "CANCELED"]);
 
-/** The process an accepted write follows: its receipt's first handle. */
-const processOf = (receipt: OperationReceipt) => receipt.handles[0] ?? "";
+/** The processes an accepted write follows: its receipt's handles, one for most writes. */
+const processesOf = (receipt: OperationReceipt) =>
+  receipt.handles.length === 0 ? [""] : receipt.handles;
 
-/** Whether the process's row is in the store. */
+/** Whether every process's row is in the store. */
 export const reflectedByProcess = (read: ProjectionReads, receipt: OperationReceipt) =>
-  read.fact("process", processOf(receipt)).kind === "known";
+  processesOf(receipt).every((id) => read.fact("process", id).kind === "known");
 
-/** The end its process's terminal row says; `null` while it says none. */
+/**
+ * The end its processes' terminal rows say; `null` while one says none. A write with several
+ * processes (an import creating several services) ended once each did: succeeded where all
+ * finished, failed where any failed or was canceled, with what each of those says.
+ */
 export function settledByProcess(
   read: ProjectionReads,
   receipt: OperationReceipt,
   /** What the person is told of a process that failed or was canceled. */
   failedReason: (process: ProcessValue) => string,
 ): Settlement | null {
-  const process = read.fact("process", processOf(receipt));
-  if (process.kind !== "known") return null;
-  if (process.value.status === "FINISHED") return { kind: "succeeded" };
-  if (FAILED_STATUSES.has(process.value.status))
-    return { kind: "failed", reason: failedReason(process.value) };
-  return null;
+  const failed: Array<string> = [];
+  for (const id of processesOf(receipt)) {
+    const process = read.fact("process", id);
+    if (process.kind !== "known") return null;
+    if (FAILED_STATUSES.has(process.value.status)) failed.push(failedReason(process.value));
+    else if (process.value.status !== "FINISHED") return null;
+  }
+  return failed.length === 0
+    ? { kind: "succeeded" }
+    : { kind: "failed", reason: [...new Set(failed)].join(" ") };
 }
 
 /** Its project's process history, held while an accepted write's process may still end. */

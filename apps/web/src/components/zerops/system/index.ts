@@ -21,6 +21,21 @@ export {
 export { PageHeader } from "./PageHeader";
 export { PlaceLine, type PlaceLineDensity } from "./PlaceLine";
 export { placeLineAddress, placeLineView, type PlaceLineView } from "./PlaceLine.logic";
+export { ProjectLine, type ProjectLineProps } from "./ProjectLine";
+export {
+  fitBeads,
+  lineChangeKey,
+  projectLine,
+  READY_FOR_REVIEW,
+  type LineBead,
+  type LineCopy,
+  type LineSegment,
+  type LineSide,
+  type LineStation,
+  type LineWork,
+  type ProjectLineInput,
+  type ProjectLineView,
+} from "./projectLine.logic";
 export { SectionAction, SectionLabel } from "./SectionLabel";
 export { ServiceList, ServiceMeters, ServiceRow } from "./ServiceRow";
 export {

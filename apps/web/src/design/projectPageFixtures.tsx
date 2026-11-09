@@ -14,6 +14,7 @@ import type {
   FlowReleaseRow,
   GroupFlow,
 } from "@t3tools/client-runtime/zerops";
+import { releaseNotCreatedWords } from "@t3tools/client-runtime/zerops/flow";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
@@ -32,9 +33,11 @@ import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessCh
 import { ProjectHistoryView } from "~/components/zerops/projects/ProjectHistory";
 import { historyReleases } from "~/components/zerops/projects/projectHistory.logic";
 import {
-  broughtBy,
   cardChanges,
+  cardReady,
   mateChangesForReview,
+  placeLines,
+  type CardStage,
 } from "~/components/zerops/projects/projectCard.logic";
 import { ProjectPeopleRowView } from "~/components/zerops/projects/ProjectPeople";
 import { Button } from "~/components/ui/button";
@@ -47,7 +50,13 @@ import {
   ProjectPageBody,
   type ProjectPageFacts,
 } from "~/components/zerops/project/ProjectPageBody";
-import { CHANGES_HELD } from "~/components/zerops/project/projectPage.logic";
+import { CHANGES_HELD, lineCopies } from "~/components/zerops/project/projectPage.logic";
+import {
+  lineChangeKey,
+  nextReleaseView,
+  ProjectLine,
+  projectLine,
+} from "~/components/zerops/system";
 import { SetupRow } from "~/components/zerops/project/SetupCard";
 import type {
   CardWait,
@@ -60,6 +69,7 @@ import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 
 const NOW = Date.now();
+const PAGE_PARAMS = new URLSearchParams(location.search);
 const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();
 const nothing = () => {};
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
@@ -101,6 +111,9 @@ const MATES: Readonly<Record<string, { readonly name: string; readonly tint: Mat
   "odo-s": { name: "Odo", tint: "slate" },
   "tess-s": { name: "Tess", tint: "rose" },
   "juno-n": { name: "Juno", tint: "sky" },
+  "wren-b": { name: "Wren", tint: "amber" },
+  "fen-b": { name: "Fen", tint: "coral" },
+  "kara-l": { name: "Kara", tint: "coral" },
 };
 
 /** A change a Mate landed `minutes` ago, mirrored to GitHub's pull request `github`. */
@@ -252,6 +265,132 @@ const ACME_HISTORY = recordedHistory(
   [[], [14], [12, 10], [], [9], [], [11]],
   [0, 0, 0, 1, 0, 0, 0],
 );
+
+/** A change on `main`, by the commit it landed as: what a stage's deploys name it by. */
+const onMain = (number: number, title: string, mateProjectId: string, minutes: number) => ({
+  ...landed(number, title, mateProjectId, minutes),
+  mergeCommitSha: sha(`c${String(number)}`),
+});
+
+const lineRepo = (
+  name: string,
+  github: string,
+  mirror: { readonly syncedAt: string | null; readonly divergedSince: string | null },
+) => ({
+  name,
+  mainHead: null,
+  updatedAt: ago(4),
+  mirror,
+  remote: {
+    url: `https://github.com/${github}.git`,
+    repositoryId: "1",
+    keptAt: ago(60 * DAY),
+    keptBy: "Nova Dev",
+    expiresAt: null,
+    invalidSince: null,
+  },
+});
+const IN_SYNC = { syncedAt: ago(20 * 60), divergedSince: null };
+
+/** What a line state's page reads beyond its flow (`?page=line-…`). */
+interface LineInput {
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+  readonly releases: ReadonlyArray<ReturnType<typeof shipped>>;
+  /** What the stage `main` feeds runs and is taking. */
+  readonly stage?: CardStage;
+  readonly repos: ReadonlyArray<ReturnType<typeof lineRepo>>;
+  /** Why its last release did not go live, as production's page says it. */
+  readonly cause?: string;
+}
+
+const HEAD = sha("head");
+const stageRuns = (runs: string, deploying: ReadonlyArray<string> = []): CardStage => ({
+  runs: [runs],
+  deploying,
+  mainHeads: new Map([["appdev", HEAD]]),
+});
+
+/**
+ * The line's states: calm with a stage; stuck on a release that did not go live; ten times the
+ * activity; not live yet; live without a stage.
+ */
+const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
+  "line-calm": {
+    releases: [
+      shipped("v0.1.5", 2 * DAY, { standing: "live", by: "dana" }),
+      shipped("v0.1.4", 9 * DAY),
+    ],
+    merged: [
+      onMain(8, "First administrator from a setting in the vault", "milo-c", 20 * 60),
+      onMain(7, "Run the landing site beside the studio", "milo-c", 2 * DAY + 40),
+      onMain(6, "Files per account for hosted projects", "kai-c", 9 * DAY + 30),
+      onMain(5, "The hosted server takes its own address", "milo-c", 9 * DAY + 90),
+    ],
+    stage: stageRuns(HEAD),
+    repos: [lineRepo("studio", "acme/studio", IN_SYNC)],
+  },
+  "line-stuck": {
+    releases: [
+      shipped("v0.1.5", 8, { verdict: "refused" }),
+      shipped("v0.1.4", 16, { verdict: "refused" }),
+      shipped("v0.1.3", 8 * DAY, { standing: "live", by: "dana" }),
+      shipped("v0.1.2", 9 * DAY),
+    ],
+    merged: [
+      onMain(31, "Steer the bot while it answers", "pia-r", 40),
+      onMain(29, "Connect notes and boards in one step", "pia-r", 4 * DAY),
+      onMain(27, "A hidden browser for web work", "pia-r", 7 * DAY),
+      onMain(24, "Everyone gets the bot, which guides their sign-in", "pia-r", 8 * DAY + 60),
+    ],
+    repos: [lineRepo("bot", "acme/relay-bot", IN_SYNC)],
+    cause: releaseNotCreatedWords({ tag: "v0.1.5", missing: ["db"] }),
+  },
+  "line-busy": {
+    releases: [
+      shipped("v2.4.0", 3 * DAY, { standing: "live", by: "dana" }),
+      shipped("v2.3.1", 9 * DAY),
+    ],
+    merged: [
+      onMain(49, "Tea of the day on the home page", "raya-b", 6),
+      onMain(48, "Faster tea search", "wren-b", 70),
+      onMain(47, "Wishlist on tea cards", "wren-b", 2 * 60),
+      onMain(46, "Brewing time on every tea", "odo-b", 3 * 60),
+      onMain(45, "Loose leaf and bags as one product", "raya-b", 5 * 60),
+      onMain(44, "Free delivery over a basket's worth", "raya-b", 7 * 60),
+      onMain(43, "Sold-out teas say when they return", "tess-b", 9 * 60),
+      onMain(42, "Origin on each tea card", "vale-b", 12 * 60),
+      onMain(41, "A gift note at checkout", "juno-b", 20 * 60),
+      onMain(40, "Tasting notes in the tea's own words", "vale-b", 26 * 60),
+      onMain(39, "Caffeine marked on every tea", "odo-b", 30 * 60),
+      onMain(38, "Samples of three teas in one order", "vale-b", 40 * 60),
+      onMain(37, "Reorder the last basket in one press", "tess-b", 2 * DAY),
+      onMain(33, "Price per 100 g leads on tea cards", "wren-b", 3 * DAY + 60),
+      onMain(31, "Sold-out labels on tea cards", "wren-b", 4 * DAY),
+    ],
+    stage: stageRuns(sha("c48"), [HEAD]),
+    repos: [
+      lineRepo("shop", "acme/tea-house", { syncedAt: null, divergedSince: null }),
+      lineRepo("api", "acme/tea-house-api", IN_SYNC),
+    ],
+  },
+  "line-notlive": {
+    releases: [],
+    merged: [onMain(4, "A lab to try a swarm of agents in", "kara-l", 3 * DAY)],
+    repos: [lineRepo("lab", "acme/swarm-lab", IN_SYNC)],
+  },
+  "line-nostage": {
+    releases: [
+      shipped("v1.2.0", 4 * DAY, { standing: "live", by: "dana" }),
+      shipped("v1.1.0", 12 * DAY),
+    ],
+    merged: [
+      onMain(18, "Notes by the place they were taken", "ines-f", 3 * 60),
+      onMain(17, "A photo on every note", "toby-f", 26 * 60),
+      onMain(15, "Search across every notebook", "ines-f", 4 * DAY + 60),
+    ],
+    repos: [lineRepo("notes", "acme/field-notes", IN_SYNC)],
+  },
+};
 
 /** A Mate's face, as the harness's cards draw it. */
 function mateFace(projectId: string): ReactNode {
@@ -539,6 +678,7 @@ function PageAutomation({ groupId }: { readonly groupId: string }) {
 
 /** What the page reads beyond the overview's group, from fixtures, for the project it opened. */
 function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
+  const line = LINE_INPUTS[groupId];
   const input =
     groupId === "acme-store"
       ? ACME_INPUT
@@ -546,7 +686,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
         ? TEA_INPUT
         : groupId === "juno-notes"
           ? JUNO_INPUT
-          : undefined;
+          : line;
   const released = groupId === "acme-store" || groupId === "tea";
   const production = "stop" in flow.production ? flow.production.stop : undefined;
   const environments = [
@@ -576,17 +716,19 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
         )),
   ];
   return {
-    brought: input === undefined ? [] : broughtBy(input.merged, input.releases),
     changes: cardChanges({
       open: flow.pullRequests.map((change) => change.pull),
       merged: input?.merged ?? [],
       releases: input?.releases ?? [],
-      stage: undefined,
+      stage: line?.stage,
       production: production !== undefined,
       limit: CHANGES_HELD,
     }),
-    changesUnknown: undefined,
-    repos: released ? REPOS : [],
+    // `?reading`: its changes are not read yet; the line holds their room.
+    changesUnknown: PAGE_PARAMS.has("reading") ? "Reading its changes…" : undefined,
+    repos: line?.repos ?? (released ? REPOS : []),
+    copies: lineCopies(line?.repos, { orgName: "Acme", now: NOW }),
+    releaseCause: line?.cause,
     environments,
     slots,
     release:
@@ -600,9 +742,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
     finishing: false,
     repo: released ? "appdev" : undefined,
     // `?undeclared`: HQ has not told which environments exist; the places are the group's lines.
-    declared: !new URLSearchParams(location.search).has("undeclared"),
-    fixOf: () =>
-      flow.mates[0] === undefined ? undefined : { name: flow.mates[0].name, onAsk: nothing },
+    declared: !PAGE_PARAMS.has("undeclared"),
   };
 }
 
@@ -676,18 +816,74 @@ function harnessReleaseVerb<T>(entry: ProjectsFlowGroup<T>): ReactNode {
   return candidate === undefined ? null : <Button size="sm">Review release</Button>;
 }
 
+/**
+ * The line as a Mate's Code page holds it (`?page=line-mine`): at a panel's width, compact, with
+ * that Mate's changes as beads and everybody else's as a count.
+ */
+export function HarnessLineMine<T>({
+  entry,
+  mine,
+  tintOf,
+}: {
+  readonly entry: ProjectsFlowGroup<T>;
+  readonly mine: string;
+  readonly tintOf: (mateProjectId: string) => MateTintId | undefined;
+}) {
+  const groupId = entry.group.groupId;
+  const facts = harnessFacts(groupId, entry.flow);
+  const ready = cardReady(entry.flow);
+  return (
+    <div className="grid gap-3 p-6" style={{ width: 540 }}>
+      <ProjectLine
+        groupId={groupId}
+        onOpenChange={nothing}
+        onReviewRelease={nothing}
+        view={projectLine({
+          flow: entry.flow,
+          places: placeLines({ flow: entry.flow, nowMs: NOW }),
+          tintOf,
+          repos: facts.repos?.map((repo) => repo.name) ?? [],
+          copies: [],
+          changes: facts.changes,
+          changesKnown: true,
+          waiting: new Set(
+            mateChangesForReview(entry.flow, mine).map((pull) => lineChangeKey(pull)),
+          ),
+          work: [
+            {
+              key: "tree",
+              mateProjectId: mine,
+              title: "Wishlist on tea cards",
+              words: "2 files not committed",
+            },
+          ],
+          release: {
+            view: nextReleaseView({ release: facts.release, ready }),
+            ready,
+          },
+          putLive: undefined,
+          mine,
+        })}
+      />
+    </div>
+  );
+}
+
 /** The harness's project page body, as the page draws it from the flow's group and slots. */
 export function harnessProjectPage(
   groupId: string,
   onAddMate: () => void,
 ): ProjectPageSlot["render"] {
   const running = groupId === "acme-store" || groupId === "tea";
-  const repos = running ? REPOS : groupId === "juno-notes" ? KEPT_REPOS : undefined;
+  const repos =
+    LINE_INPUTS[groupId]?.repos ??
+    (running ? REPOS : groupId === "juno-notes" ? KEPT_REPOS : undefined);
   return ({ entry, props, addMateWhy }) => (
     <Standins>
       <ProjectPageBody
         addMateWhy={addMateWhy}
-        entry={entry}
+        // `?held`: the project's reads have not answered; the line keeps its shape.
+        entry={PAGE_PARAMS.has("held") ? { ...entry, awaiting: true } : entry}
         facts={harnessFacts(groupId, entry.flow)}
         onAddMate={onAddMate}
         // Its History, drawn from the fixtures' releases, and what waits on the person.

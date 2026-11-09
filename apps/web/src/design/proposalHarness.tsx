@@ -13,7 +13,9 @@
  * live: Reveal shows an example value for half a minute; `?only=reveal` draws those alone. Then a
  * Mate proposing an MCP server for its agents: with a key to type, proposed for the whole project,
  * waiting for a sign-in and its paste fallback, connected, and failed; `?only=mcp` shows those
- * alone.
+ * alone. Before them all, a Mate's two asks about production — creating a service it lacks, and
+ * releasing what waits — in each state, and the conversation hearing how a release ended
+ * (`productionAskHarness`); `?only=production` shows those alone.
  *
  * Served by the dev server at `/design-proposal.html`. Fixtures only: nothing here ships, and no
  * route imports this module.
@@ -48,6 +50,7 @@ import {
   type RevealPhase,
 } from "~/components/zerops/proposal/reveal.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
+import { ProductionAsks } from "./productionAskHarness";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -55,6 +58,7 @@ const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const FAIL = params.get("fail") === "1";
 const MENU = Number(params.get("menu") ?? 435);
 const ONLY_MCP = params.get("only") === "mcp";
+const ONLY_PRODUCTION = params.get("only") === "production";
 
 const LINEAR: McpProposal = {
   id: "mcp-linear",
@@ -582,7 +586,8 @@ function Harness() {
       <div className="min-w-0 flex-1 overflow-y-auto px-5 py-8">
         <MateFaceAsMark value>
           <div className="mx-auto grid w-full max-w-3xl gap-3">
-            {(ONLY_MCP ? [] : REVEALS).map((fixture) => (
+            {ONLY_MCP || ONLY_REVEAL ? null : <ProductionAsks />}
+            {(ONLY_MCP || ONLY_PRODUCTION ? [] : REVEALS).map((fixture) => (
               <div
                 className="min-w-0 px-1 py-0.5"
                 data-harness-state={`reveal:${fixture.name}`}
@@ -591,12 +596,12 @@ function Harness() {
                 <Reveal {...fixture} />
               </div>
             ))}
-            {(ONLY_REVEAL ? [] : MCP_CARDS).map((card) => (
+            {(ONLY_REVEAL || ONLY_PRODUCTION ? [] : MCP_CARDS).map((card) => (
               <div className="min-w-0 px-1 py-0.5" data-harness-state={card.id} key={card.id}>
                 <McpCard {...card} />
               </div>
             ))}
-            {(ONLY_MCP || ONLY_REVEAL ? [] : CARDS).map((card) => (
+            {(ONLY_MCP || ONLY_REVEAL || ONLY_PRODUCTION ? [] : CARDS).map((card) => (
               <div
                 className="min-w-0 px-1 py-0.5"
                 data-harness-state={`${card.proposal.id}:${card.stage}`}

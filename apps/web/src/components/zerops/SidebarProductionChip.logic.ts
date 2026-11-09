@@ -1002,7 +1002,7 @@ export function stageMenu(input: {
 }
 
 /** How a release did not go through: "failed deploying app", "was refused", "didn't go live". */
-function failedHow(failure: ReleaseFailure): string {
+export function failedHow(failure: ReleaseFailure): string {
   if (failure.kind === "refused") return "was refused";
   if (failure.kind === "stalled")
     return failure.error === undefined ? "has an unknown deploy status" : "didn't go live";

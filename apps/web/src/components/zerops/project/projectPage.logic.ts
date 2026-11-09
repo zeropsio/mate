@@ -2,19 +2,16 @@
  * What a project's page says, from the reads its overview card already takes: its recent changes,
  * what the live release brought, and every address it serves at. Pure: no React.
  */
-import type {
-  EnvironmentSlotRow,
-  FlowPullRequest,
-  GroupFlow,
-  GroupFlowAddress,
-} from "@t3tools/client-runtime/zerops";
+import type { FlowPullRequest, GroupFlow, GroupFlowAddress } from "@t3tools/client-runtime/zerops";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 
+import { hostWords, repoState } from "../gitMirror.logic";
 import { applicationStage } from "../system/applicationPlaces.logic";
 import { mergedChangeWords } from "../system/ChangeRow.logic";
+import type { LineCopy } from "../system/projectLine.logic";
 import {
-  broughtBy,
   cardChanges,
   mateChangesForReview,
   placeLabel,
@@ -80,20 +77,48 @@ export function changeGroups(changes: ReadonlyArray<CardChange>): {
   };
 }
 
-/** A merged change's place as its group's label: on `main` where nothing took it live yet. */
+const ON_STAGE_READY = "On stage, ready for production";
+const ON_MAIN_READY = "On main, ready for production";
+
+/**
+ * A merged change's place as its group's label, in the line's words: on the stage or on `main`,
+ * ready for production; on `main` alone where the project is not live yet.
+ */
 function groupLabel(words: string): string {
   if (words === mergedChangeWords({ kind: "merged" })) return "On main, not live yet";
-  if (words === mergedChangeWords({ kind: "waits-for-production" })) return "Ready for production";
+  if (words === mergedChangeWords({ kind: "waits-for-production" })) return ON_MAIN_READY;
+  if (words === mergedChangeWords({ kind: "on-stage" })) return ON_STAGE_READY;
   return words;
 }
 
-/** How many of what the live release brought are named before "+ N". */
-export const BROUGHT_SHOWN = 3;
+/** The first group a release would carry: its label ends in the release's verb. */
+export function releaseGroup(groups: ReadonlyArray<ChangeGroup>): ChangeGroup | undefined {
+  return groups.find((group) => group.label === ON_STAGE_READY || group.label === ON_MAIN_READY);
+}
 
-/** What production's live release brought, by title; none while its releases are unread. */
-export function liveBrought(read: ZeropsProjectFlow | undefined): ReadonlyArray<FlowPullRequest> {
-  if (read === undefined || !read.releasesKnown) return [];
-  return broughtBy(read.merged, read.releases);
+/**
+ * The project's code copies elsewhere that are not calm, as the line hangs them under `main`:
+ * pushing, paused on diverged mains, stopped on a refused token or a GitHub app that left — in the
+ * words its Code row says (`repoState`). A copy in sync, and code kept in Mate alone, draw nothing.
+ */
+export function lineCopies(
+  repos: ZeropsProjectFlow["repos"],
+  context: { readonly orgName: string | undefined; readonly now: number },
+): ReadonlyArray<LineCopy> {
+  return (repos ?? []).flatMap((repo): ReadonlyArray<LineCopy> => {
+    if (repo.name === RECIPE_REPO || repo.remote == null) return [];
+    const state = repoState(repo, { apps: null, ...context });
+    if (state.destination === null || state.tone === "ok" || state.tone === "quiet") return [];
+    return [
+      {
+        key: repo.name,
+        host: hostWords(repo.remote.url),
+        name: state.destination.label,
+        line: state.line,
+        tone: state.tone === "bad" ? "danger" : state.tone === "busy" ? "info" : "warning",
+      },
+    ];
+  });
 }
 
 /** A Mate's changes that wait for the person's review, newest first, as its wait counts them. */
@@ -131,14 +156,6 @@ function hostOf(url: string): string {
   } catch {
     return url;
   }
-}
-
-/** Production's slot, then every stage's — the order the project's card says them in. */
-export function productionFirst(
-  slots: ReadonlyArray<EnvironmentSlotRow>,
-): ReadonlyArray<EnvironmentSlotRow> {
-  const production = (slot: EnvironmentSlotRow) => "tier" in slot && slot.tier === "production";
-  return [...slots.filter(production), ...slots.filter((slot) => !production(slot))];
 }
 
 /** Production's line, then every stage's. */

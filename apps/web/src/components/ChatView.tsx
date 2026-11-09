@@ -164,6 +164,7 @@ import {
   hasActionableProposedPlan,
   selectHandoffImageResources,
   type TimelineEntriesProjection,
+  type TimelineFlowEvent,
 } from "../session-logic";
 import { deriveZeropsThreadModel } from "../state/zerops";
 import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
@@ -276,7 +277,9 @@ import {
   useZeropsChangeLandedEvents,
   useZeropsMateAppDetailHold,
   useZeropsConversationLandings,
+  useZeropsConversationReleases,
   useZeropsProductionLive,
+  useZeropsReleaseEnded,
 } from "../zerops/useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "../zerops/vaultTurnNotes";
 import { useMcpTurnNotes } from "../zerops/mcpTurnNotes";
@@ -3198,6 +3201,8 @@ function ConversationView(props: ChatViewProps) {
   const changeLandedEvents = useZeropsChangeLandedEvents(activeThreadEnvironmentId);
   // Production running a release is news to the Mate too: where the app answers now.
   const productionLive = useZeropsProductionLive(activeThreadEnvironmentId);
+  // How its application's releases ended: a release that did not go live is news to the Mate too.
+  const releasesEnded = useZeropsReleaseEnded(activeThreadEnvironmentId);
   // When the agent last spoke — the line between what it knows and what has
   // happened since. Without one nothing is said rather than everything.
   const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
@@ -3210,18 +3215,56 @@ function ConversationView(props: ChatViewProps) {
     const context = agentContext(
       [
         ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
-        ...productionTurnNotes(productionLive, agentSpokeAt),
+        ...productionTurnNotes(productionLive, agentSpokeAt, releasesEnded),
         ...mcpTurn.lines,
       ],
       vaultTurn.changes,
     );
     return { notes: context.lines, vaultChanges: context.told };
-  }, [agentSpokeAt, changeLandedEvents, mcpTurn.lines, productionLive, vaultTurn.changes]);
+  }, [
+    agentSpokeAt,
+    changeLandedEvents,
+    mcpTurn.lines,
+    productionLive,
+    releasesEnded,
+    vaultTurn.changes,
+  ]);
   const agentNotes = turnContext.notes;
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(
     changeLandedEvents,
     timelineMessages,
+  );
+  // When the Mate raised each ask about production here: the releases made after one are this
+  // conversation's to hear the end of.
+  const productionAsks = useMemo(
+    () =>
+      zeropsThreadModel.entries.flatMap((entry) =>
+        entry.kind === "operation" &&
+        (entry.operation.proposal?.kind === "release.offer" ||
+          entry.operation.proposal?.kind === "service.create")
+          ? [entry.operation.anchorAt]
+          : [],
+      ),
+    [zeropsThreadModel.entries],
+  );
+  const conversationReleaseEvents = useZeropsConversationReleases(
+    activeThreadEnvironmentId,
+    releasesEnded,
+    timelineMessages,
+    productionAsks,
+  );
+  // What the forge and production say into the conversation, in the order it happened.
+  const conversationFlowEvents = useMemo<ReadonlyArray<TimelineFlowEvent>>(
+    () =>
+      conversationReleaseEvents.length === 0
+        ? conversationLandedEvents
+        : [...conversationLandedEvents, ...conversationReleaseEvents].toSorted((left, right) =>
+            ("outcome" in left ? left.endedAt : left.landedAt).localeCompare(
+              "outcome" in right ? right.endedAt : right.landedAt,
+            ),
+          ),
+    [conversationLandedEvents, conversationReleaseEvents],
   );
   const timelineProjectionRef = useRef<{
     threadKey: string | null;
@@ -3237,7 +3280,7 @@ function ConversationView(props: ChatViewProps) {
       previous?.threadKey === activeThreadKey ? previous.projection : null,
       turnPlans,
       zeropsThreadModel.entries,
-      conversationLandedEvents,
+      conversationFlowEvents,
     );
     timelineProjectionRef.current = { threadKey: activeThreadKey, projection };
     mateDiagnostics.record({
@@ -3256,7 +3299,7 @@ function ConversationView(props: ChatViewProps) {
     turnPlans,
     workLogEntries,
     zeropsThreadModel.entries,
-    conversationLandedEvents,
+    conversationFlowEvents,
   ]);
   // While the thread detail reloads, repaint this thread's own last timeline
   // instead of an empty pane.
