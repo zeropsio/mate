@@ -229,7 +229,7 @@ function sourceLine<T>(
 
 /**
  * A connection's one press: *Connect* while it is not — a quiet one, as these sources are optional,
- * its steps carrying their own Cancel — *Manage* once it is, *Read again* where HQ failed; and
+ * its steps carrying their own Cancel — *Manage* once it is, *Try again* where HQ failed; and
  * while it is read, *Connect*'s room, held unseen so nothing moves as it lands.
  */
 function SourceAction({
@@ -251,7 +251,7 @@ function SourceAction({
   if (setting.state === "failed")
     return (
       <Button onClick={again} size="sm" variant="secondary">
-        Read again
+        Try again
       </Button>
     );
   if (connected === null)
@@ -424,12 +424,13 @@ function SlackChannelsField({ channels }: { readonly channels: Controls<"hqSlack
         {setting.state === "known" || setting.state === "failed" ? (
           <>
             {" "}
+            {/* Known: the bot may have joined a channel in Slack since; failed: the read again. */}
             <InlineButton
               onClick={() => {
                 channels.again();
               }}
             >
-              Look again
+              {setting.state === "known" ? "Check again" : "Try again"}
             </InlineButton>
           </>
         ) : null}
@@ -1010,7 +1011,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
         held === null ? (
           setting.state === "failed" ? (
             <Button onClick={again} size="sm" variant="secondary">
-              Read again
+              Try again
             </Button>
           ) : (
             <HeldRoom template={<LimitsFields cost="" minutes="" />}>{null}</HeldRoom>

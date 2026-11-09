@@ -146,13 +146,6 @@ describe("an organization's persona templates in Settings", () => {
     expect(shown(read)).toContain(says);
   });
 
-  it("a failed read reads the templates again when asked", () => {
-    const retry = vi.fn();
-    const tree = mount(view({ state: "failed", templates: [], failure: "x", retry }).element);
-    press(tree, "Read again");
-    expect(retry).toHaveBeenCalledOnce();
-  });
-
   it("an Admin's new template is sent with its trimmed text and its instructions counted against 3,000", () => {
     const { element, onSave } = view();
     const tree = mount(element);

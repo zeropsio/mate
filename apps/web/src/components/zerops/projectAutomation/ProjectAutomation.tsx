@@ -1099,7 +1099,7 @@ export function TaskBoardView({
           {read.words}
         </span>
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
-          Read again
+          Try again
         </Button>
       </div>
     );
@@ -1341,7 +1341,7 @@ function SourceRowView({
           size="sm"
           variant="ghost"
         >
-          Read again
+          Try again
         </Button>
       ) : (
         <>

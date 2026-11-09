@@ -96,7 +96,7 @@ export function OrganizationKeyView({
       action={
         read.keys.state === "failed" ? (
           <Button onClick={onAgain} size="sm" variant="secondary">
-            Read again
+            Try again
           </Button>
         ) : known ? (
           <IntegrationAction

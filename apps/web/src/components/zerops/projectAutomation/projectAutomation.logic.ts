@@ -57,7 +57,7 @@ export type SourceRow =
       readonly id: string;
       readonly words: string;
     }
-  /** A source whose read failed: HQ's words, and *Read again*. */
+  /** A source whose read failed: HQ's words, and *Try again*. */
   | {
       readonly key: string;
       readonly kind: "failed";

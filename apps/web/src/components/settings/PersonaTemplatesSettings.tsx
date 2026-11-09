@@ -169,7 +169,7 @@ export function PersonaTemplatesView({
             cause="HQ could not read the persona templates."
             action={
               <Button size="sm" variant="secondary" onClick={read.retry}>
-                Read again
+                Try again
               </Button>
             }
           >
@@ -184,7 +184,7 @@ export function PersonaTemplatesView({
                 cause="This list may be out of date."
                 action={
                   <Button size="sm" variant="secondary" onClick={read.retry}>
-                    Read again
+                    Try again
                   </Button>
                 }
               >

@@ -70,7 +70,7 @@ export function AppIntakeView({
   /** The name of the organization's GitHub app the intake's repository goes through, where read. */
   readonly githubApp?: string | undefined;
   readonly reposRead: boolean;
-  /** HQ's reason its repositories could not be read: said, with *Read again*. */
+  /** HQ's reason its repositories could not be read: said, with *Try again*. */
   readonly reposFailure?: string | undefined;
   readonly onReadAgain?: (() => void) | undefined;
   readonly read: AppIntakeRead;
@@ -115,7 +115,7 @@ export function AppIntakeView({
             </p>
             {onReadAgain === undefined ? null : (
               <Button onClick={onReadAgain} size="sm" variant="secondary">
-                Read again
+                Try again
               </Button>
             )}
           </div>
@@ -269,7 +269,8 @@ export function AppChannelView({
         <div className="grid gap-2">
           {form.invite === null ? null : (
             <p className="text-xs text-foreground">
-              {form.invite} <InlineButton onClick={() => choices?.again()}>Look again</InlineButton>
+              {form.invite}{" "}
+              <InlineButton onClick={() => choices?.again()}>Check again</InlineButton>
             </p>
           )}
           <form
