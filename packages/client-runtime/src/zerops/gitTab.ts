@@ -242,9 +242,12 @@ export interface GitBlock {
   readonly action: GitBlockAction | undefined;
   /**
    * What is actually wrong with the setup, when something is — proved, not
-   * inferred. Empty when nothing is known to be wrong.
+   * inferred — in a person's words (`gitTrouble`). Empty when nothing is known
+   * to be wrong.
    */
   readonly trouble: string;
+  /** What git said when it refused (`gitTroubleDetail`): for whoever reports it, never a title. */
+  readonly troubleDetail?: string | undefined;
 }
 
 /** Where every change in HQ goes. */
@@ -431,7 +434,7 @@ export function gitVerdict(input: {
       // back.
       return undefined;
     case "unreadable":
-      return { tone: "failed", text: "Could not read this repository", ask: undefined };
+      return { tone: "failed", text: GIT_UNREADABLE_LINE, ask: undefined };
     case "no-repository":
       return { tone: "off", text: "Nothing committed yet", ask: undefined };
     case "merged":
@@ -505,20 +508,34 @@ function inReview(mergeability: MergeabilityKind, baseBranch: string): Omit<GitV
   }
 }
 
+/** What a repository whose remote did not answer says, on its own line above its work. */
+export const GIT_UNREACHABLE_LINE = "Can't reach the repository";
+
+/** What a checkout that could not be read says, in place of its work. */
+export const GIT_UNREADABLE_LINE = "Could not read this repository";
+
 /**
- * What is provably wrong with this Mate's Git setup, in the order a person
- * would fix it. Empty when nothing has been proved wrong — which is not the
- * same as everything being fine, and is why nothing is ever phrased as "ready".
+ * What is provably wrong with this Mate's Git setup, in a person's words.
+ * Empty when nothing has been proved wrong — which is not the same as
+ * everything being fine, and is why nothing is ever phrased as "ready".
+ *
+ * It once was git's own line, and a change card opened on
+ * `zcp hq git-credential get: 1: zcp: not found` as a change's title (the
+ * live account, 2026-11-09). The cause is said in the person's words; what git
+ * said is `gitTroubleDetail`, folded under it.
  */
 export function gitTrouble(evidence: GitBlockEvidence): string {
-  if (evidence.remoteReachable === false) {
-    const detail = evidence.remoteDetail?.trim() ?? "";
-    return detail.length === 0
-      ? // A Mate's checkout's origin is its application's repository in HQ.
-        "HQ did not answer for this repository."
-      : detail.slice(0, ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS);
-  }
-  return "";
+  return evidence.remoteReachable === false ? GIT_UNREACHABLE_LINE : "";
+}
+
+/**
+ * What git said when the remote refused, as the probe capped it: the detail
+ * under the trouble's sentence. Nothing where git said nothing.
+ */
+export function gitTroubleDetail(evidence: GitBlockEvidence): string | undefined {
+  if (evidence.remoteReachable !== false) return undefined;
+  const detail = evidence.remoteDetail?.trim() ?? "";
+  return detail.length === 0 ? undefined : detail.slice(0, ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS);
 }
 
 /**
@@ -615,6 +632,7 @@ export function gitBlock(input: {
           ? `${environment} runs it`
           : `${environment} runs this branch`;
   const trouble = gitTrouble(input.evidence);
+  const troubleDetail = gitTroubleDetail(input.evidence);
   const action = actionOf(checkout, state);
   const baseBranch = change?.baseBranch ?? MAIN;
   const verdict = gitVerdict({
@@ -650,6 +668,7 @@ export function gitBlock(input: {
     action:
       action !== undefined && trouble.length > 0 && runsInTheContainer(action) ? undefined : action,
     trouble,
+    ...(troubleDetail === undefined ? {} : { troubleDetail }),
   };
 }
 

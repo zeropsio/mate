@@ -6,11 +6,30 @@
  * Presentational: the panels' containers read the project (`useMatePanelProject`).
  */
 import { ChevronRightIcon } from "lucide-react";
+import type { ComponentProps } from "react";
 
 import { Button } from "~/components/ui/button";
 import { panelPlaces, possessive } from "./matePanels.logic";
 import type { PlaceLine as PlaceLineModel } from "./projects/projectCard.logic";
 import { NextRelease, PlaceLine, SectionAction, type NextReleaseInput } from "./system";
+
+/**
+ * The column a Mate's Zerops and Code pages stand in, from the page's top: its gutters, its width
+ * and the space between its sections. Both pages open with the project's card (`MateProjectCard`)
+ * as this column's first child, so the card stands on the same pixels on both and a switch between
+ * the two tabs moves nothing.
+ *
+ * It takes the panel's whole width, maximized too: the Code page's files run edge to edge under
+ * it, and a column narrower than they are would stand off their left edge. (The Zerops page once
+ * held a reading width of its own, which moved the card between the tabs in a maximized panel.)
+ */
+export function MatePanelColumn({ children, ...props }: Omit<ComponentProps<"div">, "className">) {
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-7 px-4 pt-4" {...props}>
+      {children}
+    </div>
+  );
+}
 
 /** The Mate's project, as a panel is handed it. */
 export interface MatePanelProject {

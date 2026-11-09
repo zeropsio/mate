@@ -1,7 +1,7 @@
 /**
  * A Mate's Zerops and Code pages, in the states they reach, at the panel's two common widths.
  *
- * Served by the dev server at `/design-panels.html` (`?theme=dark`, `?panel=code|zerops|both`,
+ * Served by the dev server at `/design-panels.html` (`?theme=dark`, `?panel=code|zerops|both|launcher`,
  * `?w=420|540`, `?s=<scenario>`; `?w=1351` is the panel maximized at 1786 px). The panels take their reads as props (their surfaces hold the hooks), so this needs
  * no session: invented projects, Mates and services only.
  *
@@ -39,7 +39,13 @@ import {
 } from "~/components/CodePage";
 import type { DiffChoice } from "~/components/DiffPanel.logic";
 import { DiffPanelLoadingState } from "~/components/DiffPanelShell";
+import { RightPanelEmptyState, surfaceActions } from "~/components/RightPanelTabs";
+import {
+  ServiceBrowserLinkContext,
+  type ServicePreviewResolver,
+} from "~/components/ServiceBrowserLink";
 import { Button } from "~/components/ui/button";
+import { ScrollArea } from "~/components/ui/scroll-area";
 import { DraftId } from "~/composerDraftStore";
 import type { DiffRenderMode } from "~/diffPanelStore";
 import {
@@ -50,14 +56,21 @@ import {
 } from "~/lib/diffRendering";
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import type { RepoState } from "~/components/zerops/gitMirror.logic";
-import type { MatePanelProject } from "~/components/zerops/MatePanelPlaces";
+import { MatePanelColumn, type MatePanelProject } from "~/components/zerops/MatePanelPlaces";
 import { gitWorkRows } from "~/components/zerops/matePanels.logic";
 import { MateFace } from "~/components/zerops/primitives";
 import type { CardReady, PlaceLine } from "~/components/zerops/projects/projectCard.logic";
 import { ZeropsGitPanel, type ZeropsGitRepository } from "~/components/zerops/ZeropsGitPanel";
 import { ZeropsServiceMap } from "~/components/zerops/ZeropsServiceMap";
 import { ZeropsAgentAuthCard } from "~/components/zerops/ZeropsAgentAuthCard";
+import { MateUpdateLine } from "~/components/zerops/MateUpdateLine";
+import { ZeropsMateVerb } from "~/components/zerops/ZeropsMateCard";
 import { GitCommitsFold } from "~/components/zerops/ZeropsGitBlockCommits";
+import {
+  RIGHT_PANEL_KINDS,
+  type RightPanelAvailability,
+  type RightPanelKind,
+} from "~/rightPanelKinds";
 import type { AppRouter } from "~/router";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -176,12 +189,17 @@ function repository(input: {
   readonly change?: FlowPullRequest | undefined;
   readonly landedWords?: string;
   readonly github?: RepoState | undefined;
+  /** What git said when its remote did not answer; the remote answers where absent. */
+  readonly unreachable?: string;
 }): ZeropsGitRepository {
   const block = gitBlock({
     checkout: input.checkout,
     changes: { read: true, change: input.change },
     declarations: STAGE_DECLARED,
-    evidence: { remoteReachable: true },
+    evidence:
+      input.unreachable === undefined
+        ? { remoteReachable: true }
+        : { remoteReachable: false, remoteDetail: input.unreachable },
     mateName: "Dana",
   });
   return {
@@ -238,6 +256,8 @@ function serviceRow(
     readonly tone?: ZeropsServiceTone;
     readonly status?: string;
     readonly route?: string;
+    /** Its stage, folded under it, with a route per port. */
+    readonly stage?: { readonly hostname: string; readonly ports: ReadonlyArray<number> };
     readonly controlPlane?: boolean;
     readonly use: readonly [cores: number, ram: number, ramOf: number, disk: number];
   },
@@ -288,6 +308,30 @@ function serviceRow(
             },
           ],
     routesFolded: false,
+    ...(input.stage === undefined
+      ? {}
+      : {
+          stage: {
+            serviceId: `svc-${input.stage.hostname}`,
+            hostname: input.stage.hostname,
+            type,
+            group: "runtimes",
+          },
+          stageTone: "outline",
+          stageStatusLabel: "Running",
+          stageStatusNeedsWord: false,
+          stageMetrics: [],
+          stagePortLabel: input.stage.ports.map((port) => `:${String(port)}`).join(", "),
+          stageRoutes: input.stage.ports.map((port, index) => ({
+            label: index === 0 ? `:${String(port)} · the service's own` : `:${String(port)}`,
+            route: {
+              port,
+              url: `https://${input.stage!.hostname}-${String(port)}.prg1.zerops.app`,
+              host: `${input.stage!.hostname}-${String(port)}.prg1.zerops.app`,
+            },
+          })),
+          stageRoutesFolded: false,
+        }),
     production: [],
   } as unknown as ZeropsServiceRow;
 }
@@ -301,6 +345,7 @@ const SERVICES: ZeropsServiceMapView = {
         serviceRow("shopdev", "Node.js 22", {
           port: ":3000",
           route: "shopdev-3000.prg1.zerops.app",
+          stage: { hostname: "shopstage", ports: [3000, 5173] },
           use: [0.09, 0.4, 2, 0.9],
         }),
         serviceRow("worker", "Go 1.23", {
@@ -339,6 +384,8 @@ interface Scenario {
    * alone, one of them opened, or a state with no files.
    */
   readonly changes: "both" | "branch" | "open" | "nothing" | "no-code" | "reading";
+  /** The Mate's home needs the person: an agent signed in by someone else, an update that waits. */
+  readonly homeNeedsYou?: boolean;
 }
 
 const TEA = "Tea Shop";
@@ -372,8 +419,9 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
   },
   {
     id: "ready",
+    homeNeedsYou: true,
     changes: "branch",
-    title: "Ready to merge · production and stage · in sync",
+    title: "Ready to merge · production and stage · in sync · home needs you",
     project: project(TEA, [PRODUCTION, STAGE]),
     repositories: [
       repository({
@@ -428,6 +476,32 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
         }),
         landedWords: "Live in v0.1.4",
         github: APP_GONE,
+      }),
+    ],
+  },
+  {
+    id: "unreachable",
+    changes: "nothing",
+    title: "The repository does not answer · a merged change · none yet",
+    project: project(TEA, [PRODUCTION, STAGE], 1),
+    repositories: [
+      repository({
+        checkout: checkout({ aheadCount: 2 }),
+        change: change({
+          number: 31,
+          title: "Seasonal menu on the front page",
+          merged: true,
+          state: "merged",
+          mergedAt: ago(60 * 20),
+        }),
+        landedWords: "Merged · waits for production",
+        github: IN_SYNC,
+        unreachable: "fatal: remote helper for 'tea' aborted: 1: tea: not found",
+      }),
+      repository({
+        checkout: checkout({ repository: "api", headRef: "mate/p-dana" }),
+        github: IN_SYNC,
+        unreachable: "fatal: unable to access 'https://hq.example/acme/api.git/': timed out",
       }),
     ],
   },
@@ -665,6 +739,9 @@ function HarnessCode({ scenario, top }: { readonly scenario: Scenario; readonly 
   );
 }
 
+/** Every address opens in the panel's browser, as a conversation's scope resolves it. */
+const OPENS_BESIDE: ServicePreviewResolver = () => () => {};
+
 const face = <MateFace size={20} state="idle" tint={"rose" satisfies MateTintId} />;
 
 /** Dana's coding agents: Claude Code signed in by the person, Codex not signed in. */
@@ -700,6 +777,50 @@ const agents = (
   />
 );
 
+/** Claude Code signed in by a crewmate, which needs this person; Codex signed in by them. */
+const AGENTS_ATTENTION: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      agentId: "claude-code",
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      state: "authorized",
+      providerAuth: "unknown",
+      authorizedBy: { subject: "u-juno" },
+    },
+    {
+      agentId: "codex",
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      state: "authorized",
+      providerAuth: "unknown",
+      authorizedBy: { subject: "u-me" },
+    },
+  ],
+} as ZeropsAgentAuthSnapshot;
+
+const agentsAttention = (
+  <ZeropsAgentAuthCard
+    conversationAgentId="claude-code"
+    density="compact"
+    onCancel={() => {}}
+    onSignIn={() => {}}
+    snapshot={AGENTS_ATTENTION}
+    viewerSubject="u-me"
+  />
+);
+
+/** The Mate's update line where its update waits on the person, with its verb. */
+const updateWaits = (
+  <MateUpdateLine
+    line={{ text: "Update available — needs your confirmation", tone: "default" }}
+    verb={<ZeropsMateVerb label="Update" onClick={() => {}} />}
+  />
+);
+
 function Frame({
   width,
   label,
@@ -722,7 +843,38 @@ function Frame({
   );
 }
 
+/** Every page a conversation in a Zerops project can open, one of them not offered here. */
+const LAUNCHER = surfaceActions({
+  availability: {
+    ...(Object.fromEntries(RIGHT_PANEL_KINDS.map((kind) => [kind, "available"])) as Record<
+      RightPanelKind,
+      RightPanelAvailability
+    >),
+    overview: "hidden",
+    mac: "unavailable",
+  },
+  liveAgentCount: 2,
+  onAdd: () => {},
+  onAddTerminal: () => {},
+});
+
+/** The empty panel: "Open a page", at the panel's widths. */
+function HarnessLauncher() {
+  return (
+    <main className="min-h-screen bg-muted/40 p-6 text-foreground">
+      <div className="flex flex-wrap items-start gap-6">
+        {widths.map((width) => (
+          <Frame key={width} label={`Open a page · ${String(width)} px`} width={width}>
+            <RightPanelEmptyState actions={LAUNCHER} />
+          </Frame>
+        ))}
+      </div>
+    </main>
+  );
+}
+
 function HarnessPage() {
+  if (shownPanel === "launcher") return <HarnessLauncher />;
   return (
     <main className="min-h-screen bg-muted/40 p-6 text-foreground">
       <div className="flex flex-col gap-10">
@@ -742,6 +894,7 @@ function HarnessPage() {
                               mateFace={face}
                               mateName="Dana"
                               model={{ repositories: scenario.repositories }}
+                              onCheckAgain={() => {}}
                               onConnect={() => {}}
                               onOpenChange={() => {}}
                               project={scenario.project}
@@ -759,17 +912,31 @@ function HarnessPage() {
                     )}
                     {shownPanel === "code" ? null : (
                       <Frame label={`Zerops · ${scenario.title}`} width={width}>
-                        <div className="h-full overflow-auto p-4">
-                          <ZeropsServiceMap
-                            agents={agents}
-                            currentServiceId="svc-zcp"
-                            mateUpdate={<span>Mate 0.16.112 · up to date</span>}
-                            liveness="live"
-                            mate={{ name: "Dana", tint: "rose", face: "idle" }}
-                            project={scenario.project}
-                            view={SERVICES}
-                          />
-                        </div>
+                        {/* The page's own shell (`ZeropsPanel`): its scroller and its column. */}
+                        <ScrollArea className="h-full">
+                          <div className="pb-4">
+                            <MatePanelColumn>
+                              {/* Addresses open beside the chat, as they do in a conversation. */}
+                              <ServiceBrowserLinkContext value={OPENS_BESIDE}>
+                                <ZeropsServiceMap
+                                  agents={scenario.homeNeedsYou === true ? agentsAttention : agents}
+                                  currentServiceId="svc-zcp"
+                                  mateUpdate={
+                                    scenario.homeNeedsYou === true ? (
+                                      updateWaits
+                                    ) : (
+                                      <span>Mate 0.16.112 · up to date</span>
+                                    )
+                                  }
+                                  liveness="live"
+                                  mate={{ name: "Dana", tint: "rose", face: "idle" }}
+                                  project={scenario.project}
+                                  view={SERVICES}
+                                />
+                              </ServiceBrowserLinkContext>
+                            </MatePanelColumn>
+                          </div>
+                        </ScrollArea>
                       </Frame>
                     )}
                   </div>
