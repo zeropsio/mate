@@ -278,18 +278,20 @@ function CompactAgents({
         const signInOnly = action === "sign-in" && login.kind === "none" && extra.length === 0;
         return (
           <li
-            className="flex min-h-10 min-w-0 items-center justify-between gap-3 py-1.5"
+            // One size for the row: the agent's name and its state words share a baseline, and a
+            // state said with a dot takes the row's size (it once took the page's, a size larger).
+            className="flex min-h-10 min-w-0 items-center justify-between gap-3 py-1.5 text-body"
             data-agent-id={agent.agentId}
             data-zerops-agent-line=""
             key={agent.agentId}
           >
             <span className="flex min-w-0 items-center gap-2.5">
               <AgentLogo agentId={agent.agentId} size="sm" />
-              <span className="shrink-0 text-body font-medium text-foreground">
+              <span className="shrink-0 font-medium text-foreground">
                 {AGENT_NAMES[agent.agentId]}
               </span>
               {status.tone === "ok" || status.tone === "off" ? (
-                <span className="min-w-0 truncate text-caption text-muted-foreground">
+                <span className="min-w-0 truncate text-muted-foreground">
                   {extra.length === 0
                     ? word
                     : `${word} · ${String(extra.length)} more ${extra.length === 1 ? "login" : "logins"}`}

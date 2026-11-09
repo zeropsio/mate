@@ -7,6 +7,7 @@ import {
 
 import { appBasePathHref } from "./basePath.ts";
 import { RoutePending } from "./components/RoutePending";
+import { pagesViewTransition } from "./pageTransitions";
 import { routeTree } from "./routeTree.gen";
 
 /**
@@ -31,6 +32,8 @@ export function getRouter(history: RouterHistory) {
     defaultPendingComponent: RoutePending,
     defaultPendingMs: 0,
     defaultPendingMinMs: 0,
+    // The overview, a project's page and a place's page cross-fade into each other.
+    ...pagesViewTransition(),
   });
 }
 

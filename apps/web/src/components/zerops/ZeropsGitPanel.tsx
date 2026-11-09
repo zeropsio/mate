@@ -7,6 +7,9 @@
  * merge", "Merged · waits for production"). The change's commits and its files are the page's
  * "What changed", below.
  *
+ * A repository whose remote does not answer says so on its own line, in its GitHub state's place,
+ * with *Check again* and what git said folded under *Details*; its rows stay its changes.
+ *
  * The project's flow was once left out on purpose: a tab that carried the project's stage,
  * production and releases read as "git for the whole project" in a Mate's own panel (the owner,
  * 2026-09-17). The pages pass reversed that (the owner, 2026-11-09): a panel that names a Mate's
@@ -20,11 +23,13 @@
  * (R5). It draws no scroller of its own: it stands in the page's.
  */
 import { NO_REPOSITORY_LINE, type GitBlock } from "@t3tools/client-runtime/zerops";
+import { maskSecrets } from "@t3tools/shared/messagePreview";
 import type { ReactNode } from "react";
 
 import { InlineButton } from "~/components/ui/button";
+import { FailureDetails } from "~/components/ui/failure";
 import type { RepoState } from "./gitMirror.logic";
-import { possessive, type GitWorkRow } from "./matePanels.logic";
+import { possessive, WORK_AWAITS_REPOSITORY, type GitWorkRow } from "./matePanels.logic";
 import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
 import { ChangeList, ChangeRow, SectionLabel } from "./system";
 
@@ -35,6 +40,8 @@ export interface ZeropsGitRepository {
   readonly work: ReadonlyArray<GitWorkRow>;
   /** Its state on GitHub (`repoState`), where HQ lists the repository. */
   readonly github?: RepoState | undefined;
+  /** Whether its remote answers is being asked again: the line says so in the verb's place. */
+  readonly checking?: boolean | undefined;
 }
 
 export interface ZeropsGitPanelModel {
@@ -57,6 +64,8 @@ export interface ZeropsGitPanelProps {
   readonly onOpenChange?: ((block: GitBlock, from: HTMLElement) => void) | undefined;
   /** Opens the dialog that connects a repository to GitHub. */
   readonly onConnect?: ((repository: string) => void) | undefined;
+  /** Asks again whether a repository's remote answers; no *Check again* without it. */
+  readonly onCheckAgain?: ((block: GitBlock) => void) | undefined;
 }
 
 export function ZeropsGitPanel({
@@ -67,6 +76,7 @@ export function ZeropsGitPanel({
   renderBlockAction,
   onOpenChange,
   onConnect,
+  onCheckAgain,
 }: ZeropsGitPanelProps) {
   const { repositories } = model;
   return (
@@ -80,51 +90,76 @@ export function ZeropsGitPanel({
         </p>
       ) : (
         repositories.map((repository) => {
+          const { block } = repository;
+          const troubled = block.trouble.length > 0;
           return (
             <section
               className="flex min-w-0 flex-col gap-2"
-              data-zerops-git-block={repository.block.repository}
-              data-zerops-git-state={repository.block.state}
-              key={repository.block.repository}
+              data-zerops-git-block={block.repository}
+              data-zerops-git-state={block.state}
+              key={block.repository}
             >
-              <SectionLabel
-                action={
-                  repository.github === undefined ? undefined : (
-                    <GithubLine
-                      onConnect={
-                        onConnect === undefined
-                          ? undefined
-                          : () => onConnect(repository.block.hqRepository)
-                      }
-                      state={repository.github}
-                    />
-                  )
-                }
-                level={3}
-              >
-                {repository.block.label ?? repository.block.repository}
-              </SectionLabel>
-              <div className="flex min-w-0 flex-col rounded-xl border border-border/70 bg-card">
-                <div className="px-3.5 py-1.5">
-                  <ChangeList label={possessive(mateName ?? "This Mate", "work")}>
-                    {repository.work.map((row, rowIndex) => (
-                      <WorkRow
-                        block={repository.block}
-                        face={mateFace}
-                        key={row.kind === "change" ? `#${String(row.pull.number)}` : row.kind}
-                        mateName={mateName}
-                        onOpenChange={onOpenChange}
-                        row={row}
-                        // One verb, at the end of the repository's first row.
-                        verb={
-                          rowIndex === 0
-                            ? (renderBlockAction?.(repository.block) ?? undefined)
-                            : undefined
+              <div className="flex min-w-0 flex-col">
+                <SectionLabel
+                  action={
+                    // What was proved wrong outranks its state on GitHub: one line, the worst first.
+                    troubled ? (
+                      <TroubleLine
+                        checking={repository.checking === true}
+                        onCheckAgain={
+                          onCheckAgain === undefined ? undefined : () => onCheckAgain(block)
                         }
+                        trouble={block.trouble}
                       />
-                    ))}
-                  </ChangeList>
-                </div>
+                    ) : repository.github === undefined ? undefined : (
+                      <GithubLine
+                        onConnect={
+                          onConnect === undefined ? undefined : () => onConnect(block.hqRepository)
+                        }
+                        state={repository.github}
+                      />
+                    )
+                  }
+                  level={3}
+                >
+                  {block.label ?? block.repository}
+                </SectionLabel>
+                {/* What git said, for whoever reports it: folded, never a row's title. */}
+                {!troubled || block.troubleDetail === undefined ? null : (
+                  <div className="min-w-0 pb-1" data-zerops-surface="git-trouble-detail">
+                    <FailureDetails align="end">{maskSecrets(block.troubleDetail)}</FailureDetails>
+                  </div>
+                )}
+              </div>
+              <div className="flex min-w-0 flex-col rounded-xl border border-border/70 bg-card">
+                {repository.work.length === 0 ? (
+                  // No change to show while the remote does not answer: the slot says what it holds.
+                  <p
+                    className="m-0 flex min-h-14 items-center px-4 text-body text-muted-foreground"
+                    data-zerops-surface="git-work-awaits"
+                  >
+                    {WORK_AWAITS_REPOSITORY}
+                  </p>
+                ) : (
+                  <div className="px-3.5 py-1.5">
+                    <ChangeList label={possessive(mateName ?? "This Mate", "work")}>
+                      {repository.work.map((row, rowIndex) => (
+                        <WorkRow
+                          block={block}
+                          face={mateFace}
+                          key={row.kind === "change" ? `#${String(row.pull.number)}` : row.kind}
+                          mateName={mateName}
+                          onOpenChange={onOpenChange}
+                          row={row}
+                          // One verb, at the end of the repository's first row.
+                          verb={
+                            rowIndex === 0 ? (renderBlockAction?.(block) ?? undefined) : undefined
+                          }
+                        />
+                      ))}
+                    </ChangeList>
+                  </div>
+                )}
               </div>
             </section>
           );
@@ -181,6 +216,43 @@ function WorkRow({
       tone={row.tone}
       verb={verb}
     />
+  );
+}
+
+/**
+ * A repository whose remote does not answer, at its label's end: "Can't reach the repository" with
+ * *Check again*, or that it is being checked. The sentence gives way in a narrow panel; the verb
+ * never does.
+ */
+function TroubleLine({
+  trouble,
+  checking,
+  onCheckAgain,
+}: {
+  readonly trouble: string;
+  readonly checking: boolean;
+  readonly onCheckAgain: (() => void) | undefined;
+}) {
+  return (
+    <span
+      className="flex min-w-0 items-baseline gap-1 text-caption text-muted-foreground"
+      data-zerops-surface="git-trouble"
+      role="status"
+    >
+      <span className="min-w-0 truncate text-status-failed-text">{trouble}</span>
+      {onCheckAgain === undefined ? null : (
+        <span className="flex shrink-0 items-baseline gap-1">
+          <span aria-hidden="true">·</span>
+          {checking ? (
+            <span>Checking…</span>
+          ) : (
+            <InlineButton data-zerops-surface="git-trouble-check" onClick={onCheckAgain}>
+              Check again
+            </InlineButton>
+          )}
+        </span>
+      )}
+    </span>
   );
 }
 

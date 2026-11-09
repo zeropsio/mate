@@ -1,4 +1,8 @@
-import { ServiceBrowserLink, ServiceBrowserLinkIndicator } from "../ServiceBrowserLink";
+import {
+  ServiceBrowserLink,
+  ServiceBrowserLinkIndicator,
+  useLinkDestination,
+} from "../ServiceBrowserLink";
 /**
  * The Zerops service map: what exists in the project, grouped and live.
  *
@@ -223,11 +227,20 @@ function ServiceHeader({
           {openData === null ? null : <DataButton hostname={service.hostname} onOpen={openData} />}
           {folded ? (
             <>
-              {main === undefined ? null : <RouteButton route={main.route} />}
+              {main === undefined ? null : (
+                <RouteButton hostname={service.hostname} main route={main.route} />
+              )}
               <RouteMenu routes={routes} unavailable={unavailable} />
             </>
           ) : (
-            routes.map((choice) => <RouteButton key={choice.route.url} route={choice.route} />)
+            routes.map((choice, index) => (
+              <RouteButton
+                hostname={service.hostname}
+                key={choice.route.url}
+                main={index === 0}
+                route={choice.route}
+              />
+            ))
           )}
         </div>
       )}
@@ -257,19 +270,53 @@ function Meters({
 }
 
 /**
+ * What a route's button does, said whole: "Open shopdev's site beside the chat", or for a port
+ * past the service's own "Open shopdev's port 5173 in a new tab". Its tooltip and its name to a
+ * reader — an icon alone says neither what opens nor where.
+ */
+function routeButtonWords(input: {
+  readonly hostname: string;
+  readonly port: number;
+  readonly main: boolean;
+  readonly preview: boolean;
+}): string {
+  const what = possessive(input.hostname, input.main ? "site" : `port ${String(input.port)}`);
+  return `Open ${what} ${input.preview ? "beside the chat" : "in a new tab"}`;
+}
+
+/**
  * A public route as a button at the card's right — the one thing a person
  * reaches for without hovering, so it gets a real target. The click stays
  * the link's: it must not toggle the card's pop underneath.
+ *
+ * The service's own route is the icon alone; a port beside it wears its number, so two buttons on
+ * one row never read as the same button twice (the live account, 2026-11-09: two identical icons
+ * on a stage's row).
  */
-function RouteButton({ route }: { route: ZeropsServiceRoute }) {
-  // An icon says what it opens only in words: the tooltip names the address (the onboarding run,
-  // 2026-10-16: an unlabeled button on every card).
+function RouteButton({
+  route,
+  hostname,
+  main,
+}: {
+  route: ZeropsServiceRoute;
+  /** Whose route it is, as the card names the service. */
+  hostname: string;
+  /** The service's own route (the first); any other is a port beside it. */
+  main: boolean;
+}) {
+  const { destination } = useLinkDestination(route.url);
+  const words = routeButtonWords({
+    hostname,
+    port: route.port,
+    main,
+    preview: destination === "preview",
+  });
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <Button
-            aria-label={route.host}
+            aria-label={words}
             data-zerops-service-route-button
             onClick={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
@@ -281,14 +328,15 @@ function RouteButton({ route }: { route: ZeropsServiceRoute }) {
                 target="_blank"
               />
             }
-            size="icon-sm"
+            size={main ? "icon-sm" : "sm"}
             variant="secondary"
           />
         }
       >
+        {main ? null : <span className="tabular-nums">{`:${String(route.port)}`}</span>}
         <ServiceBrowserLinkIndicator href={route.url} />
       </TooltipTrigger>
-      <TooltipPopup>{`Open ${route.host}`}</TooltipPopup>
+      <TooltipPopup>{words}</TooltipPopup>
     </Tooltip>
   );
 }
@@ -357,7 +405,7 @@ function DataButton({
       <TooltipTrigger
         render={
           <Button
-            aria-label={`Browse data of ${hostname}`}
+            aria-label={`Browse ${possessive(hostname, "data")}`}
             data-zerops-service-data-button
             onClick={(event) => {
               event.stopPropagation();
@@ -371,7 +419,7 @@ function DataButton({
       >
         <DatabaseIcon aria-hidden="true" />
       </TooltipTrigger>
-      <TooltipPopup>{`Browse ${hostname}'s data`}</TooltipPopup>
+      <TooltipPopup>{`Browse ${possessive(hostname, "data")}`}</TooltipPopup>
     </Tooltip>
   );
 }
@@ -741,11 +789,20 @@ function ServiceButtons({ row }: { row: ZeropsServiceRow }) {
       {openData === null ? null : <DataButton hostname={row.service.hostname} onOpen={openData} />}
       {row.routesFolded ? (
         <>
-          {main === undefined ? null : <RouteButton route={main.route} />}
+          {main === undefined ? null : (
+            <RouteButton hostname={row.service.hostname} main route={main.route} />
+          )}
           <RouteMenu routes={row.routes} unavailable={unavailable} />
         </>
       ) : (
-        row.routes.map((choice) => <RouteButton key={choice.route.url} route={choice.route} />)
+        row.routes.map((choice, index) => (
+          <RouteButton
+            hostname={row.service.hostname}
+            key={choice.route.url}
+            main={index === 0}
+            route={choice.route}
+          />
+        ))
       )}
     </span>
   );

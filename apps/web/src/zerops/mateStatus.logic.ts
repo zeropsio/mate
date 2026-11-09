@@ -60,11 +60,39 @@ export function mateStatus(
   return null;
 }
 
+/** What a waiting Mate's open conversation knows of its ask, for the status's hover. */
+export interface MateStatusAsk {
+  /** What it asks for: a key in people's words ("Stripe secret key"), a question's first line. */
+  readonly asked?: string | undefined;
+  /** Its person, to someone who only reads along: they are asked, not the reader. */
+  readonly askedOf?: string | undefined;
+}
+
+/** A waiting Mate's cause: who is asked, to someone reading along; else what is asked, where known. */
+function answerCause(
+  status: Extract<MateStatus, { readonly kind: "answer" }>,
+  mateName: string,
+  label: string,
+  ask: MateStatusAsk,
+): string {
+  if (ask.askedOf !== undefined) {
+    return status.key === true
+      ? `${mateName} asked ${ask.askedOf} for a key`
+      : `${mateName} waits on ${ask.askedOf}'s answer`;
+  }
+  const asked = ask.asked
+    ?.split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  return asked === undefined ? `${mateName}: ${label}` : `${label}: ${asked}`;
+}
+
 /** The same cause and next action wherever a Mate's status is drawn. */
 export function mateStatusWords(
   status: MateStatus,
   mateName: string,
   timestampFormat: TimestampFormat = "locale",
+  ask: MateStatusAsk = {},
 ) {
   const label =
     status.kind === "interrupted"
@@ -91,6 +119,8 @@ export function mateStatusWords(
         ? `${label}. Continue on the interrupted turn.`
         : status.kind === "sign-in" && status.admission !== undefined
           ? status.admission.text
-          : `${mateName}: ${label}`;
+          : status.kind === "answer"
+            ? answerCause(status, mateName, label, ask)
+            : `${mateName}: ${label}`;
   return { label, cause, action: status.admission?.actionLabel ?? "Open" };
 }
