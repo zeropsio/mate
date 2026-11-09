@@ -5,23 +5,28 @@
  */
 import type { ReactNode } from "react";
 
+import { cn } from "~/lib/utils";
+
 import { Crumbs, type Crumb } from "./Crumbs";
 
 /**
  * Props: `trail` (from `usePageTrail`; none drawn where empty or absent); `title` (`undefined`
- * while unread: its line is held, empty); `tag` (a pill trailing the title, e.g. a custom stage's
+ * while unread: its line is held, empty); `placeholder` (the title stands in for a name not read —
+ * "Couldn't read this project's name" — set quiet and italic); `tag` (a pill trailing the title, e.g. a custom stage's
  * tier); `summary` (beside the title, wrapping under it where narrow); `actions` (the page's verbs:
  * secondary `Button`s and a `···` menu).
  */
 export function PageHeader({
   trail,
   title,
+  placeholder = false,
   tag,
   summary,
   actions,
 }: {
   readonly trail?: ReadonlyArray<Crumb> | undefined;
   readonly title: string | undefined;
+  readonly placeholder?: boolean;
   readonly tag?: ReactNode;
   readonly summary?: ReactNode;
   readonly actions?: ReactNode;
@@ -30,7 +35,12 @@ export function PageHeader({
     <header className="flex min-w-0 flex-col gap-2.5" data-zerops-page-header="">
       {trail === undefined || trail.length === 0 ? null : <Crumbs trail={trail} />}
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-        <h1 className="m-0 min-w-0 text-2xl leading-8 font-semibold tracking-tight wrap-anywhere text-foreground">
+        <h1
+          className={cn(
+            "m-0 min-w-0 text-2xl leading-8 font-semibold tracking-tight wrap-anywhere text-foreground",
+            placeholder && "font-normal text-muted-foreground italic",
+          )}
+        >
           {title ?? <span aria-hidden="true">{" "}</span>}
         </h1>
         {tag}

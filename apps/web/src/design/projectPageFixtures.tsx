@@ -37,6 +37,7 @@ import {
   mateChangesForReview,
 } from "~/components/zerops/projects/projectCard.logic";
 import { ProjectPeopleRowView } from "~/components/zerops/projects/ProjectPeople";
+import { Button } from "~/components/ui/button";
 import { MateFace } from "~/components/zerops/primitives";
 import { ProjectSpendRowView } from "~/components/zerops/projects/ProjectSpend";
 import type { ProjectPerson } from "~/components/zerops/projects/projectPeople.logic";
@@ -527,13 +528,19 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
     environments,
     slots,
     release:
-      flow.production.kind === "ready-to-release" || flow.production.kind === "deploy-failed"
-        ? RELEASE_WAITING
-        : RELEASE_NONE,
+      flow.production.kind === "releasing"
+        ? { ...RELEASE_WAITING, releasing: true, tag: flow.production.tag }
+        : flow.production.kind === "ready-to-release" || flow.production.kind === "deploy-failed"
+          ? RELEASE_WAITING
+          : RELEASE_NONE,
     onAdd: nothing,
     onFinish: nothing,
     finishing: false,
     repo: input === undefined ? undefined : "appdev",
+    // `?undeclared`: HQ has not told which environments exist; the places are the group's lines.
+    declared: !new URLSearchParams(location.search).has("undeclared"),
+    fixOf: () =>
+      flow.mates[0] === undefined ? undefined : { name: flow.mates[0].name, onAsk: nothing },
   };
 }
 
@@ -591,6 +598,19 @@ function harnessWaits<T>(entry: ProjectsFlowGroup<T>): ReadonlyArray<CardWait> {
   return [...asks, ...reviews];
 }
 
+/**
+ * The page's release door as the projects page draws it: offered only while production has a
+ * candidate to release — none while a release is on its way.
+ */
+function harnessReleaseVerb<T>(entry: ProjectsFlowGroup<T>): ReactNode {
+  const { production } = entry.flow;
+  const candidate =
+    production.kind === "ready-to-release" || production.kind === "deploy-failed"
+      ? production.candidate
+      : undefined;
+  return candidate === undefined ? null : <Button size="sm">Review release</Button>;
+}
+
 /** The harness's project page body, as the page draws it from the flow's group and slots. */
 export function harnessProjectPage(
   groupId: string,
@@ -609,6 +629,7 @@ export function harnessProjectPage(
           ...props,
           renderHistory: () => <PageHistory groupId={groupId} />,
           cardWaits: harnessWaits,
+          renderReleaseVerb: harnessReleaseVerb,
         }}
         setup={{
           rows: (open) => (
