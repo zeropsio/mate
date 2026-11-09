@@ -45,19 +45,25 @@ import {
   type MateRowView,
 } from "../SidebarMateRow.logic";
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
-import type { WaitingChange, WaitingItem, WaitingMate } from "../SidebarWaiting.logic";
+import type {
+  WaitingChange,
+  WaitingItem,
+  WaitingMate,
+  WaitingRelease,
+} from "../SidebarWaiting.logic";
 import { mergedChangeWords, openChangeWords, releaseIsLive } from "../system/ChangeRow.logic";
 import { releaseOfLanding, type HistoryReleaseInput } from "./projectHistory.logic";
 
 /**
  * One thing in a project that waits on the viewer, beside its release: a Mate of theirs that asks
- * (a question, a plan, a run stopped on an error), or its changes waiting for their review.
+ * (a question, a plan, a run stopped on an error, its agent's sign-in), or its changes waiting for
+ * their review.
  */
 export type ProjectWait =
   | {
       readonly kind: "ask";
       readonly key: string;
-      readonly ask: "question" | "plan" | "failed";
+      readonly ask: "question" | "plan" | "failed" | "sign-in";
       readonly mate: WaitingMate;
     }
   | {
@@ -71,10 +77,10 @@ export type ProjectWait =
     };
 
 /**
- * What waits on the viewer in one project, read off the menu's Waiting on you list
- * (`useSidebarWaiting`) so the menu, the overview card and the project page say the same: its
- * Mates' asks first, the most urgent, then their changes to review. Its release is not here: it is
- * production's next release, said where production is.
+ * What waits on the viewer in one project, read off the one list (`useViewerWaits`) so the menu,
+ * the overview card and the project page say the same: its Mates' asks first, the most urgent,
+ * then their changes to review. Its release is `projectReleaseWait`: production's next release,
+ * said where production is.
  */
 export function projectWaits(input: {
   readonly items: ReadonlyArray<WaitingItem>;
@@ -99,8 +105,18 @@ export function projectWaits(input: {
   return [...asks, ...reviews];
 }
 
+/** A project's release, where the one list says it waits on the viewer (`releaseOffered`). */
+export function projectReleaseWait(
+  items: ReadonlyArray<WaitingItem>,
+  groupId: string,
+): WaitingRelease | undefined {
+  for (const item of items)
+    if (item.kind === "release" && item.release.groupId === groupId) return item.release;
+  return undefined;
+}
+
 /** The verb a wait offers, one each. */
-export type ProjectWaitVerb = "Answer" | "See plan" | "Ask to fix it" | "Review";
+export type ProjectWaitVerb = "Answer" | "See plan" | "Ask to fix it" | "Review" | "Sign in";
 
 /** A wait in words: what waits, in a sentence, and its one verb. */
 export function projectWaitWords(wait: ProjectWait): {
@@ -128,6 +144,8 @@ export function projectWaitWords(wait: ProjectWait): {
       return { text: `${name} has a plan for you to approve`, verb: "See plan" };
     case "failed":
       return { text: `${name} stopped on an error`, verb: "Ask to fix it" };
+    case "sign-in":
+      return { text: `${name} waits for your sign-in`, verb: "Sign in" };
   }
 }
 
@@ -143,6 +161,8 @@ export function projectWaitLabel(wait: ProjectWait, project: string): string {
       return `See ${name}'s plan in ${project}`;
     case "failed":
       return `Ask ${name} to fix it in ${project}`;
+    case "sign-in":
+      return `Sign ${name} in, in ${project}`;
   }
 }
 

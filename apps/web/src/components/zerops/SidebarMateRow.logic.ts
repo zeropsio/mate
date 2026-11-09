@@ -130,6 +130,18 @@ const WAITING_FOR_SIGN_IN = "Waiting for sign-in";
 const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
 
 /**
+ * Whom a Mate's agent sign-in waits on: its owner acts in it alone, so its owner HQ names; its
+ * maker or stand-up asker stands in only while HQ has not named one.
+ */
+export function signInAwaitedBy(input: {
+  readonly ownerUserId?: string | undefined;
+  readonly madeBy?: string | undefined;
+  readonly standUpBy?: string | undefined;
+}): string | undefined {
+  return input.ownerUserId ?? input.madeBy ?? input.standUpBy;
+}
+
+/**
  * Whose seat a Mate's row draws, and whether it says that nobody has signed
  * its agent in (the owner, 2026-09-29: "mate without auth / owner should have
  * the state specially handled"):
@@ -214,9 +226,7 @@ export function mateOwnerView(input: {
         ? { kind: "nobody", label: NOBODY_OWNS }
         : { kind: "unnamed" };
   const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
-  // Its owner acts in it alone, so its sign-in waits on them; its maker or stand-up asker stands in
-  // only while HQ has not named one.
-  const awaited = input.ownerUserId ?? input.madeBy ?? input.standUpBy;
+  const awaited = signInAwaitedBy(input);
   if (input.admission?.cause === "expired-login" && records.runsWithoutSignIn !== true) {
     if (viewer === undefined) return { seat, signInLine: undefined, waitsOnViewer: false };
     const yours = awaited === viewer;

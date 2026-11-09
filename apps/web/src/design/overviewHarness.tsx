@@ -41,7 +41,13 @@ import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.l
 import { MateAutomatedMark } from "~/components/zerops/MateAutomatedMark";
 import { CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
 import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
-import { cardMateReading, projectWaits } from "~/components/zerops/projects/projectCard.logic";
+import {
+  cardMateReading,
+  cardReady,
+  projectReleaseWait,
+  projectWaits,
+} from "~/components/zerops/projects/projectCard.logic";
+import { SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
 import {
   ZeropsProjectsFlow,
   type ProjectsFlowGroup,
@@ -567,13 +573,43 @@ const ARRIVAL =
     } as Record<string, { roleCode: string; canCreateProjects: boolean }>
   )[params.get("arrival") ?? ""] ?? null;
 
+/**
+ * Everything that waits on the viewer, the one list both the menu's count and the overview's tab
+ * read: their Mates' asks and changes, then each release a project offers.
+ */
+const ALL_WAITS: ReadonlyArray<WaitingItem> = [
+  ...PROJECTS.flatMap(({ entry }) => waitingOf(entry)),
+  ...PROJECTS.flatMap(({ entry }) =>
+    cardReady(entry.flow) === undefined
+      ? []
+      : [
+          {
+            kind: "release" as const,
+            key: `r:${entry.group.groupId}`,
+            release: {
+              groupId: entry.group.groupId,
+              name: entry.group.name,
+              ahead: cardReady(entry.flow)?.count,
+            },
+          },
+        ],
+  ),
+];
+
 /** `?page=tea` (or another project's id) draws that project's own page instead. */
 const PAGE = params.get("page");
 
 function HarnessPage() {
   return (
     <div className="flex h-dvh bg-background text-foreground">
-      <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }} />
+      <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }}>
+        {/* The menu's top, its count of what waits on the viewer: the overview's tab counts the same. */}
+        <SidebarChiefRow
+          current={false}
+          onOpen={() => {}}
+          waiting={{ items: ALL_WAITS, verbs: { onOpenMate: () => {}, onAskToFix: () => {} } }}
+        />
+      </aside>
       <main className="min-w-0 flex-1 overflow-y-auto">
         <div className="flex w-full flex-col gap-6 px-6 pt-6 pb-12">
           {PAGE === null ? (
@@ -701,7 +737,11 @@ function HarnessPage() {
               );
             }}
             renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
-            renderReleaseVerb={() => <Button size="sm">Review release</Button>}
+            renderReleaseVerb={(entry) =>
+              projectReleaseWait(ALL_WAITS, entry.group.groupId) === undefined ? null : (
+                <Button size="sm">Review release</Button>
+              )
+            }
             // Harbor Radio's production is down and Nell, the viewer's, would fix it; Watchlist's
             // failed release has no Mate of theirs, so its wait opens the place.
             placeFix={(entry) => ({

@@ -402,16 +402,19 @@ const ASK_LINE: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], string> = {
   question: "Asks you",
   plan: "Has a plan for you",
   failed: "Stopped on an error",
+  "sign-in": "Waiting for your sign-in",
 };
 const ASK_TITLE: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], (name: string) => string> = {
   question: (name) => `${name} asks you`,
   plan: (name) => `${name} has a plan for you`,
   failed: (name) => `${name} stopped on an error`,
+  "sign-in": (name) => `${name} waits for your sign-in`,
 };
 const ASK_VERB: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], string> = {
   question: "Answer",
   plan: "See plan",
   failed: "Ask to fix it",
+  "sign-in": "Sign in",
 };
 
 /**

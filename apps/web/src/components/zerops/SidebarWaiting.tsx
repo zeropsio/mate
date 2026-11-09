@@ -310,6 +310,9 @@ function WaitingEntry({
               onClose={onClose}
               target={{ kind: "release", groupId: item.release.groupId }}
             />
+          ) : item.kind === "sign-in" ? (
+            // Its conversation holds the sign-in.
+            <OpenButton mate={item.mate} onClose={onClose} verbs={verbs} />
           ) : item.kind === "change" ? (
             item.mate.change === undefined ? (
               <OpenButton mate={item.mate} onClose={onClose} verbs={verbs} />
