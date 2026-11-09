@@ -2,9 +2,14 @@
  * Settings › Automation and the mirror dialog, in each of their states, from fixtures.
  *
  * Served by the dev server at `/design-automation.html` (`?theme=dark`). Open it at the owner's
- * 1786 × 1000. `?view=` picks one state: `none` (an Owner, no GitHub app), `open` (every Connect pressed), `checking` (every read under way), `connected`, `manage` (Discord connected, its Manage open), `slack-refused` (Slack's signatures refused, its Replace open), `older` (an HQ older
- * than the app), `member`, `dialog` (the mirror dialog's repositories, each state), `model` (the
- * automated Mates' model picker open).
+ * 1786 × 1000. `?view=` picks one state: `none` (an Owner, no GitHub app), `open` (every Connect
+ * pressed, Add a GitHub app among them), `checking` (every read under way), `connected` (one app),
+ * `two` (two apps, one on a person's account, an account waiting), `add` (two apps, Add a GitHub app
+ * pressed), `remove` (the personal app's remove guard), `unsealed` / `unsealed-member` (an app
+ * nobody confirmed), `private`, `manage` (Discord connected, its Manage open), `slack-refused`
+ * (Slack's signatures refused, its Replace open), `older` (an HQ older than the apps), `member`,
+ * `many-member`, `dialog` (the mirror dialog's repositories, each state), `model` (the automated
+ * Mates' model picker open).
  *
  * Fixtures only. Nothing here ships — `design-automation.html` is not `index.html`, and no route
  * imports this module.
@@ -52,14 +57,25 @@ const controls = (setting: unknown) => ({
   write: nothing,
   again: nothing,
 });
-const CONNECTED: HqGithubView = {
-  state: "connected",
+type FixtureApp = HqGithubView["apps"][number];
+const repository = (
+  id: number,
+  fullName: string,
+  usedBy: { readonly application: string; readonly repo: string } | null = null,
+) => ({ id, fullName, private: true, defaultBranch: "main", usedBy });
+// The organization's own app, on its GitHub organization, two repositories connected.
+const ACME: FixtureApp = {
+  appId: 101,
   slug: "acme-mate",
   name: "Acme Mate",
   botLogin: "acme-mate[bot]",
   owner: "acme",
+  ownerType: "Organization",
   appUrl: "https://github.com/apps/acme-mate",
   installUrl: "https://github.com/apps/acme-mate/installations/new",
+  public: true,
+  sealedBy: "user-dana",
+  sealedAt: "2026-11-09T09:00:00Z",
   installations: [
     {
       id: 1,
@@ -67,48 +83,81 @@ const CONNECTED: HqGithubView = {
       accountType: "Organization",
       repositorySelection: "selected",
       repositories: [
-        { fullName: "acme/tea-shop", private: true, defaultBranch: "main" },
-        { fullName: "acme/api", private: true, defaultBranch: "main" },
-        { fullName: "acme/web", private: false, defaultBranch: "main" },
+        repository(11, "acme/tea-shop", { application: "app-tea", repo: "appdev" }),
+        repository(12, "acme/api", { application: "app-api", repo: "apidev" }),
+        repository(13, "acme/web"),
       ],
       suspended: false,
+      state: "accepted",
       manageUrl: "https://github.com/organizations/acme/settings/installations/1",
+      addedBy: "user-dana",
     },
   ],
 };
-// One app on two accounts, a third waiting for an OK (`?view=many`, `?view=many-member`), or a
-// private app only its owner installs (`?view=private`).
-const MANY: HqGithubView = {
-  ...CONNECTED,
+// A teammate's app on their own account, installed on theirs and a partner's.
+const PERSONAL: FixtureApp = {
+  appId: 102,
+  slug: "octo-mate",
+  name: "Octo Mate",
+  botLogin: "octo-mate[bot]",
+  owner: "jane-k",
+  ownerType: "User",
+  appUrl: "https://github.com/apps/octo-mate",
+  installUrl: "https://github.com/apps/octo-mate/installations/new",
   public: true,
+  sealedBy: "user-jane",
+  sealedAt: "2026-11-08T15:00:00Z",
   installations: [
-    ...(CONNECTED.state === "connected" ? CONNECTED.installations : []),
     {
       id: 2,
-      account: "jane",
+      account: "jane-k",
       accountType: "User",
       repositorySelection: "all",
-      repositories: [{ fullName: "jane/notes", private: true, defaultBranch: "main" }],
+      repositories: [
+        repository(21, "jane-k/notes", { application: "app-notes", repo: "notesdev" }),
+      ],
       suspended: false,
       state: "accepted",
       manageUrl: "https://github.com/settings/installations/2",
+      addedBy: "user-jane",
     },
     {
       id: 3,
-      account: "stranger-labs",
+      account: "octo-org",
       accountType: "Organization",
       repositorySelection: "selected",
       repositories: [
-        { fullName: "stranger-labs/site", private: false, defaultBranch: "main" },
-        { fullName: "stranger-labs/api", private: true, defaultBranch: "main" },
+        repository(31, "octo-org/site", { application: "app-tea", repo: "sitedev" }),
+        repository(32, "octo-org/api"),
       ],
       suspended: false,
+      state: "accepted",
+      manageUrl: "https://github.com/organizations/octo-org/settings/installations/3",
+      addedBy: null,
+    },
+    {
+      id: 4,
+      account: "stranger-labs",
+      accountType: "Organization",
+      repositorySelection: "selected",
+      repositories: [repository(41, "stranger-labs/site")],
+      suspended: false,
       state: "waiting",
-      manageUrl: "https://github.com/organizations/stranger-labs/settings/installations/3",
+      manageUrl: "https://github.com/organizations/stranger-labs/settings/installations/4",
+      addedBy: null,
     },
   ],
-} as HqGithubView;
-const PRIVATE: HqGithubView = { ...CONNECTED, public: false } as HqGithubView;
+};
+// An app nobody vouched for: Mate uses it for nothing until an Owner or Admin confirms it.
+const UNSEALED: FixtureApp = { ...ACME, sealedBy: null, sealedAt: null };
+const ONE: HqGithubView = { apps: [ACME] };
+const TWO: HqGithubView = { apps: [ACME, PERSONAL] };
+const PEOPLE: Record<string, string> = { "user-dana": "Dana K.", "user-jane": "Jane K." };
+const APPLICATIONS: Record<string, string> = {
+  "app-tea": "Tea shop",
+  "app-api": "Orders API",
+  "app-notes": "Notes",
+};
 const SLACK = {
   connected: true,
   workspace: "Acme",
@@ -206,15 +255,19 @@ function Automation({
       controls={{
         read: controls(checking ? { state: "reading" } : github)
           .read as TaskSourceSettingValue<"hqGithub">,
-        disconnect: nothing,
         again: nothing,
         manifest: async () => null,
         install: async () => null,
+        forget: nothing,
+        confirm: nothing,
         accept: nothing,
         suspend: nothing,
         resume: nothing,
       }}
-      defaultOpen={open}
+      applicationOf={(id) => APPLICATIONS[id]}
+      defaultCreating={open}
+      defaultRemoving={view === "remove" ? PERSONAL.appId : null}
+      nameOf={(id) => PEOPLE[id]}
       onOpen={nothing}
       onPost={nothing}
       organization="Acme"
@@ -293,7 +346,7 @@ const APP = {
   kind: "connected",
   name: "Acme Mate",
   repositories: ["acme/api", "acme/tea-shop", "acme/web"],
-  installUrl: CONNECTED.installUrl,
+  installUrl: ACME.installUrl,
   installTrip: true,
   appId: 123456,
 } satisfies GitMirrorApp;
@@ -554,23 +607,28 @@ if (host) {
         <Dialogs />
       ) : (
         <Automation
-          admin={view !== "member" && view !== "many-member"}
+          admin={!view.endsWith("member")}
           checking={view === "checking"}
-          open={view === "open" || view.startsWith("many") || view === "private"}
+          open={view === "open" || view === "add"}
           github={
             view === "none" || view === "open"
-              ? known({ state: "none" })
+              ? known({ apps: [] })
               : view === "failed"
                 ? { state: "failed", words: "HQ isn't answering right now." }
                 : view === "requested"
-                  ? known({ ...CONNECTED, installations: [] })
+                  ? known({ apps: [{ ...ACME, installations: [] }] })
                   : view === "older"
                     ? { state: "unsupported" }
-                    : view.startsWith("many")
-                      ? known(MANY)
-                      : view === "private"
-                        ? known(PRIVATE)
-                        : known(CONNECTED)
+                    : view === "two" ||
+                        view === "remove" ||
+                        view === "add" ||
+                        view === "many-member"
+                      ? known(TWO)
+                      : view === "unsealed" || view === "unsealed-member"
+                        ? known({ apps: [UNSEALED] })
+                        : view === "private"
+                          ? known({ apps: [{ ...ACME, public: false }] })
+                          : known(ONE)
           }
         />
       )}
