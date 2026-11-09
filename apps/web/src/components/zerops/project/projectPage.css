@@ -291,6 +291,11 @@
   padding: 0 20px 16px;
 }
 
+/* The run's slot holds what is under way (a first deploy); nothing under way draws no strip. */
+.pp-golive > .pp-golive-run:empty {
+  display: none;
+}
+
 /* A group of changes inside the Changes card, where they went said once over its rows. */
 .pp-change-group + .pp-change-group {
   margin-top: 6px;
