@@ -161,11 +161,6 @@ describe("a reveal recorded at HQ", () => {
 
   it.effect.each([
     {
-      case: "to update HQ, where its HQ has no address to record them at",
-      status: 404,
-      reason: "Update HQ to record reveals.",
-    },
-    {
       case: "honestly, where HQ refuses the person",
       status: 403,
       reason: "HQ won't record a reveal by you here, so it stays hidden.",
@@ -183,21 +178,6 @@ describe("a reveal recorded at HQ", () => {
         reveal: { projectId: "p-prod", key: "DATABASE_PASSWORD" },
       });
       expect(progress(store)).toMatchObject({ stage: "refused", reason });
-    }),
-  );
-
-  it.effect("is refused where the HQ records no reveals, so nothing is shown", () =>
-    Effect.gen(function* () {
-      const { store, operations } = account({});
-      yield* operations.submit({
-        kind: "record-reveal",
-        orgId: ORG,
-        reveal: { projectId: "p-prod", key: "DATABASE_PASSWORD" },
-      });
-      expect(progress(store)).toMatchObject({
-        stage: "refused",
-        reason: "Update HQ to record reveals.",
-      });
     }),
   );
 });

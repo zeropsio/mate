@@ -14,6 +14,7 @@ import { streamTrouble } from "../streamMachine.ts";
 import { scopeFreshness } from "./freshness.ts";
 import { sameValue } from "./equal.ts";
 import { operationProgress } from "./operation.ts";
+import { hqDisagreesOn } from "../../zerops/hq/refusals.ts";
 
 export type OrgPersonaTemplates =
   | {
@@ -26,7 +27,7 @@ export type OrgPersonaTemplates =
   | { readonly state: "failed"; readonly failure: string };
 
 const unreadableWords = (count: number) =>
-  `HQ sent ${count === 1 ? "a persona template" : `${count} persona templates`} in a form this version of Mate doesn't read.`;
+  hqDisagreesOn(count === 1 ? "a persona template" : `${count} persona templates`);
 
 /**
  * Why the organization's templates are not current now, from its HQ link and their own scope: a
@@ -55,7 +56,7 @@ export const orgPersonaTemplates: Projection<string, OrgPersonaTemplates> = {
       if (unreadable === "record")
         return {
           state: "failed",
-          failure: "HQ sent persona templates in a form this version of Mate doesn't read.",
+          failure: hqDisagreesOn("the persona templates"),
         };
       return {
         state: "ready",

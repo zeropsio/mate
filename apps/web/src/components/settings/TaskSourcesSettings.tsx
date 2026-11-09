@@ -9,7 +9,12 @@
  * Each part paints in its final shape while it is read (`IntakeRoom`): nothing it reads moves what
  * the person is about to press.
  */
-import type { AppSetting, OrgSetting, SettingValue } from "@t3tools/client-runtime/data";
+import {
+  TASK_SOURCES_UNSUPPORTED,
+  type AppSetting,
+  type OrgSetting,
+  type SettingValue,
+} from "@t3tools/client-runtime/data";
 import type { HqDiscordView, HqSlackView, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import {
   automatedModelOf,
@@ -136,7 +141,7 @@ export function TaskSourcesUnsupported() {
       className="text-sm text-muted-foreground"
       data-zerops-surface="settings-task-sources-unsupported"
     >
-      Update HQ to take tasks from Slack, Discord, webhooks and schedules.
+      {TASK_SOURCES_UNSUPPORTED}
     </p>
   );
 }
@@ -147,8 +152,6 @@ export function TaskSourcesUnsupported() {
 function ConnectedBy({ line }: { readonly line: string | null }) {
   return line === null ? null : <p className="text-xs text-muted-foreground">{line}</p>;
 }
-
-const TASK_SOURCES_UPDATE = "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
 
 /**
  * What a section's status line says of its setting: its own line once known, else that it is
@@ -220,7 +223,7 @@ function sourceLine<T>(
   }
   if (setting.state === "failed") return setting.words;
   if (setting.state === "withheld") return WITHHELD;
-  if (setting.state === "unsupported") return TASK_SOURCES_UPDATE;
+  if (setting.state === "unsupported") return TASK_SOURCES_UNSUPPORTED;
   return purpose;
 }
 

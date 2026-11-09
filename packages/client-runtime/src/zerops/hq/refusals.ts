@@ -383,6 +383,19 @@ function handoverUnfinishedWords(phase: string | undefined, reason: string | und
   return `${where}${reason === undefined ? "" : ` (${reason})`}. ${finish}`;
 }
 
+/**
+ * The one sentence for an HQ older than this Mate, which has no route for what is asked: `toDo`
+ * is the thing, as a verb phrase ("connect GitHub").
+ */
+export const hqNeedsUpdate = (toDo: string): string => `HQ needs an update to ${toDo}.`;
+
+/**
+ * The one sentence for an answer HQ gave in a shape this Mate does not decode: a version mismatch
+ * about `what` ("the Slack app"), and either side may be the older one.
+ */
+export const hqDisagreesOn = (what: string): string =>
+  `HQ and this Mate disagree on ${what}: one of them needs an update.`;
+
 export function hqRefusalWords(refusal: {
   readonly code: string;
   readonly reason: string | undefined;

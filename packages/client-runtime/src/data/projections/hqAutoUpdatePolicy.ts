@@ -6,6 +6,7 @@ import type { PublicRead } from "../model.ts";
 import type { Projection } from "../store.ts";
 import { operationProgress } from "./operation.ts";
 import { sameValue } from "./equal.ts";
+import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 
 export interface AutoUpdatePolicySettings {
   readonly policy:
@@ -80,7 +81,7 @@ export const autoUpdatePolicySettings: Projection<
       editable:
         admin && !upgradeRequired && policy.kind === "known" && stream.phase === "live" && !pending,
       words: upgradeRequired
-        ? "Update HQ to manage automatic Mate updates."
+        ? hqNeedsUpdate("manage automatic Mate updates")
         : pending
           ? progress?.stage === "uncertain" || progress?.stage === "unresolved"
             ? `${stream.phase === "live" ? "Current policy" : "Last known policy"}: ${policy.kind !== "known" ? "unknown" : policy.enabled ? "On" : "Off"}; change unconfirmed`

@@ -5,6 +5,7 @@
  * from, with what HQ answered as it was set: the webhook it made, or the URL and secret to paste,
  * the secret shown this once.
  */
+import { hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import type { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { useId, useState } from "react";
@@ -31,7 +32,7 @@ export function AutomatedMatesUnsupported() {
       className="px-3 pb-3 text-sm text-muted-foreground sm:px-4"
       data-zerops-surface="settings-automated-unsupported"
     >
-      Update HQ to set up automated Mates.
+      {hqNeedsUpdate("set up automated Mates")}
     </p>
   );
 }

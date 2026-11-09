@@ -87,6 +87,7 @@ export interface HqChiefTransport {
   readonly withAccess: HqApi["withAccess"];
   readonly decoded: <S extends Schema.Decoder<unknown>>(
     schema: S,
+    what: string,
   ) => (response: Response) => Promise<S["Type"]>;
 }
 
@@ -95,9 +96,9 @@ export function makeChiefCalls({
   decoded,
   withAccess,
 }: HqChiefTransport): HqChiefCalls {
-  const readRegistration = decoded(HqChiefRegistration);
-  const readDecisions = decoded(DecisionsAnswer);
-  const readDecision = decoded(HqProposalDecision);
+  const readRegistration = decoded(HqChiefRegistration, "Chief's registration");
+  const readDecisions = decoded(DecisionsAnswer, "Chief's decisions");
+  const readDecision = decoded(HqProposalDecision, "a decision on a proposal");
   return {
     setChief: async (projectId) =>
       readRegistration(

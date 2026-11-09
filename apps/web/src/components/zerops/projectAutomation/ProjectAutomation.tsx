@@ -12,6 +12,7 @@
  * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
  * and sees the section only once it holds something.
  */
+import { hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
@@ -749,7 +750,9 @@ export function ProjectAutomationView({
       data-zerops-surface="project-automation"
     >
       {update ? (
-        <p className="px-2 text-sm text-muted-foreground">Update HQ to set up automated Mates.</p>
+        <p className="px-2 text-sm text-muted-foreground">
+          {hqNeedsUpdate("set up automated Mates")}
+        </p>
       ) : (
         <AutomationBody
           admin={admin}

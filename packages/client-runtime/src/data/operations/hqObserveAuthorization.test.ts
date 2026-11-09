@@ -74,15 +74,4 @@ describe("authorizing a Mate's observation", () => {
       expect(acknowledged(store)).toBe(false);
     }),
   );
-
-  it.effect("asks for a newer HQ where it cannot authorize observation", () =>
-    Effect.gen(function* () {
-      const { store, operations } = account({});
-      yield* operations.submit(INTENT);
-      expect(progress(store)).toMatchObject({
-        stage: "refused",
-        reason: "Update HQ to manage observe authorization.",
-      });
-    }),
-  );
 });

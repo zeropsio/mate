@@ -80,6 +80,8 @@ export {
   enrollmentRefusalWords,
   HQ_HANDOVER_UNFINISHED,
   HQ_NOT_OPEN,
+  hqDisagreesOn,
+  hqNeedsUpdate,
   hqOfferWords,
   hqRefusalWords,
   NO_HQ_WORDS,

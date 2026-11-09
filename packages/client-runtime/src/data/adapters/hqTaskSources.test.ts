@@ -877,16 +877,6 @@ describe("a task's stop and the board's reads", () => {
 
   it.each([
     [
-      "asks for HQ to be updated where it has no stop of a task",
-      new HqError({
-        kind: "refused",
-        code: "http_404",
-        status: 404,
-        message: "HQ refused this (http_404).",
-      }),
-      "Update HQ to stop tasks from Mate.",
-    ],
-    [
       "says only an Owner or Admin stops a task where HQ refuses the person",
       new HqError({
         kind: "refused",

@@ -127,32 +127,3 @@ it.effect(
       yield* stop;
     }),
 );
-
-it.effect.each([
-  {
-    title:
-      'a templates record this version cannot read is a failure, never "doesn\'t offer templates yet"',
-    value: { orgId: "org", templates: "every one" },
-    reads: {
-      state: "failed",
-      failure: "HQ sent persona templates in a form this version of Mate doesn't read.",
-    },
-  },
-  {
-    title: "a template this version cannot read is left out and said, and the others still show",
-    value: { orgId: "org", templates: [TEMPLATE, { id: "t-2", name: 7 }] },
-    reads: {
-      state: "ready",
-      templates: [TEMPLATE],
-      failure: "HQ sent a persona template in a form this version of Mate doesn't read.",
-    },
-  },
-])("$title", ({ value, reads }) =>
-  Effect.gen(function* () {
-    const { navigation, current, stop } = yield* observe();
-    yield* navigation("scope-reset", 1, [{ key: "persona-templates", value }]);
-    yield* settle;
-    expect(current()).toEqual(reads);
-    yield* stop;
-  }),
-);

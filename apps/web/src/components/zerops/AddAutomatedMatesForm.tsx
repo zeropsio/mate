@@ -8,6 +8,7 @@
  * The faces row always holds three places, so choosing how many moves nothing below it; a Mate
  * added to the row fades in, the one change here a person made.
  */
+import { hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentRecipeChoice, ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
@@ -100,7 +101,7 @@ const HELD_SOURCES: AutomatedSources = { kind: "withheld" };
 
 const READING_PEOPLE = "Reading who reaches this project…";
 const PEOPLE_FAILED = "Couldn't read who reaches this project. Close and try again.";
-const UPDATE_HQ = "Update HQ to make automated Mates.";
+const UPDATE_HQ = hqNeedsUpdate("make automated Mates");
 
 export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
   const { groupName, propose, takenBotNames, tier, tierLoading, people } = props;

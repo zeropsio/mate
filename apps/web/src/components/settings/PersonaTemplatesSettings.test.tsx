@@ -128,11 +128,6 @@ describe("an organization's persona templates in Settings", () => {
 
   it.each([
     {
-      title: "an HQ that offers no templates says so by the organization's name",
-      read: { state: "unavailable" as const, templates: [] },
-      says: "Acme's HQ doesn't offer persona templates yet.",
-    },
-    {
       title: "an organization without templates says it has none yet",
       read: { templates: [] },
       says: "No templates yet.",

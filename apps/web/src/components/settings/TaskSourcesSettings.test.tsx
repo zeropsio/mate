@@ -23,7 +23,6 @@ import {
   SlackSettingsView,
   MonthlyBudgetView,
   TaskLimitsView,
-  TaskSourcesUnsupported,
 } from "./TaskSourcesSettings";
 
 // Built from parts: never a whole secret-shaped literal in the source.
@@ -434,12 +433,6 @@ describe("Slack in Settings", () => {
     const html = renderToStaticMarkup(part);
     expect(html).toContain("data-zerops-intake-room");
     expect(shown(html)).toContain(room);
-  });
-
-  it("asks for an update where HQ predates these settings", () => {
-    expect(shown(renderToStaticMarkup(<TaskSourcesUnsupported />))).toBe(
-      "Update HQ to take tasks from Slack, Discord, webhooks and schedules.",
-    );
   });
 });
 

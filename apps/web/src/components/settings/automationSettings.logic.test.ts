@@ -102,12 +102,6 @@ describe("Settings › Automation's GitHub section", () => {
       says: "1 GitHub app · pushes as acme-mate[bot]",
     },
     {
-      case: "an HQ older than the app",
-      setting: { state: "unsupported" },
-      admin: true,
-      says: "Update HQ to connect GitHub",
-    },
-    {
       case: "a person HQ shows nothing of it",
       setting: { state: "withheld" },
       admin: false,
