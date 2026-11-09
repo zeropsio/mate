@@ -434,8 +434,9 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
               : "auto",
           beads: input.changesKnown ? beadsOf(deploying) : [],
           more: 0,
+          // A failed deploy is the stage's own word, said once on its station: here, the red track.
           caption: stageFailed
-            ? [{ text: stageLine?.words[0] ?? "Deploy failed", tone: "danger" }]
+            ? []
             : deploying.length > 0 && input.changesKnown
               ? [
                   {
