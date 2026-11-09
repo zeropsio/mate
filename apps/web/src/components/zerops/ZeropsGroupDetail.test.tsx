@@ -508,8 +508,7 @@ it.each(["stage", "production"] as const)(
   "keeps unread %s services and their repository unknown rather than empty",
   (tier) => {
     const markup = renderStop({ tier, services: [], servicesRead: false, repository: null });
-    expect(markup).toContain("Services aren");
-    expect(markup).toContain("known yet");
+    expect(markup).toContain('data-zerops-surface="place-services-waiting"');
     expect(markup).not.toContain("None yet");
     expect(markup).not.toContain("No repository is declared");
   },
