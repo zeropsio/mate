@@ -181,9 +181,10 @@ export function originMountStep(
 
 /**
  * The organization's app keeping the asked origin on GitHub goes through, as the sheet reads it:
- * the app whose accepted installation reaches the repository, else one installed where it waits
- * for an OK, else the oldest — its accepted installations' repositories flattened into what it
- * reaches. `githubAppId` names it to HQ once it reaches the repository. `app` is `null` while HQ
+ * among the apps an Owner or Admin confirmed (any, while none is), the one whose accepted
+ * installation reaches the repository, else one installed where it waits for an OK, else the
+ * oldest — its accepted installations' repositories flattened into what it reaches. An app nobody
+ * confirmed may be another person's, so it is never picked over one somebody did. `githubAppId` names it to HQ once it reaches the repository. `app` is `null` while HQ
  * is still asked.
  */
 export function originGithubApp(
@@ -202,10 +203,12 @@ export function originGithubApp(
           (repository) => repository.fullName.toLowerCase() === wanted,
         ),
     );
+  const confirmed = apps.apps.filter((each) => each.setUpBy !== null);
+  const candidates = confirmed.length > 0 ? confirmed : apps.apps;
   const entry =
-    apps.apps.find((each) => reaches("accepted")(each.appId)) ??
-    apps.apps.find((each) => reaches("waiting")(each.appId)) ??
-    apps.apps[0];
+    candidates.find((each) => reaches("accepted")(each.appId)) ??
+    candidates.find((each) => reaches("waiting")(each.appId)) ??
+    candidates[0];
   if (entry === undefined) return { app: { kind: "none" }, githubAppId: null };
   const own = apps.installations.filter((installation) => installation.appId === entry.appId);
   return {

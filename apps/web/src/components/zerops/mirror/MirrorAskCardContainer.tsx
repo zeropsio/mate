@@ -1,24 +1,17 @@
 /**
  * A mirror ask as the conversation draws it: the engine's record of the request, the application
- * HQ places the Mate in, and HQ's repository facts. Once HQ shows the asked repository's remote —
- * set from the card's picker or anywhere else — the engine hears connected, at that address; Not
- * now tells it declined. While it waits on the person it stands above the composer too, once its
- * card is out of view. The card's state is the engine's record and HQ's remote; this tab holds only
- * an answer still on its way, which the record outranks once it says so.
+ * HQ places the Mate in, and HQ's repository facts, with the GitHub picker while it waits and Not
+ * now, which tells the engine declined. Compact, it is the dock the conversation's watch offers
+ * (`MirrorAskWatch`), which also tells the engine connected once HQ shows the remote. The card's
+ * state is the engine's record and HQ's remote; this tab holds only an answer still on its way
+ * (`mirrorAnswers`), which the record outranks once it says so.
  */
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { HQ_REMOTE_WRITE_VERB } from "@t3tools/shared/hqOffers";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
 import { useThreadDetail } from "~/state/entities";
-import { threadEnvironment } from "~/state/threads";
-import { useAtomCommand } from "~/state/use-atom-command";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
@@ -29,14 +22,12 @@ import { useHqOffers } from "~/zerops/useHqOffers";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import type { AskDensity } from "../../ask/AskCard";
-import { dockAsk, showAskInConversation, undockAsk } from "../../ask/askReveal";
+import { showAskInConversation } from "../../ask/askReveal";
 import { ComposerAskFace } from "../../chat/ComposerAsk";
 import { GithubConnectPicker } from "../github/GithubConnectPicker";
 import { MirrorAskCard } from "./MirrorAskCard";
+import { useMirrorAnswer, useTellMirror } from "./mirrorAnswers";
 import {
-  type MirrorAskPending,
-  mirrorAnswerSettled,
-  mirrorAskAnswer,
   mirrorAskFromKey,
   mirrorAskKey,
   mirrorAskRowId,
@@ -96,74 +87,22 @@ function MirrorAsk({
   const offer = hqOffers.state(target.can, HQ_REMOTE_WRITE_VERB);
   const nameOf = usePersonNames(location?.orgId ?? undefined);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  // An answer on its way, and the engine's refusal of it: the record outranks both once it says.
-  const [pending, setPending] = useState<MirrorAskPending>(null);
-  const [refusal, setRefusal] = useState<string | null>(null);
-  const pendingRef = useRef<MirrorAskPending>(null);
-  const answerMirrorAsk = useAtomCommand(threadEnvironment.answerMirrorAsk, {
-    reportFailure: false,
-  });
-  const tell = useCallback(
-    async (
-      said:
-        | { readonly outcome: "connected"; readonly url: string }
-        | { readonly outcome: "declined" },
-    ) => {
-      if (pendingRef.current === said.outcome) return;
-      pendingRef.current = said.outcome;
-      setPending(said.outcome);
-      setRefusal(null);
-      const result = await answerMirrorAsk({
-        environmentId,
-        input: { threadId: threadRef.threadId, requestId, ...said },
-      });
-      if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-      const error = squashAtomCommandFailure(result);
-      // Settled by its Mate (or answered) meanwhile: nothing left to tell it.
-      if (mirrorAnswerSettled(error)) return;
-      pendingRef.current = null;
-      setPending(null);
-      setRefusal(error instanceof Error ? error.message : "The Mate did not take the answer.");
-    },
-    [answerMirrorAsk, environmentId, requestId, threadRef.threadId],
-  );
-  // HQ showing the repository's remote, from the picker or anywhere else, answers once here; a
-  // refusal waits for Try again.
-  const due = mirrorAskAnswer(ask.state, pending, remote);
-  const answered = useRef(false);
-  useEffect(() => {
-    if (due === null || answered.current) return;
-    answered.current = true;
-    void tell({ outcome: "connected", url: due });
-  }, [due, tell]);
-  const notNow = () => void tell({ outcome: "declined" });
+  const { pending, refusal } = useMirrorAnswer(requestId);
+  const tell = useTellMirror(environmentId, threadRef);
+  const notNow = () => void tell(requestId, { outcome: "declined" });
   const retry = () =>
-    void tell(remote === null ? { outcome: "declined" } : { outcome: "connected", url: remote });
+    void tell(
+      requestId,
+      remote === null ? { outcome: "declined" } : { outcome: "connected", url: remote },
+    );
 
-  // It waits on the person while open with no remote: then it stands above the composer too.
+  // It waits on the person while open with no remote; the conversation's watch docks it then
+  // (`MirrorAskWatch`), and tells the engine once HQ shows the remote.
   const waits = ask.state === "open" && remote === null;
   const compact = density === "compact";
-  // The organization's apps are read while the card's picker can still connect it.
-  const github = useGitMirrorApps(waits && !compact);
-  const threadKey = scopedThreadKey(threadRef);
-  useEffect(() => {
-    if (!waits) {
-      undockAsk(threadKey, requestId);
-      return;
-    }
-    if (compact) return;
-    dockAsk(threadKey, {
-      askId: requestId,
-      render: () => (
-        <MirrorAskCardContainer
-          density="compact"
-          environmentId={environmentId}
-          requestId={requestId}
-          threadRef={threadRef}
-        />
-      ),
-    });
-  }, [compact, environmentId, requestId, threadKey, threadRef, waits]);
+  // The organization's apps are read while it waits, in either size, so a dock that outlives
+  // the card holds them too.
+  const github = useGitMirrorApps(waits);
   if (compact && !waits) return null;
 
   return (
@@ -183,6 +122,7 @@ function MirrorAsk({
             density="compact"
             project={appId}
             repo={ask.repo}
+            returnTo={window.location.href}
           />
         )
       }

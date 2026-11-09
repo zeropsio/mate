@@ -237,6 +237,7 @@ import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { mirrorAskPlaces, mirrorAskPlacesKey } from "./zerops/mirror/mirrorAsk.logic";
+import { MirrorAskWatch } from "./zerops/mirror/MirrorAskWatch";
 import { originAskPlaces, originAskPlacesKey } from "./zerops/origin/originAsk.logic";
 import { MateFaceAsMark } from "./zerops/primitives";
 import { mateAsker } from "./zerops/SidebarMateRow.logic";
@@ -8604,6 +8605,8 @@ function ConversationView(props: ChatViewProps) {
                 </div>
               </div>
             ) : null}
+            {/* Its open asks to connect a repository to GitHub, drawn or not. */}
+            <MirrorAskWatch threadRef={routeKind === "server" ? routeThreadRef : null} />
             {/* Messages Wrapper */}
             <div className="relative flex min-h-0 flex-1 flex-col">
               {/* Messages — LegendList handles virtualization and scrolling
