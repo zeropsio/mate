@@ -59,7 +59,7 @@ import {
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { ZeropsGroupPane } from "~/components/zerops/ProjectPage";
-import { ZeropsStopPane } from "~/components/zerops/ZeropsGroupDetail";
+import { ZeropsStopPane } from "~/components/zerops/PlacePage";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import { PlaceAccessSummary } from "~/components/zerops/projects/ProjectAccessTable";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
