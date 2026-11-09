@@ -7,7 +7,8 @@
  */
 import { ChevronRightIcon } from "lucide-react";
 
-import { panelPlaces, projectPageWords } from "./matePanels.logic";
+import { Button } from "~/components/ui/button";
+import { panelPlaces, possessive, projectPageWords } from "./matePanels.logic";
 import type { PlaceLine as PlaceLineModel } from "./projects/projectCard.logic";
 import { NextRelease, PlaceLine, SectionAction, type NextReleaseInput } from "./system";
 
@@ -69,5 +70,68 @@ export function MatePlaces({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The project a Mate works in, atop its Zerops and Git panels: a small overview card — whose
+ * project and its name with the way to its page; its places, one compact line each (production
+ * with its version and address, a stage or that there is none); and what goes to production next,
+ * with *Review release* where one waits. A project nothing went live in yet says so in one line,
+ * with the way to put it live.
+ */
+export function MateProjectCard({
+  project,
+  mateName,
+  panel = "zerops",
+}: {
+  readonly project: MatePanelProject;
+  /** Which panel opens with it: the Git panel says what a missing stage means for the work. */
+  readonly panel?: "zerops" | "git";
+  /** The Mate whose panel it is, for "Dana's project"; undefined while it is not known. */
+  readonly mateName: string | undefined;
+}) {
+  const production = project.places.find((line) => line.kind === "production");
+  const notLive =
+    project.places.length > 0 && (production === undefined || production.nothingDeployed === true);
+  return (
+    <section
+      aria-label={`${project.name}, ${mateName === undefined ? "this Mate" : possessive(mateName, "project")}`}
+      className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border/70 bg-card"
+      data-zerops-surface="panel-project"
+    >
+      <div className="flex min-w-0 items-center justify-between gap-3 px-4 pt-3.5 pb-1.5">
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-caption text-muted-foreground">
+            {mateName === undefined ? "This Mate's project" : possessive(mateName, "project")}
+          </span>
+          <span className="truncate text-base font-semibold text-foreground">{project.name}</span>
+        </span>
+        <SectionAction onClick={project.onOpenProject}>
+          Open project
+          <ChevronRightIcon aria-hidden="true" />
+        </SectionAction>
+      </div>
+      {notLive ? (
+        <div
+          className="flex min-w-0 items-center justify-between gap-3 px-4 pt-1 pb-3.5"
+          data-zerops-surface="panel-not-live"
+        >
+          <span className="text-body text-muted-foreground">Not live yet</span>
+          <Button onClick={project.onOpenProject} size="sm" variant="secondary">
+            Put it live
+          </Button>
+        </div>
+      ) : (
+        <div className="px-4 pt-1 pb-3">
+          <MatePlaces panel={panel} project={project} />
+        </div>
+      )}
+      {notLive || project.next === null ? null : (
+        <div className="px-3 pb-3" data-zerops-surface="panel-next-release">
+          <NextRelease density="line" {...project.next} />
+        </div>
+      )}
+    </section>
   );
 }

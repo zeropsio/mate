@@ -18,6 +18,7 @@ import type {
   ZeropsServiceRow,
   ZeropsServiceTone,
 } from "@t3tools/client-runtime/zerops/serviceMap";
+import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import {
   createMemoryHistory,
@@ -36,6 +37,7 @@ import { MateFace } from "~/components/zerops/primitives";
 import type { CardReady, PlaceLine } from "~/components/zerops/projects/projectCard.logic";
 import { ZeropsGitPanel, type ZeropsGitRepository } from "~/components/zerops/ZeropsGitPanel";
 import { ZeropsServiceMap } from "~/components/zerops/ZeropsServiceMap";
+import { ZeropsAgentAuthCard } from "~/components/zerops/ZeropsAgentAuthCard";
 import type { AppRouter } from "~/router";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -415,6 +417,39 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
 
 const face = <MateFace size={20} state="idle" tint={"rose" satisfies MateTintId} />;
 
+/** Dana's coding agents: Claude Code signed in by the person, Codex not signed in. */
+const AGENTS: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      agentId: "claude-code",
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      state: "authorized",
+      providerAuth: "unknown",
+    },
+    {
+      agentId: "codex",
+      credPresent: false,
+      flagOAuth: false,
+      flagToken: false,
+      state: "not-authorized",
+      providerAuth: "unknown",
+    },
+  ],
+} as ZeropsAgentAuthSnapshot;
+
+const agents = (
+  <ZeropsAgentAuthCard
+    conversationAgentId="claude-code"
+    density="compact"
+    onCancel={() => {}}
+    onSignIn={() => {}}
+    snapshot={AGENTS}
+  />
+);
+
 function Frame({
   width,
   label,
@@ -480,7 +515,9 @@ function HarnessPage() {
                       <Frame label={`Zerops · ${scenario.title}`} width={width}>
                         <div className="h-full overflow-auto p-4">
                           <ZeropsServiceMap
+                            agents={agents}
                             currentServiceId="svc-zcp"
+                            mateUpdate={<span>Mate 0.16.112 · up to date</span>}
                             liveness="live"
                             mate={{ name: "Dana", tint: "rose", face: "idle" }}
                             project={scenario.project}

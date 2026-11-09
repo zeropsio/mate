@@ -380,7 +380,7 @@ interface StopCase {
     readonly onOpenChange: (open: boolean) => void;
   };
   /** Who reaches the environment's project, as the page draws it. */
-  readonly access?: React.ReactNode;
+  readonly access?: React.ComponentProps<typeof ZeropsStopPane>["access"];
   /** The place's own name; its tier's unless given. */
   readonly name?: string;
   /** Where the place answers publicly. */
@@ -793,10 +793,10 @@ describe("ZeropsStopPane — a service's job, and a version HQ did not deploy", 
       mayDeployAgain: true,
     });
     expect(offered).toContain('data-zerops-surface="stop-not-in-zerops"');
-    expect(offered).toContain("db · in its setup files, not in Zerops");
+    expect(offered).toContain("In its setup files, not in Zerops yet");
     expect(offered).toContain("Add db");
     const told = renderStop({ tier: "stage", services: TWO_LIVE, notInZerops: ["db"] });
-    expect(told).toContain("db · in its setup files, not in Zerops");
+    expect(told).toContain("In its setup files, not in Zerops yet");
     expect(told).not.toContain("Add db");
   });
 
@@ -905,10 +905,14 @@ describe("ZeropsStopPane", () => {
   it.each(["stage", "production"] as const)(
     "the %s environment's page shows who reaches its project, under its card",
     (tier) => {
-      const markup = renderStop({ tier, services: [], access: <ul aria-label="Chips" /> });
-      expect(markup).toContain("Project access");
-      expect(markup).toContain('aria-label="Chips"');
-      expect(renderStop({ tier, services: [] })).not.toContain("Project access");
+      const markup = renderStop({
+        tier,
+        services: [],
+        access: { summary: null, line: "Reading who has access…" },
+      });
+      expect(markup).toContain("Who has access");
+      expect(markup).toContain("Reading who has access…");
+      expect(renderStop({ tier, services: [] })).not.toContain("Who has access");
     },
   );
   it.each(["stage", "production"] as const)(
@@ -1122,7 +1126,7 @@ describe("ZeropsStopPane", () => {
         "Nothing deployed yet.",
         "The next merge to main deploys here.",
         "Deploys · 0",
-        "None yet",
+        "Nothing runs here yet.",
       ],
       lacks: ["Nothing has landed on this repository yet."],
     },
@@ -1206,13 +1210,6 @@ describe("ZeropsStopPane", () => {
     expect(card).not.toContain("b200000");
   });
 
-  it("says None yet under Services where the stop has no code service", () => {
-    const markup = renderStop({ tier: "production", services: [], deployment: NONE });
-    const services = markup.indexOf("Services · 0");
-    expect(services).toBeGreaterThan(-1);
-    expect(markup.slice(services)).toContain("None yet");
-  });
-
   it("lists a place's platform services though it has no code service, never None yet under their count", () => {
     const document = new Window().document;
     document.body.innerHTML = renderStop({
@@ -1232,7 +1229,7 @@ describe("ZeropsStopPane", () => {
 
   it("offers the way back only to an earlier release, never to the one that runs", () => {
     const markup = renderStop({ tier: "production", services: TWO_LIVE, releases: 2 });
-    expect(count(markup, ">Roll back to this</button>")).toBe(1);
+    expect(count(markup, ">Roll back to v")).toBe(1);
   });
 
   it("lists the newest five releases and a quiet way to the rest", () => {
@@ -1347,7 +1344,7 @@ describe("ZeropsStopPane", () => {
       { name: "unread" },
     ])("keeps the list's own pins with its commits $name", ({ carried }) => {
       const two = renderStop({ tier: "production", services: TWO_LIVE, releases: 2, carried });
-      expect(count(two, ">Roll back to this</button>")).toBe(1);
+      expect(count(two, ">Roll back to v")).toBe(1);
       const seven = renderStop({
         tier: "production",
         services: TWO_LIVE,

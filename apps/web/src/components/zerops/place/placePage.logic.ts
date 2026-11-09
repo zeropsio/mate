@@ -1,7 +1,7 @@
 /**
- * What a place's page says beyond its header: what is live now and what that release brought, and
- * the changes that go next — merged ones waiting for production's next release, or a stage's open
- * changes waiting to be approved for it.
+ * What a place's page says beyond its header: the changes that go next — merged ones waiting for
+ * production's next release, or a stage's open changes waiting to be approved for it — and whose
+ * they are.
  *
  * Pure: no React.
  */
@@ -18,38 +18,17 @@ import type { FixProblem } from "~/zerops/fixRequest";
 import type { PlaceDot, PlaceLine } from "../projects/projectCard.logic";
 import { placeStatus } from "./place.logic";
 
-/** How many of a live release's changes its line names before "+ N". */
-const BROUGHT_NAMED = 3;
+/** Whose the next changes are, after their commits: "from Juno", "from Juno and Theo", "from 4 Mates". */
+export function changesFrom(names: ReadonlyArray<string | undefined>): string | undefined {
+  const unique = [...new Set(names.filter((name): name is string => name !== undefined))];
+  if (unique.length === 0) return undefined;
+  if (unique.length === 1) return `from ${unique[0] ?? ""}`;
+  if (unique.length === 2) return `from ${unique[0] ?? ""} and ${unique[1] ?? ""}`;
+  return `from ${String(unique.length)} Mates`;
+}
 
 const newestFirst = (left: string | undefined, right: string | undefined) =>
   (right ?? "").localeCompare(left ?? "");
-
-/** "Live now"'s fact: "v0.1.3, released by Dana K. 7d ago"; who only where the person is known. */
-export function liveNowFact(input: {
-  readonly tag: string;
-  readonly by: string | undefined;
-  readonly age: string | undefined;
-}): string {
-  const released = ["released", input.by === undefined ? undefined : `by ${input.by}`, input.age]
-    .filter((part) => part !== undefined && part.length > 0)
-    .join(" ");
-  return `${input.tag}, ${released}`;
-}
-
-/**
- * What a live release brought, from its recorded membership: the first changes' titles and how
- * many more. `undefined` on a release recorded before membership was, or one that brought none.
- */
-export function releaseBrought(
-  release: Pick<FlowReleaseRow, "history">,
-): { readonly titles: ReadonlyArray<string>; readonly more: number } | undefined {
-  const changes = release.history?.changes;
-  if (changes === undefined || changes.length === 0) return undefined;
-  return {
-    titles: changes.slice(0, BROUGHT_NAMED).map((change) => change.title),
-    more: Math.max(0, changes.length - BROUGHT_NAMED),
-  };
-}
 
 /**
  * The Mates' merged changes production does not run yet, newest first: what its next release

@@ -145,6 +145,11 @@ export function ZeropsPanel({
   );
   // An automated Mate's agents run on the organization's key: nothing here signs it in.
   const automatedKey = useAutomatedKey();
+  const currentServiceId = mateIdentity?.serviceId;
+  const hasCurrentControlPlane =
+    view?.groups.some((group) =>
+      group.rows.some((row) => row.isControlPlane && row.service.serviceId === currentServiceId),
+    ) ?? false;
   const agents =
     mateIdentity?.automated === true ? (
       <p className="text-sm text-muted-foreground" data-zerops-surface="automated-mate-agents">
@@ -156,6 +161,8 @@ export function ZeropsPanel({
       )
     ) : (
       <ZeropsAgentAuthCard
+        density={hasCurrentControlPlane ? "compact" : "card"}
+        openCodeEnvironmentId={threadRef?.environmentId}
         otherAgents={
           threadRef === null ? undefined : (
             <OpenCodeAgentKeys environmentId={threadRef.environmentId} />
@@ -204,11 +211,6 @@ export function ZeropsPanel({
         loginStatus={mateLogins.statusFor}
       />
     );
-  const currentServiceId = mateIdentity?.serviceId;
-  const hasCurrentControlPlane =
-    view?.groups.some((group) =>
-      group.rows.some((row) => row.isControlPlane && row.service.serviceId === currentServiceId),
-    ) ?? false;
   const body =
     view === undefined ? (
       <ZeropsPanelPlaceholder />

@@ -23,6 +23,7 @@ import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/a
  */
 import { Card } from "../ui/card";
 import type {
+  EnvironmentId,
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
   ZeropsAgentId,
@@ -53,6 +54,7 @@ import {
   type ZeropsAgentLoginPresentation,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwnership";
+import { OpenCodeAgentLine } from "./OpenCodeAgentKeys";
 import { STATUS_BADGE_TONE } from "./primitives";
 import { Badge } from "~/components/ui/badge";
 
@@ -79,11 +81,21 @@ export function ZeropsAgentAuthCard({
   signOutPending,
   signOutError,
   otherAgents,
+  openCodeEnvironmentId,
+  density = "card",
   ...loginProps
 }: {
   readonly snapshot: ZeropsAgentAuthSnapshot;
   /** Agents Mate signs nobody in to, whose model providers sign in here (OpenCode's keys). */
   readonly otherAgents?: ReactNode;
+  /** The environment whose OpenCode the compact list names in a line of its own, where it has it. */
+  readonly openCodeEnvironmentId?: EnvironmentId | undefined;
+  /**
+   * `card` (default): every agent's controls in a card of their own. `compact` (inside the
+   * Mate's home card): one line per agent — its name, its state, one verb — and every control
+   * one press away, opened by itself while a sign-in runs or needs the person.
+   */
+  readonly density?: "card" | "compact";
   /**
    * Whether the conversation's own agent cannot work until somebody signs it in
    * (`agentAdmission(...).attention`). Another agent's missing sign-in only
@@ -111,6 +123,37 @@ export function ZeropsAgentAuthCard({
   // agent needs a sign-in.
   const own = snapshot.agents.find((agent) => agent.agentId === conversationAgentId);
   const ownSignedIn = !signInDemanded && own !== undefined && agentAuthAction(own) === "none";
+  const rows = (
+    <ZeropsAgentAuthRows
+      quietOffers={ownSignedIn}
+      onCancel={onCancel}
+      onRecheck={onRecheck}
+      onSignIn={onSignIn}
+      onSignOut={onSignOut}
+      signOutError={signOutError}
+      signOutPending={signOutPending}
+      signOutSupported={signOutSupported}
+      snapshot={snapshot}
+      viewerSubject={viewerSubject}
+      {...loginProps}
+    />
+  );
+  if (density === "compact")
+    return (
+      <CompactAgents
+        demanded={signInDemanded}
+        logins={loginProps.logins ?? NO_LOGINS}
+        loginStatus={loginProps.loginStatus}
+        addLoginError={loginProps.addLoginError}
+        onSignIn={onSignIn}
+        otherAgents={otherAgents}
+        openCodeEnvironmentId={openCodeEnvironmentId}
+        rows={rows}
+        signOutError={signOutError}
+        snapshot={snapshot}
+        viewerSubject={viewerSubject}
+      />
+    );
   return (
     <Card className="@container overflow-hidden" data-zerops-agent-auth-card variant="flat">
       <header className="border-b border-border/60 px-4 py-2.5">
@@ -124,21 +167,153 @@ export function ZeropsAgentAuthCard({
             : "Sign in inside this Zerops Control Plane. Access is shared by this project."}
         </p>
       </header>
-      <ZeropsAgentAuthRows
-        quietOffers={ownSignedIn}
-        onCancel={onCancel}
-        onRecheck={onRecheck}
-        onSignIn={onSignIn}
-        onSignOut={onSignOut}
-        signOutError={signOutError}
-        signOutPending={signOutPending}
-        signOutSupported={signOutSupported}
-        snapshot={snapshot}
-        viewerSubject={viewerSubject}
-        {...loginProps}
-      />
+      {rows}
       {otherAgents}
     </Card>
+  );
+}
+
+/**
+ * The coding agents as the Mate's home card lists them: one line each — its mark, its name, its
+ * state, one verb (*Sign in* where that is all it needs, else *Manage*) — and, pressed or needed,
+ * every control the card has, in place of the lines. A sign-in running or asking for the person,
+ * a check that failed, or a refusal opens them by itself: nothing that needs a hand hides.
+ */
+function CompactAgents({
+  snapshot,
+  demanded,
+  logins,
+  loginStatus,
+  addLoginError,
+  signOutError,
+  viewerSubject,
+  onSignIn,
+  rows,
+  otherAgents,
+  openCodeEnvironmentId,
+}: {
+  readonly snapshot: ZeropsAgentAuthSnapshot;
+  readonly demanded: boolean;
+  readonly logins: ReadonlyArray<MateLoginRow>;
+  readonly loginStatus: ((loginId: string) => ZeropsLoginActionStatus) | undefined;
+  readonly addLoginError: string | undefined;
+  readonly signOutError: ReadonlyMap<ZeropsAgentId, string> | undefined;
+  readonly viewerSubject: string | undefined;
+  readonly onSignIn: (agentId: ZeropsAgentId) => void;
+  readonly rows: ReactNode;
+  readonly otherAgents: ReactNode;
+  readonly openCodeEnvironmentId: EnvironmentId | undefined;
+}) {
+  const [managing, setManaging] = useState(false);
+  const needsHand =
+    demanded ||
+    addLoginError !== undefined ||
+    (signOutError?.size ?? 0) > 0 ||
+    snapshot.agents.some((agent) => {
+      const login = classifyAgentRowLogin(agent);
+      const action = agentAuthAction(agent);
+      return (
+        (login.kind !== "none" && login.kind !== "succeeded") ||
+        action === "check-again" ||
+        action === "register-again" ||
+        agent.verification?.reason !== undefined ||
+        agent.registration?.reason !== undefined
+      );
+    }) ||
+    logins.some(
+      (login) =>
+        !login.default &&
+        (LOGIN_IN_PROGRESS_PHASES.has(login.login?.phase ?? "") ||
+          loginStatus?.(login.id).error !== undefined),
+    );
+  const open = managing || needsHand;
+  if (open)
+    return (
+      <div className="@container min-w-0" data-zerops-agent-auth-card data-density="compact">
+        {/* Opened by a press, it closes the same way; opened by what needs a hand, it stays. */}
+        {needsHand ? null : (
+          <div className="flex min-h-9 items-center justify-between gap-2 ps-0.5">
+            <span className="text-body font-medium text-foreground">Logins</span>
+            <Button onClick={() => setManaging(false)} size="sm" variant="ghost">
+              Done
+            </Button>
+          </div>
+        )}
+        <div className="-mx-3.5">
+          {rows}
+          {otherAgents}
+        </div>
+      </div>
+    );
+  const manage = () => setManaging(true);
+  return (
+    <ul
+      aria-label="The coding agents it works through"
+      className="m-0 flex min-w-0 list-none flex-col divide-y divide-border/60 p-0"
+      data-zerops-agent-auth-card
+      data-density="compact"
+    >
+      {snapshot.agents.map((agent) => {
+        const login = classifyAgentRowLogin(agent);
+        const action = agentAuthAction(agent);
+        const ownership = resolveAgentOwnership({
+          credPresent: agent.credPresent,
+          authorizedBy: resolveAgentAuthorizer(agent, viewerSubject),
+          viewerSubject,
+        });
+        // Whose login it is can need the person even while it works: say so, never "signed in".
+        const status =
+          action === "none" && agentOwnershipNeedsAttention(ownership)
+            ? { label: "Needs attention", tone: "attention" as const }
+            : agentStatusPresentation(agent, login, true);
+        const signedIn = action === "none" && status.tone === "ok";
+        const word = signedIn
+          ? ownership === "mine"
+            ? "signed in by you"
+            : agent.state === "authorized-token"
+              ? "signed in by a project token"
+              : "signed in"
+          : status.label;
+        const extra = logins.filter((entry) => !entry.default && entry.agent === agent.agentId);
+        const signInOnly = action === "sign-in" && login.kind === "none" && extra.length === 0;
+        return (
+          <li
+            className="flex min-h-10 min-w-0 items-center justify-between gap-3 py-1.5"
+            data-agent-id={agent.agentId}
+            data-zerops-agent-line=""
+            key={agent.agentId}
+          >
+            <span className="flex min-w-0 items-center gap-2.5">
+              <AgentLogo agentId={agent.agentId} size="sm" />
+              <span className="shrink-0 text-body font-medium text-foreground">
+                {AGENT_NAMES[agent.agentId]}
+              </span>
+              {status.tone === "ok" || status.tone === "off" ? (
+                <span className="min-w-0 truncate text-caption text-muted-foreground">
+                  {extra.length === 0
+                    ? word
+                    : `${word} · ${String(extra.length)} more ${extra.length === 1 ? "login" : "logins"}`}
+                </span>
+              ) : (
+                <Badge dot tone={STATUS_BADGE_TONE[status.tone]}>
+                  {word}
+                </Badge>
+              )}
+            </span>
+            <Button
+              onClick={() => (signInOnly ? onSignIn(agent.agentId) : manage())}
+              size="sm"
+              variant={signInOnly ? "link" : "ghost"}
+            >
+              {signInOnly ? "Sign in" : "Manage"}
+            </Button>
+          </li>
+        );
+      })}
+      {openCodeEnvironmentId === undefined ? null : (
+        <OpenCodeAgentLine environmentId={openCodeEnvironmentId} onManage={manage} />
+      )}
+    </ul>
   );
 }
 
@@ -762,13 +937,24 @@ function AddLoginControl({
   );
 }
 
-function AgentLogo({ agentId }: { readonly agentId: ZeropsAgentId }) {
-  const logoClassName = "size-4";
+function AgentLogo({
+  agentId,
+  size = "md",
+}: {
+  readonly agentId: ZeropsAgentId;
+  /** `sm`: a compact line's 22 px mark. */
+  readonly size?: "sm" | "md";
+}) {
+  const logoClassName = size === "sm" ? "size-3.5" : "size-4";
 
   return (
     <span
       aria-hidden="true"
-      className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-accent shadow-xs"
+      className={
+        size === "sm"
+          ? "flex size-5.5 shrink-0 items-center justify-center rounded-md bg-accent"
+          : "flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-accent shadow-xs"
+      }
       data-zerops-agent-logo={agentId}
     >
       {agentId === "claude-code" ? (

@@ -487,12 +487,7 @@ export function PlaceAccess({
   /** Called as the link is followed: a dialog closes. */
   readonly onLeave?: () => void;
 }) {
-  const projects = useMemo(
-    () => [{ projectId, kind, ...(name === undefined ? {} : { name }) }],
-    [kind, name, projectId],
-  );
-  const { base } = useAccessReads(projects);
-  const view = useMemo(() => accessTable({ ...base, projects }), [base, projects]);
+  const { view, summary, line } = usePlaceAccessPeople({ projectId, kind, name });
   return (
     <PlaceAccessSummary
       change={
@@ -506,16 +501,40 @@ export function PlaceAccess({
           {placeLinkWords(groupName, view.kind === "table" && view.editable)}
         </Link>
       }
-      line={
-        view.kind === "reading"
-          ? "Reading who has access…"
-          : view.kind === "unreadable"
-            ? view.line
-            : null
-      }
-      summary={columnPeople(view, projectId)}
+      line={line}
+      summary={summary}
     />
   );
+}
+
+/**
+ * Who reaches one place of an app, read only: its people with their level there (`columnPeople`),
+ * or what stands for them while they are read or can't be. A place's page draws them as its own
+ * access card.
+ */
+export function usePlaceAccessPeople({
+  projectId,
+  kind,
+  name,
+}: {
+  readonly projectId: string;
+  readonly kind: RoleProjectKind;
+  readonly name?: string | undefined;
+}) {
+  const projects = useMemo(
+    () => [{ projectId, kind, ...(name === undefined ? {} : { name }) }],
+    [kind, name, projectId],
+  );
+  const { base } = useAccessReads(projects);
+  const view = useMemo(() => accessTable({ ...base, projects }), [base, projects]);
+  const summary = useMemo(() => columnPeople(view, projectId), [projectId, view]);
+  const line =
+    view.kind === "reading"
+      ? "Reading who has access…"
+      : view.kind === "unreadable"
+        ? view.line
+        : null;
+  return { view, summary, line };
 }
 
 /** One Zerops project's access, changed here: a Mate on its own's *Project access…*. */
