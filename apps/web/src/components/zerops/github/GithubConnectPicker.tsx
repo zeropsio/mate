@@ -47,7 +47,6 @@ import {
   explainerWords,
   freshNames,
   heldRepository,
-  installationsNow,
   newRepositoryUrl,
   openingAccount,
   openingApp,
@@ -55,6 +54,9 @@ import {
   pickerAccounts,
   pickerRepositories,
   rememberLeaving,
+  rememberSeen,
+  returnWithSeen,
+  SEEN_PARAM,
   seenBefore,
   unsealedWords,
   usedAppIds,
@@ -69,6 +71,11 @@ export interface GithubConnectPickerProps {
   /** The code repository: `appdev`. */
   readonly repo: string;
   readonly apps: GitMirrorApps;
+  /**
+   * Where GitHub's install page comes back to; absent: the project's page, which opens this dialog
+   * again. Repositories the trip adds read as new wherever the picker opens there.
+   */
+  readonly returnTo?: string;
   /** Pressed Done once the repository is on GitHub; absent: no Done. */
   readonly onConnected?: () => void;
   /** `full`: a dialog's panel and footer; `compact`: inline, in an ask card. */
@@ -79,6 +86,7 @@ export function GithubConnectPicker({
   project,
   repo,
   apps,
+  returnTo,
   onConnected,
   density = "full",
 }: GithubConnectPickerProps) {
@@ -98,7 +106,11 @@ export function GithubConnectPicker({
   const navigate = useNavigate();
   const router = useRouter();
   // Back from GitHub, what came back is told apart from what was there before the person left.
-  const [before, setBefore] = useState(() => seenBefore(project, repo));
+  const [before, setBefore] = useState(() => {
+    // Back from an install trip to a page that keeps its address (a conversation).
+    rememberSeen(new URL(window.location.href).searchParams.get(SEEN_PARAM));
+    return seenBefore(project, repo);
+  });
   const writes = hqOffer(git.can, HQ_REMOTE_WRITE_VERB, {
     current: git.live,
     unavailableSince: git.live ? null : 0,
@@ -160,14 +172,17 @@ export function GithubConnectPicker({
         install: (appId) => {
           leave();
           // Back from GitHub's install page, the project's page opens this dialog again.
-          const back = new URL(
-            router.buildLocation({
-              to: "/group/$groupId/flow",
-              params: { groupId: project },
-              search: { mirror: project, repo, had: installationsNow(apps).join(",") },
-            }).href,
-            window.location.origin,
-          ).toString();
+          const back = returnWithSeen(
+            returnTo ??
+              router.buildLocation({
+                to: "/group/$groupId/flow",
+                params: { groupId: project },
+                search: { mirror: project, repo },
+              }).href,
+            project,
+            repo,
+            apps,
+          );
           mirror.install(appId, back);
         },
         leaving: leave,
@@ -507,7 +522,7 @@ function pickStep(
 ): { body: React.ReactNode; foot: React.ReactNode } {
   const { apps, accounts, account, rows, picked, repo, admin, orgName, nameOf, actions } = input;
   const tokenLink = (
-    <div className="me-auto">
+    <div className="me-auto self-center text-sm">
       <InlineButton onClick={input.onToken}>
         {accounts.length === 0 ? "GitLab or another host? Connect with a token" : "Use a token"}
       </InlineButton>
@@ -568,9 +583,8 @@ function pickStep(
                   key={each.account}
                 >
                   <AccountFace account={each.account} />
-                  <span>
-                    {each.account} · {addedWords(each, nameOf)}
-                  </span>
+                  <span className="text-foreground">{each.account}</span>
+                  <span>{addedWords(each, nameOf)}</span>
                   {pickerRepositories({
                     account: each,
                     project: input.project,
@@ -579,11 +593,12 @@ function pickStep(
                     fresh: input.fresh,
                     projectNameOf: input.projectNameOf,
                   }).map((row) => (
-                    <span key={row.repository.fullName}>
-                      <span className="font-mono text-xs">
+                    <span className="inline-flex gap-2" key={row.repository.fullName}>
+                      <span aria-hidden="true">·</span>
+                      <span className="font-mono text-xs leading-5">
                         {row.repository.fullName.split("/")[1]}
-                      </span>{" "}
-                      {row.taken ?? ""}
+                      </span>
+                      <span>{row.taken ?? "free to use"}</span>
                     </span>
                   ))}
                 </div>
@@ -832,7 +847,7 @@ function explainStep(
     };
   const chosenId = input.explainApp ?? openingApp(list, viewerId, usedApps);
   const chosen = list.find((app) => app.appId === chosenId) ?? null;
-  const words = chosen === null ? null : explainerWords(chosen, nameOf);
+  const words = chosen === null ? null : explainerWords(chosen, nameOf, viewerId);
   return {
     body: (
       <>
@@ -973,9 +988,11 @@ function progressStep(
     return {
       body: (
         <div className="grid justify-items-start gap-2.5 pt-3">
-          <Badge dot tone="success">
-            In sync
-          </Badge>
+          <p className="text-sm">
+            <Badge dot tone="success">
+              In sync
+            </Badge>
+          </p>
           <p className="text-lg font-medium">{repo} is on GitHub</p>
           <p className="text-sm text-muted-foreground">
             <span className="font-mono text-foreground">{sent.repository}</span> has {repo}'s main.

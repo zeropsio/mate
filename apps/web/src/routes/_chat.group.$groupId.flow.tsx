@@ -2,17 +2,18 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { ZeropsGroupDetailPage } from "../components/zerops/ZeropsGroupDetail";
-import { parseHad, parseMirrorSearch } from "../components/zerops/gitMirror.logic";
-import { rememberReturn } from "../components/zerops/github/githubConnect.logic";
+import { parseMirrorSearch } from "../components/zerops/gitMirror.logic";
+import { rememberSeen } from "../components/zerops/github/githubConnect.logic";
 
 function GroupFlowPage() {
   const { groupId } = Route.useParams();
-  const { mirror, repo, had } = Route.useSearch();
+  const search = Route.useSearch();
+  const { mirror, repo } = search;
   // Read once: the address drops it (replaced, not pushed), so a reload or Back opens no dialog.
   const [connectReturned] = useState(() => {
     if (mirror !== groupId) return null;
     // What was there before the trip, so the picker tells what GitHub added.
-    if (repo !== undefined) rememberReturn(groupId, repo, parseHad(had));
+    rememberSeen(search["connect-seen"]);
     return { repo };
   });
   const navigate = Route.useNavigate();

@@ -36,6 +36,7 @@ export function GithubTokenFields({
           <Label htmlFor={urlId}>Repository address</Label>
           <Input
             autoComplete="off"
+            autoFocus
             id={urlId}
             nativeInput
             onChange={(event) => onUrl(event.target.value)}

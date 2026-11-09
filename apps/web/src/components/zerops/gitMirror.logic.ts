@@ -126,6 +126,12 @@ export const remoteSyncedAt = (repo: Pick<RepoListEntry, "mirror">): string | nu
 const divergedSince = (repo: Pick<RepoListEntry, "remote" | "mirror">): string | undefined =>
   repo.remote?.divergedSince ?? repo.mirror?.divergedSince ?? undefined;
 
+/** A remote's host as a line names it: GitHub, GitLab, else its address's host. */
+export function hostWords(url: string): string {
+  const host = new URL(url).hostname;
+  return host === "github.com" ? "GitHub" : host === "gitlab.com" ? "GitLab" : host;
+}
+
 /** "Nov 3", in the reader's own calendar. */
 export const shortDay = (iso: string) =>
   new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
@@ -264,7 +270,7 @@ export function repoState(
       fix: "reconnect",
     };
   }
-  const host = new URL(remote.url).hostname === "github.com" ? "GitHub" : new URL(remote.url).host;
+  const host = hostWords(remote.url);
   if (remote.invalidSince !== null)
     return {
       destination,
@@ -366,26 +372,20 @@ export function mirrorAuthorityLine(offer: HqOfferState): string | null {
 }
 
 /**
- * `?mirror=<appId>&repo=<name>&had=<installation ids>` on a project's page: the connect dialog the
- * person left for GitHub's install page from, opened again over it for that repository once HQ's
- * trip brings them back (HQ adds `github=`), with the installations there before they left.
+ * `?mirror=<appId>&repo=<name>` on a project's page: the connect dialog the person left for
+ * GitHub's install page from, opened again over it for that repository once HQ's trip brings them
+ * back (HQ adds `github=`), with the installations there before they left (`connect-seen`).
  */
 export function parseMirrorSearch(raw: Record<string, unknown>): {
   readonly mirror?: string;
   readonly repo?: string;
-  readonly had?: string;
+  readonly "connect-seen"?: string;
 } {
   if (typeof raw.mirror !== "string" || raw.mirror.length === 0) return {};
+  const seen = raw["connect-seen"];
   return {
     mirror: raw.mirror,
     ...(typeof raw.repo === "string" && raw.repo.length > 0 ? { repo: raw.repo } : {}),
-    ...(typeof raw.had === "string" ? { had: raw.had } : {}),
+    ...(typeof seen === "string" ? { "connect-seen": seen } : {}),
   };
 }
-
-/** The installation ids `had=` carried: `"12,34"` → `[12, 34]`. */
-export const parseHad = (had: string | undefined): ReadonlyArray<number> =>
-  (had ?? "")
-    .split(",")
-    .map(Number)
-    .filter((id) => Number.isSafeInteger(id) && id > 0);
