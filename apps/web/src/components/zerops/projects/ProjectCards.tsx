@@ -8,7 +8,7 @@
  * its waits' verbs are the page's slots (`ZeropsProjectsFlowProps`).
  */
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
-import { ArrowUpRightIcon, PackageIcon, PlusIcon } from "lucide-react";
+import { PackageIcon, PlusIcon } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
@@ -33,18 +33,18 @@ import {
   cardReady,
   foldMates,
   mateIsLoud,
-  placeLabel,
   placeLines,
   projectWaitWords,
-  readyTitle,
   setupChangeWords,
-  siteOf,
   type CardChange,
   type CardMateReading,
-  type PlaceLine,
+  type PlaceLine as PlaceLineData,
 } from "./projectCard.logic";
 import { comingMateLine, stopLine } from "./projectsView.logic";
 import { ChangeRow } from "../system/ChangeRow";
+import { nextReleaseTitle } from "../system/NextRelease.logic";
+import { PlaceLine } from "../system/PlaceLine";
+import { SectionLabel } from "../system/SectionLabel";
 import type {
   ProjectsFlowGroup,
   StageSettingUp,
@@ -74,12 +74,12 @@ function CardGrid({ children }: { readonly children: ReactNode }) {
 }
 
 /** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
-export function PlaceDot({ dot }: { readonly dot: PlaceLine["dot"] }) {
+export function PlaceDot({ dot }: { readonly dot: PlaceLineData["dot"] }) {
   return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
 }
 
 /** A place's words, `·` between, in its state's ink — and the clock of a wait it is in. */
-export function PlaceWords({ line }: { readonly line: PlaceLine }) {
+export function PlaceWords({ line }: { readonly line: PlaceLineData }) {
   return (
     <span className="ov-place-words" data-dot={line.dot}>
       {line.words.map((word, index) => (
@@ -98,7 +98,7 @@ export function PlaceWords({ line }: { readonly line: PlaceLine }) {
 }
 
 /** How long a place's wait has run: it ticks here alone, never the card. */
-function PlaceClock({ clock }: { readonly clock: NonNullable<PlaceLine["clock"]> }) {
+function PlaceClock({ clock }: { readonly clock: NonNullable<PlaceLineData["clock"]> }) {
   const nowMs = useSecondsNowMs(true);
   return (
     <>
@@ -170,19 +170,8 @@ function useDetailWhileSeen(groupId: string) {
 
 const NO_GROUPS: ReadonlyArray<string> = [];
 
-/** Production before it is added, as its card says it: "Not live yet". */
-const NEW_PRODUCTION: PlaceLine = {
-  projectId: undefined,
-  kind: "production",
-  name: "prod",
-  dot: "none",
-  words: [],
-  trouble: false,
-  addresses: [],
-};
-
 /** A stage the project does not have yet, as its card names it where one would stand. */
-const NEW_STAGE: PlaceLine = {
+const NEW_STAGE: PlaceLineData = {
   projectId: undefined,
   kind: "stage",
   name: "stage",
@@ -197,7 +186,7 @@ const NEW_STAGE: PlaceLine = {
  * the words its own reading takes over once the adding ends. A card's line has no room for what it
  * usually takes.
  */
-function settingUpLine(line: PlaceLine, settingUp: StageSettingUp | undefined): PlaceLine {
+function settingUpLine(line: PlaceLineData, settingUp: StageSettingUp | undefined): PlaceLineData {
   const since = settingUp?.startedAtMs ?? null;
   return {
     ...line,
@@ -212,58 +201,22 @@ function settingUpLine(line: PlaceLine, settingUp: StageSettingUp | undefined): 
  * Production's line while a release this tab sent is on its way: said once, with the clock of the
  * run that sent it.
  */
-function releaseClock(line: PlaceLine, since: number | undefined): PlaceLine {
+function releaseClock(line: PlaceLineData, since: number | undefined): PlaceLineData {
   return line.dot === "releasing" && since !== undefined ? { ...line, clock: { since } } : line;
 }
 
 /**
- * A place on a card, one line: its dot, its name and what it says — a line that opens the place's
- * page where it has one, and its address beside it, opened beside the page.
+ * What a card says where a place is not there to open: "Not live yet", "No stage" — a hollow dot
+ * and quiet words, in a place line's room.
  */
-function CardPlace({
-  groupId,
-  line,
-  label,
-}: {
-  readonly groupId: string;
-  readonly line: PlaceLine;
-  /** In place of its name, where the card says it plainly ("No stage", "Not live yet"). */
-  readonly label?: string | undefined;
-}) {
-  const name = label ?? placeLabel(line);
-  const words = (
-    <>
-      <PlaceDot dot={line.dot} />
-      <span className="ov-place-name">{name}</span>
-      {label === undefined && line.words.length > 0 ? <PlaceWords line={line} /> : null}
-    </>
-  );
-  const address = label === undefined ? line.addresses[0] : undefined;
+function QuietPlace({ children }: { readonly children: string }) {
   return (
-    <div className="ov-place" data-quiet={label === undefined ? undefined : ""}>
-      {line.projectId === undefined ? (
-        <span className="ov-place-line">{words}</span>
-      ) : (
-        <Link
-          className="ov-place-line"
-          params={{ groupId, projectId: line.projectId }}
-          to="/group/$groupId/$projectId"
-        >
-          {words}
-        </Link>
-      )}
-      {address?.url === undefined ? null : (
-        <a
-          aria-label={`Open ${name}`}
-          className="ov-place-host"
-          href={address.url}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <span className="truncate">{siteOf(address.url) ?? address.url}</span>
-          <ArrowUpRightIcon aria-hidden="true" className="size-3 shrink-0" />
-        </a>
-      )}
+    <div
+      className="flex min-h-6 min-w-0 items-center gap-2 text-body text-muted-foreground"
+      data-zerops-place-quiet=""
+    >
+      <PlaceDot dot="none" />
+      {children}
     </div>
   );
 }
@@ -481,10 +434,9 @@ function CardMates<T>({
   const more = mates.length - shown.length;
   return (
     <section aria-label="Mates" className="ov-sec ov-mates" data-zerops-step="mates">
-      <h3 className="ov-sec-name">
+      <SectionLabel count={mates.length > 1 ? mates.length : undefined} level={3}>
         Mates
-        {mates.length > 1 ? <span className="ov-sec-count"> · {mates.length}</span> : null}
-      </h3>
+      </SectionLabel>
       {shown.map((mate) =>
         mate.kind === "coming" ? (
           <CardComingMate
@@ -565,7 +517,7 @@ function CardWaits({
   const more = waits.length - CARD_WAITS;
   return (
     <section aria-label="Waiting on you" className="ov-waits" data-zerops-surface="card-waits">
-      <h3 className="ov-waits-name">Waiting on you</h3>
+      <SectionLabel level={3}>Waiting on you</SectionLabel>
       {waits.slice(0, CARD_WAITS).map((wait) => (
         <div className="ov-wait" data-zerops-wait={wait.key} key={wait.key}>
           <span aria-hidden="true" className="ov-wait-face">
@@ -664,7 +616,7 @@ function ProjectCard<T>({
           {
             key: "release",
             face: <PackageIcon className="size-4" />,
-            text: readyTitle(ready),
+            text: nextReleaseTitle(ready),
             verb: drawn(releaseDoor) ? releaseDoor : null,
           },
         ]),
@@ -718,36 +670,31 @@ function ProjectCard<T>({
         {quiet === undefined ? null : <p className="ov-card-site">{quiet}</p>}
       </header>
       <div className="ov-places" data-zerops-surface="card-places">
-        <div data-zerops-place="production">
-          {notLive || production === undefined ? (
-            <CardPlace
-              groupId={group.groupId}
-              label="Not live yet"
-              line={production ?? NEW_PRODUCTION}
-            />
-          ) : (
-            <CardPlace groupId={group.groupId} line={production} />
-          )}
-          {/* A release or Put it live run is production's, never a Mate's conversation's. */}
-          {props.renderProductionRun?.(entry)}
-        </div>
+        {notLive || production === undefined ? (
+          <QuietPlace>Not live yet</QuietPlace>
+        ) : (
+          <PlaceLine density="compact" groupId={group.groupId} line={production} />
+        )}
+        {/* A release or Put it live run is production's, never a Mate's conversation's. */}
+        {props.renderProductionRun?.(entry)}
         {notLive
           ? null
           : lines
               .filter((line) => line.kind === "stage")
               .map((line) => (
-                <CardPlace
+                <PlaceLine
+                  density="compact"
                   groupId={group.groupId}
                   key={`stage:${line.projectId ?? line.name}`}
                   line={line}
                 />
               ))}
         {notLive ? null : devstage !== undefined ? (
-          <CardPlace groupId={group.groupId} line={{ ...NEW_STAGE, words: [devstage] }} />
+          <PlaceLine density="compact" line={{ ...NEW_STAGE, words: [devstage] }} />
         ) : stageComing ? (
-          <CardPlace groupId={group.groupId} line={settingUpLine(NEW_STAGE, settingUp)} />
+          <PlaceLine density="compact" line={settingUpLine(NEW_STAGE, settingUp)} />
         ) : flow.stages.length === 0 && (flow.unreadStages ?? []).length === 0 ? (
-          <CardPlace groupId={group.groupId} label="No stage" line={NEW_STAGE} />
+          <QuietPlace>No stage</QuietPlace>
         ) : null}
       </div>
       <CardWaits groupId={group.groupId} waits={waits} />
