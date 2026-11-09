@@ -1336,7 +1336,7 @@ describe("a card's latest changes", () => {
       open: [],
       merged: [merged(6, "2026-10-09T09:00:00Z")],
       stage: undefined,
-      rows: [["Change 6", false, "Not released yet"]],
+      rows: [["Change 6", false, "Merged · waits for production"]],
     },
     // The onboarding run: production, the release and the change each said "Not released yet".
     {
@@ -1361,8 +1361,8 @@ describe("a card's latest changes", () => {
       merged: [merged(5, "2026-10-07T09:00:00Z"), merged(4, "2026-09-30T09:00:00Z")],
       stage: stageOn(5),
       rows: [
-        ["Change 5", false, "In v1.0.4"],
-        ["Change 4", false, "In v1.0.3"],
+        ["Change 5", false, "Live in v1.0.4"],
+        ["Change 4", false, "Live in v1.0.3"],
       ],
     },
     {
@@ -1382,8 +1382,8 @@ describe("a card's latest changes", () => {
         ["Newer open", true, "Ready to merge"],
         ["Older open", true, "Ready to merge"],
         ["Change 6", false, "On stage"],
-        ["Change 5", false, "In v1.0.4"],
-        ["Change 4", false, "In v1.0.3"],
+        ["Change 5", false, "Live in v1.0.4"],
+        ["Change 4", false, "Live in v1.0.3"],
       ],
     },
     // The onboarding run: both changes read "On stage" for two minutes while the stage was not
@@ -1393,7 +1393,7 @@ describe("a card's latest changes", () => {
       open: [],
       merged: [merged(6, "2026-10-09T09:00:00Z")],
       stage: stageOn(undefined),
-      rows: [["Change 6", false, "Not released yet"]],
+      rows: [["Change 6", false, "Merged · waits for production"]],
     },
     {
       case: "merged while the stage still runs an older change: not on stage",
@@ -1401,7 +1401,7 @@ describe("a card's latest changes", () => {
       merged: [merged(7, "2026-10-09T10:00:00Z"), merged(6, "2026-10-09T09:00:00Z")],
       stage: stageOn(6),
       rows: [
-        ["Change 7", false, "Not released yet"],
+        ["Change 7", false, "Merged · waits for production"],
         ["Change 6", false, "On stage"],
       ],
     },

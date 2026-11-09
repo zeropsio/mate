@@ -8,7 +8,7 @@ import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useRepositoryHistory } from "~/zerops/useRepositoryHistory";
 
 import { GitBrowserLink, gitCommitLink, type GitRepoAt } from "../gitBrowser/GitBrowserLink";
-import { ChangeAge, ChangeRow } from "./ChangeRow";
+import { ChangeAge, ChangeRow } from "../system/ChangeRow";
 import {
   changeTitle,
   groupRepository,
