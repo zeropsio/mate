@@ -382,7 +382,7 @@ if (host) {
           view === "none" || view === "open"
             ? known({ apps: [] })
             : view === "failed"
-              ? { state: "failed", words: "HQ isn't answering right now." }
+              ? { state: "failed", words: "HQ is not answering right now." }
               : view === "requested"
                 ? known({ apps: [{ ...ACME, installations: [] }] })
                 : view === "older"
