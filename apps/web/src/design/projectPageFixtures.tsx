@@ -27,6 +27,7 @@ import type { ProjectPerson } from "~/components/zerops/projects/projectPeople.l
 import { joinSpend } from "~/components/zerops/projects/projectSpend.logic";
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
 import { ZeropsGroupPane } from "~/components/zerops/ZeropsGroupDetail";
+import { RepoRowsView } from "~/components/zerops/github/GithubRepoRows";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -444,6 +445,24 @@ export function ProjectPageAside({ groupId }: { readonly groupId: string }) {
         release={running ? RELEASE_WAITING : RELEASE_NONE}
         repo={running ? "appdev" : undefined}
         repos={running ? REPOS : []}
+        repositories={
+          running ? (
+            <RepoRowsView
+              actions={{}}
+              admin
+              apps={null}
+              authority={null}
+              dependencies={[]}
+              now={NOW}
+              onConnect={nothing}
+              onSetUpGithub={nothing}
+              orgName="Acme"
+              project={groupId}
+              projectName={groupId}
+              repos={REPOS}
+            />
+          ) : undefined
+        }
         slots={
           groupId === "acme-store"
             ? [
