@@ -396,6 +396,15 @@ export const hqNeedsUpdate = (toDo: string): string => `HQ needs an update to ${
 export const hqDisagreesOn = (what: string): string =>
   `HQ and this Mate disagree on ${what}: one of them needs an update.`;
 
+/**
+ * The one failure line of a read, from HQ or the platform: what could not be read, then the
+ * reason the source gave, when it gave one. The surface puts its *Try again* beside it.
+ */
+export const couldntRead = (what: string, reason?: string | null): string =>
+  reason === undefined || reason === null || reason.trim() === ""
+    ? `Couldn't read ${what}.`
+    : `Couldn't read ${what}. ${reason.trim()}`;
+
 export function hqRefusalWords(refusal: {
   readonly code: string;
   readonly reason: string | undefined;

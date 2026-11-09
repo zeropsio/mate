@@ -9,6 +9,7 @@
  * Each part paints in its final shape while it is read (`IntakeRoom`): nothing it reads moves what
  * the person is about to press.
  */
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import {
   TASK_SOURCES_UNSUPPORTED,
   type AppSetting,
@@ -157,12 +158,12 @@ function ConnectedBy({ line }: { readonly line: string | null }) {
  * What a section's status line says of its setting: its own line once known, else that it is
  * read, refused or failed — there from the first frame, so the line never appears under it.
  */
-function statusOf<T>(setting: SettingValue<T>, line: (value: T) => string): string {
+function statusOf<T>(setting: SettingValue<T>, line: (value: T) => string, what: string): string {
   switch (setting.state) {
     case "known":
       return line(setting.held);
     case "failed":
-      return setting.words;
+      return couldntRead(what, setting.words);
     case "withheld":
       return WITHHELD;
     default:
@@ -209,6 +210,7 @@ function sourceLine<T>(
   setting: SettingValue<T>,
   purpose: string,
   connected: (held: T) => string,
+  what: string,
 ): ReactNode {
   const problem = taskSourceProblem(read.action);
   if (problem !== null)
@@ -221,7 +223,7 @@ function sourceLine<T>(
     const said = connected(setting.held);
     return said === "Not connected" ? purpose : said;
   }
-  if (setting.state === "failed") return setting.words;
+  if (setting.state === "failed") return couldntRead(what, setting.words);
   if (setting.state === "withheld") return WITHHELD;
   if (setting.state === "unsupported") return TASK_SOURCES_UNSUPPORTED;
   return purpose;
@@ -355,6 +357,7 @@ export function SlackSettingsView({
             setting,
             "Mention Mate in a project's channel: the thread becomes the task, and Mate answers there.",
             slackLine,
+            "the Slack app",
           )
         )
       }
@@ -419,7 +422,7 @@ function SlackChannelsField({ channels }: { readonly channels: Controls<"hqSlack
         {setting.state === "known"
           ? slackChannelsLine(setting.held)
           : setting.state === "failed"
-            ? setting.words
+            ? couldntRead("the bot's channels", setting.words)
             : "Reading…"}
         {setting.state === "known" || setting.state === "failed" ? (
           <>
@@ -684,6 +687,7 @@ export function DiscordSettingsView({
             : held.allowed.length === 0
               ? "Connected · nobody may start a task yet"
               : `Connected · ${held.allowed.length} ${held.allowed.length === 1 ? "person may" : "people may"} start tasks`,
+        "the Discord application",
       )}
       mark={<DiscordMark />}
       name="Discord"
@@ -1051,7 +1055,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
         )
       }
       id={searchableSetting("automation-limits").id}
-      line={statusOf(setting, limitsLine)}
+      line={statusOf(setting, limitsLine, "the limits per task")}
       mark={<TimerIcon className="size-5" />}
       name="Limits per task"
       surface="settings-task-limits"
@@ -1194,7 +1198,7 @@ export function AutomatedModelView({
     ) : save.sent ? (
       "Saving…"
     ) : currentOffer === undefined ? (
-      statusOf(setting, () => "")
+      statusOf(setting, () => "", "the model automated Mates run")
     ) : (
       `${currentOffer.name} · ${modelPriceWords(currentOffer)}`
     );

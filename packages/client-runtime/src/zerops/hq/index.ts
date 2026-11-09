@@ -77,6 +77,7 @@ export {
   type ServiceJobs,
 } from "./environments.ts";
 export {
+  couldntRead,
   enrollmentRefusalWords,
   HQ_HANDOVER_UNFINISHED,
   HQ_NOT_OPEN,

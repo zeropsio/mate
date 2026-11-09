@@ -12,7 +12,7 @@
  * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
  * and sees the section only once it holds something.
  */
-import { hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
+import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
@@ -363,7 +363,7 @@ function useTaskBoard(
       board !== null
         ? { state: "known", board }
         : setting.state === "failed"
-          ? { state: "failed", words: setting.words }
+          ? { state: "failed", words: couldntRead("its tasks", setting.words) }
           : setting.state === "withheld" || setting.state === "unsupported"
             ? { state: "none" }
             : { state: "reading", predicted: { ...predicted, ...landed.get(groupId) } },

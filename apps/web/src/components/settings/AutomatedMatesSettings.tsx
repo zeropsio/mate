@@ -5,7 +5,7 @@
  * from, with what HQ answered as it was set: the webhook it made, or the URL and secret to paste,
  * the secret shown this once.
  */
-import { hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
+import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import type { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { useId, useState } from "react";
@@ -73,7 +73,7 @@ export function OrganizationKeyView({
         {problem}
       </span>
     ) : read.keys.state === "failed" ? (
-      read.keys.words
+      couldntRead(`the organization's ${provider.name} key`, read.keys.words)
     ) : read.keys.state === "withheld" ? (
       "Only the organization's Owner and Admins see its key."
     ) : working ? (

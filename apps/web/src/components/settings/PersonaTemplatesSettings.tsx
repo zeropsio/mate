@@ -9,7 +9,7 @@ import {
   MATE_PERSONA_NAME_MAX_LENGTH,
 } from "@t3tools/contracts";
 import type { PersonaTemplateWrite } from "@t3tools/client-runtime/data";
-import { hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
+import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { PersonaTemplate } from "@t3tools/shared/personaTemplates";
 import { useState } from "react";
 
@@ -166,7 +166,7 @@ export function PersonaTemplatesView({
       ) : read.state === "failed" ? (
         <div className="px-3">
           <Failure
-            cause="HQ could not read the persona templates."
+            cause={couldntRead("the persona templates")}
             action={
               <Button size="sm" variant="secondary" onClick={read.retry}>
                 Try again

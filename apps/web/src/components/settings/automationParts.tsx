@@ -5,6 +5,7 @@
  * another site, and what a part says while its setting is not known, a write's refusal, a press's
  * words and a labelled field.
  */
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import type {
   SettingValue,
   TaskSourceSettingValue,
@@ -159,16 +160,19 @@ export function OutLink({
 export const WITHHELD = "Only the organization's Owner and Admins see this.";
 
 /**
- * What a part says while its setting is not known — reading, refused, or HQ's failure with *Read
+ * What a part says while its setting is not known — reading, refused, or HQ's failure with *Try
  * again* — in the room its form takes. `quiet`: its section's status line says it already.
  */
 export function NotKnown({
   setting,
+  what,
   onAgain,
   quiet = false,
   template,
 }: {
   readonly setting: SettingValue<unknown>;
+  /** What the setting is, as its failure line names it ("the project's webhooks"). */
+  readonly what: string;
   readonly onAgain: () => void;
   readonly quiet?: boolean;
   /** The part's final shape, whose room is held; absent: one field's. */
@@ -182,7 +186,7 @@ export function NotKnown({
           <span />
         ) : (
           <p className="text-xs text-muted-foreground" role="alert">
-            {setting.words}
+            {couldntRead(what, setting.words)}
           </p>
         )}
         <Button onClick={onAgain} size="sm" variant="secondary">

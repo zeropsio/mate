@@ -77,7 +77,7 @@ import {
 
 export const MCP_WORDS = {
   builtIn: "Built in",
-  readFailed: "Couldn't read the tools:",
+  readFailed: "Couldn't read the tools.",
   tryAgain: "Try again",
   none: "No tools yet.",
   addTool: "Add a tool",

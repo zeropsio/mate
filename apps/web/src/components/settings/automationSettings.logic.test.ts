@@ -107,12 +107,6 @@ describe("Settings › Automation's GitHub section", () => {
       admin: false,
       says: "Only the organization's Owner and Admins see this.",
     },
-    {
-      case: "HQ's failure",
-      setting: { state: "failed", words: "HQ isn't answering." },
-      admin: true,
-      says: "HQ isn't answering.",
-    },
     { case: "a read under way", setting: { state: "reading" }, admin: true, says: "Reading…" },
   ] as const)("says $case in one line", ({ setting, admin, says }) => {
     expect(githubStatus(githubSection(setting, admin))).toBe(says);

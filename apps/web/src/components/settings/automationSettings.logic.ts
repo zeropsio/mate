@@ -4,7 +4,7 @@
  * it; an HQ older than the apps, or a person who may not see them — and how a press of *Create
  * GitHub app* hands GitHub HQ's manifest.
  */
-import { hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
+import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { SettingValue } from "@t3tools/client-runtime/data";
 import type {
   HqGithubApp,
@@ -341,7 +341,7 @@ export function githubStatus(section: GithubSection): string {
     case "withheld":
       return WITHHELD;
     case "failed":
-      return section.words;
+      return couldntRead("the organization's GitHub apps", section.words);
     case "apps":
       return section.apps.length === 0
         ? section.manage

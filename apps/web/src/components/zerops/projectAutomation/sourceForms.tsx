@@ -4,6 +4,7 @@
  * the room its final shape takes. The project page's Automation section opens them; they lived in
  * Settings while sources were set there.
  */
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import type {
   AppIntakeRead,
   AppSetting,
@@ -111,7 +112,7 @@ export function AppIntakeView({
         <IntakeRoom choice>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground" role="alert">
-              {reposFailure}
+              {couldntRead("its repositories", reposFailure)}
             </p>
             {onReadAgain === undefined ? null : (
               <Button onClick={onReadAgain} size="sm" variant="secondary">
@@ -234,7 +235,7 @@ export function AppChannelView({
   if (setting.state !== "known")
     return (
       <>
-        <NotKnown onAgain={again} setting={setting} />
+        <NotKnown onAgain={again} setting={setting} what="the project's channel" />
         <Problem read={read} />
       </>
     );
@@ -372,7 +373,7 @@ export function AppWebhooksView({
   return (
     <>
       {setting.state !== "known" ? (
-        <NotKnown onAgain={again} setting={setting} />
+        <NotKnown onAgain={again} setting={setting} what="the project's webhooks" />
       ) : (
         <>
           <form
@@ -516,6 +517,7 @@ export function AppSchedulesView({
         <NotKnown
           onAgain={again}
           setting={setting}
+          what="the project's schedules"
           template={<ScheduleForm action={{ kind: "idle" }} name={name} onMake={() => {}} />}
         />
       ) : (
