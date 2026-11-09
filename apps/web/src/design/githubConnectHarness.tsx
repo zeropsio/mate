@@ -100,15 +100,27 @@ const installation = (
 
 const OTHERS = [
   installation(1, ACME_MATE.appId, "acme", "user-dana", [
-    repository("acme/notes-app", { application: "notes", repo: "appdev" }),
+    repository("acme/notes-app", {
+      application: "notes",
+      repo: "appdev",
+      githubAppId: ACME_MATE.appId,
+    }),
   ]),
   installation(2, ACME_MATE.appId, "studio-x", null, [
-    repository("studio-x/docs", { application: "shop", repo: "docsdev" }),
+    repository("studio-x/docs", {
+      application: "shop",
+      repo: "docsdev",
+      githubAppId: ACME_MATE.appId,
+    }),
   ]),
 ];
 const MINE = installation(3, OCTO_MATE.appId, "octo-dev", VIEWER, [
   repository("octo-dev/tea-shop"),
-  repository("octo-dev/demo-site", { application: "shop", repo: "appdev" }),
+  repository("octo-dev/demo-site", {
+    application: "shop",
+    repo: "appdev",
+    githubAppId: OCTO_MATE.appId,
+  }),
   repository("octo-dev/dotfiles"),
 ]);
 // The same account through the older app too: listed once, through the one the viewer set up.

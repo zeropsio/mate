@@ -189,17 +189,21 @@ export function installationLine(
   return `${installation.account} · ${reach}`;
 }
 
-/** The Mate repositories connected to a repository an app reaches, once each. */
+/**
+ * The Mate repositories whose remote goes through this app, once each: what stops when it is
+ * removed. One connected through another app or a token is not its.
+ */
 export function appUses(app: HqGithubApp): ReadonlyArray<GithubAppUse> {
   const seen = new Map<string, GithubAppUse>();
   for (const installation of app.installations) {
     if (installation.state === "unknown") continue;
     for (const repository of installation.repositories)
-      if (repository.usedBy !== null)
+      if (repository.usedBy !== null && repository.usedBy.githubAppId === app.appId)
         seen.set(
           `${repository.usedBy.application ?? ""}/${repository.usedBy.repo ?? repository.fullName}`,
           {
-            ...repository.usedBy,
+            application: repository.usedBy.application,
+            repo: repository.usedBy.repo,
             fullName: repository.fullName,
           },
         );

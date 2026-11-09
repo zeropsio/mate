@@ -561,7 +561,7 @@ const MIRROR_APPS: GitMirrorApps = {
           fullName: "acme/api",
           private: true,
           defaultBranch: "main",
-          usedBy: { application: "app-store", repo: "api" },
+          usedBy: { application: "app-store", repo: "api", githubAppId: 41 },
         },
       ],
     },
