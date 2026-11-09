@@ -21,9 +21,8 @@ import { Link } from "@tanstack/react-router";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
-import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
+import { useNowMs } from "~/zerops/useNowMs";
 import { mergedMain, useZeropsChangeDetail } from "~/zerops/useZeropsChangeDetail";
-import { formatElapsed } from "~/components/ui/progress.logic";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
 import { ProjectCardStandIn } from "./OverviewStandIn";
@@ -76,38 +75,6 @@ function CardGrid({ children }: { readonly children: ReactNode }) {
 /** A place's dot: green running, amber failed, red down, blue releasing, hollow when none. */
 export function PlaceDot({ dot }: { readonly dot: PlaceLineData["dot"] }) {
   return <i aria-hidden="true" className="ov-dot" data-dot={dot} />;
-}
-
-/** A place's words, `·` between, in its state's ink — and the clock of a wait it is in. */
-export function PlaceWords({ line }: { readonly line: PlaceLineData }) {
-  return (
-    <span className="ov-place-words" data-dot={line.dot}>
-      {line.words.map((word, index) => (
-        <Fragment key={word}>
-          {index === 0 ? null : (
-            <span aria-hidden="true" className="ov-sep">
-              ·
-            </span>
-          )}
-          <span>{word}</span>
-        </Fragment>
-      ))}
-      {line.clock === undefined ? null : <PlaceClock clock={line.clock} />}
-    </span>
-  );
-}
-
-/** How long a place's wait has run: it ticks here alone, never the card. */
-function PlaceClock({ clock }: { readonly clock: NonNullable<PlaceLineData["clock"]> }) {
-  const nowMs = useSecondsNowMs(true);
-  return (
-    <>
-      <span aria-hidden="true" className="ov-sep">
-        ·
-      </span>
-      <span className="tabular-nums">{formatElapsed(nowMs - clock.since)}</span>
-    </>
-  );
 }
 
 /** How long a card waits for its detail before it paints what it has: HQ may not answer. */

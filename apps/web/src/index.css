@@ -6977,30 +6977,12 @@ code {
   outline-offset: 2px;
 }
 
-.ov-card-people {
-  display: flex;
-  flex: none;
-  margin-left: auto;
-}
-
-.ov-card-people > * + * {
-  margin-left: -5px;
-}
-
-.ov-card-people > * {
-  box-shadow: 0 0 0 2px var(--ov-ground);
-}
-
 /* The project's menu stays in sight: its verbs are the overview's, not a hover's secret. */
 .ov-card-menu {
   display: flex;
   flex: none;
   margin: 0 -4px 0 auto;
   color: var(--muted-foreground);
-}
-
-.ov-card-people + .ov-card-menu {
-  margin-left: 0;
 }
 
 .ov-card-site {
@@ -7411,11 +7393,6 @@ a.ov-card-site:hover {
   line-height: 18px;
 }
 
-.ov-fold:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
 .ov-reply-in {
   min-width: 0;
   height: 32px;
@@ -7434,36 +7411,6 @@ a.ov-card-site:hover {
   box-shadow:
     inset 0 0 0 1px color-mix(in oklab, var(--ring) 55%, var(--border)),
     0 0 0 3px color-mix(in oklab, var(--ring) 14%, transparent);
-}
-
-.ov-fold {
-  display: grid;
-  grid-template-columns: 32px auto;
-  column-gap: 12px;
-  align-items: center;
-  height: 36px;
-  padding: 0 6px;
-  border-radius: 14px;
-  color: var(--muted-foreground);
-  font-size: 14px;
-  text-align: left;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
-.ov-fold:hover {
-  background: var(--ov-hover);
-  color: var(--foreground);
-}
-
-.ov-fold-faces {
-  display: flex;
-  justify-content: center;
-}
-
-.ov-fold-faces > * + * {
-  margin-left: -6px;
 }
 
 /* Who reaches a project, as people chips: pills that wrap, a face, a short name over the level they
@@ -8606,21 +8553,6 @@ label.tm-advanced-row:not([data-disabled]) {
   text-decoration-color: currentColor;
 }
 
-/* A release ready to go, lifted; then production's line, at every card's foot. */
-
-.ov-ready-title {
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 20px;
-}
-
-.ov-ready-line {
-  margin-top: 2px;
-  color: var(--muted-foreground);
-  font-size: 14px;
-  line-height: 20px;
-}
-
 /* A place: its name, its dot, its words — a click opens its panel — and its door at the end. */
 .ov-place-words {
   min-width: 0;
@@ -8707,203 +8639,12 @@ label.tm-advanced-row:not([data-disabled]) {
   font-size: 12px;
 }
 
-/* A place on its card — production, a stage — said in full: its name and its door, what runs,
-   each service, what went wrong, what the running release brought, and what to do. */
-.ov-panel {
-  display: grid;
-  gap: 4px;
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.ov-panel-head {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.ov-panel-name,
 .ov-sec-name {
   flex: none;
   color: var(--muted-foreground);
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
-}
-
-.ov-panel-host {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 4px;
-  margin-left: auto;
-  padding: 0 6px;
-  border-radius: 6px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  transition:
-    background-color 150ms var(--ease-out-strong),
-    color 150ms var(--ease-out-strong);
-}
-
-/* Several services serving: a door each, by its service (`placeAddresses`). */
-.ov-panel-doors {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  margin-left: auto;
-}
-
-.ov-panel-doors .ov-panel-host {
-  margin-left: 0;
-}
-
-.ov-panel-host:hover {
-  background: color-mix(in oklab, var(--foreground) 6%, transparent);
-  color: var(--foreground);
-}
-
-.ov-panel-host:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 1px;
-}
-
-.ov-panel-state {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 22px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* A line that opens what it says (production's "Releasing v0.1.0"): its words and its place. */
-button.ov-panel-state {
-  max-width: 100%;
-  text-align: left;
-}
-
-button.ov-panel-state:hover .ov-place-words {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-button.ov-panel-state:focus-visible {
-  border-radius: 4px;
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-.ov-panel-services {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 12px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.ov-service {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.ov-service-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--zerops-status-ok);
-}
-
-/* A services line held while its services are read, or while a stage runs nothing yet: a line's
-   room with nothing in it to read. */
-.ov-panel-services[data-zerops-services-held] > .ov-service::before {
-  content: "\200b";
-}
-
-/* Stopped, or running with nothing deployed in it: hollow, never the green of a service that serves. */
-.ov-service[data-state="stopped"] .ov-service-dot,
-.ov-service[data-state="idle"] .ov-service-dot {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.25px var(--muted-foreground);
-}
-
-.ov-service[data-state="down"] {
-  color: var(--zerops-status-failed-text);
-}
-
-.ov-service[data-state="down"] .ov-service-dot {
-  background: var(--zerops-status-failed);
-}
-
-.ov-panel-note {
-  font-size: 13px;
-  line-height: 18px;
-}
-
-.ov-panel-note[data-tone="muted"] {
-  color: var(--muted-foreground);
-}
-
-.ov-panel-note[data-tone="attention"] {
-  color: var(--zerops-status-attention-text);
-}
-
-.ov-panel-note[data-tone="failed"] {
-  color: var(--zerops-status-failed-text);
-}
-
-.ov-panel-sec {
-  display: grid;
-  gap: 2px;
-  margin-top: 4px;
-}
-
-.ov-panel-k {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.ov-panel-li {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 13px;
-  line-height: 20px;
-}
-
-.ov-panel-lt {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ov-panel-w {
-  flex: none;
-  color: var(--muted-foreground);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.ov-panel-acts {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.ov-panel-acts:empty {
-  display: none;
 }
 
 /* A card's sections: on the card itself, a hairline over each. */
@@ -9386,7 +9127,6 @@ div.ov-change:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .ov-mate,
-  .ov-fold,
   .ov-change {
     transition: opacity 150ms linear;
   }
