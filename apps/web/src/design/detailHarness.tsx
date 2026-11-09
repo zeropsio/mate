@@ -62,7 +62,10 @@ import { GitStopDetail } from "~/components/zerops/GitStopDetail";
 import { DetailShell } from "~/components/zerops/ZeropsGroupDetail";
 import { PlaceLine } from "~/components/zerops/system";
 import { MateFace } from "~/components/zerops/primitives";
-import type { CardReady } from "~/components/zerops/projects/projectCard.logic";
+import type {
+  CardReady,
+  PlaceLine as PlaceLineData,
+} from "~/components/zerops/projects/projectCard.logic";
 import type { MateTintId } from "@t3tools/shared/brand";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import { PlaceAccessSummary } from "~/components/zerops/projects/ProjectAccessTable";
@@ -726,6 +729,10 @@ interface StopFixture {
   readonly ready?: CardReady;
   /** Who made the live release. */
   readonly liveBy?: string;
+  /** The place's line as the overview says it; the page's own reads otherwise. */
+  readonly line?: PlaceLineData;
+  /** The person's own Mate a failure is offered to, by name. */
+  readonly fixer?: string;
 }
 
 /** Acme production's vault, its values the vault fixture's. */
@@ -931,6 +938,10 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       mateName={(mateProjectId) => MATES[mateProjectId]?.name}
       onOpenPull={() => {}}
       liveBy={fixture.liveBy}
+      line={fixture.line}
+      askToFix={
+        fixture.fixer === undefined ? undefined : { mateName: fixture.fixer, onAsk: () => {} }
+      }
     />
   );
 }
@@ -1178,6 +1189,7 @@ function Harness() {
       >
         <StopState
           fixture={{
+            fixer: "Juno",
             tier: "stage",
             services: [
               service("api", "b21d904c", undefined, "failed"),
@@ -1299,11 +1311,39 @@ function Harness() {
       ))}
 
       <State
+        label="A production that is down"
+        note="The platform says a service failed and no deploy did: the header's Down, said once as a failure, with the person's own Mate offered to fix it."
+      >
+        <StopState
+          fixture={{
+            tier: "production",
+            group: "Acme",
+            services: ACME_LIVE,
+            deployment: TEASHOP_RUNNING,
+            routes: ACME_ROUTES,
+            releases: ACME_RELEASES,
+            platformServices: ACME_SERVICES,
+            fixer: "Juno",
+            line: {
+              projectId: "acme-production",
+              kind: "production",
+              name: "prod",
+              dot: "down",
+              words: ["Down", "shop failed"],
+              trouble: true,
+              addresses: [],
+            },
+          }}
+        />
+      </State>
+
+      <State
         label="A production whose release failed to deploy"
         note="Tea Shop: v0.1.14's nextstore deploy failed and nextstore runs on v0.1.13 — the verdict says so, and the release row reads Deploy failed."
       >
         <StopState
           fixture={{
+            fixer: "Juno",
             tier: "production",
             group: "Tea Shop",
             services: TEASHOP_LIVE,
