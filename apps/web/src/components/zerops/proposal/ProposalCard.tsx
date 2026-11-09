@@ -307,7 +307,8 @@ function Words({ words }: { readonly words: string }) {
   );
 }
 
-function Attachment({ title, text }: { readonly title: string; readonly text: string }) {
+/** Something handed along, folded under its title until asked for: a log, an import. */
+export function Attachment({ title, text }: { readonly title: string; readonly text: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="grid min-w-0 gap-1.5" data-proposal-attachment>

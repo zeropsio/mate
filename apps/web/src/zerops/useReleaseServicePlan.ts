@@ -20,15 +20,18 @@ const PENDING = Atom.make<HqReleaseReview>({ kind: "pending" });
  * its gate allows; a Git production has its preflight instead.
  */
 export function useReleaseServicePlan(
-  flow: ZeropsProjectFlow,
+  /** The application's flow; `undefined` while it is not read: nothing is asked. */
+  flow: ZeropsProjectFlow | undefined,
   tag: string | undefined,
   reviewing: boolean,
 ) {
   const account = useAccountDataOptional();
   const orgId = useAccountOrgId();
-  const offer = flow.release;
-  const required = offer.git === undefined && offer.gate.allowed;
+  const offer = flow?.release;
+  const required = offer !== undefined && offer.git === undefined && offer.gate.allowed;
   const owner =
+    flow !== undefined &&
+    offer !== undefined &&
     required &&
     reviewing &&
     offer.permission?.allowed === true &&
