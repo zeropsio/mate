@@ -86,6 +86,8 @@ export type ChangeRowProps = ChangeRowSubject & {
   readonly tone?: CardChange["tone"] | undefined;
   /** When it last moved (ISO); no time where `undefined`. */
   readonly at?: string | undefined;
+  /** Whose it is, said before its time at the row's end ("Juno · 8d"), where no `line` says it. */
+  readonly by?: string | undefined;
   /** Its Mate's face, 20 px; its git mark where `undefined` and it is a change. */
   readonly face?: ReactNode;
   /**
@@ -106,7 +108,7 @@ export type ChangeRowProps = ChangeRowSubject & {
  * `ChangeList`.
  */
 export function ChangeRow(props: ChangeRowProps) {
-  const { pull, open = false, line, tone, at, face, onOpen, verb } = props;
+  const { pull, open = false, line, tone, at, by, face, onOpen, verb } = props;
   const title = pull?.title ?? props.title ?? "";
   const Icon = open ? GitPullRequestIcon : GitMergeIcon;
   const github = pull?.pullRequest;
@@ -135,7 +137,15 @@ export function ChangeRow(props: ChangeRowProps) {
       {/* Review on a change still open, as the menu has it (the owner, 2026-10-12: "more
           limited in functionality than the left menu"); the row opens it too. */}
       <span className="ov-change-end">
-        <ChangeAge at={at} />
+        {by === undefined ? (
+          <ChangeAge at={at} />
+        ) : (
+          <span className="ov-change-time">
+            {by}
+            {at === undefined ? null : " · "}
+            <ChangeAge at={at} />
+          </span>
+        )}
         {review ? (
           <span className="ov-review" data-zerops-surface="card-change-review">
             Review

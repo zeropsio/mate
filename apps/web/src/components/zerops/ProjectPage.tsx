@@ -69,7 +69,7 @@ import {
 
 /**
  * A project's own page: its header, then what changes day to day — what waits on the person, its
- * places, its Mates, its changes — beside one card of what is set up once (`ProjectPageBody`). It
+ * places, its Mates, its changes — beside the cards of what is set up once (`ProjectPageBody`). It
  * draws through the overview's flow (`ZeropsProjectsContent`), so a Mate's row, a place and a change
  * are one thing on both, and its dialogs (rename, delete, connect) are the overview's own.
  */
@@ -154,7 +154,7 @@ function ProjectPage<T>({
       <>
         {/* Each code repository and where its code goes: once it has one. */}
         {groupName === undefined || flow === undefined || (repos ?? []).length === 0 ? null : (
-          <SetupRow label="Repositories" surface="project-repositories">
+          <SetupRow label="Code" rows surface="project-repositories">
             <ProjectRepositories
               environments={flow.environments}
               groupId={groupId}

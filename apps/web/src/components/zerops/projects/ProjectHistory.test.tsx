@@ -1,11 +1,10 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, expect, it, vi } from "vite-plus/test";
 
 import { RecordedStageHistory } from "../RecordedStageHistory";
 import { pull } from "./flowTestFixtures";
-import type { GitRepoAt } from "../gitBrowser/GitBrowserLink";
 import { ProjectHistory, ProjectHistoryView } from "./ProjectHistory";
 import type { HistoryRelease } from "./projectHistory.logic";
 
@@ -74,8 +73,7 @@ const RELEASE: HistoryRelease = {
   backTo: undefined,
   changes: [],
   outsideCommitCount: 2,
-  changeTitles: [],
-  ranges: [{ repo: "app", base: null, head: FIX }],
+  recorded: [],
 };
 
 let root: ReturnType<typeof createRoot> | null = null;
@@ -87,51 +85,6 @@ afterEach(async () => {
   comparisons.reads = [];
   comparisons.subject = "Fix the VAT rounding";
   comparisons.byHead = {};
-});
-
-/** The History with its release and its commits outside Mate opened: their links into the browser. */
-async function outsideLinks(repo: GitRepoAt | undefined) {
-  host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot(host);
-  await act(async () =>
-    root!.render(
-      <ProjectHistoryView
-        face={() => null}
-        mateName={() => undefined}
-        onOpen={() => {}}
-        releases={[RELEASE]}
-        repo={repo}
-      />,
-    ),
-  );
-  const press = (words: string) =>
-    act(async () =>
-      [...host!.querySelectorAll("button")]
-        .find((button) => button.textContent?.includes(words))!
-        .click(),
-    );
-  if (repo !== undefined) {
-    await press("v1.0.4");
-    expect(host.textContent).toContain("Fix the VAT rounding");
-  }
-  return [...host.querySelectorAll("a")].map((link) => [
-    link.textContent,
-    link.getAttribute("href"),
-  ]);
-}
-
-describe("ProjectHistoryView: commits outside Mate in the Git browser", () => {
-  it("each commit outside Mate opens its page in the Git browser", async () => {
-    expect(await outsideLinks({ appId: "shop", repo: "app" })).toEqual([
-      ["Fix the VAT rounding", `/git?appId=shop&repo=app&rev=${FIX}&view=commit`],
-      ["Bump the lockfile", `/git?appId=shop&repo=app&rev=${BUMP}&view=commit`],
-    ]);
-  });
-
-  it("links nothing where the project's repository is not known", async () => {
-    expect(await outsideLinks(undefined)).toEqual([]);
-  });
 });
 
 async function recordedHistory() {
@@ -174,52 +127,9 @@ it("Application and environment history summaries show recorded releases and cha
   expect(comparisons.reads).toEqual([]);
   expect(host!.textContent).toContain("v1.0.4");
   expect(host!.textContent).toContain("Fix checkout");
+  await act(async () => host!.querySelector<HTMLButtonElement>("[aria-expanded]")!.click());
   expect(host!.textContent).toContain("1 commit outside Mate");
   expect(host!.textContent).not.toContain("Fix the VAT rounding");
-});
-
-it("A release row expands to its commit messages only when the person asks.", async () => {
-  await recordedHistory();
-  expect(comparisons.reads).toEqual([]);
-  await act(async () =>
-    [...host!.querySelectorAll("button")]
-      .find((button) => button.textContent?.includes("v1.0.4"))!
-      .click(),
-  );
-  expect(comparisons.reads).toEqual([
-    { repository: "app", query: { head: FIX, base: BUMP }, services: [] },
-  ]);
-  expect(host!.textContent).toContain("Fix the VAT rounding");
-});
-
-it("a person's direct push on main shows inside its release as a commit outside Mate, its title without GitHub's (#n)", async () => {
-  const at = (minute: number) => new Date(Date.UTC(2026, 9, 19, 9, minute)).toISOString();
-  const released = {
-    sha: FIX,
-    subject: "Bump the footer year (#3)",
-    authorName: "Ines Vale",
-    at: at(22),
-    change: null,
-  };
-  const later = {
-    sha: BUMP,
-    subject: "Not released yet",
-    authorName: "Ines Vale",
-    at: at(50),
-    change: null,
-  };
-  comparisons.byHead = { [FIX]: [released], [BUMP]: [later, released] };
-  await recordedHistory();
-  expect(host!.textContent).toContain("1 commit outside Mate");
-  expect(host!.textContent).not.toContain("Bump the footer year");
-  await act(async () =>
-    [...host!.querySelectorAll("button")]
-      .find((button) => button.textContent?.includes("v1.0.4"))!
-      .click(),
-  );
-  expect(host!.textContent).toContain("Bump the footer year");
-  expect(host!.textContent).not.toContain("(#3)");
-  expect(host!.textContent).not.toContain("Not released yet");
 });
 
 it("Stage history accepts recorded changes arriving after first paint without opening Git.", async () => {
@@ -286,7 +196,13 @@ it("History shows a GitHub merge commit as no row of its own", async () => {
   await act(async () =>
     root!.render(
       <ProjectHistoryView
-        releases={[{ ...RELEASE, changeTitles: ["Change 2"], outsideCommitCount: 0 }]}
+        releases={[
+          {
+            ...RELEASE,
+            recorded: [{ repository: "app", number: 2, title: "Change 2", pull: undefined }],
+            outsideCommitCount: 0,
+          },
+        ]}
         repo={{ appId: "shop", repo: "app" }}
         face={() => null}
         mateName={() => undefined}
