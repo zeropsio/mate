@@ -159,7 +159,11 @@ export interface ZeropsProjectsFlowProps<T> {
   /** The ready release's door on a card (*Review release*), while one is offered. */
   readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** The row's ··· menu: the project's quiet verbs, and its Mates' previews (`flow.mates`). */
-  readonly renderGroupMenu: (entry: ProjectsFlowGroup<T>) => ReactNode;
+  readonly renderGroupMenu: (
+    entry: ProjectsFlowGroup<T>,
+    /** On the project's own page: only what has no other place there (`page`). */
+    options?: { readonly page?: boolean },
+  ) => ReactNode;
   /** Re-probes the containers not answering. */
   readonly onRetryContainers: (items: ReadonlyArray<T>) => void;
   /** A creation runs: every add verb is disabled, never hidden. */

@@ -43,6 +43,7 @@ import {
   type ReleasesAnswer,
   type StopServing,
 } from "../SidebarProductionChip.logic";
+import type { CardProductionVerbs } from "./CardGroupMenu";
 import { CardChanges, CardMateLiftActions } from "./ProjectCards";
 import { ProjectHistory } from "./ProjectHistory";
 import {
@@ -236,15 +237,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
    * back to while it runs well, and whether it has a history to open — `undefined` with no
    * production to speak of.
    */
-  const productionVerbs = (
-    entry: ProjectsFlowGroup<T>,
-  ):
-    | {
-        readonly projectId: string;
-        readonly rollBack: string | undefined;
-        readonly history: boolean;
-      }
-    | undefined => {
+  const productionVerbs = (entry: ProjectsFlowGroup<T>): CardProductionVerbs | undefined => {
     const { production } = entry.flow;
     if (!("stop" in production) || production.stop.git !== undefined) return undefined;
     const read = flows.get(entry.group.groupId);
@@ -260,6 +253,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
             production.kind === "releasing" ? production.tag : undefined,
           ) !== undefined,
       }),
+      runs: production.stop.version !== undefined || production.stop.state === "deployed",
     };
   };
 
