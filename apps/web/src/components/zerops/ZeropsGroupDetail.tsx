@@ -67,7 +67,7 @@ import { Badge } from "~/components/ui/badge";
 import { environmentTitle, stopRowSays } from "./place/place.logic";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
-export const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
+const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
   good: "ok",
   pending: "busy",
   bad: "failed",
