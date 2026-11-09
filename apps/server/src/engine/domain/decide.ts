@@ -57,6 +57,7 @@ import {
   TrimmedNonEmptyString,
   WORK_ENDED,
 } from "@t3tools/contracts";
+import { HqRemoteUrl } from "@t3tools/shared/hqChanges";
 import { changedOptionIds } from "@t3tools/shared/modelOptions";
 
 import type { TurnOutcome } from "../bridge/spi3.ts";
@@ -1462,29 +1463,25 @@ export const mirrorAnswerWords = (ask: Pick<MirrorAsk, "repo">, outcome: MirrorO
     ? `The person connected ${ask.repo} to GitHub at ${outcome.url}.`
     : `The person declined connecting ${ask.repo} to GitHub.`;
 
-/** An https address with no credentials, query or fragment in it; `null` for any other. */
-const githubAddress = (url: unknown): string | null => {
-  if (typeof url !== "string") return null;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" &&
-      parsed.username === "" &&
-      parsed.password === "" &&
-      parsed.search === "" &&
-      parsed.hash === ""
-      ? url
-      : null;
-  } catch {
-    return null;
-  }
-};
+/** The longest remote address the agent's line carries (as `EngineAnswer`'s). */
+const REMOTE_URL_MAX = 512;
+const isRemoteUrl = Schema.is(HqRemoteUrl);
+
+/**
+ * A remote address as HQ keeps one — https, a host, no whitespace, credentials, query or fragment
+ * — normalized; `null` for any other, or one too long.
+ */
+const remoteAddress = (url: unknown): string | null =>
+  typeof url === "string" && url.length <= REMOTE_URL_MAX && isRemoteUrl(url)
+    ? new URL(url).href
+    : null;
 
 /** A mirror ask's answer (`{ outcome: "connected", url }` or `{ outcome: "declined" }`); anything more is none. */
 const mirrorOutcome = (answer: unknown): MirrorOutcome | null => {
   if (cardOutcome(answer, ["declined"]) === "declined") return { kind: "declined" };
   if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
   const { outcome, url, ...rest } = answer as Record<string, unknown>;
-  const address = githubAddress(url);
+  const address = remoteAddress(url);
   return outcome === "connected" && address !== null && Object.keys(rest).length === 0
     ? { kind: "connected", url: address }
     : null;

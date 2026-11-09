@@ -484,7 +484,7 @@ export const EngineAnswer = forwardCompatibleUnion({
     Schema.Struct({
       kind: Schema.Literal("mirror"),
       outcome: Schema.Literals(["connected", "declined"]),
-      url: Schema.optionalKey(Schema.String),
+      url: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
     }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),
