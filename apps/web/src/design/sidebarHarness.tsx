@@ -97,7 +97,7 @@ import {
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
-import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
+import { useWaitingNext, useWaitsOf } from "~/zerops/useSidebarWaiting";
 import type { MateDecision } from "~/components/zerops/mateDecision.logic";
 import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewMinis.logic";
 import {
@@ -1331,14 +1331,12 @@ function SidebarFrame({
     [open, scope],
   );
   const overviewOpen = open === "";
-  const waiting = useSidebarWaiting({
+  const waiting = useWaitsOf({
     candidates: FIXTURES.candidates,
     activityOf: activityOfCandidate,
-    shown,
-    activeProjectId: open,
-    enabled: true,
     releases: HARNESS_RELEASES,
   });
+  useWaitingNext({ mates: waiting.mates, activeProjectId: open, enabled: true });
   return (
     <aside
       className="flex h-screen shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
@@ -1699,14 +1697,12 @@ function RailFrame({
       shownInScope(scope, FIXTURES.owners.get(item.project.id)?.isViewer, item.project.id === open),
     [open, scope],
   );
-  const waiting = useSidebarWaiting({
+  const waiting = useWaitsOf({
     candidates: FIXTURES.candidates,
     activityOf: activityOfCandidate,
-    shown,
-    activeProjectId: open,
-    enabled: true,
     releases: HARNESS_RELEASES,
   });
+  useWaitingNext({ mates: waiting.mates, activeProjectId: open, enabled: true });
   const items = WAIT_ALL ?? waiting.items;
   const rail = useRailTiles({
     candidates: FIXTURES.candidates,

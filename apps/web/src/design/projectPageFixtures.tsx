@@ -586,9 +586,12 @@ function harnessWaits<T>(entry: ProjectsFlowGroup<T>): ReadonlyArray<CardWait> {
             wait: {
               kind: "review",
               key: `review:${mate.projectId}`,
-              mate: { ...waiting(mate.projectId, mate.name, tint), kind: "change" },
+              mate: {
+                ...waiting(mate.projectId, mate.name, tint),
+                kind: "change",
+                changes: count,
+              },
               change: undefined,
-              count,
             },
             face: face(tint),
             onVerb: nothing,

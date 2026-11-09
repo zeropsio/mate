@@ -1,14 +1,21 @@
 /**
- * What waits on the viewer, one list: the Mates' things — a plan to approve, a question to answer,
- * a Mate of theirs stopped on an error, a change of theirs to review — in the menu's order, then
- * every project whose release is offered. The Waiting on you row says the first two in a few plain
- * words; its list holds each with the buttons that act on it.
+ * What waits on the viewer, one list, and its one unit: one thing to act on — a Mate's plan to
+ * approve, a question to answer, a Mate of theirs stopped on an error, a Mate's changes to review,
+ * its agent's sign-in only the viewer can make — in the menu's order, then every project whose
+ * release is offered. Every surface that counts or says what waits reads this list and these
+ * words: the menu's badge and rail, the overview's tab, a project's card and page.
  */
-import { changesCountWords } from "@t3tools/client-runtime/zerops";
+import {
+  changesCountWords,
+  REVIEW_LABEL,
+  REVIEW_RELEASE_LABEL,
+} from "@t3tools/client-runtime/zerops";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
-export type WaitingKind = "plan" | "question" | "failed" | "change";
+import { putLiveHoldsRelease } from "~/zerops/putLive.logic";
+
+export type WaitingKind = "plan" | "question" | "failed" | "change" | "sign-in";
 
 /** A Mate's change that waits for the viewer's review: the review's own target. */
 export interface WaitingChange {
@@ -26,8 +33,10 @@ export interface WaitingMate {
   readonly shape: MateShapeId;
   readonly face: MateMarkState;
   readonly kind: WaitingKind;
-  /** Its words for it: the question, the plan, the error, the change's title. */
+  /** Its words for it: the question, the plan, the error, the change's title, the sign-in. */
   readonly text?: string | undefined;
+  /** How many of its changes wait for review, where that is what waits (`mateReviewCount`). */
+  readonly changes?: number | undefined;
   /** Where its conversation is, for the list to answer it in place. */
   readonly environmentId?: string | undefined;
   readonly threadId?: string | undefined;
@@ -62,6 +71,19 @@ export function waitingKindOf(input: {
   return input.reviewWaits ? "change" : "question";
 }
 
+/**
+ * Whether a project's next release is offered — the one gate every surface asks: the flow's gate
+ * allows it, or the review would check a refused branch again (`GitDelivery.recheck`), and no Put
+ * it live run is making the production it would release.
+ */
+export function releaseOffered(input: {
+  readonly allowed: boolean | undefined;
+  readonly recheck?: boolean | undefined;
+  readonly putLive: Parameters<typeof putLiveHoldsRelease>[0];
+}): boolean {
+  return (input.allowed === true || input.recheck === true) && !putLiveHoldsRelease(input.putLive);
+}
+
 export function waitingItemsOf(input: {
   readonly mates: ReadonlyArray<WaitingMate>;
   readonly releases: ReadonlyArray<WaitingRelease>;
@@ -76,20 +98,37 @@ export function waitingItemsOf(input: {
   ];
 }
 
+/** What waits, in its leading words: the menu's line, a card's and a page's say these first. */
 export function waitingPhrase(item: WaitingItem): string {
   if (item.kind === "release") return `Release ${item.release.name}`;
-  const { name } = item.mate;
+  const { name, changes } = item.mate;
   switch (item.kind) {
     case "plan":
       return `Approve ${name}'s plan`;
     case "change":
-      return `Review ${name}'s change`;
+      return changes !== undefined && changes > 1
+        ? `Review ${name}'s ${String(changes)} changes`
+        : `Review ${name}'s change`;
     case "failed":
       return `Help ${name}`;
     case "question":
       return `Answer ${name}`;
+    case "sign-in":
+      return `Sign ${name} in`;
   }
 }
+
+/** The one verb a wait offers, by its kind, on every surface that offers one. */
+export const WAITING_VERBS = {
+  change: REVIEW_LABEL,
+  plan: "See plan",
+  question: "Answer",
+  failed: "Ask to fix it",
+  release: REVIEW_RELEASE_LABEL,
+  "sign-in": "Sign in",
+} as const satisfies Record<WaitingItem["kind"], string>;
+
+export type WaitingVerb = (typeof WAITING_VERBS)[WaitingItem["kind"]];
 
 /** The row's line: the first two things, and how many more wait. */
 export function waitingSummary(items: ReadonlyArray<WaitingItem>): {

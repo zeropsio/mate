@@ -30,6 +30,7 @@ import {
   cardReady,
   mateChangeForReview,
   placeLines,
+  projectWaitWords,
   type CardChange,
   type PlaceLine as PlaceLineData,
   type ProjectWait,
@@ -311,18 +312,10 @@ function ProjectWaits<T>({
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const openChange = useOpenChange();
   if (waits.length === 0) return null;
-  // As many as the rows list: each Mate's changes waiting for review, one where none is read yet.
-  const count = waits.reduce(
-    (total, { wait }) =>
-      total +
-      (wait.kind === "review"
-        ? Math.max(1, waitingChanges(entry.flow, wait.mate.projectId).length)
-        : 1),
-    0,
-  );
+  // One per thing to act on, as the menu's badge counts: a Mate's changes are one.
   return (
     <section aria-labelledby="pp-waits" className="pp-group" data-zerops-surface="project-waits">
-      <SectionLabel count={count} id="pp-waits">
+      <SectionLabel count={waits.length} id="pp-waits">
         Waiting on you
       </SectionLabel>
       <div className="pp-card pp-list">
@@ -334,7 +327,7 @@ function ProjectWaits<T>({
                   face={face}
                   key={wait.key}
                   line={changeRowLine(wait.mate.name, ASK_LINE[wait.ask])}
-                  title={wait.mate.text ?? ASK_TITLE[wait.ask](wait.mate.name)}
+                  title={projectWaitWords(wait).text}
                   verb={
                     <Button
                       onClick={(event) => {
@@ -343,7 +336,7 @@ function ProjectWaits<T>({
                       size="sm"
                       variant="secondary"
                     >
-                      {ASK_VERB[wait.ask]}
+                      {projectWaitWords(wait).verb}
                     </Button>
                   }
                 />
@@ -360,7 +353,7 @@ function ProjectWaits<T>({
                   line={changeRowLine(wait.mate.name, "Ready for your review")}
                   onOpen={onVerb}
                   open
-                  title={wait.change?.title ?? `A change from ${wait.mate.name}`}
+                  title={projectWaitWords(wait).text}
                 />
               );
             return (
@@ -402,16 +395,7 @@ const ASK_LINE: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], string> = {
   question: "Asks you",
   plan: "Has a plan for you",
   failed: "Stopped on an error",
-};
-const ASK_TITLE: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], (name: string) => string> = {
-  question: (name) => `${name} asks you`,
-  plan: (name) => `${name} has a plan for you`,
-  failed: (name) => `${name} stopped on an error`,
-};
-const ASK_VERB: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], string> = {
-  question: "Answer",
-  plan: "See plan",
-  failed: "Ask to fix it",
+  "sign-in": "Waiting for your sign-in",
 };
 
 /**

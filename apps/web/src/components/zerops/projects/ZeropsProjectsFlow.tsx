@@ -156,7 +156,10 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly openMate: (item: T) => (() => void) | undefined;
   /** An environment's row — a `ZeropsEnvironmentRow`. */
   readonly renderEnvironment: (item: T, role: ZeropsEnvironmentRole | undefined) => ReactNode;
-  /** The ready release's door on a card (*Review release*), while one is offered. */
+  /**
+   * The release's door on a card (*Review release*), drawn only where the one list says the
+   * release waits on the viewer (`projectReleaseWait`).
+   */
   readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** The row's ··· menu: the project's quiet verbs, and its Mates' previews (`flow.mates`). */
   readonly renderGroupMenu: (

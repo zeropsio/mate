@@ -45,7 +45,7 @@ import {
   shownHqProjectPeopleAtom,
   shownMateVisibilitiesAtom,
 } from "@t3tools/client-runtime/data";
-import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
+import { useViewerWaits } from "~/zerops/useSidebarWaiting";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { hqDown, hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
@@ -78,11 +78,7 @@ import { heldCandidates, listsNoProject } from "@t3tools/client-runtime/zerops/p
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
-import {
-  environmentDoorLabel,
-  PUT_LIVE_AFTER_CREATION,
-  putLiveHoldsRelease,
-} from "~/zerops/putLive.logic";
+import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import { useOpenPutLive, usePutLive } from "~/zerops/putLive";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
@@ -236,7 +232,7 @@ import {
   type ProjectPageSlot,
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
-import { projectWaits } from "./projects/projectCard.logic";
+import { projectReleaseWait, projectWaits } from "./projects/projectCard.logic";
 import { CardGroupMenu } from "./projects/CardGroupMenu";
 import {
   overviewKeeps,
@@ -854,8 +850,6 @@ export function useZeropsProjectConnection(): {
   };
 }
 
-/** Every Mate counts toward what waits on the viewer: the overview's filter is not the menu's. */
-const SHOWS_EVERY_MATE = () => true;
 const NO_ROWS: ReadonlyArray<never> = [];
 
 /**
@@ -2081,36 +2075,10 @@ export function ZeropsProjectsContent({
     deployments,
     lines: groupLines,
   });
-  // The overview's filter (`overviewKeeps`): what waits on the viewer is the menu's own word —
-  // a Mate of theirs that asks, a change for their review, a release they may make — and theirs is
-  // what HQ records as theirs.
-  const waitingReleases = useMemo(
-    () =>
-      flowGroups.flatMap((entry) => {
-        const release = projectFlow.flows.get(entry.group.groupId)?.release;
-        // Put it live releases the production it makes: no release waits on the viewer meanwhile.
-        return release?.gate.allowed === true &&
-          !putLiveHoldsRelease(putLiveRuns.get(entry.group.groupId))
-          ? [
-              {
-                groupId: entry.group.groupId,
-                name: entry.group.name,
-                ahead: release.summary?.total,
-                changeCount: release.summary?.changeCount,
-              },
-            ]
-          : [];
-      }),
-    [flowGroups, projectFlow.flows, putLiveRuns],
-  );
-  const waiting = useSidebarWaiting({
-    candidates,
-    activityOf,
-    shown: SHOWS_EVERY_MATE,
-    activeProjectId: null,
-    enabled: status === "signed-in",
-    releases: waitingReleases,
-  });
+  // The overview's filter (`overviewKeeps`): what waits on the viewer is the menu's own list
+  // (`useViewerWaits`) — a Mate of theirs that asks, its changes for their review, its sign-in, a
+  // release they may make — and theirs is what HQ records as theirs.
+  const waiting = useViewerWaits({ text: true });
   const personFacts = useAtomValue(shownHqPersonFactsAtom);
   const filterFacts = useMemo(() => {
     const groupOf = new Map(
@@ -2710,7 +2678,8 @@ export function ZeropsProjectsContent({
           onShow={onShow}
           ownsMates={roleOffered.newProject}
           show={search.show}
-          waiting={flowGroups.filter((entry) => filterFacts.waits.has(entry.group.groupId)).length}
+          // The things that wait on the viewer, the menu's badge's number at the same moment.
+          waiting={waiting.items.length}
         />
       ) : null}
       {project === undefined && search.show !== undefined && keptGroups.length === 0 ? (
@@ -2868,17 +2837,13 @@ export function ZeropsProjectsContent({
           }))
         }
         renderProductionRun={({ group }) => <ProductionRun groupId={group.groupId} />}
-        renderReleaseVerb={({ group, flow }) => {
-          const { production } = flow;
-          const candidate =
-            production.kind === "ready-to-release" || production.kind === "deploy-failed"
-              ? production.candidate
-              : undefined;
-          if (candidate === undefined) return null;
-          // Production being made by Put it live is released by it: nothing asks for a release.
-          if (putLiveHoldsRelease(putLiveRuns.get(group.groupId))) return null;
-          return <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} offered />;
-        }}
+        // The release waits on the viewer where the one list says it (`releaseOffered`), the menu's
+        // count with it.
+        renderReleaseVerb={({ group }) =>
+          projectReleaseWait(waiting.items, group.groupId) === undefined ? null : (
+            <ZeropsReleaseVerb groupId={group.groupId} label={REVIEW_RELEASE_LABEL} offered />
+          )
+        }
         placementNotice={placementNotice(
           placementStatus,
           hqStructure.capped || placementStatus.reconnecting,
