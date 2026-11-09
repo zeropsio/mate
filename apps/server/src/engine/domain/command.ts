@@ -128,6 +128,15 @@ export type ProviderSignal =
       readonly repo?: string;
     }
   | {
+      /**
+       * zcp said a repository the person was asked to connect to GitHub needs them no more: HQ
+       * already shows its GitHub remote (`connected`), or the agent withdrew the ask (`withdrawn`).
+       */
+      readonly kind: "mirror-settled";
+      readonly repo: string;
+      readonly how: "connected" | "withdrawn";
+    }
+  | {
       readonly kind: "turn-ended";
       readonly turn: TurnHandle;
       readonly outcome: TurnOutcome;

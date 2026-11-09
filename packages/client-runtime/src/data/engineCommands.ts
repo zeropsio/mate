@@ -304,6 +304,30 @@ export const engineAnswerOriginAsk =
       summary: input.outcome,
     });
 
+/**
+ * How a repository the Mate asked to connect to GitHub ended, on its card: `connected`, at the
+ * GitHub address HQ now shows as its remote (the card connected it itself); `declined`, not now.
+ * Never a token.
+ */
+export type MirrorAskAnswerInput = {
+  readonly threadId: string;
+  readonly requestId: string;
+} & ({ readonly outcome: "connected"; readonly url: string } | { readonly outcome: "declined" });
+
+/** A repository asked to be connected to GitHub, answered: the outcome and, connected, its address. */
+export const engineAnswerMirrorAsk =
+  (environmentId: string, input: MirrorAskAnswerInput) => (host: MateEngineHost) =>
+    host.operations.answer({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+      answer:
+        input.outcome === "connected"
+          ? { kind: "mirror", outcome: "connected", url: input.url }
+          : { kind: "mirror", outcome: "declined" },
+      summary: input.outcome,
+    });
+
 /** A question closed unanswered: the engine takes it only when its agent does not wait on it. */
 export const engineDismissUserInput =
   (environmentId: string, input: Command<"thread.user-input.dismiss">) => (host: MateEngineHost) =>

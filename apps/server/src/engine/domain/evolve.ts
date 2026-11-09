@@ -408,6 +408,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             ...(event.ask.kind === "origin"
               ? { origin: { url: event.ask.url, repo: event.ask.repo } }
               : {}),
+            ...(event.ask.kind === "mirror" ? { mirror: { repo: event.ask.repo } } : {}),
           },
         },
       };
@@ -448,6 +449,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             ...(answered?.asked === undefined ? {} : { asked: answered.asked }),
             ...(answered?.vault === undefined ? {} : { vault: answered.vault }),
             ...(answered?.origin === undefined ? {} : { origin: answered.origin }),
+            ...(answered?.mirror === undefined ? {} : { mirror: answered.mirror }),
           },
         },
         answering: Object.fromEntries(

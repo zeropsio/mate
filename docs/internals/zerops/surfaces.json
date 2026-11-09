@@ -609,6 +609,51 @@
       "tests": ["apps/web/src/components/zerops/origin/OriginAskCard.test.tsx"]
     },
     {
+      "id": "zerops-mirror-request",
+      "title": "Zerops connect-to-GitHub request card",
+      "components": [
+        "apps/web/src/components/zerops/mirror/MirrorAskCard.tsx",
+        "apps/web/src/components/zerops/mirror/MirrorAskCardContainer.tsx",
+        "apps/web/src/components/zerops/mirror/mirrorAsk.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "Conversation, after a run whose Mate called zerops_mirror action=request"
+        },
+        {
+          "kind": "inline",
+          "value": "Above the composer while the ask waits and its card is out of view"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data", "@t3tools/shared/hqChanges"],
+      "reverseStates": [
+        {
+          "action": "Connect to GitHub",
+          "reverse": "none: a connected repository is disconnected from its row on the project page; the card stays done."
+        },
+        {
+          "action": "Not now",
+          "reverse": "none: the engine closes the ask declined; the Mate can ask again."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the connect-to-GitHub request yet."
+      },
+      "tests": [],
+      "untested": "The owner asked for no new tests in the GitHub connection pass; its states are drawn in the asks design harness."
+    },
+    {
       "id": "zerops-review",
       "title": "Zerops review",
       "components": [

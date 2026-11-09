@@ -12,6 +12,8 @@ import type { OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
 import { type AskState, answeredWords } from "../../ask/ask.logic";
+import type { GitMirrorApps } from "~/zerops/useGitMirrorApps";
+
 import { githubName, type GitMirrorApp, waitingAccount } from "../gitMirror.logic";
 
 /**
@@ -175,6 +177,57 @@ export function originMountStep(
   return waiting === null
     ? { kind: "not-reached", name: github.name, installUrl: github.installUrl }
     : { kind: "waiting", account: waiting };
+}
+
+/**
+ * The organization's app keeping the asked origin on GitHub goes through, as the sheet reads it:
+ * the app whose accepted installation reaches the repository, else one installed where it waits
+ * for an OK, else the oldest — its accepted installations' repositories flattened into what it
+ * reaches. `githubAppId` names it to HQ once it reaches the repository. `app` is `null` while HQ
+ * is still asked.
+ */
+export function originGithubApp(
+  apps: GitMirrorApps | null,
+  url: string,
+): { readonly app: GitMirrorApp | null; readonly githubAppId: number | null } {
+  if (apps === null) return { app: null, githubAppId: null };
+  if (apps.kind === "unknown") return { app: { kind: "unknown" }, githubAppId: null };
+  const wanted = githubName(url)?.toLowerCase();
+  const reaches = (standing: "accepted" | "waiting") => (appId: number) =>
+    apps.installations.some(
+      (installation) =>
+        installation.appId === appId &&
+        installation.standing === standing &&
+        installation.repositories.some(
+          (repository) => repository.fullName.toLowerCase() === wanted,
+        ),
+    );
+  const entry =
+    apps.apps.find((each) => reaches("accepted")(each.appId)) ??
+    apps.apps.find((each) => reaches("waiting")(each.appId)) ??
+    apps.apps[0];
+  if (entry === undefined) return { app: { kind: "none" }, githubAppId: null };
+  const own = apps.installations.filter((installation) => installation.appId === entry.appId);
+  return {
+    app: {
+      kind: "connected",
+      name: entry.name,
+      appId: entry.appId,
+      repositories: own
+        .filter((installation) => installation.standing === "accepted")
+        .flatMap((installation) => installation.repositories.map((each) => each.fullName)),
+      installUrl: entry.installUrl,
+      installTrip: entry.installTrip,
+      waiting: own
+        .filter((installation) => installation.standing === "waiting")
+        .map((installation) => ({
+          account: installation.account,
+          repositories: installation.repositories.map((each) => each.fullName),
+        })),
+      unanswered: entry.unanswered,
+    },
+    githubAppId: reaches("accepted")(entry.appId) ? entry.appId : null,
+  };
 }
 
 const sameAddress = (a: string, b: string) =>
