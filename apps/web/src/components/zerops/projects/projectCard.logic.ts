@@ -49,6 +49,7 @@ import {
   type MateRowView,
 } from "../SidebarMateRow.logic";
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
+import { mergedChangeWords, openChangeWords, releaseIsLive } from "../system/ChangeRow.logic";
 import { releaseOfLanding, type HistoryReleaseInput } from "./projectHistory.logic";
 
 /** At most this many Mates stand on a card; past it the quiet ones fold. */
@@ -1034,12 +1035,12 @@ export function cardChanges(input: {
   const open = input.open
     .toSorted((left, right) => newestFirst(left.updatedAt, right.updatedAt))
     .map((pull): CardChange => {
-      const state = changeState(pull);
+      const state = openChangeWords(pull);
       return {
         pull,
         open: true,
-        words: setupChangeWaits(pull) ? setupChangeWords(undefined) : (state?.word ?? "Open"),
-        tone: state?.tone ?? "off",
+        words: setupChangeWaits(pull) ? setupChangeWords(undefined) : state.words,
+        tone: state.tone,
         at: pull.updatedAt,
         ...(setupChangeWaits(pull) ? { setup: true as const } : {}),
       };
@@ -1063,18 +1064,19 @@ export function cardChanges(input: {
         pull,
         open: false,
         // Every change to the setup repository, as `broughtBy` leaves them out of a release.
-        words:
+        words: mergedChangeWords(
           pull.kind === "recipe"
-            ? "Setup files, not part of a release"
+            ? { kind: "setup" }
             : took !== undefined
-              ? `In ${took.tag}`
+              ? { kind: "released", tag: took.tag, live: releaseIsLive(took.tag, input.releases) }
               : on(stage?.runs)
-                ? "On stage"
+                ? { kind: "on-stage" }
                 : on(stage?.deploying)
-                  ? "Deploying to stage…"
+                  ? { kind: "deploying-to-stage" }
                   : input.production && input.releases.length > 0
-                    ? "Not released yet"
-                    : "Merged",
+                    ? { kind: "waits-for-production" }
+                    : { kind: "merged" },
+        ),
         tone: "off",
         at: pull.mergedAt,
       };

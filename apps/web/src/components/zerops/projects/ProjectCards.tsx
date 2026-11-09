@@ -10,7 +10,7 @@
  * a place's panel are the page's slots (`ZeropsProjectsFlowProps`).
  */
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
-import { ArrowUpRightIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
+import { ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
 import {
   Fragment,
   useCallback,
@@ -28,7 +28,6 @@ import {
   type FlowPullRequest,
   type RecipeReach,
 } from "@t3tools/client-runtime/zerops";
-import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { Link } from "@tanstack/react-router";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
@@ -36,7 +35,6 @@ import { rememberOverviewCards } from "~/zerops/overviewCardCount";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { mergedMain, useZeropsChangeDetail } from "~/zerops/useZeropsChangeDetail";
 import { formatElapsed } from "~/components/ui/progress.logic";
-import { MateDot } from "../MateDot";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
 import { ProjectCardStandIn } from "./OverviewStandIn";
@@ -59,7 +57,7 @@ import {
 } from "./projectCard.logic";
 import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
 import { ProjectPageSpend, ProjectSpendSection } from "./ProjectSpend";
-import { ChangeRow } from "./ChangeRow";
+import { ChangeRow } from "../system/ChangeRow";
 import { ProjectPageHistory } from "./ProjectHistory";
 import { spendProjectIds } from "./projectSpend.logic";
 import type {
@@ -68,7 +66,6 @@ import type {
   ZeropsProjectsFlowProps,
 } from "./ZeropsProjectsFlow";
 import { Button } from "~/components/ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
@@ -951,129 +948,6 @@ export function ProjectCards<T>({
   );
 }
 
-/** A Mate's two lines on a card, and what it waits on the viewer for, lifted. */
-export interface CardMateProps {
-  readonly name: string;
-  /** Its face, 32 px, with whose it is on its corner. */
-  readonly face: ReactNode;
-  /** The right of its name: its time, its dot. */
-  readonly time: ReactNode;
-  readonly reading: CardMateReading;
-  /**
-   * Its parts (`mateParts`), each a chip on its name's line by its real hostname: a door to its
-   * preview, or to its dev where it has no preview, or muted with why where it has neither.
-   */
-  readonly parts?: ReadonlyArray<MatePart> | undefined;
-  /** Drawn in place of the words where its container has something else to say. */
-  readonly line?: ReactNode;
-  /** Opens its conversation; `undefined` where it cannot open yet. */
-  readonly onOpen: (() => void) | undefined;
-  /** Its verbs while lifted (`CardMateLiftActions`), or a verb its container needs (Start). */
-  readonly actions?: ReactNode;
-  /** The mark after its name: an automated Mate's (`MateAutomatedMark`); absent, none. */
-  readonly mark?: ReactNode;
-}
-
-/**
- * A Mate on a card: a 32 px face, its name and time, its second line. What waits on the viewer is
- * lifted onto a white card, its line in ink over two lines, its buttons under it.
- */
-export function CardMate({
-  name,
-  face,
-  time,
-  reading,
-  parts = [],
-  line,
-  onOpen,
-  actions,
-  mark,
-}: CardMateProps) {
-  const lifted = reading.lift !== undefined;
-  return (
-    <div
-      className="ov-mate"
-      data-lift={lifted ? reading.lift?.kind : undefined}
-      data-zerops-surface="card-mate"
-      role="listitem"
-    >
-      <span className="ov-mate-face">{face}</span>
-      <span className="ov-mate-text">
-        <span className="ov-mate-l1">
-          {onOpen === undefined ? (
-            <span className="ov-mate-name">{name}</span>
-          ) : (
-            <button
-              aria-label={`Open ${name}`}
-              className="ov-mate-name ov-mate-open"
-              onClick={onOpen}
-              type="button"
-            >
-              {name}
-            </button>
-          )}
-          {mark}
-          {parts.length === 0 ? null : (
-            <span className="ov-mate-parts" data-zerops-surface="card-mate-parts">
-              {parts.map((part) => (
-                <CardMatePart key={part.key} mate={name} part={part} />
-              ))}
-            </span>
-          )}
-          <span className="ov-mate-time">{time}</span>
-        </span>
-        {/* Cut at the card's edge, its whole is the row's press away: its conversation. */}
-        <span
-          className="ov-mate-l2"
-          data-tone={reading.tone}
-          data-wrap={lifted ? "true" : undefined}
-        >
-          {line ?? reading.text}
-        </span>
-        {drawn(actions) ? <span className="ov-acts">{actions}</span> : null}
-      </span>
-    </div>
-  );
-}
-
-/**
- * A part's chip on a Mate's row: a door to its preview, else to its dev, by that service's real
- * hostname; muted, with why in its title, where it has neither address.
- */
-function CardMatePart({ mate, part }: { readonly mate: string; readonly part: MatePart }) {
-  const door =
-    part.preview?.url === undefined
-      ? part.dev.find((entry) => entry.url !== undefined)
-      : part.preview;
-  const url = door?.url;
-  const service = door?.service ?? part.preview?.service ?? part.devService;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          url === undefined ? (
-            <span className="ov-mate-preview" data-off="" />
-          ) : (
-            <a
-              aria-label={`Open ${mate}'s ${service}`}
-              className="ov-mate-preview"
-              href={url}
-              rel="noreferrer"
-              target="_blank"
-            />
-          )
-        }
-      >
-        {service}
-        {url === undefined ? null : <ArrowUpRightIcon aria-hidden="true" className="size-3" />}
-      </TooltipTrigger>
-      <TooltipPopup side="top">
-        {url === undefined ? (part.preview?.why ?? "no address yet") : door?.host}
-      </TooltipPopup>
-    </Tooltip>
-  );
-}
-
 const NO_CHOICES: ReadonlyArray<CardMateChoice> = [];
 
 /** A choice a lifted Mate offers in place: a question's option, an approval's decision. */
@@ -1196,20 +1070,4 @@ export function CardMateLiftActions({
     case "review":
       return <Button onClick={(event) => onReview(event.currentTarget)}>{REVIEW_LABEL}</Button>;
   }
-}
-
-/** The right of a Mate's name: the dot before its time (amber needs you, blue unseen, red broken). */
-export function CardMateTime({
-  dot,
-  children,
-}: {
-  readonly dot: "attention" | "unread" | "failed" | undefined;
-  readonly children: ReactNode;
-}) {
-  return (
-    <>
-      {dot === undefined ? null : <MateDot place="inline" tone={dot} />}
-      <span data-zerops-surface="card-mate-time">{children}</span>
-    </>
-  );
 }

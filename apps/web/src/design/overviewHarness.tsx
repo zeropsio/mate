@@ -41,12 +41,8 @@ import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { PlacePanel, type PlacePanelModel } from "~/components/zerops/projects/PlacePanel";
 import { MateAutomatedMark } from "~/components/zerops/MateAutomatedMark";
-import {
-  CardChanges,
-  CardMate,
-  CardMateLiftActions,
-  CardMateTime,
-} from "~/components/zerops/projects/ProjectCards";
+import { CardChanges, CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
+import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
 import {
   CARD_CHANGES,
   cardChanges,
@@ -763,7 +759,7 @@ function HarnessPage() {
                 review: options.review,
               });
               return (
-                <CardMate
+                <MateRow
                   actions={
                     reading.lift === undefined ? null : (
                       <CardMateLiftActions
@@ -788,7 +784,7 @@ function HarnessPage() {
                   onOpen={() => acted.push(`open:${entry.id}`)}
                   parts={options.parts}
                   reading={reading}
-                  time={<CardMateTime dot={entry.view.dot}>{entry.time}</CardMateTime>}
+                  time={<MateRowTime dot={entry.view.dot}>{entry.time}</MateRowTime>}
                 />
               );
             }}

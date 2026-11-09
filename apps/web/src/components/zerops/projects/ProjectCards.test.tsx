@@ -80,7 +80,8 @@ vi.mock("~/components/ui/sidebar", async (original) => ({
 }));
 
 import { PlacePanel } from "./PlacePanel";
-import { CardMate, ProjectCards } from "./ProjectCards";
+import { MateRow } from "../system/MateRow";
+import { ProjectCards } from "./ProjectCards";
 import { overviewKeeps } from "./projectsView.logic";
 import { cardMateReading } from "./projectCard.logic";
 import { born, entry, FLOW_PROPS, item, placed, STAGE_STOP, WREN } from "./flowTestFixtures";
@@ -352,7 +353,7 @@ it("an unrelated Mate attention update leaves the other Projects row unchanged",
           ...FLOW_PROPS,
           groups,
           renderMate: (mate) => (
-            <CardMate
+            <MateRow
               name={mate.project.name}
               face={null}
               time={null}
@@ -638,7 +639,7 @@ it("a Mate's row shows each part by its real hostname: a door to its preview, el
   try {
     await act(async () =>
       root.render(
-        <CardMate
+        <MateRow
           name="Odin"
           face={null}
           time={null}
