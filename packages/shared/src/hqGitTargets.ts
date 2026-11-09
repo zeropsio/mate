@@ -114,7 +114,7 @@ const REMOTE_WORDS: Record<HqRemoteRefusalReason, string> = {
   app_unavailable:
     "GitHub didn't let the GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
   needs_owner_seal:
-    "This GitHub app needs an Owner or Admin to confirm it before Mate uses it. They do it in Settings › GitHub.",
+    "This GitHub app needs an Owner or Admin to remake it before Mate uses it. They do it in Settings › GitHub.",
   object_too_large:
     "A file in this repository's history is larger than 100 MiB. HQ takes files up to 100 MiB, as GitHub does.",
   app_ambiguous:

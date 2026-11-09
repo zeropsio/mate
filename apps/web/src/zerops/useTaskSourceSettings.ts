@@ -185,8 +185,6 @@ export interface GithubAppControls extends TaskSourceControls<"hqGithub"> {
   readonly install: (githubAppId: number, returnTo: string) => Promise<string | null>;
   /** HQ forgets the app and its installations; it stays on GitHub. */
   readonly forget: (githubAppId: number) => void;
-  /** An Owner or Admin vouches for an app nobody sealed. */
-  readonly confirm: (githubAppId: number) => void;
 }
 
 /** The organization's GitHub apps, read while `shown`; made, installed and forgotten from here. */
@@ -203,9 +201,6 @@ export function useGithubApp(shown = true): GithubAppControls {
       host === null || orgId === null ? null : host.githubInstall({ orgId }, githubAppId, returnTo),
     forget: (githubAppId) => {
       controls.write({ kind: "github-forget", githubAppId });
-    },
-    confirm: (githubAppId) => {
-      controls.write({ kind: "github-confirm", githubAppId });
     },
   };
 }

@@ -6,7 +6,7 @@
  * Under it, each account it is installed on: one installed from here comes back accepted, any other
  * waits apart for the Owner's or an Admin's Accept or Suspend, and Mate acts on none of its
  * repositories meanwhile; *Add an account* starts HQ's install trip for that app. An app nobody
- * vouched for is used for nothing until an Owner or Admin presses *Confirm*. *Remove…* names every
+ * sealed is used for nothing until an Owner or Admin removes it and adds it again. *Remove…* names every
  * Mate repository that stops before HQ forgets the app. *Add a GitHub app* makes another app from
  * HQ's manifest — GitHub's own "new app" page in this tab, back here after (`?github=connected`) —
  * and never replaces one.
@@ -34,7 +34,6 @@ import {
   appOwner,
   appReachLine,
   appSetUpWords,
-  CONFIRM_WHO_CAN,
   defaultAppName,
   GITHUB_ONE_LINE,
   GITHUB_WHO_CAN,
@@ -47,7 +46,7 @@ import {
   githubSection,
   githubStatus,
   type NameOf,
-  NEEDS_CONFIRM,
+  NEEDS_REMAKE,
   NOBODY_NAMED,
   postManifest,
 } from "./automationSettings.logic";
@@ -64,8 +63,6 @@ export interface GithubAppControls {
   readonly install: (githubAppId: number, returnTo: string) => Promise<string | null>;
   /** HQ forgets an app and its installations. */
   readonly forget: (githubAppId: number) => void;
-  /** An Owner or Admin vouches for an app nobody sealed. */
-  readonly confirm: (githubAppId: number) => void;
   /** Mate acts on a waiting installation's repositories. */
   readonly accept: (installationId: number) => void;
   /** GitHub suspends an installation. */
@@ -89,7 +86,7 @@ export function GithubAppSettings({
   /** The app whose install trip brought the person back, if one did. */
   readonly returnedApp?: number | null;
 }) {
-  const { read, write, manifest, install, again, forget, confirm } = useGithubApp();
+  const { read, write, manifest, install, again, forget } = useGithubApp();
   const { activeOrganization } = useZeropsSession();
   const nameOf = usePersonNames(activeOrganization?.id);
   const navigation = useAtomValue(shownCanonicalHqListNavigationAtom);
@@ -108,7 +105,6 @@ export function GithubAppSettings({
         install,
         again,
         forget,
-        confirm,
         accept: (installationId) => {
           write({ kind: "github-accept", installationId });
         },
@@ -136,7 +132,7 @@ export function GithubAppSettings({
 /** The press under way, and the app it is for: its words show on that app's row alone. */
 interface Pressed {
   readonly appId: number;
-  readonly verb: "github-install" | "github-confirm" | "github-forget" | "github-resume";
+  readonly verb: "github-install" | "github-forget" | "github-resume";
 }
 
 export function GithubAppView({
@@ -248,10 +244,6 @@ export function GithubAppView({
                   onCancelRemove={() => {
                     setRemoving(null);
                   }}
-                  onConfirm={() => {
-                    setPressed({ appId: app.appId, verb: "github-confirm" });
-                    controls.confirm(app.appId);
-                  }}
                   onInstall={() => {
                     setPressed({ appId: app.appId, verb: "github-install" });
                     void controls
@@ -329,7 +321,6 @@ function AppRow({
   nameOf,
   applicationOf,
   wordsOf,
-  onConfirm,
   onInstall,
   onStartRemove,
   onCancelRemove,
@@ -339,7 +330,7 @@ function AppRow({
   onResume,
 }: {
   readonly app: GithubAppRow;
-  /** This person may add accounts, confirm, judge what waits, or remove. */
+  /** This person may add accounts, judge what waits, or remove. */
   readonly manage: boolean;
   readonly busy: boolean;
   /** Its remove guard is open. */
@@ -349,7 +340,6 @@ function AppRow({
   readonly applicationOf: ApplicationNameOf;
   /** A press's words: its working words while it is this row's, else `idle`. */
   readonly wordsOf: (verb: Pressed["verb"], idle: string) => string;
-  readonly onConfirm: () => void;
   readonly onInstall: () => void;
   readonly onStartRemove: () => void;
   readonly onCancelRemove: () => void;
@@ -387,19 +377,9 @@ function AppRow({
         </div>
       </div>
       {unsealed ? (
-        <div
-          className="flex items-center gap-2 text-xs"
-          data-zerops-surface="settings-github-confirm"
-        >
-          <span className="text-foreground">{NEEDS_CONFIRM}</span>
-          {manage ? (
-            <Button disabled={busy} onClick={onConfirm} size="sm">
-              {wordsOf("github-confirm", "Confirm")}
-            </Button>
-          ) : (
-            <span className="text-muted-foreground">{CONFIRM_WHO_CAN}</span>
-          )}
-        </div>
+        <p className="text-xs text-foreground" data-zerops-surface="settings-github-unsealed">
+          {NEEDS_REMAKE}
+        </p>
       ) : null}
       {app.installations.length === 0 ? null : (
         <ul className="grid gap-1" data-zerops-surface="settings-github-installations">

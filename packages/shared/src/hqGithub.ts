@@ -15,8 +15,6 @@
  * - `POST /api/org/github/apps/:appId/install` {@link HqGithubInstallRequest} →
  *   {@link HqGithubInstallView}, owner or admin: GitHub's install page with a one-time state, so
  *   what is installed from it comes back accepted and added by the caller;
- * - `POST /api/org/github/apps/:appId/confirm` → 204, owner or admin: the caller vouches for an app
- *   nobody sealed, once HQ proved its key still answers GitHub;
  * - `DELETE /api/org/github/apps/:appId` → 204, owner or admin: HQ forgets that app and its
  *   installations (deleting it is GitHub's); remotes through it read invalid;
  * - `POST /api/org/github/installations/:id/accept` | `…/suspend` | `…/resume` → 204, owner or
@@ -106,9 +104,9 @@ export const HqGithubApp = Schema.Struct({
   /** Whether it installs beyond its owner: `false`, only on `owner`; `null` while GitHub does not say. */
   public: Schema.NullOr(Schema.Boolean),
   /**
-   * The Zerops user id of the Owner or Admin who sealed the app's secrets or confirmed it, and when
-   * (ISO). Both `null` for an app nobody vouched for: HQ acts with it on nothing
-   * (`needs_owner_seal`) until an Owner or Admin confirms it.
+   * The Zerops user id of the Owner or Admin who sealed the app's secrets, and when (ISO). Both
+   * `null` for an app nobody is recorded to have sealed: HQ acts with it on nothing
+   * (`needs_owner_seal`) until an Owner or Admin remakes it from the manifest.
    */
   sealedBy: Schema.NullOr(Schema.String),
   sealedAt: Schema.NullOr(Schema.String),

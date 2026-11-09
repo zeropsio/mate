@@ -85,20 +85,21 @@ export type GithubSection =
   | { readonly kind: "failed"; readonly words: string }
   /**
    * Every app HQ holds for the organization, oldest first; none yet when empty. `manage`: this
-   * person may add, confirm, install further, judge what waits, or remove.
+   * person may add, install further, judge what waits, or remove.
    */
   | { readonly kind: "apps"; readonly apps: ReadonlyArray<GithubAppRow>; readonly manage: boolean };
 
 /**
- * Who vouched for an app. `sealed`: the Owner or Admin who made or confirmed it (a Zerops user id),
- * and when; `needed`: nobody did, so HQ acts with it on nothing until an Owner or Admin confirms it.
+ * Who sealed an app. `sealed`: the Owner or Admin who made it (a Zerops user id), and when;
+ * `needed`: nobody is recorded to have, so HQ acts with it on nothing until an Owner or Admin
+ * remakes it from the manifest.
  */
 export type GithubSeal =
   | { readonly kind: "sealed"; readonly by: string; readonly at: string | null }
   | { readonly kind: "needed" };
 
-export const NEEDS_CONFIRM = "Needs an Owner or Admin to confirm it before Mate uses it.";
-export const CONFIRM_WHO_CAN = "Ask one of them to confirm it here.";
+export const NEEDS_REMAKE =
+  "Nobody is recorded to have set this app up, so Mate uses it for nothing. An Owner or Admin removes it and adds it again.";
 
 function githubSeal(app: HqGithubApp): GithubSeal {
   return app.sealedBy === null

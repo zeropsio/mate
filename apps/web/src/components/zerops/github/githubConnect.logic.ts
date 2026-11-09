@@ -40,7 +40,7 @@ export interface PickerAccount {
 /**
  * The accounts with an accepted installation of any of the organization's apps, yours first. An
  * account two apps reach is listed once; a repository both reach goes through the app ranked
- * first: a confirmed app before one nobody confirmed, then the app the project's other
+ * first: a sealed app before one nobody sealed, then the app the project's other
  * repositories go through, then one you set up, then the oldest.
  */
 export function pickerAccounts(
@@ -247,7 +247,7 @@ export function explainerWords(
       : app.setUpBy === viewerId
         ? "you"
         : (nameOf(app.setUpBy) ?? "someone in the organization");
-  const setUp = by === null ? "waits for an Owner or Admin to confirm it" : `was set up by ${by}`;
+  const setUp = by === null ? "waits for an Owner or Admin to remake it" : `was set up by ${by}`;
   return {
     install: `You'll install ${app.name} on the account you pick.`,
     // A name ending in its initial's period ends the sentence too.
@@ -269,9 +269,9 @@ export function openingApp(
   );
 }
 
-/** Said where Connect would act through an app that waits for an Owner or Admin's Confirm. */
+/** Said where Connect would act through an app that waits for an Owner or Admin to remake it. */
 export const unsealedWords = (app: GitMirrorAppEntry) =>
-  `${app.name} waits for an Owner or Admin to confirm it in Settings › GitHub before Mate uses it.`;
+  `${app.name} waits for an Owner or Admin to remove it and add it again in Settings › GitHub before Mate uses it.`;
 
 /** The steps a connect shows, each as HQ's record tells it. */
 export type ConnectStep = "connect" | "push" | "rules";

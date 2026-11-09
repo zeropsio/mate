@@ -52,7 +52,7 @@ export interface GitMirrorAppEntry {
   readonly owner: string;
   readonly ownerType: "Organization" | "User" | null;
   readonly botLogin: string;
-  /** Zerops user id of the person who set it up (sealed it); `null` while it waits for a Confirm. */
+  /** Zerops user id of the person who set it up (sealed it); `null` while it waits to be remade. */
   readonly setUpBy: string | null;
   readonly setUpAt: string | null;
   /** Whether others can install it on their accounts; `null` where GitHub did not say. */

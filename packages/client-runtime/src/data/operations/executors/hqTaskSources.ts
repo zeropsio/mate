@@ -27,7 +27,6 @@ export type TaskSourceWrites = Pick<
   | "stopAppTask"
   | "githubManifest"
   | "githubForget"
-  | "githubConfirm"
   | "githubInstall"
   | "githubAcceptInstallation"
   | "githubSuspendInstallation"
@@ -43,9 +42,9 @@ const UPDATE_HQ_GITHUB = "Update HQ to connect GitHub.";
 export const UPDATE_HQ_TASK_STOP = "Update HQ to stop tasks from Mate.";
 
 /**
- * HQ's refusal of an install link, a Confirm, an Accept or a Suspend in words: an HQ without the
+ * HQ's refusal of an install link, an Accept or a Suspend in words: an HQ without the
  * route (a bare `404`) needs updating, an installation or app HQ no longer holds is gone, and an app
- * whose key GitHub no longer takes cannot be confirmed. `undefined`: HQ's own words stand.
+ * whose key GitHub no longer takes is gone. `undefined`: HQ's own words stand.
  */
 function installationRefusal(cause: HqError, of: "installation" | "app"): string | undefined {
   if (cause.status === 404 && cause.code !== "not_found") return UPDATE_HQ_GITHUB;
@@ -165,8 +164,6 @@ export function makeTaskSourceExecutor(options: {
               );
             case "github-forget":
               return api.githubForget?.(write.githubAppId) ?? null;
-            case "github-confirm":
-              return api.githubConfirm?.(write.githubAppId) ?? null;
             case "github-install":
               return (
                 api
@@ -205,9 +202,7 @@ export function makeTaskSourceExecutor(options: {
                   refused(
                     (write.kind === "task-stop"
                       ? taskStopRefusal(cause)
-                      : write.kind === "github-install" ||
-                          write.kind === "github-confirm" ||
-                          write.kind === "github-forget"
+                      : write.kind === "github-install" || write.kind === "github-forget"
                         ? installationRefusal(cause, "app")
                         : write.kind === "github-accept" ||
                             write.kind === "github-suspend" ||

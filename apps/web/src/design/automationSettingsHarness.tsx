@@ -6,7 +6,7 @@
  * pressed, Add a GitHub app among them), `checking` (every read under way), `connected` (one app),
  * `two` (two apps, one on a person's account, an account waiting), `add` (two apps, Add a GitHub app
  * pressed), `remove` (the personal app's remove guard), `unsealed` / `unsealed-member` (an app
- * nobody confirmed), `private`, `manage` (Discord connected, its Manage open), `slack-refused`
+ * nobody sealed), `private`, `manage` (Discord connected, its Manage open), `slack-refused`
  * (Slack's signatures refused, its Replace open), `older` (an HQ older than the apps), `member`,
  * `many-member`, `dialog` (the mirror dialog's repositories, each state), `model` (the automated
  * Mates' model picker open).
@@ -163,7 +163,7 @@ const PERSONAL: FixtureApp = {
     },
   ],
 };
-// An app nobody vouched for: Mate uses it for nothing until an Owner or Admin confirms it.
+// An app nobody vouched for: Mate uses it for nothing until an Owner or Admin remakes it.
 const UNSEALED: FixtureApp = { ...ACME, sealedBy: null, sealedAt: null };
 const ONE: HqGithubView = { apps: [ACME] };
 const TWO: HqGithubView = { apps: [ACME, PERSONAL] };
@@ -274,7 +274,6 @@ function Automation({
         manifest: async () => null,
         install: async () => null,
         forget: nothing,
-        confirm: nothing,
         accept: nothing,
         suspend: nothing,
         resume: nothing,

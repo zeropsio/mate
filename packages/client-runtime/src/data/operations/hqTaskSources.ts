@@ -46,8 +46,6 @@ export type TaskSourceWrite =
     }
   /** HQ forgets one of the organization's apps and its installations. */
   | { readonly kind: "github-forget"; readonly githubAppId: number }
-  /** An Owner or Admin vouches for an app nobody sealed. */
-  | { readonly kind: "github-confirm"; readonly githubAppId: number }
   /** HQ's install link goes to the screen that asked, never into the record: its state is one-time. */
   | { readonly kind: "github-install"; readonly githubAppId: number; readonly returnTo: string }
   /** HQ acts on a waiting installation's repositories. */
@@ -93,7 +91,6 @@ export function taskSourceWriteSetting(write: TaskSourceWrite): TaskSourceSettin
       return "hqAppTasks";
     case "github-manifest":
     case "github-forget":
-    case "github-confirm":
     case "github-install":
     case "github-accept":
     case "github-suspend":
