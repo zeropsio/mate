@@ -241,7 +241,7 @@ describe("Add automated Mates: the organization's key", () => {
     const onCreate = vi.fn();
     const tree = mount(form({ keyState: "unknown", onCreate }));
     act(() => tree.update(form({ keyState: "unsupported", onCreate })));
-    expect(spoken(tree.root)).toContain("Update HQ to make automated Mates.");
+    expect(spoken(tree.root)).toContain("HQ needs an update to make automated Mates.");
     expect(button(tree, "Add 1 automated Mate").props.disabled).toBe(true);
     press(tree);
     expect(onCreate).not.toHaveBeenCalled();

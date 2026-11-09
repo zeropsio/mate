@@ -45,19 +45,27 @@ import {
   type MateRowView,
 } from "../SidebarMateRow.logic";
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
-import type { WaitingChange, WaitingItem, WaitingMate } from "../SidebarWaiting.logic";
+import {
+  WAITING_VERBS,
+  type WaitingChange,
+  type WaitingItem,
+  type WaitingMate,
+  type WaitingRelease,
+  type WaitingVerb,
+} from "../SidebarWaiting.logic";
 import { mergedChangeWords, openChangeWords, releaseIsLive } from "../system/ChangeRow.logic";
 import { releaseOfLanding, type HistoryReleaseInput } from "./projectHistory.logic";
 
 /**
  * One thing in a project that waits on the viewer, beside its release: a Mate of theirs that asks
- * (a question, a plan, a run stopped on an error), or its changes waiting for their review.
+ * (a question, a plan, a run stopped on an error, its agent's sign-in), or its changes waiting for
+ * their review.
  */
 export type ProjectWait =
   | {
       readonly kind: "ask";
       readonly key: string;
-      readonly ask: "question" | "plan" | "failed";
+      readonly ask: "question" | "plan" | "failed" | "sign-in";
       readonly mate: WaitingMate;
     }
   | {
@@ -66,20 +74,18 @@ export type ProjectWait =
       readonly mate: WaitingMate;
       /** The newest of its changes waiting, which *Review* opens. */
       readonly change: WaitingChange | undefined;
-      /** How many of its changes wait for review, as the rows list them (`mateChangesForReview`). */
-      readonly count: number;
     };
 
 /**
- * What waits on the viewer in one project, read off the menu's Waiting on you list
- * (`useSidebarWaiting`) so the menu, the overview card and the project page say the same: its
- * Mates' asks first, the most urgent, then their changes to review. Its release is not here: it is
- * production's next release, said where production is.
+ * What waits on the viewer in one project, read off the one list (`useViewerWaits`) so the menu,
+ * the overview card and the project page say the same: its Mates' asks first, the most urgent,
+ * then their changes to review. Its release is `projectReleaseWait`: production's next release,
+ * said where production is.
  */
 export function projectWaits(input: {
   readonly items: ReadonlyArray<WaitingItem>;
-  /** The project's flow: its Mates, and the changes that wait for review. */
-  readonly flow: Pick<GroupFlow, "mates" | "pullRequests">;
+  /** The project's flow: its Mates. */
+  readonly flow: Pick<GroupFlow, "mates">;
 }): ReadonlyArray<ProjectWait> {
   const mates = new Set(input.flow.mates.map((mate) => mate.projectId));
   const asks: Array<ProjectWait> = [];
@@ -87,47 +93,62 @@ export function projectWaits(input: {
   for (const item of input.items) {
     if (item.kind === "release" || !mates.has(item.mate.projectId)) continue;
     if (item.kind === "change")
-      reviews.push({
-        kind: "review",
-        key: item.key,
-        mate: item.mate,
-        change: item.mate.change,
-        count: mateChangesForReview(input.flow, item.mate.projectId).length,
-      });
+      reviews.push({ kind: "review", key: item.key, mate: item.mate, change: item.mate.change });
     else asks.push({ kind: "ask", key: item.key, ask: item.kind, mate: item.mate });
   }
   return [...asks, ...reviews];
 }
 
-/** The verb a wait offers, one each. */
-export type ProjectWaitVerb = "Answer" | "See plan" | "Ask to fix it" | "Review";
+/** A project's release, where the one list says it waits on the viewer (`releaseOffered`). */
+export function projectReleaseWait(
+  items: ReadonlyArray<WaitingItem>,
+  groupId: string,
+): WaitingRelease | undefined {
+  for (const item of items)
+    if (item.kind === "release" && item.release.groupId === groupId) return item.release;
+  return undefined;
+}
 
-/** A wait in words: what waits, in a sentence, and its one verb. */
+/** A project wait as the one list's item, for its words (`waitingPhrase`, `WAITING_VERBS`). */
+function waitingItemOf(wait: ProjectWait): WaitingItem {
+  return wait.kind === "review"
+    ? { kind: "change", key: wait.key, mate: wait.mate }
+    : { kind: wait.ask, key: wait.key, mate: wait.mate };
+}
+
+/**
+ * A wait in words, beside its verb: what waits, said from the Mate — "Juno asks: …", "Tess has a
+ * plan for you to approve". The menu leads with the verb ("Answer Juno") because its rows carry no
+ * button; here the button says it (`WAITING_VERBS`, the one table), so the line does not repeat it.
+ */
 export function projectWaitWords(wait: ProjectWait): {
   readonly text: string;
-  readonly verb: ProjectWaitVerb;
+  readonly verb: WaitingVerb;
 } {
+  const item = waitingItemOf(wait);
   const { name, text } = wait.mate;
-  if (wait.kind === "review")
+  const verb = WAITING_VERBS[item.kind];
+  if (wait.kind === "review") {
+    const count = wait.mate.changes ?? 1;
     return {
       text:
-        wait.count > 1
-          ? `${String(wait.count)} changes from ${name} to review`
+        count > 1
+          ? `${String(count)} changes from ${name} to review`
           : wait.change === undefined
             ? `A change from ${name} to review`
             : `${name}'s change: ${wait.change.title}`,
-      verb: "Review",
+      verb,
     };
+  }
   switch (wait.ask) {
     case "question":
-      return {
-        text: text === undefined ? `${name} asks you` : `${name} asks: ${text}`,
-        verb: "Answer",
-      };
+      return { text: text === undefined ? `${name} asks you` : `${name} asks: ${text}`, verb };
     case "plan":
-      return { text: `${name} has a plan for you to approve`, verb: "See plan" };
+      return { text: `${name} has a plan for you to approve`, verb };
     case "failed":
-      return { text: `${name} stopped on an error`, verb: "Ask to fix it" };
+      return { text: `${name} stopped on an error`, verb };
+    case "sign-in":
+      return { text: `${name} waits for your sign-in`, verb };
   }
 }
 
@@ -135,7 +156,7 @@ export function projectWaitWords(wait: ProjectWait): {
 export function projectWaitLabel(wait: ProjectWait, project: string): string {
   const { name } = wait.mate;
   if (wait.kind === "review")
-    return `Review ${name}'s ${wait.count > 1 ? "changes" : "change"} in ${project}`;
+    return `Review ${name}'s ${(wait.mate.changes ?? 1) > 1 ? "changes" : "change"} in ${project}`;
   switch (wait.ask) {
     case "question":
       return `Answer ${name} in ${project}`;
@@ -143,6 +164,8 @@ export function projectWaitLabel(wait: ProjectWait, project: string): string {
       return `See ${name}'s plan in ${project}`;
     case "failed":
       return `Ask ${name} to fix it in ${project}`;
+    case "sign-in":
+      return `Sign ${name} in, in ${project}`;
   }
 }
 

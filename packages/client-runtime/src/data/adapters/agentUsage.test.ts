@@ -198,7 +198,7 @@ it.effect.each(
     expect(usageAsks()).toEqual([]);
     expect(agentUsage.derive(readsOfState(store.state()), { orgId: "org", owner })).toMatchObject({
       kind: "unavailable",
-      reason: expect.stringContaining("Update HQ"),
+      reason: expect.stringContaining("HQ needs an update"),
     });
     yield* fixture.send({
       type: "scope-ready",

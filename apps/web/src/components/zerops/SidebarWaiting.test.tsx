@@ -150,16 +150,6 @@ describe("WaitingList — what waits on you, each with its buttons", () => {
     expect(write.answer).toHaveBeenCalledWith("ask-1", "q", "Stripe, for now");
   });
 
-  it("asks a Mate of yours that stopped to fix it, with its error", async () => {
-    const spy = verbs();
-    const container = await mount(<WaitingList items={ITEMS} onClose={() => {}} verbs={spy} />);
-    await press(button(container, "Ask Fen to fix it"));
-    expect(spy.onAskToFix).toHaveBeenCalledWith(
-      "fen",
-      expect.objectContaining({ error: "The stage build failed: EXPO_TOKEN is missing." }),
-    );
-  });
-
   it.each([
     {
       words: "Review",

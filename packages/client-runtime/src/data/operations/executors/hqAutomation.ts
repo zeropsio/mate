@@ -8,10 +8,11 @@ import * as Effect from "effect/Effect";
 import type { HqIntakeView } from "@t3tools/shared/hqIntake";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import type { OperationExecutor } from "../coordinator.ts";
+import { hqNeedsUpdate } from "../../../zerops/hq/refusals.ts";
 
 export type AutomationWrites = Pick<HqApi, "setIntake" | "stopIntake" | "setAiKey" | "removeAiKey">;
 
-const UPDATE_HQ = "Update HQ to set up automated Mates.";
+const UPDATE_HQ = hqNeedsUpdate("set up automated Mates");
 
 export function makeAutomationExecutor(options: {
   readonly api: AutomationWrites;

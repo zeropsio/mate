@@ -173,7 +173,7 @@ export function useRepoPress(
       kind: "unconfirmed",
       press,
       words: answered
-        ? `HQ took the ${verb}, but its record doesn't show it yet. Look again in a moment.`
+        ? `HQ took the ${verb}, but its record doesn't show it yet. Check again in a moment.`
         : `HQ hasn't answered about the ${verb}. Check the row before trying again.`,
     };
   return { kind: "working", press, answered };

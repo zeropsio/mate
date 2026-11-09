@@ -68,7 +68,7 @@ describe("personal observe authorization data", () => {
     await failed;
     expect(r.view().metadata).toEqual({
       state: "failed",
-      words: "Update HQ to manage observe authorization.",
+      words: "HQ needs an update to manage observe authorization.",
     });
     release();
     r.close();

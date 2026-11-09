@@ -564,11 +564,12 @@ function ProjectCard<T>({
     (line) => line !== undefined,
   );
   const ready = cardReady(flow);
-  const releaseDoor = ready === undefined ? null : props.renderReleaseVerb?.(entry);
-  // The page's door decides whether a release is offered here at all (Put it live releases the
-  // production it makes); where the page gives none, the card says what the flow says.
+  const releaseDoor = props.renderReleaseVerb?.(entry);
+  // The page's door decides whether a release is offered here at all: it stands where the one
+  // list says the release waits on the viewer (`releaseOffered`). Where the page gives none, the
+  // card says what the flow says.
   const releaseShown =
-    ready !== undefined && (props.renderReleaseVerb === undefined || drawn(releaseDoor));
+    props.renderReleaseVerb === undefined ? ready !== undefined : drawn(releaseDoor);
   // A stage being added says how far it has got on its own line, where the stage stands.
   const settingUp = props.stageSettingUp?.(entry);
   const placeFacts = props.cardPlaces?.(entry);
@@ -634,12 +635,13 @@ function ProjectCard<T>({
           },
         ]),
     ...mateWaits.filter((wait) => wait.kind === "ask"),
-    ...(ready === undefined || !releaseShown
+    ...(!releaseShown
       ? []
       : [
           {
             key: "release",
             face: <PackageIcon className="size-4" />,
+            // The card is the project: its release says what it carries, not the project's name.
             text: nextReleaseTitle(ready),
             verb: drawn(releaseDoor) ? releaseDoor : null,
           },

@@ -162,13 +162,6 @@ describe("an origin asked of the person", () => {
       press: "Check again",
       calls: "onCheckAgain",
     },
-    {
-      case: "HQ could not say whether there is an app",
-      github: { app: { kind: "unknown" } as const },
-      says: "HQ didn't say whether your organization has a GitHub app.",
-      press: "Check again",
-      calls: "onCheckAgain",
-    },
   ] as const)(
     "Keeping the code on GitHub says what is missing when $case",
     async ({ github, says, press, calls }) => {

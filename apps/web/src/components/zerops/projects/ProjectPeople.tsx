@@ -578,7 +578,21 @@ function useDraftInput(groupId: string | null, kind: RoleProjectKind) {
  */
 export function useDraftPeople(groupId: string, kind: RoleProjectKind): DraftPeople {
   const { input } = useDraftInput(groupId, kind);
-  return useMemo(() => draftPeople(input), [input]);
+  const retryDetail = useAccountDataOptional()?.retryDetail;
+  const clientId = useZeropsSessionOptional()?.activeOrganization?.id ?? null;
+  return useMemo(() => {
+    const people = draftPeople(input);
+    if (people.kind !== "failed" || retryDetail === undefined) return people;
+    // Only the reads that failed are asked again: the members, and each project whose grants did.
+    const again = () => {
+      if (!input.members.known && clientId !== null)
+        retryDetail({ family: "organizationMembers", ownerId: clientId });
+      for (const { projectId } of input.app.projects)
+        if (input.app.grants[projectId]?.status === "failed")
+          retryDetail({ family: "project", listing: "project", ownerId: projectId });
+    };
+    return { kind: "failed", again };
+  }, [clientId, input, retryDetail]);
 }
 
 /** Hands what `useDraftPeople` reads to a creation form drawn without data of its own. */

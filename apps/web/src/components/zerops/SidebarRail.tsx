@@ -48,7 +48,7 @@ import {
   type RailTileMate,
 } from "./SidebarRail.logic";
 import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
-import { waitingSummary, type WaitingItem } from "./SidebarWaiting.logic";
+import { waitingCountWords, type WaitingItem } from "./SidebarWaiting.logic";
 
 export interface RailMate extends RailTileMate {
   readonly name: string;
@@ -451,7 +451,7 @@ export function SidebarRail({
   readonly onFold: ((groupId: string, open: boolean) => void) | null;
   readonly onOpenMenu: () => void;
 }) {
-  const summary = waitingSummary(waiting);
+  const words = waitingCountWords(waiting);
   const head = chief ?? (
     // Without a Chief the mark leads to the overview, what waits on the viewer on its corner.
     <div className="menu-rail-chief">
@@ -469,16 +469,10 @@ export function SidebarRail({
       {waiting.length === 0 ? null : (
         <SidebarWaitingPopover
           items={waiting}
-          tooltip={
-            <RailTip
-              line={`${summary.words}${summary.more > 0 ? ` · ${String(summary.more)} more` : ""}`}
-              name="Waiting on you"
-              shortcut="⌥↓"
-            />
-          }
+          tooltip={<RailTip line={words.line} name="Waiting on you" shortcut="⌥↓" />}
           trigger={
             <button
-              aria-label={`${String(waiting.length)} waiting on you`}
+              aria-label={words.label}
               className="menu-rail-count"
               data-waiting-trigger=""
               data-zerops-surface="sidebar-rail-waiting"

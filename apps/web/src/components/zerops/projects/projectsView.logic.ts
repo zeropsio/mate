@@ -123,13 +123,15 @@ export interface OverviewFilterTab {
 }
 
 /**
- * The overview's filters as offered: All, then Waiting on you and Mine, each counting the projects
- * it holds and saying nothing at none (a zero names nothing to look at). A role that never has a
+ * The overview's filters as offered: All, then Waiting on you — counting the things that wait on
+ * the viewer, as the menu's badge does (`useViewerWaits`) — and Mine, counting the projects it
+ * holds; each says nothing at none (a zero names nothing to look at). A role that never has a
  * Mate of its own (`ownsMates` false: no project, so no Mate, to make) is offered neither while
  * it could not fill them — Waiting on you comes when something does wait — and the one an address
  * opened stays. With All alone left there is no filter at all.
  */
 export function overviewFilterTabs(input: {
+  /** How many things wait on the viewer (`useViewerWaits().items`), not how many projects. */
   readonly waiting: number;
   readonly mine: number;
   readonly ownsMates: boolean;

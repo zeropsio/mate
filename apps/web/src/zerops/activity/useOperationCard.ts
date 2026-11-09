@@ -325,7 +325,11 @@ export function deriveObservedStepsRegion(
   return regionOf(held, provenanceFor(state));
 }
 
-/** A settled operation whose one read failed: it says so, over what its call returned. */
+/**
+ * A settled operation whose one read failed: it says so, over what its call returned. No *Try
+ * again* here: the region's provenance is words in a chat card with no press of its own; the same
+ * process history is asked again by the data layer's retry and by the deploy's own Try again.
+ */
 const UNREAD_REGION: ObservedStepsRegion = {
   steps: [],
   chips: [],

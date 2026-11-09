@@ -257,7 +257,7 @@ export function ChosenFailure() {
           <Failure
             action={
               <Button size="sm" variant="secondary">
-                Read again
+                Try again
               </Button>
             }
             cause="Couldn't read the project's people."

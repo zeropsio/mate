@@ -5,6 +5,7 @@
  * from, with what HQ answered as it was set: the webhook it made, or the URL and secret to paste,
  * the secret shown this once.
  */
+import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import type { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { useId, useState } from "react";
@@ -31,7 +32,7 @@ export function AutomatedMatesUnsupported() {
       className="px-3 pb-3 text-sm text-muted-foreground sm:px-4"
       data-zerops-surface="settings-automated-unsupported"
     >
-      Update HQ to set up automated Mates.
+      {hqNeedsUpdate("set up automated Mates")}
     </p>
   );
 }
@@ -72,7 +73,7 @@ export function OrganizationKeyView({
         {problem}
       </span>
     ) : read.keys.state === "failed" ? (
-      read.keys.words
+      couldntRead(`the organization's ${provider.name} key`, read.keys.words)
     ) : read.keys.state === "withheld" ? (
       "Only the organization's Owner and Admins see its key."
     ) : working ? (
@@ -95,7 +96,7 @@ export function OrganizationKeyView({
       action={
         read.keys.state === "failed" ? (
           <Button onClick={onAgain} size="sm" variant="secondary">
-            Read again
+            Try again
           </Button>
         ) : known ? (
           <IntegrationAction

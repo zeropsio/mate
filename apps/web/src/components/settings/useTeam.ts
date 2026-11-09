@@ -91,7 +91,15 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
   const roster = useAtomValue(shownProjectsAtom).projects;
   const hqProjectPeople = useAtomValue(shownHqProjectPeopleAtom);
   const viewerUserId = session?.user?.id ?? null;
-  const viewer = useAccountDataOptional()?.viewer;
+  const account = useAccountDataOptional();
+  const viewer = account?.viewer;
+  const retryDetail = account?.retryDetail;
+  /** The person's *Try again* on one person's grants, once that read failed. */
+  const retryGrants = useCallback(
+    (clientUserId: string) =>
+      retryDetail?.({ family: "memberProjectRoles", ownerId: clientUserId }),
+    [retryDetail],
+  );
 
   // Where each project belongs: its Mate project, or itself outside any.
   const places = useMemo(() => {
@@ -231,5 +239,6 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
     write,
     check,
     resend,
+    retryGrants,
   };
 }

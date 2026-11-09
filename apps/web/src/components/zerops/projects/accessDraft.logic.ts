@@ -94,7 +94,8 @@ export function draftPrefill(input: DraftInput): ReadonlyArray<ProjectGrant> | n
 export type DraftPeople =
   | { readonly kind: "reading" }
   | { readonly kind: "ready"; readonly userRoles: ReadonlyArray<ProjectGrant> }
-  | { readonly kind: "failed" };
+  /** `again`: the person's *Try again* on the reads that failed, where the hook can ask them. */
+  | { readonly kind: "failed"; readonly again?: () => void };
 
 export function draftPeople(input: DraftInput): DraftPeople {
   const { members, app } = input;

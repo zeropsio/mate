@@ -4,6 +4,7 @@
  * the room its final shape takes. The project page's Automation section opens them; they lived in
  * Settings while sources were set there.
  */
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import type {
   AppIntakeRead,
   AppSetting,
@@ -28,6 +29,7 @@ import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../../ui/select";
 import { Textarea } from "../../ui/textarea";
+import { WaitLine } from "../WaitLine";
 import {
   CopyLine,
   IntakeRoom,
@@ -70,7 +72,7 @@ export function AppIntakeView({
   /** The name of the organization's GitHub app the intake's repository goes through, where read. */
   readonly githubApp?: string | undefined;
   readonly reposRead: boolean;
-  /** HQ's reason its repositories could not be read: said, with *Read again*. */
+  /** HQ's reason its repositories could not be read: said, with *Try again*. */
   readonly reposFailure?: string | undefined;
   readonly onReadAgain?: (() => void) | undefined;
   readonly read: AppIntakeRead;
@@ -92,7 +94,9 @@ export function AppIntakeView({
       <p className="text-sm font-medium text-foreground">{name}</p>
       {read.intake === undefined ? (
         <IntakeRoom choice>
-          <p className="text-xs text-muted-foreground">Reading…</p>
+          <p className="text-xs text-muted-foreground">
+            <WaitLine inline text="Reading…" />
+          </p>
         </IntakeRoom>
       ) : read.intake !== null ? (
         <IntakeRoom choice>
@@ -111,11 +115,11 @@ export function AppIntakeView({
         <IntakeRoom choice>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground" role="alert">
-              {reposFailure}
+              {couldntRead("its repositories", reposFailure)}
             </p>
             {onReadAgain === undefined ? null : (
               <Button onClick={onReadAgain} size="sm" variant="secondary">
-                Read again
+                Try again
               </Button>
             )}
           </div>
@@ -234,7 +238,7 @@ export function AppChannelView({
   if (setting.state !== "known")
     return (
       <>
-        <NotKnown onAgain={again} setting={setting} />
+        <NotKnown onAgain={again} setting={setting} what="the project's channel" />
         <Problem read={read} />
       </>
     );
@@ -269,7 +273,8 @@ export function AppChannelView({
         <div className="grid gap-2">
           {form.invite === null ? null : (
             <p className="text-xs text-foreground">
-              {form.invite} <InlineButton onClick={() => choices?.again()}>Look again</InlineButton>
+              {form.invite}{" "}
+              <InlineButton onClick={() => choices?.again()}>Check again</InlineButton>
             </p>
           )}
           <form
@@ -371,7 +376,7 @@ export function AppWebhooksView({
   return (
     <>
       {setting.state !== "known" ? (
-        <NotKnown onAgain={again} setting={setting} />
+        <NotKnown onAgain={again} setting={setting} what="the project's webhooks" />
       ) : (
         <>
           <form
@@ -515,6 +520,7 @@ export function AppSchedulesView({
         <NotKnown
           onAgain={again}
           setting={setting}
+          what="the project's schedules"
           template={<ScheduleForm action={{ kind: "idle" }} name={name} onMake={() => {}} />}
         />
       ) : (

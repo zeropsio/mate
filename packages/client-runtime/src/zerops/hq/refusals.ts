@@ -383,6 +383,33 @@ function handoverUnfinishedWords(phase: string | undefined, reason: string | und
   return `${where}${reason === undefined ? "" : ` (${reason})`}. ${finish}`;
 }
 
+/**
+ * The one sentence for an HQ older than this Mate, which has no route for what is asked: `toDo`
+ * is the thing, as a verb phrase ("connect GitHub").
+ */
+export const hqNeedsUpdate = (toDo: string): string => `HQ needs an update to ${toDo}.`;
+
+/**
+ * The one sentence for an answer HQ gave in a shape this Mate does not decode: a version mismatch
+ * about `what` ("the Slack app"), and either side may be the older one.
+ */
+const DISAGREES_LEAD = "HQ and this Mate disagree on ";
+
+export const hqDisagreesOn = (what: string): string =>
+  `${DISAGREES_LEAD}${what}: one of them needs an update.`;
+
+/**
+ * The one failure line of a read, from HQ or the platform: what could not be read, then the
+ * reason the source gave, when it gave one. The surface puts its *Try again* beside it.
+ */
+export const couldntRead = (what: string, reason?: string | null): string => {
+  const why = reason?.trim() ?? "";
+  if (why === "") return `Couldn't read ${what}.`;
+  // A disagreement already says what could not be read, and why: said once, not after itself.
+  if (why.startsWith(DISAGREES_LEAD)) return why;
+  return `Couldn't read ${what}. ${why}`;
+};
+
 export function hqRefusalWords(refusal: {
   readonly code: string;
   readonly reason: string | undefined;

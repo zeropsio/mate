@@ -131,7 +131,7 @@ export const PERSONA_PAGE_WORDS = {
   savedAsOrg: (org: string | null) =>
     org === null ? "Saved to your organization's templates." : `Saved to ${org}'s templates.`,
   tryAgain: "Try again",
-  readAgain: "Read again",
+  readAgain: "Try again",
   orgConflict: "the template changed while it was being saved.",
   notShown: (mate: MateName) => `${mateLeads(mate)} took it but doesn't show it yet.`,
   writeFailed: "Couldn't save the persona:",

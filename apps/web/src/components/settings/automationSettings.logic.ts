@@ -4,6 +4,7 @@
  * it; an HQ older than the apps, or a person who may not see them — and how a press of *Create
  * GitHub app* hands GitHub HQ's manifest.
  */
+import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { SettingValue } from "@t3tools/client-runtime/data";
 import type {
   HqGithubApp,
@@ -18,7 +19,7 @@ export const APP_NAME_MAX = 34;
 
 export const GITHUB_ONE_LINE =
   "Everything Mate writes on GitHub appears as your organization's bot, never a person.";
-export const GITHUB_OLDER_HQ = "Update HQ to connect GitHub";
+export const GITHUB_OLDER_HQ = hqNeedsUpdate("connect GitHub");
 export const GITHUB_WHO_CAN = "The organization's Owner and Admins add GitHub apps.";
 const WITHHELD = "Only the organization's Owner and Admins see this.";
 
@@ -340,7 +341,7 @@ export function githubStatus(section: GithubSection): string {
     case "withheld":
       return WITHHELD;
     case "failed":
-      return section.words;
+      return couldntRead("the organization's GitHub apps", section.words);
     case "apps":
       return section.apps.length === 0
         ? section.manage

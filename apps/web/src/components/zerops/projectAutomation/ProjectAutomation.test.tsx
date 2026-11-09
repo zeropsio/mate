@@ -368,7 +368,7 @@ describe("a project's Automation section", () => {
         workingOf={() => false}
       />,
     );
-    expect(words(root)).toContain("Update HQ to set up automated Mates.");
+    expect(words(root)).toContain("HQ needs an update to set up automated Mates.");
     expect(words(root)).not.toContain("Take tasks from…");
     expect(words(root)).not.toContain("Add an automated Mate");
   });

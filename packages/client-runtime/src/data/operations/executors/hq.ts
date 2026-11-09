@@ -32,7 +32,7 @@ import * as Effect from "effect/Effect";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import { deployTokenMint } from "../../../zerops/deployToken.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
-import { HQ_NOT_OPEN } from "../../../zerops/hq/refusals.ts";
+import { HQ_NOT_OPEN, hqNeedsUpdate } from "../../../zerops/hq/refusals.ts";
 import { discussionId } from "../../families/hqDiscussion.ts";
 import { observeCredentialId, observeRequestScope } from "../../families/hqObserveCredential.ts";
 import { commitOwn } from "../../adapters/hqSettingsReads.ts";
@@ -261,7 +261,7 @@ function faultOf(cause: unknown, keepCode = false): StreamFault | UncertainAccep
 }
 
 /** An HQ from before reveals were recorded: a retry never records one. */
-const HQ_RECORDS_NO_REVEALS = "Update HQ to record reveals.";
+const HQ_RECORDS_NO_REVEALS = hqNeedsUpdate("record reveals");
 /** An HQ that will not record a reveal by this person: someone HQ lets record it reveals it. */
 const HQ_REFUSES_REVEAL = "HQ won't record a reveal by you here, so it stays hidden.";
 
@@ -389,9 +389,7 @@ export function makeHqExecutor(ports: {
         );
       const api = ports.apiOf(intent.orgId);
       if (api?.gitTargetWrite === undefined)
-        return yield* Effect.fail(
-          gitFault("Update HQ and the client to use Git target operations."),
-        );
+        return yield* Effect.fail(gitFault(hqNeedsUpdate("use Git target operations")));
       const releaseClose = ports.gitStore!.onClose(() => {
         token = undefined;
       });
@@ -562,7 +560,7 @@ export function makeHqExecutor(ports: {
               throw new HqError({
                 kind: "refused",
                 code: "unsupported",
-                message: "Update HQ to change automatic updates.",
+                message: hqNeedsUpdate("change automatic updates"),
               });
             const policy = await api.setAutoUpdatePolicy(intent.enabled);
             if (policy.orgId !== intent.orgId || policy.enabled !== intent.enabled)
@@ -803,7 +801,7 @@ export function makeHqExecutor(ports: {
           if (api.lifecycleWrite === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to use lifecycle receipts.",
+              message: hqNeedsUpdate("use lifecycle receipts"),
             });
           // Read before the write: once HQ confirms, its navigation no longer names the token.
           const leaving =
@@ -896,7 +894,7 @@ export function makeHqExecutor(ports: {
           if (call === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to manage persona templates.",
+              message: hqNeedsUpdate("manage persona templates"),
             });
           // A conflict is HQ's answer that it holds another revision: refused, its code kept.
           yield* Effect.tryPromise({ try: call, catch: (cause) => faultOf(cause, true) });
@@ -935,7 +933,7 @@ export function makeHqExecutor(ports: {
           if (api.repoRemoteViaApp === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to connect through the organization's GitHub apps.",
+              message: hqNeedsUpdate("connect through the organization's GitHub apps"),
             });
           yield* Effect.tryPromise({
             try: () =>
@@ -961,7 +959,7 @@ export function makeHqExecutor(ports: {
           if (api.followRepoUpstream === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to follow a GitHub repository whose code it keeps.",
+              message: hqNeedsUpdate("follow a GitHub repository whose code it keeps"),
             });
           yield* Effect.tryPromise({
             try: () => api.followRepoUpstream!(intent.appId, intent.repo, { url: intent.url }),
@@ -983,7 +981,7 @@ export function makeHqExecutor(ports: {
           if (api.unfollowRepoUpstream === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to stop following a GitHub repository.",
+              message: hqNeedsUpdate("stop following a GitHub repository"),
             });
           yield* Effect.tryPromise({
             try: () => api.unfollowRepoUpstream!(intent.appId, intent.repo),
@@ -1005,7 +1003,7 @@ export function makeHqExecutor(ports: {
           if (api.deleteRepo === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to delete a repository.",
+              message: hqNeedsUpdate("delete a repository"),
             });
           yield* Effect.tryPromise({
             try: () => api.deleteRepo!(intent.appId, intent.repo),
@@ -1027,7 +1025,7 @@ export function makeHqExecutor(ports: {
           if (api.setRepoCap === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to change a repository's storage limit.",
+              message: hqNeedsUpdate("change a repository's storage limit"),
             });
           // HQ's `409 conflict` here is a refusal it names (`cap_below_usage`, `repo_not_moved`).
           const storage = yield* Effect.tryPromise({
@@ -1057,7 +1055,7 @@ export function makeHqExecutor(ports: {
           if (establish === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to manage observe authorization.",
+              message: hqNeedsUpdate("manage observe authorization"),
             });
           const answer = yield* Effect.tryPromise({
             try: () => establish(intent.projectId, {}),

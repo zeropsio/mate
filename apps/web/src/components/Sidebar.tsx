@@ -183,7 +183,7 @@ import { newMateView, useAddAutomatedMates, useAddMate } from "../zerops/newMate
 import { useAutomatedKey } from "../zerops/useAutomationSettings";
 import { useAddMateOffer } from "../zerops/useHqOffers";
 import { useOpenPutLive, usePutLive } from "../zerops/putLive";
-import { putLiveHoldsRelease } from "../zerops/putLive.logic";
+import { releaseOffered } from "./zerops/SidebarWaiting.logic";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
 import { useRoleOffers, useTeamOffers } from "../zerops/usePlatformCapabilities";
@@ -218,7 +218,7 @@ import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
-import { useSidebarWaiting } from "../zerops/useSidebarWaiting";
+import { useViewerWaits, useWaitingNext } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import { SidebarScopeButton } from "./zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
@@ -1339,11 +1339,6 @@ export default function Sidebar() {
   // Production being made by Put it live is released by it: no row or header asks for a release
   // meanwhile (the onboarding run's "Release 2" beside "Making production").
   const putLiveRuns = usePutLive((state) => state.runs);
-  const releaseOfferedIn = useCallback(
-    (groupId: string, allowed: boolean) =>
-      allowed && !putLiveHoldsRelease(putLiveRuns.get(groupId)),
-    [putLiveRuns],
-  );
   const zeropsSidebarFlow = useCallback(
     (groupId: string): SidebarProjectFlow | undefined => {
       const flow = zeropsProjectFlows.get(groupId);
@@ -1356,7 +1351,12 @@ export default function Sidebar() {
         // never sees a group's own merged code, so it read `main` as empty.
         merged: flow.merged,
         environments: new Map(flow.environments.map((entry) => [entry.id, entry])),
-        releaseOffered: releaseOfferedIn(groupId, flow.release.gate.allowed),
+        // The one gate every surface asks (`releaseOffered`): what waits on the viewer reads it too.
+        releaseOffered: releaseOffered({
+          allowed: flow.release.gate.allowed,
+          recheck: flow.release.git?.delivery?.recheck,
+          putLive: putLiveRuns.get(groupId),
+        }),
         // What a release would put in front of people: the count the
         // chips' menus say waits for production.
         releaseContents: flow.release.contents,
@@ -1382,7 +1382,7 @@ export default function Sidebar() {
         releaseInFlight: flow.release.inFlight,
       };
     },
-    [releaseOfferedIn, zeropsProjectFlows],
+    [putLiveRuns, zeropsProjectFlows],
   );
   const router = useRouter();
   const { isMobile, setOpen, setOpenMobile } = useSidebar();
@@ -1859,25 +1859,6 @@ export default function Sidebar() {
         : "",
     [zeropsCandidates, zeropsMenuComplete, zeropsMenuProjects, zeropsProjectFlows],
   );
-  // Every project whose next release is offered waits on the viewer too.
-  const zeropsWaitingReleases = useMemo(
-    () =>
-      zeropsMenuProjects.flatMap((project) => {
-        const release = zeropsProjectFlows.get(project.id)?.release;
-        return release !== undefined && releaseOfferedIn(project.id, release.gate.allowed)
-          ? [
-              {
-                groupId: project.id,
-                name: project.name,
-                ahead: release.summary?.total,
-                changeCount: release.summary?.changeCount,
-              },
-            ]
-          : [];
-      }),
-    [releaseOfferedIn, zeropsMenuProjects, zeropsProjectFlows],
-  );
-
   // What each Mate is doing, off its attention — the one derivation the
   // projects screen reads too (`mateActivity.ts`), so a Mate says the same
   // thing in both places.
@@ -2036,11 +2017,11 @@ export default function Sidebar() {
     },
     [isMobile, openMate, setOpenMobile],
   );
-  // What waits on the viewer, for the Waiting on you row and ⌥↓: each Mate read as its row reads it.
-  const zeropsWaiting = useSidebarWaiting({
-    candidates: zeropsCandidates,
-    activityOf: zeropsRowActivity,
-    shown: zeropsShown,
+  // What waits on the viewer (`useViewerWaits`), the overview's tab and cards read the same: the
+  // Waiting on you row, the header's count and the rail; ⌥↓ goes to the next.
+  const zeropsWaiting = useViewerWaits();
+  useWaitingNext({
+    mates: zeropsWaiting.mates,
     activeProjectId: activeZeropsProjectId,
     beforeReveal: isMobile
       ? () => {
@@ -2048,7 +2029,6 @@ export default function Sidebar() {
         }
       : undefined,
     enabled: zeropsSignedIn,
-    releases: zeropsWaitingReleases,
   });
   // The menu's list and what waits on the viewer come in one frame as the menu first paints: the
   // list holds its loading rows until rows of its own are there and HQ's navigation, which says

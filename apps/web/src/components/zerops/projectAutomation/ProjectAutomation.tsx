@@ -12,6 +12,7 @@
  * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
  * and sees the section only once it holds something.
  */
+import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
@@ -46,6 +47,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { useAtomValue } from "@effect/atom-react";
 
 import { Button } from "../../ui/button";
+import { WaitLine } from "../WaitLine";
 import {
   Dialog,
   DialogDescription,
@@ -362,7 +364,7 @@ function useTaskBoard(
       board !== null
         ? { state: "known", board }
         : setting.state === "failed"
-          ? { state: "failed", words: setting.words }
+          ? { state: "failed", words: couldntRead("its tasks", setting.words) }
           : setting.state === "withheld" || setting.state === "unsupported"
             ? { state: "none" }
             : { state: "reading", predicted: { ...predicted, ...landed.get(groupId) } },
@@ -749,7 +751,9 @@ export function ProjectAutomationView({
       data-zerops-surface="project-automation"
     >
       {update ? (
-        <p className="px-2 text-sm text-muted-foreground">Update HQ to set up automated Mates.</p>
+        <p className="px-2 text-sm text-muted-foreground">
+          {hqNeedsUpdate("set up automated Mates")}
+        </p>
       ) : (
         <AutomationBody
           admin={admin}
@@ -844,7 +848,9 @@ function AutomationBody({
           ))}
         </ul>
       ) : sources.reading ? (
-        <p className="px-2 text-sm text-muted-foreground">Reading…</p>
+        <div className="px-2">
+          <WaitLine text="Reading…" />
+        </div>
       ) : sources.withheld ? null : (
         <p className="px-2 text-sm text-muted-foreground">Nowhere yet.</p>
       )}
@@ -1096,7 +1102,7 @@ export function TaskBoardView({
           {read.words}
         </span>
         <Button onClick={board.onReadAgain} size="sm" variant="ghost">
-          Read again
+          Try again
         </Button>
       </div>
     );
@@ -1338,7 +1344,7 @@ function SourceRowView({
           size="sm"
           variant="ghost"
         >
-          Read again
+          Try again
         </Button>
       ) : (
         <>
