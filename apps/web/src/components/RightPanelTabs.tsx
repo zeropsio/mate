@@ -2,7 +2,6 @@ import type { ContextMenuItem, ResolvedKeybindingsConfig } from "@t3tools/contra
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
-  Cloud,
   Database,
   Drama as PersonaIcon,
   FileDiff,
@@ -34,6 +33,7 @@ import {
 
 import { isElectron } from "~/env";
 import { ExpressMark } from "./express/ExpressMark";
+import { ZeropsMark } from "./ZeropsMark";
 import { resolveShortcutCommand, type ShortcutMatchContext } from "~/keybindings";
 import {
   launcherActions,
@@ -233,7 +233,7 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): SurfaceLaun
     case "agents":
       return Bot;
     case "zerops":
-      return Cloud;
+      return ZeropsMark;
     case "browser":
       return Globe;
     case "mac":
@@ -501,7 +501,7 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
     case "agents":
       return <Bot className="size-3 shrink-0" />;
     case "zerops":
-      return <Cloud className="size-3 shrink-0" />;
+      return <ZeropsMark className="size-3 shrink-0" />;
     case "browser":
       return <Globe className="size-3 shrink-0" />;
     case "mac":
