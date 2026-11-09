@@ -1067,6 +1067,7 @@ describe("production's panel", () => {
     release("v2.2.0", "2026-09-20T10:00:00Z"),
   ];
 
+  // witness: apps/web/src/components/zerops/projects/projectCard.logic.ts | pull.mergedAt > before.taggedAt → true
   it("says what the version production runs brought: what was merged since the release before", () => {
     const merged = [
       pull({ number: 1, mergedAt: "2026-09-30T10:00:00Z" }),
@@ -1077,6 +1078,7 @@ describe("production's panel", () => {
     expect(broughtBy(merged, [])).toEqual([]);
   });
 
+  // witness: apps/web/src/components/zerops/projects/projectCard.logic.ts | pull.kind === "code" && → true &&
   it("leaves the group's own setup out of what a release brought: only the app's changes", () => {
     const merged = [
       pull({ number: 1, mergedAt: "2026-10-03T10:00:00Z" }),

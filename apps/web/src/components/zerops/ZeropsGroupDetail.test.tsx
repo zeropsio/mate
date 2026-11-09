@@ -1576,6 +1576,7 @@ describe("environment route target dispatch", () => {
   );
 });
 
+// witness: apps/web/src/components/zerops/ZeropsGroupDetail.tsx | onClick={open} → onClick={undefined}
 it("Environment navigation keeps its identity when the target's project name changes.", () => {
   const id = HqEnvironmentId.make("stable-environment");
   const target = {
