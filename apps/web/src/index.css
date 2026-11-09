@@ -8416,29 +8416,6 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: 999px;
 }
 
-/* A project's own page: its card — the overview's, at the page's width — and the page's column
-   beside it, each part on the card's own ground. Side by side once both have room, stacked under
-   that. */
-.ov-page {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 16px;
-}
-
-@container flow (min-width: 980px) {
-  .ov-page {
-    grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
-  }
-}
-
-.ov-page-aside {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
-}
-
 /* One part of the page's column: the card's ground, its name, then what it holds. */
 
 /* Its name on its rows' own inset: a row's hover runs to the section's padding, its words 8 px in. */
@@ -8531,11 +8508,6 @@ label.tm-advanced-row:not([data-disabled]) {
 
 .ov-place-words[data-dot="releasing"] {
   color: var(--zerops-status-busy-text);
-}
-
-.ov-sep {
-  margin: 0 6px;
-  color: var(--muted-foreground);
 }
 
 /* A place's door: its address, opened beside the page; in sight, never only on hover. */
