@@ -1,8 +1,8 @@
 /**
- * A change's commits, at the foot of its card in the Git tab: a quiet *Commits* fold that reads
- * them only once opened, without file patches. Pending reads say so; an empty or failed list says
- * nothing more than the fold. Rows open a commit's changes only when a conversation can display
- * them beside the list.
+ * A change's commits, in the Code page's "What changed" above its files: a quiet *Commits · N*
+ * fold, read as the section draws so it can count them, without file patches. A read on its way
+ * says so once opened; an empty or failed list says nothing more than the fold. Rows open a
+ * commit's changes only when a conversation can display them beside the list.
  */
 import { historyAge } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
@@ -41,7 +41,7 @@ export function ZeropsGitBlockCommits({
   const [openedChange, setOpenedChange] = useState<string | null>(null);
   const open = identity !== null && openedChange === identity;
   const detail = useZeropsChangeCommits(
-    !open || appId === undefined || change === undefined
+    appId === undefined || change === undefined
       ? null
       : { link: { appId, repo: repository, number: change.number }, head: change.head, main },
   );
@@ -73,6 +73,8 @@ export function GitCommitsFold({
   readonly onOpenCommit?: ((commit: GitCommit) => void) | undefined;
 }) {
   const now = useNowMs();
+  // A change with no commits of its own has nothing to fold.
+  if (commits?.length === 0) return null;
   return (
     <section className="flex min-w-0 flex-col" data-zerops-surface="git-commits">
       <button
@@ -89,13 +91,13 @@ export function GitCommitsFold({
           )}
         />
         Commits
-        {open && commits !== undefined ? (
+        {commits === undefined ? null : (
           <span className="tabular-nums">{` · ${String(commits.length)}`}</span>
-        ) : null}
+        )}
       </button>
       {!open ? null : commits === undefined ? (
         <p className="py-1 ps-5 text-caption text-muted-foreground">Reading commits…</p>
-      ) : commits.length === 0 ? null : (
+      ) : (
         <ul className="m-0 flex min-w-0 list-none flex-col p-0 ps-5">
           {commits.map((commit) => {
             const age = commit.at === undefined ? undefined : historyAge(commit.at, now);

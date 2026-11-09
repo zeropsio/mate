@@ -110,9 +110,9 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Empty: centred title and line, inline",
     source:
-      "apps/web/src/components/DiffPanel.tsx:937, AgentsPanel.tsx:756, settings/ThemeSearchSection.tsx:368, ThreadTerminalDrawer.tsx:1521, Sidebar.tsx:3317",
+      "apps/web/src/components/AgentsPanel.tsx:756, settings/ThemeSearchSection.tsx:368, ThreadTerminalDrawer.tsx:1521, Sidebar.tsx:3317",
     reason:
-      "Five inline blocks inside components that read app state; none is a component to render.",
+      "Four inline blocks inside components that read app state; none is a component to render.",
   },
   {
     name: "Empty: RightPanelEmptyState",

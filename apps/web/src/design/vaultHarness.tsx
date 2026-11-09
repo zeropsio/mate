@@ -52,7 +52,6 @@ const TEN_TABS: RightPanelSurface[] = [
     activeTerminalId: "1",
   },
   { id: "files", kind: "files" },
-  { id: "diff", kind: "diff" },
   { id: "git", kind: "git" },
   { id: "zerops", kind: "zerops" },
   { id: "data", kind: "data" },

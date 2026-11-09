@@ -17,6 +17,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { ZeropsGitTab, type ZeropsGitTabProps } from "./ZeropsGitTab";
 
+// The page's "What changed" reads git through hooks of its own: here it is its top and commits.
+vi.mock("../CodeChanges", () => ({
+  CodeChanges: (props: {
+    readonly top?: import("react").ReactNode;
+    readonly commitsFor?: (repository: string) => import("react").ReactNode;
+    readonly className?: string;
+  }) => (
+    <div className={props.className}>
+      {props.top}
+      {props.commitsFor?.("shopdev")}
+    </div>
+  ),
+}));
+
 const SHA = "0123456789abcdef0123456789abcdef01234567";
 const PATCH = [
   "diff --git a/menu.txt b/menu.txt",
@@ -152,6 +166,7 @@ const change = {
 
 const props: ZeropsGitTabProps = {
   threadRef,
+  composerDraftTarget: threadRef,
   appId: "app-tea-shop",
   declarations: [],
   changes: { pullRequests: [change], merged: [] },
@@ -186,7 +201,7 @@ const visible = (element: Element | null) =>
 const openCommit = async () => {
   act(() =>
     [...host.querySelectorAll("button")]
-      .find((button) => button.textContent === "Commits")
+      .find((button) => button.textContent?.startsWith("Commits"))
       ?.click(),
   );
   act(() => commitRow()?.click());

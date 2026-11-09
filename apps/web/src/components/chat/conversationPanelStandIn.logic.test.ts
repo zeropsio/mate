@@ -14,12 +14,12 @@ describe("conversationPanelStandIn", () => {
   it("A conversation whose panel was left open opens split, its panel waiting beside the Mate's opening", () => {
     const diff: ThreadRightPanelState = {
       isOpen: true,
-      activeSurfaceId: "diff",
-      surfaces: [{ id: "diff", kind: "diff" }],
+      activeSurfaceId: "git",
+      surfaces: [{ id: "git", kind: "git" }],
     };
     expect(conversationPanelStandIn({ panel: diff, sheet: false, chief: false })).toEqual({
       surfaces: diff.surfaces,
-      activeSurfaceId: "diff",
+      activeSurfaceId: "git",
       defaultWidth: undefined,
     });
   });
@@ -33,7 +33,7 @@ describe("conversationPanelStandIn", () => {
   it("A panel holding the overview is the Chief's, at its width before the directory names the Chief", () => {
     expect(conversationPanelWidth({ chief: false, surfaces: overview.surfaces })).toBe(840);
     expect(conversationPanelWidth({ chief: true, surfaces: [] })).toBe(840);
-    expect(conversationPanelWidth({ chief: false, surfaces: [{ id: "diff", kind: "diff" }] })).toBe(
+    expect(conversationPanelWidth({ chief: false, surfaces: [{ id: "git", kind: "git" }] })).toBe(
       undefined,
     );
   });

@@ -57,7 +57,10 @@ export interface DiffRepositoryRead {
   readonly status: DiffRepositoryStatus;
 }
 
-/** One thing Diff can show: a repository's changes not committed, or its commits not on main. */
+/**
+ * One thing "What changed" can show: a repository's changes not committed, or everything not on
+ * main (its commits main lacks, with what is not committed beside them).
+ */
 export interface DiffChoice {
   readonly repository: DiffRepository;
   readonly scope: "unstaged" | "branch";
@@ -130,10 +133,12 @@ export type DiffShown =
   | { readonly kind: "choice"; readonly choice: DiffChoice };
 
 /**
- * What Diff shows; `reads` is `null` while which repositories there are is still read. A choice
- * the person made stands while its repository is there. Otherwise, once git has said of every
- * repository, the first with changes of the stored kind (not committed, unless they chose the
- * branch), then of the other, then the first git cannot count; else nothing is outside main.
+ * What "What changed" shows; `reads` is `null` while which repositories there are is still read. A
+ * choice the person made stands while its repository is there. Otherwise, once git has said of
+ * every repository, the first with changes of the stored kind (everything not on main, unless they
+ * chose what is not committed), then of the other, then the first git cannot count; else nothing
+ * is outside main. The branch's list carries what is not committed too, so a repository with only
+ * that has changes of either kind.
  */
 export function shownDiff(
   reads: ReadonlyArray<DiffRepositoryRead> | null,
@@ -151,9 +156,14 @@ export function shownDiff(
   if (chosen !== undefined) return { kind: "choice", choice: chosen };
   if (reads.some((read) => read.status === "reading")) return { kind: "reading" };
   const other = selection.kind === "unstaged" ? "branch" : "unstaged";
+  const notCommitted = (repository: DiffRepository) =>
+    choices.find((choice) => choice.repository === repository && choice.scope === "unstaged")
+      ?.count ?? 0;
+  const shows = (choice: DiffChoice) =>
+    (choice.count ?? 0) > 0 || (choice.scope === "branch" && notCommitted(choice.repository) > 0);
   const picked =
-    choices.find((choice) => choice.scope === selection.kind && (choice.count ?? 0) > 0) ??
-    choices.find((choice) => choice.scope === other && (choice.count ?? 0) > 0) ??
+    choices.find((choice) => choice.scope === selection.kind && shows(choice)) ??
+    choices.find((choice) => choice.scope === other && shows(choice)) ??
     choices.find((choice) => choice.count === null);
   if (picked !== undefined) return { kind: "choice", choice: picked };
   return choices.length === 0 ? { kind: "no-code" } : { kind: "nothing-outside-main" };

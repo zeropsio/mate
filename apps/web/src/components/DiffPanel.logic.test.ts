@@ -166,7 +166,7 @@ describe("shownDiff", () => {
       name: "a choice whose repository is gone gives way to what is not on main",
       reads: [read("apidev", status({ changed: 1 }))],
       selection: { kind: "branch", baseRef: null, repository: "appdev" },
-      shows: "apidev:unstaged",
+      shows: "apidev:branch",
     },
     {
       name: "a repository never pushed is shown rather than called all clear",

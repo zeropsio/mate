@@ -145,7 +145,16 @@ function Filters() {
 
 const CLAUDE = ProviderDriverKind.make("claudeAgent");
 
-const PAGES = ["Zerops", "Git", "Vault", "Data", "Files", "Terminal", "Browser", "Agents"] as const;
+const PAGES = [
+  "Zerops",
+  "Code",
+  "Vault",
+  "Data",
+  "Files",
+  "Terminal",
+  "Browser",
+  "Agents",
+] as const;
 
 /** Eight pages in a 30rem strip: the ones its edges cut off are "N more", the + stays in reach. */
 function ManyTabs() {
