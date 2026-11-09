@@ -29,6 +29,7 @@ import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../../ui/select";
 import { Textarea } from "../../ui/textarea";
+import { WaitLine } from "../WaitLine";
 import {
   CopyLine,
   IntakeRoom,
@@ -93,7 +94,9 @@ export function AppIntakeView({
       <p className="text-sm font-medium text-foreground">{name}</p>
       {read.intake === undefined ? (
         <IntakeRoom choice>
-          <p className="text-xs text-muted-foreground">Reading…</p>
+          <p className="text-xs text-muted-foreground">
+            <WaitLine inline text="Reading…" />
+          </p>
         </IntakeRoom>
       ) : read.intake !== null ? (
         <IntakeRoom choice>

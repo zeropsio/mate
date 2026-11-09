@@ -735,8 +735,10 @@ export type OpenHqSocket = (
 /** HQ closed a scope socket because its session ended (`hqStreamCloseFailure`). */
 const HQ_SESSION_ENDED_CLOSE = 4401;
 
-/** How long a read waits for HQ's answer. */
+/** How long a read waits for HQ's answer: the bound on every screen's *Reading…*. */
 const CALL_TIMEOUT_MS = 20_000;
+/** A read HQ left unanswered past {@link CALL_TIMEOUT_MS}. */
+const HQ_TAKING_LONG = "HQ is taking long to answer.";
 /**
  * How long the door and every write wait for HQ's answer. HQ reads the org from Zerops for each,
  * which took tens of seconds on a slow Zerops (measured 2026-10-03): a door given up at 20 s threw
@@ -863,12 +865,15 @@ async function send(
   let response: Response;
   try {
     response = await fetch(url, { ...init, signal, headers });
-  } catch {
+  } catch (cause) {
     if (write) throw uncertain();
+    // A read past its deadline is HQ taking long, not HQ gone: a screen still reading says so
+    // with its Try again, while the data layer's retry keeps asking.
+    const late = cause instanceof DOMException && cause.name === "TimeoutError";
     throw new HqError({
       kind: "unavailable",
       code: "network",
-      message: "HQ could not be reached.",
+      message: late ? HQ_TAKING_LONG : "HQ could not be reached.",
     });
   }
   return answered(response, write, new URL(url).pathname.startsWith("/api/git-targets/"));

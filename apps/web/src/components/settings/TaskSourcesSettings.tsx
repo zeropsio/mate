@@ -26,6 +26,7 @@ import { CpuIcon, TimerIcon, WalletIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { WaitLine } from "../zerops/WaitLine";
 import { useOrgTaskSource, type TaskSourceControls } from "~/zerops/useTaskSourceSettings";
 
 import { Badge } from "../ui/badge";
@@ -158,7 +159,11 @@ function ConnectedBy({ line }: { readonly line: string | null }) {
  * What a section's status line says of its setting: its own line once known, else that it is
  * read, refused or failed — there from the first frame, so the line never appears under it.
  */
-function statusOf<T>(setting: SettingValue<T>, line: (value: T) => string, what: string): string {
+function statusOf<T>(
+  setting: SettingValue<T>,
+  line: (value: T) => string | null,
+  what: string,
+): ReactNode {
   switch (setting.state) {
     case "known":
       return line(setting.held);
@@ -167,9 +172,12 @@ function statusOf<T>(setting: SettingValue<T>, line: (value: T) => string, what:
     case "withheld":
       return WITHHELD;
     default:
-      return "Reading…";
+      return READING;
   }
 }
+
+/** A setting still read, in a row's status line: bounded by HQ's own deadline on each read. */
+const READING = <WaitLine inline text="Reading…" />;
 
 /**
  * A connection's row opened by its press, folded again once it disconnects — and once it connects,
@@ -292,7 +300,7 @@ function AppRows({
     <ul className="grid gap-3">
       {apps === null ? (
         <li className="grid gap-2">
-          <p className="text-sm font-medium text-muted-foreground">Reading…</p>
+          <WaitLine text="Reading…" />
           <IntakeRoom>{null}</IntakeRoom>
         </li>
       ) : (
@@ -423,7 +431,7 @@ function SlackChannelsField({ channels }: { readonly channels: Controls<"hqSlack
           ? slackChannelsLine(setting.held)
           : setting.state === "failed"
             ? couldntRead("the bot's channels", setting.words)
-            : "Reading…"}
+            : READING}
         {setting.state === "known" || setting.state === "failed" ? (
           <>
             {" "}
@@ -1093,53 +1101,59 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
   return (
     <IntegrationSetting
       control={
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (held === null) return;
-            const budget = readBudget(shown);
-            if ("error" in budget) {
-              setRefusal(budget.error);
-              return;
-            }
-            setRefusal(null);
-            save.send();
-            write({
-              kind: "task-limits",
-              limits: {
-                minutes: held.minutes,
-                costUsd: held.costUsd,
-                monthlyBudgetUsd: budget.budgetUsd,
-              },
-            });
-          }}
-        >
-          <Label htmlFor={fieldId}>USD a month</Label>
-          <div className="w-24">
-            <Input
-              disabled={held === null}
-              id={fieldId}
-              inputMode="decimal"
-              onChange={(event) => {
-                setTyped(event.target.value);
-              }}
-              placeholder="No budget"
-              size="sm"
-              value={shown}
-            />
-          </div>
-          <Button
-            disabled={held === null || sent || working(read.action) || typed === null}
-            size="sm"
-            type="submit"
-            variant="secondary"
-          >
-            <SaveWords sent={sent} />
+        setting.state === "failed" ? (
+          <Button onClick={controls.again} size="sm" variant="secondary">
+            Try again
           </Button>
-        </form>
+        ) : (
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (held === null) return;
+              const budget = readBudget(shown);
+              if ("error" in budget) {
+                setRefusal(budget.error);
+                return;
+              }
+              setRefusal(null);
+              save.send();
+              write({
+                kind: "task-limits",
+                limits: {
+                  minutes: held.minutes,
+                  costUsd: held.costUsd,
+                  monthlyBudgetUsd: budget.budgetUsd,
+                },
+              });
+            }}
+          >
+            <Label htmlFor={fieldId}>USD a month</Label>
+            <div className="w-24">
+              <Input
+                disabled={held === null}
+                id={fieldId}
+                inputMode="decimal"
+                onChange={(event) => {
+                  setTyped(event.target.value);
+                }}
+                placeholder="No budget"
+                size="sm"
+                value={shown}
+              />
+            </div>
+            <Button
+              disabled={held === null || sent || working(read.action) || typed === null}
+              size="sm"
+              type="submit"
+              variant="secondary"
+            >
+              <SaveWords sent={sent} />
+            </Button>
+          </form>
+        )
       }
-      line={held === null ? "Reading…" : budgetLine(held)}
+      line={statusOf(setting, budgetLine, "the monthly budget")}
       mark={<WalletIcon className="size-5" />}
       name="Monthly budget"
       surface="settings-monthly-budget"

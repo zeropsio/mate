@@ -18,6 +18,7 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 
 import { Button, InlineButton } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import { WaitLine } from "../zerops/WaitLine";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { sectionState, taskSourceProblem, workingWords } from "./taskSourcesSettings.logic";
@@ -196,7 +197,9 @@ export function NotKnown({
     ) : quiet ? null : state === "withheld" ? (
       <p className="text-xs text-muted-foreground">{WITHHELD}</p>
     ) : (
-      <p className="text-xs text-muted-foreground">Reading…</p>
+      <p className="text-xs text-muted-foreground">
+        <WaitLine inline text="Reading…" />
+      </p>
     );
   return template === undefined ? (
     <IntakeRoom>{said}</IntakeRoom>

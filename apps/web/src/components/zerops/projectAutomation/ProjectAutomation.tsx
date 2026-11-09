@@ -47,6 +47,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { useAtomValue } from "@effect/atom-react";
 
 import { Button } from "../../ui/button";
+import { WaitLine } from "../WaitLine";
 import {
   Dialog,
   DialogDescription,
@@ -847,7 +848,9 @@ function AutomationBody({
           ))}
         </ul>
       ) : sources.reading ? (
-        <p className="px-2 text-sm text-muted-foreground">Reading…</p>
+        <div className="px-2">
+          <WaitLine text="Reading…" />
+        </div>
       ) : sources.withheld ? null : (
         <p className="px-2 text-sm text-muted-foreground">Nowhere yet.</p>
       )}
