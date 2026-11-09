@@ -5,8 +5,9 @@ import { ServiceBrowserLinkContext } from "../ServiceBrowserLink";
 import { ZeropsDataLinkContext } from "./dataLink";
 import { useRightPanelStore } from "../../rightPanelStore";
 /**
- * The Zerops right-panel surface: the service map for the project this thread
- * runs in.
+ * The Zerops right-panel surface: the project this Mate works in — its places,
+ * each opening its page, and the way to the project's page — then the service
+ * map of the Mate's own project.
  *
  * Reads both feeds and renders. Nothing here mutates the project — the agent
  * owns every change, through MCP.
