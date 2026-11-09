@@ -43,7 +43,7 @@ export function PlaceLine({
   const name = header ? null : opens ? (
     <Link
       className={cn(
-        "min-w-0 truncate font-medium text-foreground outline-none",
+        "shrink-0 font-medium text-foreground outline-none",
         density === "row"
           ? "after:absolute after:inset-0 after:rounded-control focus-visible:after:ring-2 focus-visible:after:ring-ring"
           : "rounded-sm underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring",
@@ -55,7 +55,7 @@ export function PlaceLine({
       {view.title}
     </Link>
   ) : (
-    <span className="min-w-0 truncate font-medium text-foreground" data-zerops-place-name="">
+    <span className="shrink-0 font-medium text-foreground" data-zerops-place-name="">
       {view.title}
     </span>
   );
@@ -77,7 +77,7 @@ export function PlaceLine({
       {view.facts.map((fact, index) => (
         <Fragment key={`${String(index)}:${fact}`}>
           {index === 0 && view.version === undefined ? null : <Sep />}
-          <span className="min-w-0 text-muted-foreground">{fact}</span>
+          <span className="min-w-0 shrink-2 truncate text-muted-foreground">{fact}</span>
         </Fragment>
       ))}
       {line.clock === undefined ? null : <PlaceClock since={line.clock.since} />}
@@ -86,7 +86,7 @@ export function PlaceLine({
           <Sep />
           <a
             aria-label={`Open ${view.title} at ${view.address.host}`}
-            className="relative z-10 inline-flex min-w-0 items-center gap-0.5 rounded-sm text-muted-foreground outline-none underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+            className="relative z-10 inline-flex min-w-0 shrink items-center gap-0.5 rounded-sm text-muted-foreground outline-none underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
             data-zerops-place-address=""
             href={view.address.url}
             rel="noreferrer"
@@ -115,9 +115,7 @@ export function PlaceLine({
       >
         {dot}
         {name}
-        <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
-          {words}
-        </span>
+        <span className="flex min-w-0 flex-1 items-center gap-x-2 whitespace-nowrap">{words}</span>
         {trailing === undefined || trailing === null ? null : (
           <span className="relative z-10 flex shrink-0 items-center">{trailing}</span>
         )}
@@ -128,7 +126,12 @@ export function PlaceLine({
     );
   return (
     <div
-      className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-body"
+      className={cn(
+        "flex min-w-0 items-center gap-x-2 gap-y-0.5 text-body",
+        // Beside a page's title the line may wrap; in a card's or a panel's column it stays one
+        // line, its facts and address cut at the column's edge.
+        header ? "flex-wrap" : "whitespace-nowrap",
+      )}
       data-zerops-place-line={density}
       data-zerops-place={line.kind}
     >

@@ -98,21 +98,21 @@ export function ServiceRow({
       data-zerops-service-row="table"
       data-zerops-place-service={row.hostname}
     >
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 @2xl/services:grid-cols-[minmax(7rem,1.1fr)_minmax(6rem,0.9fr)_minmax(7rem,1fr)_minmax(14rem,1.7fr)_auto]">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 @4xl/services:grid-cols-[minmax(7rem,1fr)_minmax(6rem,0.8fr)_minmax(7rem,0.9fr)_minmax(29rem,2.6fr)_auto]">
         <span className="flex min-w-0 flex-col">
           <span className="truncate text-body font-medium text-foreground">{row.hostname}</span>
           {row.under === undefined ? null : (
             <span className="truncate text-caption text-muted-foreground">{row.under}</span>
           )}
         </span>
-        <span className="hidden min-w-0 truncate text-body text-muted-foreground @2xl/services:block">
+        <span className="hidden min-w-0 truncate text-body text-muted-foreground @4xl/services:block">
           {row.type}
         </span>
-        <span className="hidden min-w-0 @2xl/services:flex">{said}</span>
-        <span className="hidden min-w-0 @2xl/services:flex">{meters}</span>
+        <span className="hidden min-w-0 @4xl/services:flex">{said}</span>
+        <span className="hidden min-w-0 @4xl/services:flex">{meters}</span>
         <span className="flex items-center justify-end gap-1">{menu}</span>
         {/* Narrower than the table: what it is and its state under its name, the meters under them. */}
-        <span className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @2xl/services:hidden">
+        <span className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @4xl/services:hidden">
           {row.type === undefined ? null : (
             <span className="text-body text-muted-foreground">{row.type}</span>
           )}
