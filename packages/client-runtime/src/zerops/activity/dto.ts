@@ -11,6 +11,7 @@
  * identifying field is dropped rather than corrupting the read around it
  * (§7 edge 17).
  */
+import { maskSecrets } from "@t3tools/shared/messagePreview";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -131,15 +132,52 @@ export interface ActivityProcess {
    * reading zcp's own direct process list makes.
    */
   readonly failReason?: string;
-  /** Its error as the platform gave it, where it gave one: its code and its own words. */
-  readonly error?: { readonly code: string; readonly message: string };
+  /**
+   * Its error as the platform gave it, where it gave one: its code and its own words, and
+   * `detail`, what it said of the item that failed (`meta[].error`) where that says more than
+   * `message` — one line, credentials masked.
+   */
+  readonly error?: { readonly code: string; readonly message: string; readonly detail?: string };
+}
+
+/** How much of the platform's per-item words a row keeps. */
+const ERROR_DETAIL_MAX = 240;
+
+/**
+ * What the platform said of each item that failed (`error.meta[].error`), each once, where it
+ * says more than `message`: its first line, credentials masked, capped.
+ */
+function readErrorDetail(error: Record<string, unknown> | undefined, message: string) {
+  const said = new Set<string>();
+  for (const item of readRecordArray(error?.meta)) {
+    const words = readString(item.error)?.trim().split(/\r?\n/u)[0]?.trim();
+    if (words !== undefined && words.length > 0 && words !== message.trim()) said.add(words);
+  }
+  if (said.size === 0) return undefined;
+  const detail = maskSecrets([...said].join("; "));
+  return detail.length > ERROR_DETAIL_MAX
+    ? `${detail.slice(0, ERROR_DETAIL_MAX - 1).trimEnd()}…`
+    : detail;
 }
 
 function readError(entry: Record<string, unknown>): ActivityProcess["error"] {
   const error = readRecord(entry.error);
   const code = readString(error?.code) ?? "";
   const message = readString(error?.message) ?? "";
-  return code === "" && message === "" ? undefined : { code, message };
+  const detail = readErrorDetail(error, message);
+  if (code === "" && message === "" && detail === undefined) return undefined;
+  return { code, message, ...(detail === undefined ? {} : { detail }) };
+}
+
+/**
+ * Why a process failed, in the platform's own words: what it said of the item that failed, else
+ * its message, else its public reason or code. `undefined` where it said nothing.
+ */
+export function processFailureWords(
+  process: Pick<ActivityProcess, "error" | "failReason">,
+): string | undefined {
+  const words = process.error?.detail ?? process.error?.message;
+  return words !== undefined && words.trim().length > 0 ? words.trim() : process.failReason;
 }
 
 function readFailReason(entry: Record<string, unknown>): string | undefined {
