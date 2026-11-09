@@ -5,7 +5,7 @@
  * said by `applicationPlaces`, the overview card's own derivation.
  */
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import type { ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
+import type { GroupFlow, ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
 import { useMemo } from "react";
 
 import { useNowMs } from "~/zerops/useNowMs";
@@ -37,9 +37,11 @@ export interface ApplicationPlaces {
   readonly next: NextReleaseInput | null;
   /** The application's flow reads, for what else a page says of it; `undefined` while unread. */
   readonly flow: ZeropsProjectFlow | undefined;
+  /** Its flow as the overview's row holds it (its Mates, changes, places); `undefined` while unread. */
+  readonly groupFlow: GroupFlow | undefined;
 }
 
-/** `useApplicationPlaces(groupId)` → `{ groupName, places, next, flow }`; see `ApplicationPlaces`. */
+/** `useApplicationPlaces(groupId)` → `{ groupName, places, next, flow, groupFlow }`; see `ApplicationPlaces`. */
 export function useApplicationPlaces(groupId: string): ApplicationPlaces {
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
@@ -70,5 +72,6 @@ export function useApplicationPlaces(groupId: string): ApplicationPlaces {
     places: said?.places ?? NO_PLACES,
     next,
     flow: read,
+    groupFlow: entry?.flow,
   };
 }

@@ -10,12 +10,27 @@ import {
   GIT_UNREADABLE_LINE,
   type FlowPullRequest,
   type GitBlock,
+  type GroupFlow,
 } from "@t3tools/client-runtime/zerops";
-import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { cardChanges, type PlaceLine } from "./projects/projectCard.logic";
-import { applicationStage, openChangeWords } from "./system";
+import { environmentDoorLabel } from "~/zerops/putLive.logic";
+import {
+  cardChanges,
+  mateChangesForReview,
+  type CardChange,
+  type PlaceLine,
+} from "./projects/projectCard.logic";
+import {
+  applicationStage,
+  lineChangeKey,
+  nextReleaseView,
+  openChangeWords,
+  type LineWork,
+  type NextReleaseInput,
+  type ProjectLineInput,
+} from "./system";
 
 /** One row of a repository's work, as a change row draws it. */
 export type GitWorkRow =
@@ -176,6 +191,71 @@ export function panelPlaces(places: ReadonlyArray<PlaceLine>): ReadonlyArray<Pla
         ];
   return [...production, ...shown];
 }
+
+/** The project's line for one Mate, less its work on disk (`ProjectLineInput` without `work`). */
+export type MateLine = Omit<ProjectLineInput, "work">;
+
+/**
+ * The project's line as a Mate's Code page draws it: the project's stations, this Mate's changes
+ * as beads and everybody else's as a count. Its changes wait on the viewer where the one list says
+ * so (`useViewerWaits`: `waits`).
+ */
+export function mateLineInput(input: {
+  readonly flow: Pick<GroupFlow, "mates" | "production" | "stages" | "pullRequests">;
+  /** The project's places, the pages' own lines. */
+  readonly places: ReadonlyArray<PlaceLine>;
+  /** The project's changes (`pageChanges`); `undefined` while they are unread. */
+  readonly changes: ReadonlyArray<CardChange> | undefined;
+  readonly next: NextReleaseInput | null;
+  /** The Mate, by its project, and its tint. */
+  readonly mate: { readonly projectId: string; readonly tint: MateTintId | undefined };
+  /** Its changes in review wait on the viewer. */
+  readonly waits: boolean;
+}): MateLine {
+  const { flow, mate, next } = input;
+  const absent = flow.production.kind === "absent";
+  return {
+    flow,
+    places: input.places,
+    tintOf: (projectId) => (projectId === mate.projectId ? mate.tint : undefined),
+    repos: [],
+    copies: [],
+    changes: input.changes ?? [],
+    changesKnown: input.changes !== undefined,
+    waiting: new Set(
+      input.waits ? mateChangesForReview(flow, mate.projectId).map(lineChangeKey) : [],
+    ),
+    release: {
+      view: next === null ? { kind: "none" } : nextReleaseView(next),
+      ready: next?.ready,
+    },
+    // The way to put it live is the project's page, as the panel's card offered it.
+    putLive: absent ? environmentDoorLabel("production", "Production") : undefined,
+    mine: mate.projectId,
+  };
+}
+
+/**
+ * A Mate's work on disk that is no change yet, as its line draws it: files not committed, else
+ * commits not pushed, one per repository whose checkout was read.
+ */
+export function lineWork(
+  repositories: ReadonlyArray<{ readonly block: GitBlock }>,
+  mateProjectId: string,
+): ReadonlyArray<LineWork> {
+  return repositories.flatMap(({ block }): ReadonlyArray<LineWork> => {
+    if (block.trouble.length > 0 || block.state === "unread" || block.state === "unreadable")
+      return [];
+    const title =
+      block.changed.length > 0 ? uncommittedWords(block.changed.length) : block.unpushed;
+    return title === undefined
+      ? []
+      : [{ key: block.repository, mateProjectId, title, words: NOT_A_CHANGE_YET }];
+  });
+}
+
+/** Work on disk, under its bead's title: it is no change the project lists. */
+export const NOT_A_CHANGE_YET = "Not a change yet";
 
 /**
  * Where a landed change went, in the words the project's change rows say it (`cardChanges`): in a

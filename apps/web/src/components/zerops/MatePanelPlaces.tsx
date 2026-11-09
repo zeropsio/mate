@@ -5,6 +5,7 @@
  *
  * Presentational: the panels' containers read the project (`useMatePanelProject`).
  */
+import type { GroupFlow } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 
@@ -41,6 +42,8 @@ export interface MatePanelProject {
   readonly places: ReadonlyArray<PlaceLineModel>;
   /** What goes to production next (`NextRelease`); `null` while nothing waits or it is read. */
   readonly next: NextReleaseInput | null;
+  /** Its flow as the overview's row holds it, which the Code page's line reads; none while unread. */
+  readonly groupFlow?: GroupFlow | undefined;
   readonly onOpenProject: () => void;
 }
 
