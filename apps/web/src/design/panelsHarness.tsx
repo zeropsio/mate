@@ -26,7 +26,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { Button } from "~/components/ui/button";
@@ -38,6 +38,7 @@ import type { CardReady, PlaceLine } from "~/components/zerops/projects/projectC
 import { ZeropsGitPanel, type ZeropsGitRepository } from "~/components/zerops/ZeropsGitPanel";
 import { ZeropsServiceMap } from "~/components/zerops/ZeropsServiceMap";
 import { ZeropsAgentAuthCard } from "~/components/zerops/ZeropsAgentAuthCard";
+import { GitCommitsFold } from "~/components/zerops/ZeropsGitBlockCommits";
 import type { AppRouter } from "~/router";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -415,6 +416,21 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
 
 // ---------------------------------------------------------------- page
 
+/** A change's commits, folded as the tab folds them, from fixtures. */
+function HarnessCommits() {
+  const [open, setOpen] = useState(false);
+  return (
+    <GitCommitsFold
+      commits={[
+        { sha: "c0ffee1a2b", subject: "Steer a call while it answers", at: ago(50) },
+        { sha: "b4dd00d3c1", subject: "Hold the line while the caller waits", at: ago(140) },
+      ]}
+      onToggle={() => setOpen(!open)}
+      open={open}
+    />
+  );
+}
+
 const face = <MateFace size={20} state="idle" tint={"rose" satisfies MateTintId} />;
 
 /** Dana's coding agents: Claude Code signed in by the person, Codex not signed in. */
@@ -500,13 +516,7 @@ function HarnessPage() {
                             ) : null
                           }
                           renderBlockCommits={(block) =>
-                            block.pullRequestNumber === undefined ? null : (
-                              <div className="-ms-2.5 flex">
-                                <Button size="sm" variant="ghost">
-                                  History
-                                </Button>
-                              </div>
-                            )
+                            block.pullRequestNumber === undefined ? null : <HarnessCommits />
                           }
                         />
                       </Frame>

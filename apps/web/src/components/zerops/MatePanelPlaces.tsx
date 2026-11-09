@@ -8,7 +8,7 @@
 import { ChevronRightIcon } from "lucide-react";
 
 import { Button } from "~/components/ui/button";
-import { panelPlaces, possessive, projectPageWords } from "./matePanels.logic";
+import { panelPlaces, possessive } from "./matePanels.logic";
 import type { PlaceLine as PlaceLineModel } from "./projects/projectCard.logic";
 import { NextRelease, PlaceLine, SectionAction, type NextReleaseInput } from "./system";
 
@@ -25,20 +25,7 @@ export interface MatePanelProject {
   readonly onOpenProject: () => void;
 }
 
-/** "<Project>'s page ›", the action of a panel's section label. */
-export function ProjectPageLink({ project }: { readonly project: MatePanelProject }) {
-  return (
-    <SectionAction onClick={project.onOpenProject}>
-      {projectPageWords(project.name)}
-      <ChevronRightIcon aria-hidden="true" />
-    </SectionAction>
-  );
-}
-
-/**
- * The project's places, one compact line each, and — under them, where the Git panel says where
- * work goes — what goes to production next. Lines hold their height while the places are read.
- */
+/** The project's places, one compact line each. Lines hold their height while they are read. */
 export function MatePlaces({
   project,
   panel,
@@ -64,11 +51,6 @@ export function MatePlaces({
           line={line}
         />
       ))}
-      {panel === "git" && project.next !== null ? (
-        <div className="pt-1">
-          <NextRelease density="line" {...project.next} />
-        </div>
-      ) : null}
     </div>
   );
 }

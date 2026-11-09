@@ -186,7 +186,7 @@ const visible = (element: Element | null) =>
 const openCommit = async () => {
   act(() =>
     [...host.querySelectorAll("button")]
-      .find((button) => button.textContent === "History")
+      .find((button) => button.textContent === "Commits")
       ?.click(),
   );
   act(() => commitRow()?.click());
