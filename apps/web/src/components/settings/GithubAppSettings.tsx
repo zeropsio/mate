@@ -34,6 +34,7 @@ import {
   appOwner,
   appReachLine,
   appSetUpWords,
+  CONFIRM_WHO_CAN,
   defaultAppName,
   GITHUB_ONE_LINE,
   GITHUB_WHO_CAN,
@@ -386,7 +387,7 @@ function AppRow({
               {wordsOf("github-confirm", "Confirm")}
             </Button>
           ) : (
-            <span className="text-muted-foreground">{GITHUB_WHO_CAN}</span>
+            <span className="text-muted-foreground">{CONFIRM_WHO_CAN}</span>
           )}
         </div>
       ) : null}
