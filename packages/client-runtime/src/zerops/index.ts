@@ -511,6 +511,12 @@ export {
   type ReleaseFailure,
   type ReleaseFailureReads,
 } from "./releaseFacts.ts";
+export {
+  creationFailedWords,
+  releaseCreationsFailed,
+  releaseEndedEvents,
+  type ReleaseCreationFailed,
+} from "./releaseEnded.ts";
 export { formatRunClock } from "./runClock.ts";
 export {
   changeCommitRows,
@@ -549,10 +555,12 @@ export {
   agentNotesFor,
   agentTurnNotes,
   productionTurnNotes,
+  releaseEndedWords,
   productionRelease,
   changeLandedEvents,
   type ChangeLandedEvent,
   type ProductionLive,
+  type ReleaseEndedEvent,
   changeAsksForReview,
   changeInMateReview,
   changeShowsReview,

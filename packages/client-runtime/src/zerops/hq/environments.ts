@@ -73,6 +73,8 @@ export const HqJob = Schema.Struct({
   at: Schema.String,
   endedAt: Schema.NullOr(Schema.String),
   supersededBy: Schema.NullOr(Schema.String),
+  /** A delta's: the services it creates, by hostname. Absent from an older HQ, and for a deploy. */
+  services: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 export type HqJob = typeof HqJob.Type;
 
