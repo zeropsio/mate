@@ -3,7 +3,6 @@ import { AtomRegistry } from "effect/reactivity";
 import type {
   HqAppTask,
   HqChannelView,
-  HqDiscordView,
   HqSlackView,
   HqTaskLimitsView,
   HqWebhookView,
@@ -28,7 +27,6 @@ const SHOP = { orgId: "org", appId: "shop" };
 // Built from parts: never a whole secret-shaped literal in the source.
 const BOT_TOKEN = ["xoxb", "1111", "2222", "teashop"].join("-");
 const SIGNING = ["sign", "tea", "shop", "0042"].join("_");
-const DISCORD_TOKEN = ["MTE", "tea", "shop", "bot"].join(".");
 const HOOK_SECRET = ["whsec", "tea", "shop", "0007"].join("_");
 
 function waitFor(store: ReturnType<typeof makeAccountStore>, predicate: () => boolean) {
@@ -241,53 +239,6 @@ describe("the organization's Slack app", () => {
       state: "known",
       held: JSON.stringify(manifest, null, 2),
     });
-    release();
-    r.close();
-  });
-});
-
-describe("the organization's Discord application", () => {
-  const discord: HqDiscordView = {
-    connected: true,
-    interactionsUrl: "https://hq.example/api/intake/discord/acme",
-    inviteUrl: "https://discord.com/oauth2/authorize?client_id=1",
-    allowed: ["111"],
-  };
-
-  it("connects with its bot token, which never stays in a record, and sends the allowlist whole", async () => {
-    let held: HqDiscordView = { ...discord, connected: false, inviteUrl: null, allowed: [] };
-    const sent: Array<unknown> = [];
-    const r = rig({
-      discord: async () => held,
-      connectDiscord: async (request) => {
-        sent.push(request);
-        held = discord;
-        return discord;
-      },
-      allowDiscord: async (request) => {
-        sent.push(request);
-        held = { ...held, allowed: request.userIds };
-        return held;
-      },
-    });
-    const release = r.host.demandOrg("hqDiscord", ORG);
-    await r.host.write(
-      ORG,
-      { kind: "discord-connect", applicationId: "1", publicKey: "abc" },
-      { botToken: DISCORD_TOKEN },
-    );
-    await r.host.write(ORG, { kind: "discord-allow", userIds: ["111", "222"] });
-    await waitFor(
-      r.store,
-      () =>
-        r.read("hqDiscord").action.kind === "done" &&
-        JSON.stringify(r.read("hqDiscord").setting).includes("222"),
-    );
-    expect(sent).toEqual([
-      { applicationId: "1", publicKey: "abc", botToken: DISCORD_TOKEN },
-      { userIds: ["111", "222"] },
-    ]);
-    expect(r.records()).not.toContain(DISCORD_TOKEN);
     release();
     r.close();
   });

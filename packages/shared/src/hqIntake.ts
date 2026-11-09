@@ -154,8 +154,6 @@ export const HqDiscordView = Schema.Struct({
   connected: Schema.Boolean,
   interactionsUrl: Schema.String,
   inviteUrl: Schema.NullOr(Schema.String),
-  /** Discord user ids allowed to start and steer tasks. */
-  allowed: Schema.Array(Schema.String),
   /**
    * The Zerops user id of the Owner or Admin who sealed its bot token, and when (ISO); both `null`
    * while not connected. Absent from an older HQ.
@@ -164,11 +162,6 @@ export const HqDiscordView = Schema.Struct({
   connectedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type HqDiscordView = typeof HqDiscordView.Type;
-
-export const HqDiscordAllowRequest = Schema.Struct({
-  userIds: Schema.Array(TrimmedNonEmptyString),
-});
-export type HqDiscordAllowRequest = typeof HqDiscordAllowRequest.Type;
 
 /**
  * An application's signed webhooks (`/api/apps/:appId/webhooks`): `POST {name}` makes one and
