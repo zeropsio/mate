@@ -86,18 +86,20 @@ const askWords = (request: ViewRequest): string | null => {
       return rowText(ask.reason ?? ask.key);
     case "origin":
       return rowText(ask.reason ?? ask.url);
+    case "mirror":
+      return rowText(ask.reason ?? `Connect ${ask.repo} to GitHub`);
     default:
       return null;
   }
 };
 
-const WAITS_ON = ["approval", "question", "vault", "origin", "plan"] as const;
+const WAITS_ON = ["approval", "question", "vault", "origin", "mirror", "plan"] as const;
 type WaitsOn = (typeof WAITS_ON)[number];
 const waitsOn = (kind: string): kind is WaitsOn =>
   (WAITS_ON as ReadonlyArray<string>).includes(kind);
 
 /**
- * Asked of the person on a card (a value, an origin): it outlives the turn that asked, so the
+ * Asked of the person on a card (a value, an origin, a repository to connect): it outlives the turn that asked, so the
  * conversation waits on the person once nothing runs.
  */
 const cardAsk = (view: ConversationView): ViewRequest | undefined =>

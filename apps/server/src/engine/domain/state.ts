@@ -172,10 +172,13 @@ export interface OpenRequest {
   readonly vault?: Pick<VaultAsk, "key" | "scope">;
   /** An origin asked of the person: its address and HQ repository, to word the agent's line. */
   readonly origin?: Pick<OriginAsk, "url" | "repo">;
+  /** A repository asked to be connected to GitHub: its name, to word the agent's line. */
+  readonly mirror?: Pick<MirrorAsk, "repo">;
 }
 
 export type VaultAsk = Extract<RequestAsk, { readonly kind: "vault" }>;
 export type OriginAsk = Extract<RequestAsk, { readonly kind: "origin" }>;
+export type MirrorAsk = Extract<RequestAsk, { readonly kind: "mirror" }>;
 
 export interface ArmedWake {
   readonly id: WakeId;

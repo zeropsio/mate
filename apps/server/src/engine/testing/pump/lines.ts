@@ -38,6 +38,8 @@ export function coreLine(signal: ProviderSignal): string {
       return `${signal.keys.join(", ")} stored in ${signal.scope.kind === "shared" ? "Shared" : signal.scope.hostname}`;
     case "origin-settled":
       return `${signal.url} ${signal.how}${signal.repo === undefined ? "" : ` (${signal.repo})`}`;
+    case "mirror-settled":
+      return `${signal.repo} ${signal.how} on GitHub`;
     case "work-upserted":
       return `${signal.work} ${signal.workKind} ${signal.status}`;
     case "usage-limit":
