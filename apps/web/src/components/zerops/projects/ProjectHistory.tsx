@@ -177,9 +177,6 @@ function ReleaseRow({
         {release.outsideCommitCount ? (
           <span className="ov-change-line">{outsideLine(release.outsideCommitCount)}</span>
         ) : null}
-        {release.changeTitles === undefined && repo !== undefined ? (
-          <span className="ov-change-line">Earlier membership not recorded · Open History</span>
-        ) : null}
       </span>
       <span className="ov-change-end">
         <ChangeAge at={release.taggedAt} />

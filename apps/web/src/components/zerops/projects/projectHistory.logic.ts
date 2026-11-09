@@ -123,7 +123,7 @@ function releaseFailureWords(failure: ReleaseFailure): string | undefined {
 export function releaseLine(release: HistoryRelease): string {
   if (release.backTo !== undefined) return `Back to ${release.backTo}`;
   if (release.changeTitles === undefined && release.changes.length === 0)
-    return "Membership not recorded";
+    return "Which changes it carried was not recorded";
   const count = release.changeTitles?.length ?? release.changes.length;
   return count === 0 ? "No changes" : count === 1 ? "1 change" : `${String(count)} changes`;
 }
