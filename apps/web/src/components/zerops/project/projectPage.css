@@ -264,8 +264,8 @@
 
 .pp-golive-why {
   color: var(--muted-foreground);
-  font-size: 13.5px;
-  line-height: 1.45;
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
   text-wrap: pretty;
 }
 
