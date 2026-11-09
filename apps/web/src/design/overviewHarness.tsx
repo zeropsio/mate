@@ -633,7 +633,7 @@ function lineProjects(): ReadonlyArray<Project> {
       },
       stages: [
         stop("calm-stage", "stage", {
-          // `&stage=empty` (or `deploying`, `checking`, `failed`): what its station says of it.
+          // `&stage=empty` (or `deploying`, `checking`, `failed`): what its place says of it, and the picture of it.
           state: (params.get("stage") ?? "deployed") as GroupFlowStop["state"],
           addresses: [{ service: "app", url: "https://app-pear-7c2e.prg1.zerops.app" }],
         }),

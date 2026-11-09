@@ -15,7 +15,6 @@ import {
 import type { MateTintId, ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import {
   cardChanges,
   mateChangesForReview,
@@ -213,13 +212,10 @@ export function mateLineInput(input: {
   readonly waits: boolean;
 }): MateLine {
   const { flow, mate, next } = input;
-  const absent = flow.production.kind === "absent";
   return {
     flow,
     places: input.places,
     tintOf: (projectId) => (projectId === mate.projectId ? mate.tint : undefined),
-    repos: [],
-    copies: [],
     changes: input.changes ?? [],
     changesKnown: input.changes !== undefined,
     waiting: new Set(
@@ -229,8 +225,6 @@ export function mateLineInput(input: {
       view: next === null ? { kind: "none" } : nextReleaseView(next),
       ready: next?.ready,
     },
-    // The way to put it live is the project's page, as the panel's card offered it.
-    putLive: absent ? environmentDoorLabel("production", "Production") : undefined,
     mine: mate.projectId,
   };
 }

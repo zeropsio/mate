@@ -1,18 +1,18 @@
 /**
- * The line: where each of a project's changes is. Its shape is the project's setup alone — Mates'
- * work, `main`, the stage where it has one, production, and a side row for each further place or
- * copy that is not calm. Activity only moves beads along it and changes its counts: a change is one
- * bead in its Mate's tint, capped by the room its segment has, then a count.
+ * The line: a picture of where each of a project's changes is. Its shape is the project's setup
+ * alone — Mates' work, `main`, the stage where it has one, production. Activity only moves beads
+ * along it and changes its counts: a change is one bead in its Mate's tint, capped by the room its
+ * segment has, then a count.
+ *
+ * It is a picture and nothing more: a place's state, its address, its vault and every verb are the
+ * project's Places and the place's own page (the owner, 2026-11-10: "the visualisation shouldn't
+ * replace prod/stages setup/navigation/state").
  *
  * Read from what the project's page already reads: its flow (`GroupFlow`), its places
  * (`placeLines`), its changes (`pageChanges`), what waits on the viewer (`useViewerWaits`) and its
  * next release (`nextReleaseView`). Pure: no React, no clock.
  */
-import {
-  REVIEW_RELEASE_LABEL,
-  type FlowPullRequest,
-  type GroupFlow,
-} from "@t3tools/client-runtime/zerops";
+import type { FlowPullRequest, GroupFlow } from "@t3tools/client-runtime/zerops";
 import type { MateTintId } from "@t3tools/shared/brand";
 
 import {
@@ -22,15 +22,12 @@ import {
   type PlaceLine,
 } from "../projects/projectCard.logic";
 import { changeRowLine } from "./ChangeRow.logic";
-import type { NextReleaseView } from "./NextRelease.logic";
-import { placeLineView } from "./PlaceLine.logic";
+import { DIDNT_GO_LIVE, type NextReleaseView } from "./NextRelease.logic";
 
-/** A word of the line: muted unless toned; a version in mono, a name in ink. */
+/** A word of a caption: muted unless toned. */
 export interface LineWord {
   readonly text: string;
   readonly tone?: "danger" | "info" | "warning" | "dim" | undefined;
-  readonly mono?: true | undefined;
-  readonly strong?: true | undefined;
 }
 
 /**
@@ -51,25 +48,12 @@ export interface LineBead {
 export interface LineStation {
   readonly kind: "mates" | "main" | "stage" | "production";
   readonly name: string;
-  /** `live`: a place that runs something; `absent`: not live yet, a dashed ring. */
-  readonly node: "solid" | "live" | "absent";
-  readonly tone: "neutral" | "success" | "danger" | "info";
-  /** Mates' work: its Mates' tints, five at most. */
-  readonly tints: ReadonlyArray<MateTintId | undefined>;
-  /** Under its name, one line each: its Mates, its repositories, a place's state. */
-  readonly lines: ReadonlyArray<ReadonlyArray<LineWord>>;
-  /** A place's page (`/group/$groupId/$projectId`); none for Mates' work and `main`. */
-  readonly projectId: string | undefined;
-  /** A place's address: a stage's under its state, production's under the track. */
-  readonly address: { readonly host: string; readonly url: string } | undefined;
-  /** What production runs, said under the track where the line is compact. */
-  readonly version: string | undefined;
+  /** `absent`: no production yet, a dashed ring. */
+  readonly node: "solid" | "absent";
 }
 
-export type LineVerb =
-  | { readonly kind: "review-change"; readonly label: string; readonly pull: FlowPullRequest }
-  | { readonly kind: "review-release"; readonly label: string; readonly primary: boolean }
-  | { readonly kind: "put-live"; readonly label: string };
+/** The group of the Changes list a segment's caption counts: its caption leads there. */
+export type LineGroup = "open" | "deploying" | "ready";
 
 /** What lies between two stations: the changes on their way from one to the next. */
 export interface LineSegment {
@@ -83,26 +67,18 @@ export interface LineSegment {
   readonly caption: ReadonlyArray<LineWord>;
   /** Its caption where the line is compact. */
   readonly short: ReadonlyArray<LineWord>;
-  readonly verb: LineVerb | undefined;
+  /** The Changes list's group its caption counts; none where it counts no change. */
+  readonly group: LineGroup | undefined;
   /** Its beads, named for assistive tech: "14 open changes, 3 wait on you". */
   readonly label: string;
   /** Its changes are not read yet: no bead and no count is said. */
   readonly held: boolean;
 }
 
-/** A further place or copy, hung under `main`: one line. */
-export interface LineSide {
-  readonly key: string;
-  readonly words: ReadonlyArray<LineWord>;
-  /** The place's page, where it is one. */
-  readonly projectId: string | undefined;
-}
-
 export interface ProjectLineView {
   readonly stations: ReadonlyArray<LineStation>;
   /** One between each two stations, in order. */
   readonly segments: ReadonlyArray<LineSegment>;
-  readonly sides: ReadonlyArray<LineSide>;
 }
 
 /** Work a Mate has that is not a change yet: uncommitted or unpushed. */
@@ -110,32 +86,15 @@ export interface LineWork {
   readonly key: string;
   readonly mateProjectId: string;
   readonly title: string;
-  /** "2 files not committed". */
+  /** "Not a change yet". */
   readonly words: string;
-}
-
-/** A copy of the code elsewhere (GitHub) that is not calm: behind, pushing, unreachable. */
-export interface LineCopy {
-  readonly key: string;
-  /** "GitHub". */
-  readonly host: string;
-  /** "acme/shop". */
-  readonly name: string;
-  readonly line: string;
-  readonly tone: "warning" | "danger" | "info";
 }
 
 export interface ProjectLineInput {
   readonly flow: Pick<GroupFlow, "mates" | "production" | "stages">;
-  /** Its places as lines (`placeLines`), each stage and production. */
+  /** Its places as lines (`placeLines`): the stage's name, and whether its deploy failed. */
   readonly places: ReadonlyArray<PlaceLine>;
-  /** What a place's page is opened by (its environment); its line's project where not given. */
-  readonly placeId?: ((line: PlaceLine) => string | undefined) | undefined;
   readonly tintOf: (mateProjectId: string) => MateTintId | undefined;
-  /** Its code repositories, by name. */
-  readonly repos: ReadonlyArray<string>;
-  /** Its copies that are not calm; a copy in sync draws nothing. */
-  readonly copies: ReadonlyArray<LineCopy>;
   /** Its changes, open and merged (`pageChanges`). */
   readonly changes: ReadonlyArray<CardChange>;
   /** Its changes are read: before that no bead and no count is said. */
@@ -146,24 +105,8 @@ export interface ProjectLineInput {
   readonly release: {
     /** The next release as the page offers it (`nextReleaseView`); `none` where it offers none. */
     readonly view: NextReleaseView;
-    /**
-     * Why the last release did not go live, in the place page's own sentence
-     * (`releaseNotCreatedWords`, "v0.1.5 didn't go live: db could not be created in production");
-     * where none is told the segment says that it didn't.
-     */
-    readonly cause?: string | undefined;
     readonly ready: CardReady | undefined;
-    /** Production's own note where no release is offered ("Waiting for its first release"). */
-    readonly note?: string | undefined;
   };
-  /** *Put it live*, where the project has no production and HQ offers one to this person. */
-  readonly putLive: string | undefined;
-  /** Places being set up that no line holds yet: each a side row. */
-  readonly coming?: ReadonlyArray<{
-    readonly key: string;
-    readonly name: string;
-    readonly line: string;
-  }>;
   /** One Mate's line: its beads in full, everybody else's as "+N from others". */
   readonly mine?: string | undefined;
 }
@@ -186,6 +129,22 @@ const notLive = (change: CardChange): boolean =>
   change.where.kind !== "setup" &&
   (change.where.kind !== "released" || !change.where.live);
 
+/**
+ * The merged changes production does not run yet, newest first as the page lists them. While a
+ * release is on its way production's commits answer to no release, so none reads live and every
+ * released change would stand before production: then only the newest release's are on their way,
+ * and what earlier releases took, production runs.
+ */
+function mergedNotLive(changes: ReadonlyArray<CardChange>): ReadonlyArray<CardChange> {
+  const waiting = changes.filter(notLive);
+  if (changes.some((change) => change.where?.kind === "released" && change.where.live)) {
+    return waiting;
+  }
+  const newest = waiting.find((change) => change.where?.kind === "released")?.where;
+  const tag = newest?.kind === "released" ? newest.tag : undefined;
+  return waiting.filter((change) => change.where?.kind !== "released" || change.where.tag === tag);
+}
+
 const SEP: LineWord = { text: " · " };
 const between = (parts: ReadonlyArray<LineWord>): ReadonlyArray<LineWord> =>
   parts.flatMap((part, index) => (index === 0 ? [part] : [SEP, part]));
@@ -194,7 +153,7 @@ const count = (n: number, one: string, many: string) => `${String(n)} ${n === 1 
 /**
  * The stage `main` feeds, which stands on the line as its Stage station: the one that follows
  * `main`, else one that runs something, else the first. A stage delivered to a branch is no
- * station: it hangs under `main` while it is behind.
+ * station of the line.
  */
 function stationStage(stages: GroupFlow["stages"]) {
   const own = stages.filter((stop) => stop.git === undefined);
@@ -205,52 +164,12 @@ function stationStage(stages: GroupFlow["stages"]) {
   );
 }
 
-/** A place's state under its name: its not-calm word in its tone, else what it runs and since when. */
-function placeWords(line: PlaceLine): ReadonlyArray<ReadonlyArray<LineWord>> {
-  const view = placeLineView(line);
-  const facts = view.facts.map((text): LineWord => ({ text }));
-  if (view.pill !== undefined)
-    return [
-      [{ text: view.pill.word, tone: view.pill.tone === "danger" ? "danger" : "info" }],
-      ...(facts.length === 0 ? [] : [between(facts)]),
-    ];
-  const runs: ReadonlyArray<LineWord> =
-    view.version === undefined
-      ? view.state === undefined
-        ? []
-        : [{ text: view.state }]
-      : [{ text: view.version, mono: true }];
-  const said = between([...runs, ...facts]);
-  return said.length === 0 ? [] : [said];
-}
-
-function placeStation(
-  kind: "stage" | "production",
-  line: PlaceLine,
-  projectId: string | undefined,
-): LineStation {
-  const view = placeLineView(line);
-  return {
-    kind,
-    name: view.title,
-    node: kind === "production" ? "live" : "solid",
-    tone: view.tone,
-    tints: [],
-    lines: placeWords(line),
-    projectId,
-    address: view.address,
-    version: view.version,
-  };
-}
-
 /** The line of one project, from its setup and what is on its way. */
 export function projectLine(input: ProjectLineInput): ProjectLineView {
   const { flow, mine } = input;
   const mateName = (projectId: string) =>
     flow.mates.find((mate) => mate.projectId === projectId)?.name;
   const owned = (projectId: string) => mine === undefined || projectId === mine;
-  const placeId = (line: PlaceLine) =>
-    input.placeId === undefined ? line.projectId : input.placeId(line);
   const beadOf = (change: CardChange, mark: LineBead["mark"]): LineBead => ({
     key: lineChangeKey(change.pull),
     tint: input.tintOf(change.pull.mateProjectId),
@@ -275,65 +194,24 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
       : input.places.find(
           (line) => line.kind === "stage" && line.projectId === stageStop.projectId,
         );
-  const productionLine = input.places.find((line) => line.kind === "production");
   const absent = flow.production.kind === "absent";
-  const mates: LineStation = {
-    kind: "mates",
-    name: mine === undefined ? "Mates' work" : `${mateName(mine) ?? "This Mate"}'s work`,
-    node: "solid",
-    tone: "neutral",
-    tints:
-      mine === undefined ? flow.mates.slice(0, 5).map((mate) => input.tintOf(mate.projectId)) : [],
-    lines:
-      mine !== undefined
-        ? []
-        : [
-            [
-              {
-                text:
-                  flow.mates.length === 0
-                    ? "No Mates yet"
-                    : flow.mates.length <= 2
-                      ? flow.mates.map((mate) => mate.name).join(", ")
-                      : `${String(flow.mates.length)} Mates`,
-              },
-            ],
-          ],
-    projectId: undefined,
-    address: undefined,
-    version: undefined,
-  };
-  const main: LineStation = {
-    kind: "main",
-    name: "main",
-    node: "solid",
-    tone: "neutral",
-    tints: [],
-    lines: input.repos.length === 0 ? [] : [[{ text: input.repos.join(" · ") }]],
-    projectId: undefined,
-    address: undefined,
-    version: undefined,
-  };
-  const production: LineStation =
-    absent || productionLine === undefined
-      ? {
-          kind: "production",
-          name: "Production",
-          node: absent ? "absent" : "solid",
-          tone: "neutral",
-          tints: [],
-          lines: absent ? [[{ text: "Not live yet" }]] : [],
-          projectId: undefined,
-          address: undefined,
-          version: undefined,
-        }
-      : placeStation("production", productionLine, placeId(productionLine));
-  const stage =
-    stageLine === undefined ? undefined : placeStation("stage", stageLine, placeId(stageLine));
+  const stageName = stageLine === undefined ? undefined : placeLabel(stageLine);
+  const stations: ReadonlyArray<LineStation> = [
+    {
+      kind: "mates",
+      name: mine === undefined ? "Mates' work" : `${mateName(mine) ?? "This Mate"}'s work`,
+      node: "solid",
+    },
+    { kind: "main", name: "main", node: "solid" },
+    ...(stageName === undefined
+      ? []
+      : [{ kind: "stage" as const, name: stageName, node: "solid" as const }]),
+    { kind: "production", name: "Production", node: absent ? "absent" : "solid" },
+  ];
 
   // What is between them.
   const open = input.changes.filter((change) => change.open);
-  const merged = input.changes.filter(notLive);
+  const merged = mergedNotLive(input.changes);
   const markOf = (change: CardChange): LineBead["mark"] =>
     input.waiting.has(lineChangeKey(change.pull))
       ? "waits"
@@ -362,9 +240,8 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   ];
   const waits = opened.filter((bead) => bead.mark === "waits").length;
   const stuck = opened.filter((bead) => bead.mark === "stuck").length;
-  const next = mineOnly(opened).findLast((bead) => bead.mark === "waits")?.pull;
-  const mineWaits = mineOnly(opened).filter((bead) => bead.mark === "waits").length;
   const openOthers = others(open.map((change) => change.pull));
+  const waitsWords: LineWord = { text: `${count(waits, "waits", "wait")} on you`, tone: "info" };
   const workSegment: LineSegment = {
     key: "work",
     track: "solid",
@@ -378,9 +255,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
           ? [{ text: "Nothing waits for review" }]
           : between([
               { text: `${String(open.length)} open` },
-              ...(waits === 0
-                ? []
-                : [{ text: `${count(waits, "waits", "wait")} on you`, tone: "info" as const }]),
+              ...(waits === 0 ? [] : [waitsWords]),
               ...(stuck === 0
                 ? []
                 : [{ text: `${String(stuck)} stuck`, tone: "warning" as const }]),
@@ -390,18 +265,11 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
       : mine !== undefined
         ? fromOthers(openOthers)
         : waits > 0
-          ? [{ text: `${count(waits, "waits", "wait")} on you`, tone: "info" }]
+          ? [waitsWords]
           : open.length > 0
             ? [{ text: `${String(open.length)} open` }]
             : [],
-    verb:
-      !input.changesKnown || next === undefined
-        ? undefined
-        : {
-            kind: "review-change",
-            label: mineWaits === 1 ? "Review" : "Review the next one",
-            pull: next,
-          },
+    group: mine === undefined && open.length > 0 ? "open" : undefined,
     label: [
       open.length === 0 ? "No open changes" : count(open.length, "open change", "open changes"),
       ...(waits === 0 ? [] : [`${count(waits, "waits", "wait")} on you`]),
@@ -413,31 +281,32 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
 
   // On their way to the stage, where it has one; everything else merged waits for production.
   const deploying =
-    stage === undefined
+    stageName === undefined
       ? []
       : merged.filter((change) => change.where?.kind === "deploying-to-stage");
   const ready = merged.filter((change) => !deploying.includes(change));
-  const pulls = (changes: ReadonlyArray<CardChange>) => changes.map((change) => change.pull);
   const beadsOf = (changes: ReadonlyArray<CardChange>) =>
     mineOnly(changes.map((change) => beadOf(change, undefined)).toReversed());
   const stageFailed = stageLine?.dot === "failed" || stageLine?.dot === "down";
+  const carrying = input.changesKnown && deploying.length > 0;
   const stageSegment: LineSegment | undefined =
-    stage === undefined
+    stageName === undefined
       ? undefined
       : {
           key: "stage",
           // Dotted while it follows `main` by itself; drawn through while a deploy carries a change.
-          track: stageFailed
-            ? "failed"
-            : input.changesKnown && deploying.length > 0
-              ? "solid"
-              : "auto",
+          track: stageFailed ? "failed" : carrying ? "solid" : "auto",
           beads: input.changesKnown ? beadsOf(deploying) : [],
           more: 0,
-          // A failed deploy is the stage's own word, said once on its station: here, the red track.
+          // Why it failed is the stage's own line, in Places and on its page.
           caption: stageFailed
-            ? []
-            : deploying.length > 0 && input.changesKnown
+            ? [
+                {
+                  text: (stageLine?.words[0] ?? "Deploy failed").toLocaleLowerCase(),
+                  tone: "danger",
+                },
+              ]
+            : carrying
               ? [
                   {
                     text:
@@ -451,22 +320,26 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
                 ? [{ text: "deploys by itself", tone: "dim" }]
                 : [],
           short: [],
-          verb: undefined,
+          group: carrying && !stageFailed && mine === undefined ? "deploying" : undefined,
           label:
             deploying.length === 0
-              ? `Nothing on its way to ${stage.name}`
+              ? `Nothing on its way to ${stageName}`
               : `${count(deploying.length, "change", "changes")} on ${
                   deploying.length === 1 ? "its" : "their"
-                } way to ${stage.name}`,
+                } way to ${stageName}`,
           held: !input.changesKnown,
         };
 
   const { view } = input.release;
   const readyMates = new Set(ready.map((change) => change.pull.mateProjectId)).size;
   const counted = input.release.ready;
+  const offered = !absent && view.kind !== "none";
+  // Every change the release counts, the ones the page lists no row for too.
+  const all = Math.max(
+    ready.length,
+    offered && mine === undefined ? (counted?.changeCount ?? 0) : 0,
+  );
   const readyWords = (): ReadonlyArray<LineWord> => {
-    // Every change the release counts, the ones the page lists no row for too.
-    const all = Math.max(ready.length, mine === undefined ? (counted?.changeCount ?? 0) : 0);
     if (ready.length > 0)
       return all === 1
         ? [{ text: "1 change ready" }]
@@ -475,7 +348,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
             ...(readyMates > 1 ? [{ text: `from ${String(readyMates)} Mates` }] : []),
           ]);
     // No change of its own is listed: what the release counts, commits where it counts no changes.
-    if (counted === undefined) return [{ text: "Changes ready" }];
+    if (counted === undefined) return [];
     const plus = counted.atLeast ? "+" : "";
     return counted.changeCount === undefined
       ? [
@@ -485,8 +358,29 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
         ]
       : [{ text: `${count(counted.changeCount, "change", "changes")} ready` }];
   };
-  const readyOthers = others(pulls(ready));
-  const settled = view.kind === "releasing" || view.kind === "failed";
+  const readyOthers = others(ready.map((change) => change.pull));
+  const releaseCaption = (): ReadonlyArray<LineWord> => {
+    if (absent)
+      return ready.length === 0
+        ? []
+        : [{ text: `${count(ready.length, "change", "changes")} on main` }];
+    switch (view.kind) {
+      case "releasing":
+        return [{ text: view.title, tone: "info" }];
+      // Why is production's own line, in Places and on its page: here, that it didn't.
+      case "failed":
+        return between([
+          ...readyWords(),
+          { text: DIDNT_GO_LIVE.toLocaleLowerCase(), tone: "danger" },
+        ]);
+      case "ready":
+        return readyWords();
+      case "none":
+        return ready.length === 0
+          ? []
+          : [{ text: `${count(ready.length, "waits", "wait")} for production` }];
+    }
+  };
   const releaseSegment: LineSegment = {
     key: "release",
     track: absent
@@ -498,28 +392,12 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
           : "ready",
     beads: input.changesKnown ? beadsOf(ready) : [],
     // The release counts changes the page lists no row for: they stand as a count.
-    more:
-      input.changesKnown && !absent && view.kind !== "none" && mine === undefined
-        ? Math.max(0, (counted?.changeCount ?? 0) - ready.length)
-        : 0,
-    caption:
-      !input.changesKnown && !settled
-        ? []
-        : absent
-          ? ready.length === 0
-            ? []
-            : [{ text: `${count(ready.length, "change", "changes")} on main` }]
-          : view.kind === "releasing"
-            ? [{ text: view.title, tone: "info" }]
-            : view.kind === "failed"
-              ? [{ text: input.release.cause ?? view.pill, tone: "danger" }]
-              : view.kind === "ready"
-                ? readyWords()
-                : input.release.note !== undefined
-                  ? [{ text: input.release.note }]
-                  : ready.length === 0
-                    ? []
-                    : [{ text: `${count(ready.length, "waits", "wait")} for production` }],
+    more: input.changesKnown ? all - ready.length : 0,
+    caption: !input.changesKnown
+      ? []
+      : mine !== undefined
+        ? fromOthers(readyOthers)
+        : releaseCaption(),
     short: !input.changesKnown
       ? []
       : mine !== undefined
@@ -531,71 +409,16 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
                 text: absent ? `${String(ready.length)} on main` : `${String(ready.length)} ready`,
               },
             ],
-    verb: absent
-      ? input.putLive === undefined
-        ? undefined
-        : { kind: "put-live", label: input.putLive }
-      : view.kind === "none"
-        ? undefined
-        : {
-            kind: "review-release",
-            label: view.kind === "releasing" ? view.verb : REVIEW_RELEASE_LABEL,
-            primary: view.kind !== "releasing",
-          },
+    group: mine === undefined && ready.length > 0 ? "ready" : undefined,
     label: absent
       ? `${count(ready.length, "change", "changes")} on main`
       : `${count(ready.length, "change", "changes")} ready for production`,
     held: !input.changesKnown,
   };
 
-  // Hung under `main`: each further place, and each copy that is not calm. One Mate's line is
-  // about its own work: the project's other places stand on the project's page.
-  const sides: ReadonlyArray<LineSide> =
-    mine !== undefined
-      ? []
-      : [
-          ...input.copies.map((copy): LineSide => ({
-            key: `copy:${copy.key}`,
-            words: [
-              { text: `${copy.host} ` },
-              { text: copy.name, strong: true },
-              SEP,
-              { text: copy.line, tone: copy.tone },
-            ],
-            projectId: undefined,
-          })),
-          ...input.places
-            .filter((line) => line.kind === "stage" && line !== stageLine)
-            // A place delivered to a branch says nothing while it follows.
-            .filter((line) => line.git === undefined || line.dot !== "none")
-            .map((line, index): LineSide => {
-              const [first, ...rest] = line.words;
-              const tone: LineWord["tone"] = line.trouble
-                ? "danger"
-                : line.dot === "releasing"
-                  ? "info"
-                  : undefined;
-              return {
-                key: `place:${line.projectId ?? `${line.name}:${String(index)}`}`,
-                words: [
-                  { text: placeLabel(line), strong: true },
-                  ...(first === undefined ? [] : [SEP, { text: first, tone }]),
-                  ...rest.flatMap((text) => [SEP, { text }]),
-                ],
-                projectId: placeId(line),
-              };
-            }),
-          ...(input.coming ?? []).map((place): LineSide => ({
-            key: `coming:${place.key}`,
-            words: [{ text: place.name, strong: true }, SEP, { text: place.line }],
-            projectId: undefined,
-          })),
-        ];
-
   return {
-    stations: [mates, main, ...(stage === undefined ? [] : [stage]), production],
+    stations,
     segments: [workSegment, ...(stageSegment === undefined ? [] : [stageSegment]), releaseSegment],
-    sides,
   };
 }
 

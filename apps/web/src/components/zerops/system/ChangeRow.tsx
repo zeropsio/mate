@@ -203,13 +203,16 @@ export function ChangeRow(props: ChangeRowProps) {
 export function ChangeList({
   children,
   label,
+  group,
 }: {
   readonly children: ReactNode;
   /** Its accessible name where no heading names it. */
   readonly label?: string;
+  /** The group of a page's changes it is, by which the page's picture leads to it. */
+  readonly group?: string | undefined;
 }) {
   return (
-    <ul aria-label={label} className="ov-changes">
+    <ul aria-label={label} className="ov-changes" data-zerops-change-group={group}>
       {children}
     </ul>
   );
