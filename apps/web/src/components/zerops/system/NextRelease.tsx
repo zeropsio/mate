@@ -73,7 +73,7 @@ export function NextRelease({
 /**
  * What goes to a place next, in the next release's look without its words: one tinted line — a
  * `lead` (a pill), the title, its facts muted, a verb at its end — and, as a block, the rows it
- * carries under it. A stage's "3 changes ready to merge to stage" is one, with no verb of its own
+ * carries under it. Stage's changes waiting for approval are one, with no verb of its own
  * where each `ChangeRow` carries its *Review*.
  *
  * Props: `title`; `facts` (muted after it); `lead` (before the title: a `Badge`); `verb` (one
