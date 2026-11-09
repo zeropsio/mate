@@ -59,9 +59,14 @@ type FixtureApp = HqGithubView["apps"][number];
 const repository = (
   id: number,
   fullName: string,
-  usedBy: { readonly application: string; readonly repo: string } | null = null,
+  usedBy: {
+    readonly application: string | null;
+    readonly repo: string | null;
+    readonly githubAppId: number | null;
+  } | null = null,
 ) => ({ id, fullName, private: true, defaultBranch: "main", usedBy });
-// The organization's own app, on its GitHub organization, two repositories connected.
+// The organization's own app, on its GitHub organization: one repository through it, another it
+// reaches connected with a token.
 const ACME: FixtureApp = {
   appId: 101,
   slug: "acme-mate",
@@ -81,8 +86,12 @@ const ACME: FixtureApp = {
       accountType: "Organization",
       repositorySelection: "selected",
       repositories: [
-        repository(11, "acme/tea-shop", { application: "app-tea", repo: "appdev" }),
-        repository(12, "acme/api", { application: "app-api", repo: "apidev" }),
+        repository(11, "acme/tea-shop", {
+          application: "app-tea",
+          repo: "appdev",
+          githubAppId: 101,
+        }),
+        repository(12, "acme/api", { application: "app-api", repo: "apidev", githubAppId: null }),
         repository(13, "acme/web"),
       ],
       suspended: false,
@@ -112,7 +121,11 @@ const PERSONAL: FixtureApp = {
       accountType: "User",
       repositorySelection: "all",
       repositories: [
-        repository(21, "jane-k/notes", { application: "app-notes", repo: "notesdev" }),
+        repository(21, "jane-k/notes", {
+          application: "app-notes",
+          repo: "notesdev",
+          githubAppId: 102,
+        }),
       ],
       suspended: false,
       state: "accepted",
@@ -125,7 +138,11 @@ const PERSONAL: FixtureApp = {
       accountType: "Organization",
       repositorySelection: "selected",
       repositories: [
-        repository(31, "octo-org/site", { application: "app-tea", repo: "sitedev" }),
+        repository(31, "octo-org/site", {
+          application: "app-tea",
+          repo: "sitedev",
+          githubAppId: 102,
+        }),
         repository(32, "octo-org/api"),
       ],
       suspended: false,

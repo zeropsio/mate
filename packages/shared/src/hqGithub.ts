@@ -38,13 +38,16 @@ export const HqGithubRepository = Schema.Struct({
   defaultBranch: Schema.String,
   /**
    * The Mate code repository whose remote (through any app, or a token) is this GitHub repository:
-   * its HQ application id and repository name; `null` while none is.
+   * its HQ application id and repository name, and the organization's app its remote goes through
+   * (`null` for a token); `null` while none is.
    */
   usedBy: Schema.NullOr(
-    // Both null: an application the caller may not read uses it — taken, never named.
+    // Application and repo both null: an application the caller may not read uses it — taken,
+    // never named. `githubAppId` is said to every member.
     Schema.Struct({
       application: Schema.NullOr(Schema.String),
       repo: Schema.NullOr(Schema.String),
+      githubAppId: Schema.NullOr(Schema.Number),
     }),
   ),
 });

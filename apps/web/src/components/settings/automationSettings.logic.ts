@@ -189,17 +189,21 @@ export function installationLine(
   return `${installation.account} · ${reach}`;
 }
 
-/** The Mate repositories connected to a repository an app reaches, once each. */
+/**
+ * The Mate repositories whose remote goes through this app, once each: what stops when it is
+ * removed. One connected through another app or a token is not its.
+ */
 export function appUses(app: HqGithubApp): ReadonlyArray<GithubAppUse> {
   const seen = new Map<string, GithubAppUse>();
   for (const installation of app.installations) {
     if (installation.state === "unknown") continue;
     for (const repository of installation.repositories)
-      if (repository.usedBy !== null)
+      if (repository.usedBy !== null && repository.usedBy.githubAppId === app.appId)
         seen.set(
           `${repository.usedBy.application ?? ""}/${repository.usedBy.repo ?? repository.fullName}`,
           {
-            ...repository.usedBy,
+            application: repository.usedBy.application,
+            repo: repository.usedBy.repo,
             fullName: repository.fullName,
           },
         );
@@ -293,8 +297,16 @@ export function appReachLine(app: GithubAppRow): string {
  */
 export type GithubReturn = "connected" | "requested" | "waiting" | null;
 
-/** The one line said on the return from GitHub; `null` where there is nothing true to say. */
-export function githubReturnLine(returned: GithubReturn, section: GithubSection): string | null {
+/**
+ * The one line said on the return from GitHub; `null` where there is nothing true to say.
+ * `githubAppId`: the app whose install trip brought the person back (`?github-app=`); absent after
+ * making one, which is then the newest.
+ */
+export function githubReturnLine(
+  returned: GithubReturn,
+  section: GithubSection,
+  githubAppId: number | null = null,
+): string | null {
   const apps = section.kind === "apps" ? section.apps : [];
   if (returned === "requested")
     return "GitHub asked an owner of the GitHub account to approve the app; it's installed once they do.";
@@ -303,11 +315,18 @@ export function githubReturnLine(returned: GithubReturn, section: GithubSection)
     return apps.some((app) => app.waiting.length > 0)
       ? "GitHub installed the app. It waits for an Owner's or Admin's OK before Mate uses it."
       : null;
+  if (returned !== "connected") return null;
+  if (githubAppId !== null) {
+    const installed = apps.find((app) => app.appId === githubAppId);
+    return installed === undefined
+      ? null
+      : `GitHub installed ${installed.name} on the account you picked. Mate acts there as ${installed.botLogin}.`;
+  }
   // Apps are oldest first: the one just made is the last.
   const newest = apps.at(-1);
-  if (returned === "connected" && newest !== undefined)
-    return `${newest.name} is set up. Mate acts through it as ${newest.botLogin}.`;
-  return null;
+  return newest === undefined
+    ? null
+    : `${newest.name} is set up. Mate acts through it as ${newest.botLogin}.`;
 }
 
 /** The section's state line. */
@@ -367,6 +386,20 @@ export function appOwner(typed: string): string | null {
 /** Where GitHub sends the person back once the app is made and installed: this page. */
 export function githubReturnTo(origin: string, basePath: string): string {
   return `${origin}${basePath}/settings/automation?github=connected`;
+}
+
+/**
+ * Where one app's install trip comes back: this page, naming the app (`github-app`). HQ sets
+ * `github` to how it went and keeps the rest.
+ */
+export function githubInstallReturnTo(returnTo: string, githubAppId: number): string {
+  return `${returnTo}&github-app=${String(githubAppId)}`;
+}
+
+/** The app an install trip named on the way back (`?github-app=`), else `null`. */
+export function githubReturnedApp(raw: unknown): number | null {
+  const id = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : Number.NaN;
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
 /**
