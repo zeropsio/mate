@@ -15,6 +15,13 @@ import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
  */
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { StrictMode, useState, type ReactNode } from "react";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
+import type { AppRouter } from "~/router";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -68,7 +75,6 @@ import type {
 } from "~/components/zerops/projects/projectCard.logic";
 import type { MateTintId } from "@t3tools/shared/brand";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
-import { PlaceAccessSummary } from "~/components/zerops/projects/ProjectAccessTable";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
 import { VAULT_FIXTURE, vaultFixtureImpact } from "~/components/zerops/vault/vaultFixture";
 import type { columnPeople } from "~/components/zerops/projects/accessTable.logic";
@@ -720,7 +726,7 @@ interface StopFixture {
   /** Every service the platform lists there, with its use and its last day. */
   readonly platformServices?: ReadonlyArray<ZeropsServiceRow>;
   /** Who reaches the place, as its page draws them. */
-  readonly access?: ReactNode;
+  readonly access?: React.ComponentProps<typeof ZeropsStopPane>["access"];
   /** Whether the place offers its vault drawer; `"open"` draws it open. */
   readonly vault?: boolean | "open";
   /** The changes that go next: merged ones waiting for a release, or a stage's open ones. */
@@ -925,6 +931,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       platformServices={fixture.platformServices}
       usageRead
       access={fixture.access}
+      groupName={group}
       vault={
         fixture.vault === undefined || fixture.vault === false
           ? undefined
@@ -1288,17 +1295,7 @@ function Harness() {
                 routes: ACME_ROUTES,
                 releases: ACME_RELEASES,
                 platformServices: ACME_SERVICES,
-                access: (
-                  <PlaceAccessSummary
-                    change={
-                      <a className="ov-acc-link" href="#access-prod">
-                        Change on Acme’s page
-                      </a>
-                    }
-                    line={null}
-                    summary={ACME_PEOPLE}
-                  />
-                ),
+                access: { summary: ACME_PEOPLE, line: null },
                 vault: true,
                 release: RELEASE_WAITING,
                 ready: READY_TWO,
@@ -1545,18 +1542,29 @@ function Standins({ children }: { readonly children: ReactNode }) {
   );
 }
 
+/** The harness page, standing in the hosted frame inside a sidebar, so the frame draws no lockup. */
+function HarnessPage() {
+  return (
+    <SidebarProvider className="block">
+      <Standins>
+        <Harness />
+      </Standins>
+    </SidebarProvider>
+  );
+}
+
+// A router of its own, so a place's links (its access card's way to the project page) link as
+// they do in the app.
+const router = createRouter({
+  routeTree: createRootRoute({ component: HarnessPage }),
+  history: createMemoryHistory({ initialEntries: ["/"] }),
+}) as unknown as AppRouter;
+
 const host = document.getElementById("design");
 if (host) {
   createRoot(host).render(
     <StrictMode>
-      {/* The panes stand in the hosted frame, which outside the app shell
-          draws its lockup as a router link; inside a sidebar it draws none,
-          so the harness needs no router. */}
-      <SidebarProvider className="block">
-        <Standins>
-          <Harness />
-        </Standins>
-      </SidebarProvider>
+      <RouterProvider router={router} />
     </StrictMode>,
   );
 }

@@ -50,8 +50,6 @@ export interface MatesActivityInput {
   readonly attention: Readonly<Record<string, MateAttentionRead>>;
   /** HQ's record of each Mate it places, by project; its overview words, its presence. */
   readonly overviews: ReadonlyMap<string, MateLiveView> | null;
-  /** HQ relays them now (`hqMatesAtom.current`). */
-  readonly hqCurrent: boolean;
   /** The chats this page holds, of every Mate it has open. */
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
   /** The environment of each Mate this page has a socket to, by project. */
@@ -399,20 +397,20 @@ export function socketStands(phase: EnvironmentConnectionPhase, stoodBefore: boo
 
 /**
  * A Mate from before the attention value: its socket's reading of its main chat while the socket
- * stands, else HQ's overview of it — live while HQ holds its link — else that reading, at rest.
+ * stands, else HQ's last overview of it — live while HQ last held its link — else that reading, at
+ * rest.
  */
 function legacyActivity(input: {
   readonly limits?: ReadonlyMap<string, MateLimit>;
   readonly environmentId: EnvironmentId;
   readonly overview: MateLiveView | undefined;
   readonly socket: ZeropsAgentActivity | undefined;
-  readonly hqCurrent: boolean;
   readonly standing: ReadonlySet<EnvironmentId>;
   readonly lastVisitedAtById: Readonly<Record<string, string>>;
 }): ZeropsAgentActivity | undefined {
   const { overview, socket } = input;
   if (overview?.identity !== undefined && overview.main !== undefined) {
-    const live = input.hqCurrent && overview.presence.overview === "live";
+    const live = overview.presence.overview === "live";
     if (live || socket === undefined)
       return overviewAgentActivity(overview, live, input.lastVisitedAtById, input.limits);
   }

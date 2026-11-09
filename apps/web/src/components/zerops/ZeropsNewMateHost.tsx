@@ -68,7 +68,8 @@ import {
   type NewMateDoorAction,
   type NewMateDoorClosed,
 } from "./ZeropsEnvironmentCreationDialog.logic";
-import { useAddMateOffer, useHqOffers } from "../../zerops/useHqOffers";
+import { useAddMateOffer } from "../../zerops/useHqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { emptyApplications } from "./projects/emptyApps.logic";
 
 export function ZeropsNewMateHost() {
@@ -171,7 +172,6 @@ function NewMateDialog({
   usePreloadMateViews();
 
   const addOffer = useAddMateOffer()(groupId);
-  const { words } = useHqOffers();
   // Whether the organization holds the API key automated Mates run on: said in their dialog. An
   // HQ that keeps no organization keys can't make them. Read from the app's root once signed in,
   // it is known before the dialog's first frame.
@@ -191,7 +191,11 @@ function NewMateDialog({
   });
   const closed: NewMateDoorClosed | undefined =
     addOffer.kind !== "allowed"
-      ? { kind: "closed", reason: words(addOffer) ?? "Checking your access…", action: undefined }
+      ? {
+          kind: "closed",
+          reason: hqOfferWords(addOffer) ?? "Checking your access…",
+          action: undefined,
+        }
       : door.kind === "closed"
         ? door
         : undefined;

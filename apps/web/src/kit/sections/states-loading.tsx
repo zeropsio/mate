@@ -50,7 +50,7 @@ function LoadingCensus() {
         places={[
           "apps/web/src/components/sidebar/DesktopUpdateStatusIcon.tsx:122",
           "apps/web/src/components/files/FileBrowserPanel.tsx:68",
-          "apps/web/src/components/DiffPanel.tsx:812",
+          "apps/web/src/components/CodePage.tsx:172",
           "apps/web/src/components/settings/DiagnosticsSettings.tsx:747",
           "apps/web/src/components/settings/SourceControlSettings.tsx:487, :532",
           "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx:964, :1076, :1214",

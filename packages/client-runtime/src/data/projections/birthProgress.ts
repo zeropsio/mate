@@ -188,7 +188,7 @@ export const sharedBirths: Projection<
           evidence.next.kind !== "blocked"
             ? { ...evidence, next: { kind: "register-chief" } }
             : evidence;
-        const roleCurrent = personId !== "" && navigation.live && current && roleLive;
+        const roleCurrent = personId !== "" && current && roleLive;
         const authorized = roleCurrent && app.can?.add_mate?.allow === true;
         const attachProject =
           projectId ?? (progress.next.kind === "bind" ? progress.next.projectId : null);

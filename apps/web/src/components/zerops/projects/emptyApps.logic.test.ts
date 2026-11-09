@@ -18,7 +18,6 @@ const view = (organizationId: string): HqNavigationView => ({
   ...NOT_READ_HQ,
   orgId: organizationId,
   read: "read",
-  live: true,
   structure: {
     ungrouped: [],
     apps: [
@@ -192,10 +191,6 @@ describe("HQ's word on an application's contents", () => {
     expect(applicationContents(given, "org-a", "app-e2e")).toEqual(contents);
     expect(applicationContents(given, "org-b", "app-e2e")).toBeUndefined();
     expect(applicationContents(given, "org-a", "other-id")).toBeUndefined();
-    expect(applicationContents({ ...given, live: false }, "org-a", "app-e2e")).toBeUndefined();
-    expect(
-      applicationContents({ ...given, live: false, reconnecting: true }, "org-a", "app-e2e"),
-    ).toBeUndefined();
   });
 });
 

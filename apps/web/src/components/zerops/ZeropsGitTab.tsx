@@ -1,5 +1,6 @@
 /**
- * The Git tab, connected: two sources joined where the person already is.
+ * The Code page, connected: where the Mate's work is — two sources joined where the person
+ * already is — above what changed in its code (`CodeChanges`).
  *
  * The checkout half is one live `subscribeVcsStatus` **per mount** — a child
  * per repository, because a hook cannot be called in a loop and because each
@@ -47,7 +48,7 @@ import {
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 
-import { useComposerDraftStore } from "../../composerDraftStore";
+import { useComposerDraftStore, type DraftId } from "../../composerDraftStore";
 import { useThreadShell } from "../../state/entities";
 import { useThreadLeases } from "../../zerops/useThreadLeases";
 import { useThreadPoolPairs } from "../../zerops/useThreadPoolPairs";
@@ -60,6 +61,7 @@ import { useZeropsGroupRecipe } from "../../zerops/useZeropsGroupRecipe";
 import { useVcsPullAction } from "../../state/sourceControlActions";
 import { useEnvironmentQuery } from "../../state/query";
 import { vcsEnvironment } from "../../state/vcs";
+import { CodeChanges } from "../CodeChanges";
 import { ZeropsAskDialog } from "./ZeropsAskDialog";
 import { ZeropsGitBlockCommits } from "./ZeropsGitBlockCommits";
 import { ZeropsGitCommitChanges, type OpenGitCommit } from "./ZeropsGitCommitChanges";
@@ -174,6 +176,8 @@ function RepositoryPullAction({
 
 export interface ZeropsGitTabProps {
   readonly threadRef: ScopedThreadRef | null;
+  /** Where a comment on a changed line goes: the conversation's composer. */
+  readonly composerDraftTarget: ScopedThreadRef | DraftId;
   /** The Mate's application in HQ, which is its group. */
   readonly appId: string | undefined;
   /** The application's environments as HQ records them, when they could be read. */
@@ -244,10 +248,15 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
       : gitEmptyLine(topology.view.services, lifecycle);
   if (repositories === undefined)
     return (
-      <div role="status">
-        <p>{topology.error ?? "Reading repositories."}</p>
-        <ZeropsMateVerb label="Read again" onClick={topology.again} />
-      </div>
+      <CodeChanges
+        composerDraftTarget={props.composerDraftTarget}
+        top={
+          <div role="status">
+            <p>{topology.error ?? "Reading repositories."}</p>
+            <ZeropsMateVerb label="Read again" onClick={topology.again} />
+          </div>
+        }
+      />
     );
   return (
     <>
@@ -455,19 +464,14 @@ function KnownGitTab({
           onBack={() => setOpenCommit(null)}
         />
       )}
-      <ZeropsGitPanel
+      <CodeChanges
         {...(openCommit === null ? {} : { className: "hidden" })}
-        mateFace={props.mateFace}
-        mateName={props.mateName}
-        model={{ repositories: rows, emptyLine }}
-        onConnect={props.onConnect}
-        project={props.project}
-        renderBlockAction={renderBlockVerbs}
-        renderBlockCommits={(block) =>
-          // No change, no history to read: the block draws nothing for it, not an empty heading.
-          props.appId === undefined ||
-          block.pullRequestNumber === undefined ||
-          block.pullRequestHead === undefined ? null : (
+        commitsFor={(repository) => {
+          const block = rows.find((row) => row.block.repository === repository)?.block;
+          // No change, no history to read: the section draws nothing for it, not an empty heading.
+          return props.appId === undefined ||
+            block?.pullRequestNumber === undefined ||
+            block.pullRequestHead === undefined ? null : (
             <ZeropsGitBlockCommits
               appId={props.appId}
               change={{ number: block.pullRequestNumber, head: block.pullRequestHead }}
@@ -480,9 +484,20 @@ function KnownGitTab({
               }
               repository={block.hqRepository}
             />
-          )
+          );
+        }}
+        composerDraftTarget={props.composerDraftTarget}
+        top={
+          <ZeropsGitPanel
+            mateFace={props.mateFace}
+            mateName={props.mateName}
+            model={{ repositories: rows, emptyLine }}
+            onConnect={props.onConnect}
+            onOpenChange={props.onOpenChange}
+            project={props.project}
+            renderBlockAction={renderBlockVerbs}
+          />
         }
-        onOpenChange={props.onOpenChange}
       />
       <ZeropsAskDialog
         ask={asking?.ask ?? ""}

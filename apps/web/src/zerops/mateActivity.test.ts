@@ -112,7 +112,6 @@ const read = (input: Partial<MatesActivityInput>) =>
     projectIds: ["p-vera"],
     attention: {},
     overviews: new Map([["p-vera", VERA]]),
-    hqCurrent: true,
     threads: [],
     sockets: new Map(),
     standing: new Set(),
@@ -372,7 +371,6 @@ describe("matesActivityOf — a Mate that publishes its attention", () => {
       read({
         attention: attention(said({ working: 1 })),
         overviews: new Map([["p-vera", stored]]),
-        hqCurrent: false,
         standing: new Set(),
       }),
     ).toMatchObject({ kind: "working" });
@@ -627,7 +625,6 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
             }),
           ),
           overviews: onEngine(engineRow("t1", { state, at: Date.parse(DONE) })),
-          hqCurrent: true,
           threads: [],
           sockets: new Map(),
           standing: new Set(),
@@ -724,10 +721,9 @@ describe("matesActivityOf — a Mate from before the attention value", () => {
     expect(visited("2026-10-03T09:10:00.000Z")).toMatchObject({ kind: "idle", unread: false });
   });
 
-  const socket = (standing: boolean, hq: MatesActivityInput["overviews"], hqCurrent = true) =>
+  const socket = (standing: boolean, hq: MatesActivityInput["overviews"]) =>
     read({
       overviews: hq,
-      hqCurrent,
       threads: [WORKING],
       sockets: new Map([["p-vera", VERA_ENV]]),
       standing: new Set(standing ? [VERA_ENV] : []),
@@ -763,7 +759,6 @@ describe("matesActivityOf — what a Mate's row keeps between reads", () => {
       ["p-vera", VERA],
       ["p-ida", IDA],
     ]),
-    hqCurrent: true,
     threads,
     sockets: new Map(),
     // Vera's socket stands: the shell this page holds of her chat is current.
@@ -972,7 +967,6 @@ it("direct and HQ attention keep the same restart item even when conversation wo
       projectIds: ["vera"],
       attention: { vera: { attention: value, live: true, unseen: 0 } },
       overviews: new Map([["vera", VERA]]),
-      hqCurrent: true,
       threads,
       sockets: new Map(),
       // Its socket stands: a shell this page holds is current.
@@ -1093,7 +1087,6 @@ describe("matesActivityOf — the conversation the person is looking at", () => 
           projectIds: ["p-vera"],
           attention: step,
           overviews: new Map([["p-vera", VERA]]),
-          hqCurrent: true,
           threads: [],
           sockets: new Map(),
           standing: new Set(),

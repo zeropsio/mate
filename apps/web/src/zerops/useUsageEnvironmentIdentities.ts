@@ -52,7 +52,7 @@ export function useUsageEnvironmentIdentities(): {
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
   const currentOrgId = session.activeOrganization?.id ?? null;
   const sameOrg = currentOrgId !== null && navigation.orgId === currentOrgId;
-  const hqAnswered = navigation.live;
+  const hqAnswered = navigation.read === "read";
   const peopleStatus: UsagePeopleStatus =
     !signedIn || session.activeOrganization === null
       ? "idle"

@@ -20,7 +20,6 @@ import type {
   ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
-import { EllipsisIcon } from "lucide-react";
 import { MATE_SHAPE_OF_TINT, type MateMarkState, type MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 import {
@@ -56,6 +55,11 @@ import {
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 import { harnessProjectPage } from "./projectPageFixtures";
+import { ZeropsProjectMenu } from "~/components/zerops/ZeropsProjectMenu";
+import { placeVaults, type PlaceVault } from "~/components/zerops/vault/placeVault.logic";
+import { usePlaceVaultDrawer } from "~/components/zerops/vault/StopVault";
+import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
+import { VAULT_FIXTURE, vaultFixtureImpact } from "~/components/zerops/vault/vaultFixture";
 import type { WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
 import { overviewOrder } from "~/components/zerops/projects/projectsView.logic";
 import { Button } from "~/components/ui/button";
@@ -605,7 +609,24 @@ const ALL_WAITS: ReadonlyArray<WaitingItem> = [
 /** `?page=tea` (or another project's id) draws that project's own page instead. */
 const PAGE = params.get("page");
 
+/** A place's vault, its values the vault fixture's whichever place opened it. */
+function harnessVault(place: PlaceVault) {
+  return (
+    <VaultPanelBody
+      actor="environment"
+      impactOf={(scope, write) => vaultFixtureImpact(VAULT_FIXTURE, scope, write)}
+      onRestart={() => Promise.resolve()}
+      onWrite={() => Promise.resolve({ ok: true })}
+      pending={new Map()}
+      restarting={new Set()}
+      view={VAULT_FIXTURE}
+      who={{ kind: "environment", name: place.name }}
+    />
+  );
+}
+
 function HarnessPage() {
+  const placeVault = usePlaceVaultDrawer("harness", harnessVault);
   return (
     <div className="flex h-dvh bg-background text-foreground">
       <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }}>
@@ -707,10 +728,16 @@ function HarnessPage() {
               ) : null
             }
             renderEnvironment={() => null}
-            renderGroupMenu={() => (
-              <Button aria-label="Project menu" size="icon-sm" variant="ghost">
-                <EllipsisIcon />
-              </Button>
+            renderGroupMenu={(entry) => (
+              // Its places' vaults, as the app's card menu offers them.
+              <ZeropsProjectMenu
+                actions={placeVaults(entry.flow, NOW).map((vault) => ({
+                  id: `vault:${vault.projectId}`,
+                  label: `${vault.name} vault`,
+                  onSelect: () => placeVault.open?.(vault),
+                }))}
+                label="Project menu"
+              />
             )}
             renderMate={(entry, options) => {
               const read = cardMateReading({
@@ -779,8 +806,10 @@ function HarnessPage() {
               onAdd: () => acted.push(`add-mate:${entry.group.groupId}`),
               why: null,
             })}
+            openPlaceVault={placeVault.open}
             ungrouped={[]}
           />
+          {placeVault.drawer}
         </div>
       </main>
     </div>

@@ -3,7 +3,6 @@ import {
   accountReadsAtom,
   mateLimitAtom,
   hqMateOverviewAtom,
-  hqMatePresenceAtom,
   mateAttentionAtom,
   shownAttentionProjectsAtom,
 } from "@t3tools/client-runtime/data";
@@ -121,7 +120,6 @@ export const mateActivityAtom = Atom.family((projectId: string) => {
     const account = get(accountReadsAtom);
     if (account?.orgId == null) return undefined;
     const overview = get(hqMateOverviewAtom(projectId));
-    const presence = get(hqMatePresenceAtom(projectId));
     const attention = get(mateAttentionAtom(projectId));
     const socket = get(environmentOfProjectAtom(projectId));
     const environmentId =
@@ -167,7 +165,6 @@ export const mateActivityAtom = Atom.family((projectId: string) => {
         projectIds: [projectId],
         attention: { [projectId]: attention },
         overviews: overview === null ? null : new Map([[projectId, overview]]),
-        hqCurrent: presence.live,
         threads,
         sockets: socket === null ? new Map() : new Map([[projectId, socket.id]]),
         standing: socket?.standing ? new Set([socket.id]) : new Set<EnvironmentId>(),

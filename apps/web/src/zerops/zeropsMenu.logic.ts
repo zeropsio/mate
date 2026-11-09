@@ -39,7 +39,7 @@ export function menuRows<Row extends CandidateRow>(input: {
  */
 export function menuSourcesSettled(input: {
   readonly projects: Pick<OrganizationProjects, "read" | "reconnecting" | "unavailableReason">;
-  readonly hq: Pick<HqNavigationRead, "read" | "refusal" | "capped" | "reconnecting" | "slow">;
+  readonly hq: Pick<HqNavigationRead, "read" | "refusal" | "capped" | "retrying" | "slow">;
   /** HQ answered for every Mate it places: each one's last words (`hqMatesAnswered`). */
   readonly matesAnswered: boolean;
   /** The menu waited its patience (`MENU_SOURCES_PATIENCE_MS`) for its sources' first answers. */
@@ -54,6 +54,6 @@ export function menuSourcesSettled(input: {
     (hq.read === "read" && (input.matesAnswered || waitedOut)) ||
     hq.refusal !== null ||
     hq.capped ||
-    (waitedOut && (hq.reconnecting || hq.slow));
+    (waitedOut && (hq.retrying || hq.slow));
   return listed && hqAnswered;
 }

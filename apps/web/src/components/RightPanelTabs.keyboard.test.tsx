@@ -15,7 +15,6 @@ import { RightPanelTabs } from "./RightPanelTabs";
 vi.mock("~/hooks/useTheme", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
 const ALL_AVAILABLE = {
-  diff: "available",
   files: "available",
   file: "available",
   terminal: "available",
@@ -111,9 +110,9 @@ describe("the right panel's new-tab shortcut", () => {
         platform === "MacIntel" ? { metaKey: true } : { ctrlKey: true },
       );
       expect(event.defaultPrevented).toBe(true);
-      expect(openMenu()?.textContent).toContain("Diff");
-      await press("d");
-      expect(onAdd).toHaveBeenCalledWith("diff");
+      expect(openMenu()?.textContent).toContain("Code");
+      await press("g");
+      expect(onAdd).toHaveBeenCalledWith("git");
     },
   );
 
@@ -187,7 +186,7 @@ it("the review wins over the panel launcher's capture shortcut, then the launche
     await act(() => reviewRoot.render(null));
     document.body.focus();
     await press("t", { metaKey: true });
-    expect(openMenu()?.textContent).toContain("Diff");
+    expect(openMenu()?.textContent).toContain("Code");
   } finally {
     await act(() => reviewRoot.unmount());
   }

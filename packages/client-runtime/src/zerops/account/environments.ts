@@ -650,7 +650,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         hqMatePresenceAtom(projectId),
         (read) => {
           if (adapter === null || closed) return;
-          entry.online = read.live && read.presence !== null ? read.presence.online : null;
+          entry.online = read === null ? null : read.online;
           for (const key of entry.keys) adapter.presence(key, entry.online);
         },
         { immediate: true },

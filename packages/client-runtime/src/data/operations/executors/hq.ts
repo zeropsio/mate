@@ -2,6 +2,7 @@ import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { canonicalHqNavigation, hqEnvironmentOffers } from "../../projections/hqNavigation.ts";
+import { hqAwayAnswer, hqLinkOf } from "../../projections/hqLink.ts";
 import { readsOfState, type AccountStore } from "../../store.ts";
 import { sameValue } from "../../projections/equal.ts";
 import {
@@ -38,7 +39,7 @@ import { observeCredentialId, observeRequestScope } from "../../families/hqObser
 import { commitOwn } from "../../adapters/hqSettingsReads.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
-import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
+import type { OperationExecutor, SubmissionFault, UncertainAcceptance } from "../coordinator.ts";
 import { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
 import { keptDeployToken, type HqWriteIntent } from "../hqWrites.ts";
 
@@ -377,10 +378,7 @@ export function makeHqExecutor(ports: {
         "environmentId" in intent
           ? hqEnvironmentOffers.derive(read, intent)
           : nav.structure?.apps.find((candidate) => candidate.id === intent.appId)?.can;
-      const offer = hqOffer(can, HQ_GIT_OPERATION_VERBS[intent.kind], {
-        current: nav.live,
-        unavailableSince: nav.downSince ?? null,
-      });
+      const offer = hqOffer(can, HQ_GIT_OPERATION_VERBS[intent.kind]);
       if (offer.kind !== "allowed")
         return yield* Effect.fail(
           gitFault(
@@ -774,6 +772,17 @@ export function makeHqExecutor(ports: {
         (ports.active !== undefined && ports.hqProjectIdOf?.(intent.orgId) === intent.hqProjectId)),
     submit: (requestId, intent: OperationIntent) =>
       Effect.gen(function* () {
+        // HQ away: answered at once, nothing sent, the person tries again (`hqLink`).
+        const away =
+          "orgId" in intent && ports.store !== undefined && ports.apiOf(intent.orgId) !== null
+            ? hqAwayAnswer(hqLinkOf(readsOfState(ports.store.state()), intent.orgId))
+            : null;
+        if (away !== null)
+          return yield* Effect.fail<SubmissionFault>({
+            outcome: "definitive-refusal",
+            message: away,
+            writeNotSent: true,
+          });
         if (isHqGitTargetIntent(intent)) return yield* gitWrite(requestId, intent);
         if (ports.active?.() === false)
           return yield* Effect.fail<StreamFault>({

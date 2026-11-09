@@ -126,25 +126,13 @@ export function possessive(name: string, thing: string): string {
   return `${name}${/s$/iu.test(name) ? "'" : "'s"} ${thing}`;
 }
 
-/** "<Project>'s page": the panels' way to the project, in the board's words. */
-export function projectPageWords(name: string): string {
-  return possessive(name, "page");
-}
-
 /**
- * The places a panel lists, with a line where a stage would stand when the project has none. The
- * Zerops panel lists production first, as the project's pages do, and says a missing stage is not
- * added; the Git panel lists them in the order the work travels and says what a missing stage means
- * for it: it goes to production through a release.
+ * The places a Mate's panels list in their project card, with a line where a stage would stand
+ * when the project has none: production first, as the project's pages do, the same in every panel.
  */
-export function panelPlaces(
-  places: ReadonlyArray<PlaceLine>,
-  panel: "zerops" | "git",
-): ReadonlyArray<PlaceLine> {
+export function panelPlaces(places: ReadonlyArray<PlaceLine>): ReadonlyArray<PlaceLine> {
   const stages = places.filter((line) => line.kind === "stage");
   const production = places.filter((line) => line.kind === "production");
-  // No production either: nothing goes anywhere yet, and production's own line says so.
-  const released = production.some((line) => line.words[0] !== ENVIRONMENT_NOT_ADDED);
   const shown: ReadonlyArray<PlaceLine> =
     stages.length > 0
       ? stages
@@ -155,16 +143,12 @@ export function panelPlaces(
             projectId: undefined,
             addresses: [],
             dot: "none",
-            words: [
-              panel === "git" && released
-                ? "None · changes go to production through a release"
-                : ENVIRONMENT_NOT_ADDED,
-            ],
+            words: [ENVIRONMENT_NOT_ADDED],
             trouble: false,
             nothingDeployed: true,
           },
         ];
-  return panel === "git" ? [...shown, ...production] : [...production, ...shown];
+  return [...production, ...shown];
 }
 
 /**

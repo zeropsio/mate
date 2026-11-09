@@ -252,16 +252,6 @@ describe("the environment tag", () => {
         section: "stage:stage",
       },
     },
-    {
-      title: "says what HQ last knew as last known while its link is paused",
-      prodChip: { label: "prod", state: "down", version: "v2.3.0", lastKnown: true },
-      expected: {
-        tone: "red",
-        word: "Down",
-        sentence: "Last known: Production is down",
-        section: "production",
-      },
-    },
   ])("$title", ({ prodChip, stageChip, line, landing, expected }) => {
     const status = projectSitesStatus({
       prodChip,

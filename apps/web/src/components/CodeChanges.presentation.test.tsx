@@ -3,8 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
-import DiffPanel from "./DiffPanel";
-import { useRightPanelStore } from "../rightPanelStore";
+import { CodeChanges } from "./CodeChanges";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -88,6 +87,7 @@ vi.mock("../diffPanelStore", async (importOriginal) => {
         diffRenderMode: "unified",
         setDiffRenderMode: () => {},
         byThreadKey: { "mate:thread": { kind: "branch", baseRef: null } },
+        changesAsked: {},
       }),
     selectThreadDiffPanelSelection: () => input.selection,
   };
@@ -235,7 +235,7 @@ it.each([
 ])("DiffPanel distinguishes $name from matching no refs", ({ expected, empty, ...read }) => {
   Object.assign(input, read);
   const html = renderToStaticMarkup(
-    <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
+    <CodeChanges composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
   );
   expect(html).toContain(expected);
   expect(html.includes("No matching refs.")).toBe(empty);
@@ -243,7 +243,11 @@ it.each([
   if (read.otherKnown) expect(html).toContain("origin/main");
 });
 
-vi.mock("./diffs/AnnotatableCodeView", () => ({ AnnotatableCodeView: () => null }));
+// The code view draws the page's header above its files: here the header alone.
+vi.mock("./diffs/AnnotatableCodeView", () => ({
+  AnnotatableCodeView: (props: { readonly renderCodeViewHeader?: () => ReactNode }) =>
+    props.renderCodeViewHeader?.() ?? null,
+}));
 
 it.each(["toolbar", "failed read"])(
   "%s offers Refresh diff to retry the preview and both ref lists",
@@ -261,7 +265,7 @@ it.each(["toolbar", "failed read"])(
     try {
       await act(() =>
         root.render(
-          <DiffPanel
+          <CodeChanges
             composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never}
           />,
         ),
@@ -310,7 +314,9 @@ async function withDiff(look: (container: HTMLElement) => Promise<void> | void) 
   try {
     await act(() =>
       root.render(
-        <DiffPanel composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never} />,
+        <CodeChanges
+          composerDraftTarget={{ environmentId: "mate", threadId: "thread" } as never}
+        />,
       ),
     );
     await look(container);
@@ -338,8 +344,10 @@ it("Diff offers each repository's files not committed and commits not on main, c
   });
   try {
     await withDiff(async (container) => {
-      const menu = container.querySelector<HTMLButtonElement>('button[aria-label^="Diff shows"]');
-      expect(menu?.getAttribute("aria-label")).toBe("Diff shows: apidev · Not committed");
+      const menu = container.querySelector<HTMLButtonElement>(
+        'button[aria-label^="What changed shows"]',
+      );
+      expect(menu?.getAttribute("aria-label")).toBe("What changed shows: apidev · Not committed");
       await act(async () => {
         menu!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
         menu!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
@@ -388,33 +396,14 @@ it("on main, Diff shows the commits not pushed it counts, from git's upstream, o
   try {
     await withDiff((container) => {
       expect(
-        container.querySelector('button[aria-label^="Diff shows"]')?.getAttribute("aria-label"),
-      ).toBe("Diff shows: Not pushed");
+        container
+          .querySelector('button[aria-label^="What changed shows"]')
+          ?.getAttribute("aria-label"),
+      ).toBe("What changed shows: Not pushed");
       expect(input.previews.at(-1)).toBe("/var/www/apidev");
       expect(input.previewBases.at(-1)).toBe("@{upstream}");
     });
   } finally {
-    restore();
-  }
-});
-
-it("with nothing outside main, Diff says so, offers no views of nothing, and opens the Git page", async () => {
-  const restore = withReads([input.checkout("apidev", 0, 0)], { kind: "unstaged" });
-  const open = vi.spyOn(useRightPanelStore.getState(), "open");
-  try {
-    await withDiff(async (container) => {
-      expect(container.textContent).toContain("Nothing outside main.");
-      expect(container.querySelector('[aria-label="Hide whitespace changes"]')).toBeNull();
-      expect(input.previews).toEqual([]);
-      const button = Array.from(container.querySelectorAll("button")).find(
-        (candidate) => candidate.textContent === "Open Git",
-      );
-      expect(button).toBeDefined();
-      await act(() => button!.click());
-      expect(open).toHaveBeenCalledWith({ environmentId: "mate", threadId: "thread" }, "git");
-    });
-  } finally {
-    open.mockRestore();
     restore();
   }
 });
@@ -429,19 +418,6 @@ it.each([
       expect(container.textContent).toContain(says);
       expect(container.textContent).not.toContain("Nothing outside main.");
       expect(input.previews).toEqual([]);
-    });
-  } finally {
-    restore();
-  }
-});
-
-it("Diff of changes it shows offers the Git page beside them", async () => {
-  const restore = withReads([input.checkout("apidev", 1, 0)], { kind: "unstaged" });
-  try {
-    await withDiff((container) => {
-      expect(
-        Array.from(container.querySelectorAll("button"), (button) => button.textContent),
-      ).toContain("Open Git");
     });
   } finally {
     restore();

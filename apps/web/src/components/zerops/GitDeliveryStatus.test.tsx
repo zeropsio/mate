@@ -180,22 +180,6 @@ describe("Git hand-over evidence", () => {
     expect(html).toContain(`https://github.com/acme/api/commit/${SHA}`);
     expect(html).not.toContain(`https://gitlab.com/acme/web/-/commit/${SHA}`);
   });
-  it("preserves last-known standing and repository omission without claiming all were pushed", () => {
-    const env = environment([job("pushed")]);
-    const omitted = {
-      ...env,
-      release: {
-        ...env.release!,
-        leftOut: [{ service: "web", sha: SHA, job: null, reason: "No remote connected" }],
-      },
-    };
-    const delivery = gitDeliveryOf(omitted, { releases: [release()], repos, live: false });
-    const html = renderToStaticMarkup(
-      <GitDeliveryStatus environment={omitted} repos={repos} delivery={delivery} />,
-    );
-    expect(html).toContain("Last known · Pushed 1 of 2: web: No remote connected");
-    expect(html).toContain("No remote connected");
-  });
 });
 
 it.each(["pushed", "refused", "unresolved", "queued", "submitting"] as const)(

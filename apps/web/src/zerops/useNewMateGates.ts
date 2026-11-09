@@ -12,7 +12,7 @@ import {
   newMateDoorMates,
   newMateGate,
 } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
-import { hqDown, hqNavigationAtom } from "../state/zerops";
+import { hqNavigationAtom } from "../state/zerops";
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { InventoryContext } from "./inventoryContext";
 import { useAppsChanges } from "./projectFlows";
@@ -45,11 +45,10 @@ export function useNewMateGate(): (entry: NewMateGateEntry) => string | null {
     () => new Map((projects ?? []).map((project) => [project.id, projectNameInApp(project)])),
     [projects],
   );
-  const down = hqDown(navigation);
   return useCallback(
     ({ group, environments }) => {
       const detail = details[group.groupId];
-      if (down || detail === undefined) return null;
+      if (detail === undefined) return null;
       return newMateGate({
         groupName: group.name,
         recipe: heldRecipeState(detail, "mate"),
@@ -58,6 +57,6 @@ export function useNewMateGate(): (entry: NewMateGateEntry) => string | null {
         mateName: (projectId) => mateNames.get(projectId),
       });
     },
-    [changes, details, down, mateNames],
+    [changes, details, mateNames],
   );
 }

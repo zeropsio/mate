@@ -7,7 +7,8 @@
  * (`mirrorAnswers`), which the record outranks once it says so.
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { HQ_REMOTE_WRITE_VERB } from "@t3tools/shared/hqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { useMemo } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
@@ -18,7 +19,6 @@ import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
 import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
-import { useHqOffers } from "~/zerops/useHqOffers";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import type { AskDensity } from "../../ask/AskCard";
@@ -83,8 +83,7 @@ function MirrorAsk({
   const repos = detail.live ? detail.repos : undefined;
   const remote = mirrorRemote(ask.repo, repos);
   const target = useGitTargetOperations(appId ?? "");
-  const hqOffers = useHqOffers();
-  const offer = hqOffers.state(target.can, HQ_REMOTE_WRITE_VERB);
+  const offer = hqOffer(target.can, HQ_REMOTE_WRITE_VERB);
   const nameOf = usePersonNames(location?.orgId ?? undefined);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const { pending, refusal } = useMirrorAnswer(requestId);
@@ -143,7 +142,7 @@ function MirrorAsk({
         pending,
         refusal,
         remote,
-        refused: offer.kind === "refused" ? (hqOffers.words(offer) ?? null) : null,
+        refused: offer.kind === "refused" ? (hqOfferWords(offer) ?? null) : null,
         mateName,
         by: ask.answeredBy === null ? null : (nameOf(ask.answeredBy) ?? null),
         at:

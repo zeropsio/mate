@@ -10,7 +10,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { RightPanelTabs } from "./RightPanelTabs";
 
 const ALL_AVAILABLE = {
-  diff: "available",
   files: "available",
   file: "available",
   terminal: "available",

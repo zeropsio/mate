@@ -102,7 +102,7 @@ export interface ProjectSitesInput {
   readonly stages: ((nowMs: number) => ChipMenuModel) | undefined;
   /** Every Mate of the project, in the menu's kid order (yours first, then colleagues', each by creation). */
   readonly mates: ReadonlyArray<SitesMate>;
-  /** Production's and the stages' chips as drawn (`drawnChip`, already `asLastKnown` while HQ is paused), for the environment tag. */
+  /** Production's and the stages' chips as drawn (`drawnChip`), for the environment tag. */
   readonly prodChip: ProductionChip | undefined;
   readonly stageChip: ProductionChip | undefined;
   /** The heading line's input (`HeadingLineInput`): what comes up, lands, deploys. */

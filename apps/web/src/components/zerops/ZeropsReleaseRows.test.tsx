@@ -90,14 +90,14 @@ const rows = (releases: ReadonlyArray<FlowReleaseRow>, pending: ReadonlySet<stri
 describe("ZeropsReleaseRows", () => {
   it.each([
     ["the release production runs reads Live and offers no way back", LIVE, "Live", false],
-    ["an earlier approved release offers the way back to it", EARLIER, "Approved", true],
+    ["an earlier approved release offers the way back to it", EARLIER, EARLIER.tag, true],
     ["a release whose deploy failed says so", DEPLOY_FAILED, "Deploy failed", false],
     ["a refused release says why", REFUSED, "Refused", false],
   ] as const)("%s", (_case, release, word, rollBack) => {
     const html = rows([release]);
     expect(html).toContain(`>${release.tag}<`);
     expect(html).toContain(word);
-    expect(html.includes("Roll back to this")).toBe(rollBack);
+    expect(html.includes("Roll back to v")).toBe(rollBack);
   });
 
   it("writes a refused release's reason where its commits would be", () => {
@@ -111,7 +111,7 @@ describe("ZeropsReleaseRows", () => {
     );
     expect(html).toContain("Rolling back…");
     expect(html).toMatch(/<button[^>]*disabled[^>]*>(?:(?!<\/button>)[\s\S])*Rolling back…/u);
-    expect(html).toContain("Roll back to this");
+    expect(html).toContain("Roll back to v");
   });
 
   it("is one row per release, and nothing for none", () => {
@@ -126,8 +126,8 @@ describe("ZeropsReleaseRows without the commits read", () => {
     expect(html).not.toContain("aria-expanded");
     expect(html).not.toContain("release-carried");
     expect(html).toContain('data-zerops-surface="environment-name">v1.1.0</span>');
-    expect(html).toContain('data-zerops-surface="environment-summary">app v1.1.0-sha</span>');
-    expect(html).toMatch(/Roll back to this<\/button><\/span><\/li>/u);
+    expect(html).toContain('data-zerops-surface="release-description">app v1.1.0-sha</span>');
+    expect(html).toMatch(/Roll back to v[\d.]+<\/button>/u);
   });
 });
 
@@ -381,7 +381,7 @@ it("Production release summaries use recorded change titles and counts before ex
     />,
   );
   expect(html).toContain("Fix checkout");
-  expect(html).toContain("1 change · 6 commits · 5 commits outside Mate");
+  expect(html).toContain(">1 change<");
   expect(html).not.toContain('data-zerops-surface="release-carried"');
   expect(onExpandedChange).not.toHaveBeenCalled();
 });

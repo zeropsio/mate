@@ -8,6 +8,20 @@ import { expect, it, vi } from "vite-plus/test";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { ZeropsGitTab } from "./ZeropsGitTab";
 
+// The page's "What changed" reads git through hooks of its own: here it is its top and commits.
+vi.mock("../CodeChanges", () => ({
+  CodeChanges: (props: {
+    readonly top?: import("react").ReactNode;
+    readonly commitsFor?: (repository: string) => import("react").ReactNode;
+    readonly className?: string;
+  }) => (
+    <div className={props.className}>
+      {props.top}
+      {props.commitsFor?.("")}
+    </div>
+  ),
+}));
+
 const read = vi.hoisted(() => ({
   refresh: vi.fn(),
   failure:
@@ -45,6 +59,7 @@ it("a repository git could not read says so and reads it again on request, never
         <RegistryContext.Provider value={appAtomRegistry}>
           <ZeropsGitTab
             threadRef={scopeThreadRef(environmentId, ThreadId.make("thread-read"))}
+            composerDraftTarget={scopeThreadRef(environmentId, ThreadId.make("thread-read"))}
             appId="app"
             declarations={[]}
             changes={{ pullRequests: [], merged: [] }}

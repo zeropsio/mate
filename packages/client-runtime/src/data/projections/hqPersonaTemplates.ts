@@ -30,8 +30,8 @@ const unreadableWords = (count: number) =>
   hqDisagreesOn(count === 1 ? "a persona template" : `${count} persona templates`);
 
 /**
- * Why the organization's templates are not current now, from its HQ link and their own scope: a
- * refusal at once, a reconnect only past its grace; `null` while they are.
+ * Why the organization's templates have not come yet, from its HQ link and their own scope: a
+ * refusal at once, a reconnect only past its grace; `null` while they are on their way.
  */
 const outageOf = (read: ProjectionReads, orgId: string): string | null => {
   const scope = personaTemplatesScope(orgId);
@@ -50,7 +50,6 @@ export const orgPersonaTemplates: Projection<string, OrgPersonaTemplates> = {
   equals: sameValue,
   derive: (read, orgId) => {
     const record = read.fact("hqPersonaTemplates", orgId);
-    const outage = outageOf(read, orgId);
     if (record.kind === "known") {
       const { templates, unreadable } = record.value;
       if (unreadable === "record")
@@ -58,16 +57,27 @@ export const orgPersonaTemplates: Projection<string, OrgPersonaTemplates> = {
           state: "failed",
           failure: hqDisagreesOn("the persona templates"),
         };
+      // Once read, HQ away keeps what it said (`hqLink`); only HQ's refusal makes it stale.
+      const refused = [
+        read.stream(linkKeys.hq(orgId)),
+        read.stream(personaTemplatesScope(orgId)),
+      ].find((stream) => stream.phase === "refused");
       return {
         state: "ready",
         templates,
-        failure: outage ?? (unreadable.length === 0 ? null : unreadableWords(unreadable.length)),
+        failure:
+          refused !== undefined
+            ? (refused.fault?.message ?? "HQ refused the templates.")
+            : unreadable.length === 0
+              ? null
+              : unreadableWords(unreadable.length),
       };
     }
     if (record.kind === "withheld")
       return { state: "failed", failure: "HQ did not let this account read the templates." };
     // A committed navigation without them stays HQ's answer through a reconnect.
     if (read.coverage(personaTemplatesScope(orgId)) === "complete") return { state: "unavailable" };
+    const outage = outageOf(read, orgId);
     return outage === null ? { state: "loading" } : { state: "failed", failure: outage };
   },
 };

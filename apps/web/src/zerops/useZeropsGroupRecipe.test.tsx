@@ -42,13 +42,11 @@ beforeEach(async () => {
   held.asked = [];
   const details = await import("./useHqAppDetail");
   const account = await import("./ZeropsAccountData");
-  const zerops = await import("../state/zerops");
   vi.spyOn(details, "useHqAppDetail").mockImplementation((appId) => {
     held.asked.push(appId);
     return held.detail;
   });
   vi.spyOn(account, "useAccountDataOptional").mockReturnValue(null);
-  vi.spyOn(zerops, "hqDown").mockReturnValue(false);
 });
 afterEach(async () => {
   await act(async () => tree?.unmount());

@@ -65,7 +65,7 @@ import { useRunNewProject } from "~/zerops/useRunNewProject";
 import { useCreditForecastRead } from "~/zerops/useCreditForecast";
 import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
-import { useHqOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { useOrgOffers } from "~/zerops/useHqOffers";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import {
   AccountStoreContext,
@@ -140,11 +140,7 @@ function NewProjectDialog() {
   const [creating, setCreating] = useState(false);
 
   // HQ offers application creation to the people Zerops allows to create projects.
-  const { at } = useHqOffers();
-  const addProject = resolveAddProjectVerb({
-    offer: useOrgOffers()("create_app"),
-    at,
-  });
+  const addProject = resolveAddProjectVerb({ offer: useOrgOffers()("create_app") });
   const canCreate = addProject.offered;
   // Where it may live is read while the dialog can create: once on opening, and again while open.
   const account = useAccountDataOptional();

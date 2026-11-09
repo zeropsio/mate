@@ -1,10 +1,11 @@
 /* A project's own page: its header, then a main column for what changes day to day and a side
-   column for what is set up once. Side by side once both have room, the side column under the
-   main one below that. A heading hugs its rows; groups stand three times further apart. */
+   column for what is set up once, the place page's frame. Side by side once both have room, the
+   side column under the main one below that. A label hugs its card; sections stand three times
+   further apart. */
 .pp {
   display: grid;
   min-width: 0;
-  gap: 20px;
+  gap: 32px;
 }
 
 .pp-head {
@@ -35,29 +36,56 @@
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 24px 20px;
+  gap: 30px 40px;
 }
 
 @container flow (min-width: 980px) {
   .pp-cols {
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: minmax(0, 1fr) 392px;
   }
 }
 
+/* The label's own line box holds 7 px over and under its words: these gaps read as 36 and 32. */
 .pp-main,
-.pp-side {
+.pp-side,
+.pp-setup {
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
-  gap: 24px;
+  gap: 30px;
 }
 
-/* One group of the main column: its label hugging its card. */
+.pp-side,
+.pp-setup {
+  gap: 26px;
+}
+
+/* One section: its label hugging its card. */
 .pp-group {
   display: grid;
   min-width: 0;
-  gap: 6px;
+  gap: 4px;
+}
+
+/* The project's state beside its title, where it is not calm: "Not live yet" on a hollow dot. */
+.pp-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.pp-state::before {
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+  border-radius: 999px;
+  content: "";
 }
 
 /* A card of the page: the overview card's ground and edge, so a project reads as one thing on
@@ -69,7 +97,7 @@
   --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
   display: grid;
   min-width: 0;
-  border-radius: 16px;
+  border-radius: 14px;
   background: var(--ov-ground);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
@@ -97,6 +125,10 @@
 .pp-place {
   gap: 10px;
   padding: 12px 16px;
+}
+
+.pp-place + .pp-place {
+  margin-top: 4px;
 }
 
 .pp-brought {
@@ -133,20 +165,340 @@
   padding: 0 8px 0 38px;
 }
 
-/* The side column's card: one row a setup, each split from the last by a hairline. */
-.pp-setup {
-  padding: 4px 16px;
+/* A side card: what one setup is, its label above it. */
+.pp-setup-card {
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
 }
 
-.pp-setup-row {
+/* A side card of rows (the code repositories): the rows' own padding stands in for the card's. */
+.pp-setup-card[data-rows] {
+  padding: 4px 8px;
+}
+
+/* A setup nobody made yet: a dashed slot saying what it is for, beside its one verb. */
+.pp-setup-card[data-empty] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: none;
+  box-shadow: none;
+  outline: 1px dashed color-mix(in oklab, var(--foreground) 16%, transparent);
+  outline-offset: -1px;
+}
+
+.pp-setup-card[data-empty] > p {
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 1.45;
+}
+
+/* Who has access, as faces: each over the last, ringed in the card's ground. */
+.pp-faces {
+  display: flex;
+  flex: none;
+  padding-inline-start: 6px;
+}
+
+.pp-card .pp-faces > * {
+  margin-inline-start: -6px;
+  box-shadow: 0 0 0 2px var(--ov-ground);
+}
+
+.pp-faces-more {
+  position: relative;
+  display: inline-flex;
+  min-width: 24px;
+  height: 24px;
+  padding-inline: 4px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 12%, var(--ov-ground));
+  color: var(--foreground);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Going live, on a project not live yet: what it gives, its one verb; a stage, optional, under it. */
+.pp-golive {
+  overflow: hidden;
+}
+
+.pp-golive-hero {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 18px;
+  padding: 20px;
+}
+
+.pp-golive-icon {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+
+.pp-golive-text {
   display: grid;
   min-width: 0;
+  flex: 1;
   gap: 4px;
-  padding: 12px 0;
 }
 
-.pp-setup-row + .pp-setup-row {
+.pp-golive-title {
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.pp-golive-why {
+  color: var(--muted-foreground);
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+.pp-golive-stage {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
   border-top: 1px solid var(--ov-rule);
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+}
+
+.pp-golive-stage strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.pp-golive > .pp-golive-run {
+  padding: 0 20px 16px;
+}
+
+/* The run's slot holds what is under way (a first deploy); nothing under way draws no strip. */
+.pp-golive > .pp-golive-run:empty {
+  display: none;
+}
+
+/* A group of changes inside the Changes card, where they went said once over its rows. */
+.pp-change-group + .pp-change-group {
+  margin-top: 6px;
+}
+
+.pp-change-group > [data-zerops-section-label] {
+  padding-inline: 8px;
+}
+
+.pp-list > .pp-change-group > .ov-changes,
+.pp-list > .ov-changes + .ov-changes {
+  margin: 0;
+}
+
+/* The Changes card's rows, a hairline between each, as History's opened release has them. */
+[data-zerops-surface="project-changes"] > .pp-list:not([data-history]) {
+  padding: 6px 8px;
+}
+
+[data-zerops-surface="project-changes"] .ov-change-row + .ov-change-row {
+  border-top: 1px solid var(--ov-rule);
+}
+
+[data-zerops-surface="project-changes"] .ov-change {
+  padding: 10px;
+}
+
+/* Setup files: no change a release ships, said quietly. */
+.pp-setup-file {
+  width: 16px;
+  height: 16px;
+  margin: 2px;
+  color: var(--muted-foreground);
+}
+
+/* A project page's History: a row per release — its version, Live on the one production runs,
+   when — opening, on a lifted ground, to the changes it put live, set in under its version. */
+.pp-hist {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pp-hist-release {
+  display: grid;
+  min-width: 0;
+  border-radius: 10px;
+}
+
+.pp-hist-release[data-open] {
+  padding-bottom: 6px;
+  background: var(--ov-lift);
+}
+
+.pp-hist-head {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 18px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  text-align: left;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+button.pp-hist-head:hover {
+  background: var(--ov-hover);
+}
+
+.pp-hist-release[data-open] > button.pp-hist-head:hover {
+  background: none;
+}
+
+.pp-hist-head:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.pp-hist-chevron {
+  display: flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+}
+
+.pp-hist-chevron > svg {
+  width: 14px;
+  height: 14px;
+  transition: rotate 150ms var(--ease-out-strong);
+}
+
+.pp-hist-chevron > svg[data-open] {
+  rotate: 90deg;
+}
+
+.pp-hist-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-hist-tag {
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.pp-hist-gist,
+.pp-hist-facts {
+  overflow: hidden;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-hist-gist {
+  color: color-mix(in oklab, var(--foreground) 85%, var(--muted-foreground));
+}
+
+.pp-hist-facts,
+.pp-hist-quiet {
+  color: var(--muted-foreground);
+}
+
+.pp-hist-facts {
+  font-size: var(--text-line);
+}
+
+.pp-hist-time {
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* An opened release's changes: a hairline over each, set in under its version. */
+.pp-hist-body {
+  display: grid;
+  min-width: 0;
+  padding: 0 14px 0 44px;
+}
+
+.pp-hist-body > .ov-changes {
+  margin: 0;
+}
+
+.pp-hist-body .ov-change-row,
+.pp-hist-failure,
+.pp-hist-outside {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-hist-body .ov-change {
+  align-items: center;
+  padding: 8px 0;
+  border-radius: 0;
+  column-gap: 12px;
+}
+
+.pp-hist-body .ov-change:hover {
+  background: none;
+}
+
+.pp-hist-body .ov-change:hover .ov-change-title {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pp-hist-body .ov-change-time {
+  padding-top: 0;
+  font-size: var(--text-line);
+}
+
+.pp-hist-failure,
+.pp-hist-outside {
+  padding: 9px 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+}
+
+.pp-hist-failure {
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-hist-more {
+  display: flex;
+  padding-top: 2px;
+}
+
+.pp-hist-note {
+  padding: 2px 8px 6px;
 }
 
 .pp-addresses {

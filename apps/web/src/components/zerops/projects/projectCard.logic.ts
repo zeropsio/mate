@@ -271,7 +271,7 @@ function chipLine(
     case "ok":
     case "waiting":
       return {
-        dot: chip.lastKnown === true ? "unknown" : "running",
+        dot: "running",
         words: [word, runs, facts.since].filter((each) => each !== undefined),
         trouble: false,
       };

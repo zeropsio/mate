@@ -28,7 +28,6 @@ function shortcutEvent(
 }
 
 const ALL_AVAILABLE = {
-  diff: "available",
   files: "available",
   file: "available",
   terminal: "available",
@@ -97,7 +96,6 @@ describe("RightPanelTabs launcher", () => {
 
   it("characterizes the established hint for every unavailable launcher kind", () => {
     const html = renderLauncher({
-      diff: "unavailable",
       files: "unavailable",
       file: "unavailable",
       terminal: "unavailable",
@@ -118,13 +116,13 @@ describe("RightPanelTabs launcher", () => {
     expect(html).toContain("Available for Git repositories.");
     expect(html).toContain("Available from a chat.");
     expect(html).toContain("Available from a conversation.");
-    expect(html.match(/Available in a Zerops project\./gu)).toHaveLength(6);
+    expect(html.match(/Available in a Zerops project\./gu)).toHaveLength(5);
   });
 });
 
 describe("surface shortcuts", () => {
   it("matches real available surface shortcuts case-insensitively", () => {
-    const actions = launcherActions({ ...ALL_AVAILABLE, diff: "unavailable" });
+    const actions = launcherActions({ ...ALL_AVAILABLE, git: "unavailable" });
     const terminal = actions.find((action) => action.kind === "terminal");
     expect(surfaceShortcutActionForKey(actions, shortcutEvent("t"))).toBe(terminal);
     expect(surfaceShortcutActionForKey(actions, shortcutEvent("T"))).toBe(terminal);

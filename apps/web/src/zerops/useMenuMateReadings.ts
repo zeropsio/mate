@@ -68,7 +68,7 @@ export function useHqMainChats(): (projectId: string) => ScopedThreadRef | undef
 }
 
 /**
- * Whether HQ relays now that a Mate's link to it is open: one answer per Mate, so a row redraws
+ * Whether HQ last relayed that a Mate's link to it is open (HQ away says nothing of it): one answer per Mate, so a row redraws
  * when its own link opens or closes, not on every word HQ relays of any Mate.
  */
 export function useMateLinkedInHq(projectId: string): boolean {
@@ -77,8 +77,7 @@ export function useMateLinkedInHq(projectId: string): boolean {
 
 const mateLinkedInHqAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    const read = get(hqMatePresenceAtom(projectId));
-    return read.live && read.presence?.online === true;
+    return get(hqMatePresenceAtom(projectId))?.online === true;
   }),
 );
 
@@ -93,8 +92,7 @@ export function useMateOverviewInHq(projectId: string): MatePresence["overview"]
 
 const mateOverviewInHqAtom = Atom.family((projectId: string) =>
   Atom.make((get) => {
-    const read = get(hqMatePresenceAtom(projectId));
-    return read.live ? read.presence?.overview : undefined;
+    return get(hqMatePresenceAtom(projectId))?.overview;
   }),
 );
 
@@ -116,8 +114,8 @@ const matesLinkedInHqAtom = Atom.make((get) => {
     { readonly presence: import("@t3tools/shared/hqMates").MatePresence }
   >();
   for (const id of get(shownAttentionProjectsAtom)) {
-    const fact = get(hqMatePresenceAtom(id));
-    if (fact.live && fact.presence !== null) mates.set(id, { presence: fact.presence });
+    const presence = get(hqMatePresenceAtom(id));
+    if (presence !== null) mates.set(id, { presence });
   }
   return mates;
 }).pipe(
@@ -273,11 +271,11 @@ export function useMateOfflineSince(
   projectId: string | null | undefined,
   key?: string,
 ): string | undefined {
-  const read = useAtomValue(hqMatePresenceAtom(projectId ?? ""));
+  const presence = useAtomValue(hqMatePresenceAtom(projectId ?? ""));
   const lostAt = useAtomValue(mateSocketLostAtAtom(key ?? projectId ?? ""));
   return lostAt === undefined
-    ? read.live && read.presence?.online === false
-      ? read.presence.since
+    ? presence?.online === false
+      ? presence.since
       : undefined
     : new Date(lostAt).toISOString();
 }

@@ -39,6 +39,13 @@ export {
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
 export {
+  HQ_AWAY_BUDGET_MS,
+  hqAwayAnswer,
+  hqAwaySaidAt,
+  hqLinkOf,
+  type HqLink,
+} from "./projections/hqLink.ts";
+export {
   hqMateOverview,
   hqMateRefusal,
   hqMateAnswered,

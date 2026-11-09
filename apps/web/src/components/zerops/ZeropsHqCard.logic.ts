@@ -249,12 +249,6 @@ function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardVi
   switch (standing.kind) {
     case "unknown":
       return null;
-    case "unavailable":
-      return {
-        kind: "down",
-        tone: "failed",
-        word: `Unavailable since ${input.time(standing.since)}`,
-      };
     case "refused":
       return { kind: "down", tone: "failed", word: "Refused your sign-in" };
     case "healthy":
@@ -294,10 +288,10 @@ export function hqCardView(input: HqCardInput): HqCardView {
 export function hqNavigationTrouble(navigation: {
   readonly refusal: string | null;
   readonly capped: boolean;
-  readonly reconnecting: boolean;
+  readonly retrying: boolean;
 }): string | null {
   if (navigation.refusal !== null) return `HQ read refused: ${navigation.refusal}`;
-  if (navigation.capped || navigation.reconnecting) {
+  if (navigation.capped || navigation.retrying) {
     return "HQ is unavailable. Restore its connection or retry.";
   }
   return null;

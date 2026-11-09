@@ -2,10 +2,8 @@ import type { ContextMenuItem, ResolvedKeybindingsConfig } from "@t3tools/contra
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
-  Cloud,
   Database,
   Drama as PersonaIcon,
-  FileDiff,
   Files,
   GitBranch,
   GitPullRequestArrow,
@@ -34,6 +32,7 @@ import {
 
 import { isElectron } from "~/env";
 import { ExpressMark } from "./express/ExpressMark";
+import { ZeropsMark } from "./ZeropsMark";
 import { resolveShortcutCommand, type ShortcutMatchContext } from "~/keybindings";
 import {
   launcherActions,
@@ -84,6 +83,8 @@ interface RightPanelTabsProps {
   onCopyFilePath: (relativePath: string) => void;
   availability: Record<RightPanelKind, RightPanelAvailability>;
   onAdd: (kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
+  /** A launcher letter's alias, a page's second part (Code's D: what changed); else `onAdd`. */
+  onAddAt?: (kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
   onAddTerminal: () => void;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
   liveAgentCount: number;
@@ -97,13 +98,12 @@ interface RightPanelTabsProps {
 const SURFACE_DISABLED_REASONS = {
   terminal: "The terminal is available from a project's chat.",
   files: "Files are only available when a project is open.",
-  diff: "Diff is only available for server threads in Git repositories.",
   agents: "Agents are only available from a thread.",
   zerops: "The Zerops project map is only available from a thread.",
   browser: "The Browser view is only available from a Zerops project thread.",
   mac: "The Mac view is only available from a Zerops project thread.",
   data: "Data is only available from a Zerops project thread.",
-  git: "Git is only available from a Zerops project thread.",
+  git: "Code is only available for Git repositories.",
   crew: "The crew is only available from a Zerops project thread with crew mode on.",
   mcp: "Tools are only available from a conversation.",
   persona: "Update this Mate to give it a persona.",
@@ -112,17 +112,23 @@ const SURFACE_DISABLED_REASONS = {
   overview: "The overview opens from a Chief's conversation.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
-/** Overlays that must win over the launcher's letter shortcuts. */
+/**
+ * Overlays that must win over the launcher's letter shortcuts, while they are open: a popup kept
+ * mounted closed (the conversation header's actions menu is) carries `data-closed` and blocks
+ * nothing, or no letter would ever open a page beside a conversation.
+ */
 const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
-  '[data-slot="dialog-popup"]',
-  '[data-slot="alert-dialog-popup"]',
-  '[data-slot="command-dialog-popup"]',
-  '[data-slot="menu-popup"]',
-  '[data-slot="select-popup"]',
-  '[data-slot="popover-popup"]',
-  '[data-slot="combobox-popup"]',
-  '[data-slot="autocomplete-popup"]',
-].join(",");
+  "dialog-popup",
+  "alert-dialog-popup",
+  "command-dialog-popup",
+  "menu-popup",
+  "select-popup",
+  "popover-popup",
+  "combobox-popup",
+  "autocomplete-popup",
+]
+  .map((slot) => `[data-slot="${slot}"]:not([data-closed])`)
+  .join(",");
 
 type TabContextMenuAction = "copy-path" | "close" | "close-others" | "close-to-right" | "close-all";
 
@@ -132,18 +138,27 @@ type SurfaceShortcutEvent = Pick<
 >;
 
 export function surfaceShortcutActionForKey<
-  const Action extends { available: boolean; shortcut: string | null },
+  const Action extends { available: boolean; shortcut: string | null; alias?: string },
 >(actions: readonly Action[], event: SurfaceShortcutEvent): Action | null {
   if (event.defaultPrevented || event.isComposing) return null;
   if (event.metaKey || event.ctrlKey || event.altKey) return null;
+  const key = event.key.toLowerCase();
   return (
     actions.find(
       (action) =>
         action.available &&
-        action.shortcut !== null &&
-        action.shortcut.toLowerCase() === event.key.toLowerCase(),
+        (action.shortcut?.toLowerCase() === key || action.alias?.toLowerCase() === key),
     ) ?? null
   );
+}
+
+/** Opens what a launcher letter names: the page, or for its alias the page at its second part. */
+function launchFromKey(
+  action: { readonly alias?: string; readonly onClick: () => void; readonly onAlias: () => void },
+  event: Pick<KeyboardEvent, "key">,
+) {
+  if (action.alias?.toLowerCase() === event.key.toLowerCase()) action.onAlias();
+  else action.onClick();
 }
 
 /**
@@ -207,6 +222,7 @@ function SurfaceMenuItem(props: {
 type SurfaceAction = ReturnType<typeof launcherActions>[number] & {
   readonly icon: SurfaceLauncherIcon;
   readonly onClick: () => void;
+  readonly onAlias: () => void;
   readonly badgeCount: number;
 };
 
@@ -228,12 +244,10 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): SurfaceLaun
       return TerminalSquare;
     case "files":
       return Files;
-    case "diff":
-      return FileDiff;
     case "agents":
       return Bot;
     case "zerops":
-      return Cloud;
+      return ZeropsMark;
     case "browser":
       return Globe;
     case "mac":
@@ -290,7 +304,7 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
       if (target instanceof Element && surfaceShortcutTargetsTypingContext(target)) return;
       event.preventDefault();
       event.stopPropagation();
-      action.onClick();
+      launchFromKey(action, event);
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
@@ -440,8 +454,6 @@ function surfaceTitle(
   terminalLabelsById: ReadonlyMap<string, string>,
 ): string {
   switch (surface.kind) {
-    case "diff":
-      return "Diff";
     case "files":
       return "Files";
     case "file":
@@ -463,7 +475,7 @@ function surfaceTitle(
     case "data":
       return "service" in surface ? surface.service : "Data";
     case "git":
-      return "Git";
+      return "Code";
     case "crew":
       return "Crew";
     case "mcp":
@@ -483,8 +495,6 @@ function surfaceTitle(
 
 function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "light" | "dark" }) {
   switch (surface.kind) {
-    case "diff":
-      return <FileDiff className="size-3 shrink-0" />;
     case "files":
       return <Files className="size-3 shrink-0" />;
     case "file":
@@ -501,7 +511,7 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
     case "agents":
       return <Bot className="size-3 shrink-0" />;
     case "zerops":
-      return <Cloud className="size-3 shrink-0" />;
+      return <ZeropsMark className="size-3 shrink-0" />;
     case "browser":
       return <Globe className="size-3 shrink-0" />;
     case "mac":
@@ -634,6 +644,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       ...action,
       icon: surfaceLauncherIcon(kind),
       onClick: kind === "terminal" ? props.onAddTerminal : () => props.onAdd(kind),
+      onAlias:
+        kind === "terminal" ? props.onAddTerminal : () => (props.onAddAt ?? props.onAdd)(kind),
       badgeCount: kind === "agents" ? props.liveAgentCount : 0,
     };
   });
@@ -644,7 +656,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     event.preventDefault();
     event.stopPropagation();
     setAddSurfaceMenuOpen(false);
-    action.onClick();
+    launchFromKey(action, event.nativeEvent);
   };
 
   const handleTabContextMenu = useCallback(

@@ -8,8 +8,9 @@ import { lifecycleReceipt } from "../families/hqLifecycle.ts";
  * `attention` scope, as part of the navigation; any other scope (an application's detail, a
  * change) is a detail a screen demands by its owner's id.
  *
- * HQ ends each socket as planned after its segment (`4410`): the next segment opens with a fresh
- * ticket and resumes each scope from the cursor last committed, naming the keys this renderer
+ * HQ ends each socket as planned after its segment (`4410`), and so does an HQ stopping: the next
+ * segment opens with a fresh ticket (a next that does not open is HQ restarting) and resumes each
+ * scope from the cursor last committed, naming the keys this renderer
  * holds, so an unchanged scope sends nothing but its `scope-ready`. A delta that does not follow
  * the cursor is not committed: the scope is asked again whole.
  *
@@ -866,7 +867,16 @@ export function hqNavigationLink(options: {
       const segment = (first: boolean) =>
         Effect.scoped(
           Effect.gen(function* () {
-            const opened = yield* wire.open(first ? signal(key, SOCKET_CREATED) : Effect.void);
+            // A segment after a planned end that does not open is HQ restarting, not HQ gone.
+            const opened = yield* first
+              ? wire.open(signal(key, SOCKET_CREATED))
+              : wire
+                  .open(Effect.void)
+                  .pipe(
+                    Effect.mapError((fault): StreamFault =>
+                      fault.outcome === "transient" ? { ...fault, plannedEnd: true } : fault,
+                    ),
+                  );
             open = opened;
             usageSupported = null;
             for (const { registered } of subscribed.values()) {

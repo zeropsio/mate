@@ -55,10 +55,10 @@ describe("right panel kinds", () => {
         unavailableHint: "Available in a Zerops project.",
       },
       {
-        kind: "diff",
-        label: "Diff",
-        description: "See what is not committed or not on main.",
-        shortcut: "D",
+        kind: "git",
+        label: "Code",
+        description: "See where the work is, and what changed.",
+        shortcut: "G",
         unavailableHint: "Available for Git repositories.",
       },
       {
@@ -88,13 +88,6 @@ describe("right panel kinds", () => {
         description: "Browse and read workspace files.",
         shortcut: "F",
         unavailableHint: "Available when a project is open.",
-      },
-      {
-        kind: "git",
-        label: "Git",
-        description: "Follow branches and where they go.",
-        shortcut: "G",
-        unavailableHint: "Available in a Zerops project.",
       },
       {
         kind: "data",
@@ -160,12 +153,11 @@ describe("right panel kinds", () => {
       [
         "browser",
         "mac",
-        "diff",
+        "git",
         "zerops",
         "agents",
         "crew",
         "files",
-        "git",
         "data",
         "vault",
         "terminal",
@@ -196,7 +188,6 @@ describe("right panel kinds", () => {
       name: "makes every supported kind available",
       input: AVAILABLE_INPUT,
       expected: {
-        diff: "available",
         files: "available",
         file: "available",
         terminal: "available",
@@ -224,7 +215,6 @@ describe("right panel kinds", () => {
         zeropsPanel: "unavailable",
       },
       expected: {
-        diff: "unavailable",
         files: "unavailable",
         file: "unavailable",
         terminal: "unavailable",
@@ -246,7 +236,6 @@ describe("right panel kinds", () => {
       name: "keeps late Git and Zerops answers unknown",
       input: { ...AVAILABLE_INPUT, gitRepo: null, zeropsPanel: "unknown" },
       expected: {
-        diff: "unknown",
         files: "available",
         file: "available",
         terminal: "available",
@@ -268,7 +257,6 @@ describe("right panel kinds", () => {
       name: "does not wait for Git when there is no server thread",
       input: { ...AVAILABLE_INPUT, gitRepo: null, serverThread: false },
       expected: {
-        diff: "unavailable",
         files: "available",
         file: "available",
         terminal: "available",
@@ -315,24 +303,26 @@ describe("right panel kinds", () => {
   );
 
   /**
-   * A Mate's workspace (`/var/www`) is no Git repository of its own, so Diff
+   * A Mate's workspace (`/var/www`) is no Git repository of its own, so Code
    * read "Available for Git repositories." on every Mate — yet the services'
    * checkouts below it are (the owner: "the diff tab hasn't been working /
    * doing anything for ages").
    */
+  // witness: apps/web/src/rightPanelKinds.ts | input.zeropsPanel === "available" || (input.serverThread && input.gitRepo === true) → input.zeropsPanel === "available"
   it.each([
-    { gitRepo: false, zeropsPanel: "available", serverThread: true, diff: "available" },
-    { gitRepo: false, zeropsPanel: "unknown", serverThread: true, diff: "unknown" },
-    { gitRepo: null, zeropsPanel: "unavailable", serverThread: true, diff: "unknown" },
-    { gitRepo: false, zeropsPanel: "unavailable", serverThread: true, diff: "unavailable" },
-    { gitRepo: false, zeropsPanel: "available", serverThread: false, diff: "unavailable" },
+    { gitRepo: false, zeropsPanel: "available", serverThread: true, code: "available" },
+    { gitRepo: false, zeropsPanel: "unknown", serverThread: true, code: "unknown" },
+    { gitRepo: null, zeropsPanel: "unavailable", serverThread: true, code: "unknown" },
+    { gitRepo: false, zeropsPanel: "unavailable", serverThread: true, code: "unavailable" },
+    { gitRepo: true, zeropsPanel: "unavailable", serverThread: true, code: "available" },
+    { gitRepo: true, zeropsPanel: "unavailable", serverThread: false, code: "unavailable" },
   ] as const)(
-    "Diff with Git $gitRepo and the Zerops panel $zeropsPanel (server thread $serverThread): $diff",
-    ({ gitRepo, zeropsPanel, serverThread, diff }) => {
+    "Code with Git $gitRepo and the Zerops panel $zeropsPanel (server thread $serverThread): $code",
+    ({ gitRepo, zeropsPanel, serverThread, code }) => {
       expect(
         resolveRightPanelAvailability({ ...AVAILABLE_INPUT, gitRepo, zeropsPanel, serverThread })
-          .diff,
-      ).toBe(diff);
+          .git,
+      ).toBe(code);
     },
   );
 

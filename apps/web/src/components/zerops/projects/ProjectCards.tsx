@@ -47,6 +47,8 @@ import {
 import { comingMateLine, stopLine } from "./projectsView.logic";
 import { nextReleaseTitle } from "../system/NextRelease.logic";
 import { PlaceLine } from "../system/PlaceLine";
+import { placeVaultOf, type PlaceVault } from "../vault/placeVault.logic";
+import { PlaceVaultButton } from "../vault/StopVault";
 import { SectionAction, SectionLabel } from "../system/SectionLabel";
 import type {
   ProjectsFlowGroup,
@@ -680,7 +682,7 @@ function ProjectCard<T>({
         {notLive || production === undefined ? (
           <QuietPlace>Not live yet</QuietPlace>
         ) : (
-          <PlaceLine density="compact" groupId={group.groupId} line={production} />
+          <CardPlace groupId={group.groupId} line={production} onVault={props.openPlaceVault} />
         )}
         {/* A release or Put it live run is production's, never a Mate's conversation's. */}
         {props.renderProductionRun?.(entry)}
@@ -688,11 +690,11 @@ function ProjectCard<T>({
           .filter((line) => line.kind === "stage")
           .map((line) =>
             settingUp === undefined ? (
-              <PlaceLine
-                density="compact"
+              <CardPlace
                 groupId={group.groupId}
                 key={`stage:${line.projectId ?? line.name}`}
                 line={line}
+                onVault={props.openPlaceVault}
               />
             ) : (
               <div
@@ -743,6 +745,29 @@ function ProjectCard<T>({
         <StopReads entry={entry} />
       </CardBody>
     </article>
+  );
+}
+
+/** A place's line on its card, ending in its Vault where it has one (`placeVaultOf`). */
+function CardPlace({
+  line,
+  groupId,
+  onVault,
+}: {
+  readonly line: PlaceLineData;
+  readonly groupId: string;
+  readonly onVault: ((place: PlaceVault) => void) | undefined;
+}) {
+  const vault = onVault === undefined ? undefined : placeVaultOf(line);
+  if (vault === undefined || onVault === undefined)
+    return <PlaceLine density="compact" groupId={groupId} line={line} />;
+  return (
+    <div className="group/place flex min-w-0 items-center gap-1">
+      <div className="min-w-0 flex-1">
+        <PlaceLine density="compact" groupId={groupId} line={line} />
+      </div>
+      <PlaceVaultButton name={vault.name} onOpen={() => onVault(vault)} />
+    </div>
   );
 }
 

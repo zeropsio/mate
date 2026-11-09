@@ -1389,7 +1389,7 @@ describe("the route's wait on HQ", () => {
       fault: { outcome: "definitive-refusal", message: "HQ refused" },
       jitter: 0,
     });
-    const menu = hqOutage(atoms.get(shownCanonicalHqListNavigationAtom), null, "locale", 0);
+    const menu = hqOutage(atoms.get(shownCanonicalHqListNavigationAtom), "locale", 0);
     expect(menu?.again, "ASSERTION: the menu says HQ refused, with Try again").toBe(true);
     expect(look(ENV_A)).toEqual({
       kind: "wait",

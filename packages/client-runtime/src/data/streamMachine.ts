@@ -61,6 +61,11 @@ export interface StreamFault {
   readonly code?: string;
   /** What the source asked for (`Retry-After`), ms. */
   readonly retryAfterMs?: number;
+  /**
+   * The source ended the last connection as planned and the next did not open: it is restarting
+   * (HQ's `4410`, which also ends every segment), not gone.
+   */
+  readonly plannedEnd?: true;
 }
 
 export type NextAction =
@@ -125,6 +130,11 @@ export interface StreamState {
    * ({@link streamTrouble}). Nothing was read, so nothing reads as live.
    */
   readonly patientSince?: number;
+  /**
+   * It was lost on a fault with {@link StreamFault.plannedEnd}: its source is restarting. Kept, as
+   * {@link lostAt} is, until it is live again.
+   */
+  readonly restarting?: true;
 }
 
 export type StreamEvent =
@@ -343,14 +353,25 @@ export function streamTrouble(stream: StreamState): "stopped" | "retrying" | nul
 
 /**
  * One rule for every stream: leaving live for a reconnect holds what it read as current for the
- * grace, and dates the loss; a first attempt is given the same grace before a failure is
+ * grace, and dates the loss (marking it restarting where its source ended it as planned); a first attempt is given the same grace before a failure is
  * trouble; live again forgets all of it; a refusal, a pause or a close ends either grace.
  */
 function hold(before: StreamState, after: StreamState, now: number): StreamState {
   if (after.phase === "live") {
-    if (after.lostAt === undefined && after.held === undefined && after.patientSince === undefined)
+    if (
+      after.lostAt === undefined &&
+      after.held === undefined &&
+      after.patientSince === undefined &&
+      after.restarting === undefined
+    )
       return after;
-    const { lostAt: _lostAt, held: _held, patientSince: _patientSince, ...rest } = after;
+    const {
+      lostAt: _lostAt,
+      held: _held,
+      patientSince: _patientSince,
+      restarting: _restarting,
+      ...rest
+    } = after;
     return rest;
   }
   if (!RECONNECTING.has(after.phase)) {
@@ -358,7 +379,13 @@ function hold(before: StreamState, after: StreamState, now: number): StreamState
     const { held: _held, patientSince: _patientSince, ...rest } = after;
     return rest;
   }
-  if (before.phase === "live") return { ...after, lostAt: now, held: true };
+  if (before.phase === "live")
+    return {
+      ...after,
+      lostAt: now,
+      held: true,
+      ...(after.fault?.plannedEnd === true ? { restarting: true as const } : {}),
+    };
   // A stream never lost from live starts its grace with its first attempt — from rest, or a child's
   // first registration on its parent — never while it only waits for its parent.
   const firstTry =

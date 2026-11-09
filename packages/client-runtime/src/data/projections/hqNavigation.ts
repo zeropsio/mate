@@ -52,13 +52,16 @@ import {
   livePermissionFacts,
 } from "./permissionFacts.ts";
 import { scopeFreshness, scopeSlow, type ScopeFreshness } from "./freshness.ts";
+import { hqLinkOf, type HqLink } from "./hqLink.ts";
 import type { RosterRead } from "./projects.ts";
 
 export type HqNavigationPeople = Readonly<
   Record<string, Pick<ZeropsPerson, "name" | "called" | "clientUserId">>
 >;
 
-export interface HqNavigationRead extends Omit<ScopeFreshness, "complete"> {
+export interface HqNavigationRead extends Pick<ScopeFreshness, "unavailableReason"> {
+  /** The viewer's link to HQ (`hqLink`): the one word on whether HQ answers now. */
+  readonly link: HqLink;
   /** `null` until HQ's navigation said anything of the organization's applications. */
   readonly structure: HqStructure | null;
   readonly organization: HqOrganizationValue | null;
@@ -70,9 +73,14 @@ export interface HqNavigationRead extends Omit<ScopeFreshness, "complete"> {
   readonly read: RosterRead;
   /** HQ's own word on why it refused the navigation, while it does. */
   readonly refusal: string | null;
-  /** HQ does not answer, and its retries are as far apart as they get. */
+  /**
+   * Its first answer has not come and its attempts are failing. This and the next two say only
+   * how HQ's first answer comes; once it answered, HQ away is the link's to say.
+   */
+  readonly retrying: boolean;
+  /** HQ never answered, and its retries are as far apart as they get. */
   readonly capped: boolean;
-  /** HQ's connection holds, and it is still working on the navigation: slow, not down. */
+  /** HQ's connection holds, and it is still working on its first answer: slow, not down. */
   readonly slow: boolean;
   /** A caught-up Core has not proved support for the navigation facts this client needs. */
   readonly updateRequired: boolean;
@@ -286,7 +294,7 @@ function navigationOf(
   includePeople: boolean,
 ): CanonicalHqDeliveryNavigationRead {
   const scope = hqAppsScope(orgId);
-  const { complete, ...freshness } = scopeFreshness(read, scope);
+  const { complete, reconnecting, unavailableReason } = scopeFreshness(read, scope);
   const organizationFact = read.fact("hqOrganization", orgId);
   const organization = organizationFact.kind === "known" ? organizationFact.value : null;
   const phase = read.stream(scope).phase;
@@ -322,14 +330,14 @@ function navigationOf(
       : {},
     read: complete ? "read" : phase === "idle" || phase === "paused" ? "unread" : "reading",
     refusal: refused?.fault?.message ?? null,
+    link: hqLinkOf(read, orgId),
+    retrying: !complete && reconnecting,
     capped:
-      link.phase === "recovering" && retryDelayMs(link.failures, 1) >= STREAM_POLICY.backoffCapMs,
-    slow: scopeSlow(read, scope),
-    ...freshness,
-    // What was read and is not live now is catching up, whatever step its next attempt is at.
-    reconnecting:
-      freshness.reconnecting ||
-      (complete && !freshness.live && freshness.unavailableReason === undefined),
+      !complete &&
+      link.phase === "recovering" &&
+      retryDelayMs(link.failures, 1) >= STREAM_POLICY.backoffCapMs,
+    slow: !complete && scopeSlow(read, scope),
+    ...(unavailableReason === undefined ? {} : { unavailableReason }),
   };
 }
 export const hqNavigation = {

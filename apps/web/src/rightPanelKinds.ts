@@ -2,7 +2,7 @@
  * Exhaustive right-panel availability, launcher copy, and migration policy.
  *
  * Availability controls whether a kind can be launched; it never reconciles
- * persisted surfaces. In particular, Diff and Zerops tabs remain visible when
+ * persisted surfaces. In particular, Code and Zerops tabs remain visible when
  * a Git or topology answer arrives late or later becomes unavailable, and the
  * existing tab controls remain the way to close them. A `hidden` kind has no
  * launcher card at all: an `unavailable` one still draws a disabled card, and
@@ -21,13 +21,12 @@ export const RIGHT_PANEL_KINDS = [
   "overview",
   "browser",
   "mac",
-  "diff",
+  "git",
   "zerops",
   "agents",
   "crew",
   "files",
   "file",
-  "git",
   "data",
   "vault",
   "terminal",
@@ -74,6 +73,8 @@ export interface RightPanelKindMeta {
     readonly description: string;
     /** The launcher's letter: the label's first, or `null` where another page holds that one. */
     readonly shortcut: string | null;
+    /** A second letter, opening the page at its second part (Code's D: what changed). */
+    readonly alias?: string;
     readonly unavailableHint: string;
     /** What the card says while its answer is `unknown`, where the unavailable hint would claim one. */
     readonly unknownHint?: string;
@@ -128,27 +129,6 @@ export const RIGHT_PANEL_KIND_META = {
     page: { title: "Mac", line: (mate) => `The app ${mate} opened on your paired Mac.` },
     availability: (input) => input.zeropsPanel,
   },
-  diff: {
-    launcher: {
-      label: "Diff",
-      description: "See what is not committed or not on main.",
-      shortcut: "D",
-      unavailableHint: "Available for Git repositories.",
-    },
-    // A Mate's workspace is no repository of its own, but the services' checkouts below it are.
-    page: {
-      title: "Diff",
-      line: (mate) => `What ${mate}'s code has that main does not: not committed or not pushed.`,
-    },
-    availability: (input) =>
-      !input.serverThread
-        ? "unavailable"
-        : input.gitRepo === true || input.zeropsPanel === "available"
-          ? "available"
-          : input.gitRepo === null || input.zeropsPanel === "unknown"
-            ? "unknown"
-            : "unavailable",
-  },
   zerops: {
     launcher: {
       label: "Zerops",
@@ -198,24 +178,35 @@ export const RIGHT_PANEL_KIND_META = {
     page: null,
     availability: projectAvailability,
   },
+  // Where the Mate's work is and what changed: its project and changes, then the diff. One page
+  // for both, so a change and its lines are never two tabs apart (the owner, 2026-11-09). The kind
+  // keeps its id `git` so a saved layout opens it.
   git: {
     launcher: {
-      label: "Git",
-      description: "Follow branches and where they go.",
+      label: "Code",
+      description: "See where the work is, and what changed.",
       shortcut: "G",
-      unavailableHint: "Available in a Zerops project.",
+      alias: "D",
+      unavailableHint: "Available for Git repositories.",
     },
     page: {
-      title: "Git",
-      line: (mate) => `Where ${mate}'s code goes: branches, commits and changes.`,
+      title: "Code",
+      line: (mate) => `Where ${mate}'s work is, and what changed.`,
     },
-    availability: (input) => input.zeropsPanel,
+    // The project's side needs a Zerops project; what changed needs only a repository: a Mate's
+    // workspace is no repository of its own, but the services' checkouts below it are.
+    availability: (input) =>
+      input.zeropsPanel === "available" || (input.serverThread && input.gitRepo === true)
+        ? "available"
+        : input.zeropsPanel === "unknown" || (input.serverThread && input.gitRepo === null)
+          ? "unknown"
+          : "unavailable",
   },
   data: {
     launcher: {
       label: "Data",
       description: "Browse databases and storage.",
-      // D is Diff's, and a letter that does not start the name is never guessed.
+      // D opens what changed on Code, and a letter that does not start the name is never guessed.
       shortcut: null,
       unavailableHint: "Available in a Zerops project.",
     },

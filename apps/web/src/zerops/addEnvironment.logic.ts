@@ -50,35 +50,21 @@ export function questionFactsOf(input: {
 
 /**
  * The tiers HQ offers this person to add to an application (`add_stage` / `add_production`), from
- * its `can` record as HQ streamed it (`hqOffer`): only an allowed decision offers, and nothing while
- * HQ does not answer. `null` while HQ has not said of the application.
+ * its `can` record as HQ last streamed it (`hqOffer`): only an allowed decision offers. `null` while
+ * HQ has not said of the application.
  */
-export function environmentOffersOf(
-  can: HqOffers | undefined,
-  hq: Parameters<typeof hqOffer>[2],
-): {
+export function environmentOffersOf(can: HqOffers | undefined): {
   readonly stage: boolean;
   readonly production: boolean;
   readonly git?: boolean;
   readonly zerops?: { readonly stage: boolean; readonly production: boolean };
 } | null {
   if (can === undefined) return null;
-  const offered = (verb: string) => hqOffer(can, verb, hq).kind === "allowed";
+  const offered = (verb: string) => hqOffer(can, verb).kind === "allowed";
   const zerops = { stage: offered("add_stage"), production: offered("add_production") };
   return offered("add_git_environment")
     ? { stage: true, production: true, git: true, zerops }
     : zerops;
-}
-
-/**
- * Whether HQ offers this person finishing a half-made environment (`finish`, its project's own
- * `can`): only an allowed decision, and nothing while HQ does not answer.
- */
-export function finishOffered(
-  can: HqOffers | undefined,
-  hq: Parameters<typeof hqOffer>[2],
-): boolean {
-  return hqOffer(can, "finish", hq).kind === "allowed";
 }
 
 /**

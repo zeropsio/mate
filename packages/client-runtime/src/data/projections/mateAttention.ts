@@ -3,18 +3,17 @@
  * whichever path brought it, whether that value is of now, and how many of its results the person
  * has not seen, as HQ counts them from that person's acknowledgements.
  *
- * Of now is end-to-end: the Mate's own link to this page is live, or HQ's link is
- * live and HQ relays this very revision while its own link to the Mate is up. A live HQ never makes
- * the word of a Mate it cannot hear live. No clock decides it.
+ * Of now is the Mate's own link to this page live, or HQ's last word relaying this very revision
+ * while its own link to the Mate was up. HQ away (`hqLink`) changes neither: only a live HQ saying
+ * it no longer hears the Mate does. No clock decides it.
  *
  * @module data/projections/mateAttention
  */
 import type { MateAttention } from "@t3tools/contracts";
 
 import { SHOWN_MATES } from "../families/mateLink.ts";
-import { hqMateScope } from "../families/hqMate.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
-import { hqMateAttentionScope, mateAttentionScope } from "../families/mateAttention.ts";
+import { mateAttentionScope } from "../families/mateAttention.ts";
 import { linkKeys, type StreamKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
@@ -31,12 +30,7 @@ export interface MateAttentionRead {
 
 const isLive = (read: ProjectionReads, key: StreamKey) => liveOrHeld(read.stream(key));
 
-function attentionOf(
-  read: ProjectionReads,
-  orgId: string,
-  projectId: string,
-  listed: boolean,
-): MateAttentionRead {
+function attentionOf(read: ProjectionReads, projectId: string, listed: boolean): MateAttentionRead {
   const placement = read.fact("placement", projectId);
   const unseen =
     placement.kind === "known" && listed ? (placement.value.person?.unseen ?? null) : null;
@@ -51,10 +45,7 @@ function attentionOf(
     relayed.kind === "known" &&
     relayed.value.attentionState === "live" &&
     relayed.value.attention !== null &&
-    sameValue(relayed.value.attention.source, fact.value.source) &&
-    isLive(read, linkKeys.hq(orgId)) &&
-    isLive(read, hqMateScope(orgId, projectId)) &&
-    isLive(read, hqMateAttentionScope(orgId, projectId));
+    sameValue(relayed.value.attention.source, fact.value.source);
   return { attention: fact.value, live: direct || relayedNow, unseen };
 }
 
@@ -68,12 +59,7 @@ export const mateAttention: Projection<MateProjectKey, MateAttentionRead> = {
   name: "mateAttention",
   keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
   derive: (read, { orgId, projectId }) =>
-    attentionOf(
-      read,
-      orgId,
-      projectId,
-      read.members(placementsScope(orgId)).ids.includes(projectId),
-    ),
+    attentionOf(read, projectId, read.members(placementsScope(orgId)).ids.includes(projectId)),
   equals: sameValue,
 };
 
@@ -99,9 +85,7 @@ export function readAttentionProjects(
   { orgId, projectIds }: { readonly orgId: string; readonly projectIds: ReadonlyArray<string> },
 ): Readonly<Record<string, MateAttentionRead>> {
   const listed = new Set(read.members(placementsScope(orgId)).ids);
-  return Object.fromEntries(
-    projectIds.map((id) => [id, attentionOf(read, orgId, id, listed.has(id))]),
-  );
+  return Object.fromEntries(projectIds.map((id) => [id, attentionOf(read, id, listed.has(id))]));
 }
 
 /** Enumerating consumers share one reader per organization, regardless of list order or churn. */
