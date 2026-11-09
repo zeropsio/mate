@@ -1,6 +1,6 @@
 /**
  * The overview while it is read: its own shape — the title row, the filters' row and the project
- * cards side by side — at the places the page draws them, painted once and replaced by the page
+ * cards in their grid — at the places the page draws them, painted once and replaced by the page
  * in one frame. It says no words but its title, which is the page's own and never taken back.
  * The reload's whole path stands in with it (the router, the chat's layout, the door, HQ's member
  * read), so a reload paints this once and then the cards in the same places.
@@ -67,7 +67,7 @@ export function ProjectCardStandIn({
 }
 
 /**
- * The cards' rail, as `ProjectCards` lays it out: the same row and card boxes, their words grey —
+ * The cards' grid, as `ProjectCards` lays it out: the same grid and card boxes, their words grey —
  * as many as this browser's overview drew last.
  */
 export function OverviewCardsStandIn({ count }: { readonly count?: number }) {
@@ -76,8 +76,8 @@ export function OverviewCardsStandIn({ count }: { readonly count?: number }) {
   const cards = count ?? remembered;
   return (
     <Loading label="Your projects">
-      <div className="ov-rail">
-        <div className="ov-row" data-overview-stand-in-cards="">
+      <div className="@container/flow">
+        <div className="ov-grid" data-overview-stand-in-cards="">
           {Array.from({ length: cards }, (_, index) => (
             <ProjectCardStandIn key={index} />
           ))}
