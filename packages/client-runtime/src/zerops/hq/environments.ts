@@ -28,11 +28,6 @@ export const HqJob = Schema.Struct({
   kind: Schema.Literals(["deploy", "delta"]),
   /** The service it deploys, by its hostname; none for a delta. */
   service: Schema.NullOr(Schema.String),
-  /**
-   * The services a delta creates, by hostname. Absent on every other job, and from an HQ older
-   * than the field: the page then names what the setup files declare and Zerops lacks.
-   */
-  services: Schema.optional(Schema.Array(Schema.String)),
   sha: Schema.NullOr(Schema.String),
   /**
    * queued → submitting → building → live, failed (the build's own, final until a person asks
