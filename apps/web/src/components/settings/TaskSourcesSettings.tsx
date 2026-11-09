@@ -73,7 +73,6 @@ import {
 import { SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import {
-  allowlistAfter,
   budgetLine,
   connectKeyProblem,
   connectKeysReady,
@@ -688,13 +687,11 @@ export function DiscordSettingsView({
       line={sourceLine(
         read,
         setting,
-        "Allowed people type /mate task in a project's channel, and /mate reply in its thread.",
+        "People who linked their Discord type /mate task in a project's channel, and /mate reply in its thread.",
         (held) =>
-          !held.connected
-            ? "Not connected"
-            : held.allowed.length === 0
-              ? "Connected · nobody may start a task yet"
-              : `Connected · ${held.allowed.length} ${held.allowed.length === 1 ? "person may" : "people may"} start tasks`,
+          held.connected
+            ? "People who linked their Discord start tasks with /mate task"
+            : "Not connected",
         "the Discord application",
       )}
       mark={<DiscordMark />}
@@ -719,7 +716,7 @@ export function DiscordSettingsView({
           warning="Disconnecting stops every project taking tasks from Discord."
         >
           <ConnectedBy line={connectedByLine(view, nameOf, settingDay)} />
-          <DiscordConnected controls={controls} view={view} />
+          <DiscordConnected view={view} />
         </ManagePanel>
       ) : (
         <DiscordSteps
@@ -828,27 +825,7 @@ function DiscordSteps({
   );
 }
 
-function DiscordConnected({
-  controls,
-  view,
-}: {
-  readonly controls: Controls<"hqDiscord">;
-  readonly view: HqDiscordView;
-}) {
-  const [adding, setAdding] = useState("");
-  const hintId = useId();
-  const [refusal, setRefusal] = useState<string | null>(null);
-  const busy = working(controls.read.action);
-  const change = (next: Parameters<typeof allowlistAfter>[1]) => {
-    const after = allowlistAfter(view.allowed, next);
-    if ("error" in after) {
-      setRefusal(after.error);
-      return false;
-    }
-    setRefusal(null);
-    controls.write({ kind: "discord-allow", userIds: after.userIds });
-    return true;
-  };
+function DiscordConnected({ view }: { readonly view: HqDiscordView }) {
   return (
     <>
       <AddressField
@@ -864,57 +841,13 @@ function DiscordConnected({
           </div>
         </div>
       )}
-      <div className="grid gap-1.5" data-zerops-surface="settings-discord-allowed">
+      <div className="grid gap-1.5" data-zerops-surface="settings-discord-askers">
         <p className="text-sm font-medium text-foreground">Who may start and steer tasks</p>
-        {view.allowed.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Nobody may start a task yet: add the Discord user IDs of who may.
-          </p>
-        ) : null}
-        {view.allowed.length === 0 ? null : (
-          <ul className="grid divide-y divide-border rounded-md border border-border bg-background">
-            {view.allowed.map((id) => (
-              <li className="flex items-center justify-between gap-2 py-1 ps-2.5 pe-1" key={id}>
-                <code className="min-w-0 truncate font-mono text-xs text-foreground">{id}</code>
-                <Button
-                  disabled={busy}
-                  onClick={() => {
-                    change({ remove: id });
-                  }}
-                  size="sm"
-                  variant="ghost"
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <form
-          className="flex items-end gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (change({ add: adding })) setAdding("");
-          }}
-        >
-          <TextField
-            describedBy={hintId}
-            label="Discord user ID"
-            onChange={setAdding}
-            value={adding}
-          />
-          <Button disabled={busy || adding.trim().length === 0} size="sm" type="submit">
-            {pressWords(controls.read.action, ["discord-allow"], "Add")}
-          </Button>
-        </form>
-        <p className="text-xs text-muted-foreground" id={hintId}>
-          With Developer Mode on (User Settings › Advanced), right-click a person › Copy User ID.
+        {/* HQ's gate: only a Discord user who linked their account to their Zerops person asks. */}
+        <p className="text-xs text-muted-foreground">
+          Anyone in this organization who linked their Discord. Someone who has not gets a private
+          link the first time they type /mate task; /mate link sends one at any time.
         </p>
-        {refusal === null ? null : (
-          <p className="text-xs text-destructive-foreground" role="alert">
-            {refusal}
-          </p>
-        )}
       </div>
     </>
   );

@@ -37,6 +37,7 @@ function choose(typed: string) {
     openProject: vi.fn(),
     openStop: vi.fn(),
     openChange: vi.fn(),
+    openPage: vi.fn(),
     newProject: vi.fn(),
   };
   chooseJumpItem(item!, { model, close: () => {}, showable: true, pages });

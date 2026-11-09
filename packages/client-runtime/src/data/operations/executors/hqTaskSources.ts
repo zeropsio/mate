@@ -17,7 +17,6 @@ export type TaskSourceWrites = Pick<
   | "disconnectSlack"
   | "connectDiscord"
   | "disconnectDiscord"
-  | "allowDiscord"
   | "setAppChannel"
   | "stopAppChannel"
   | "makeWebhook"
@@ -127,8 +126,6 @@ export function makeTaskSourceExecutor(options: {
             }
             case "discord-disconnect":
               return api.disconnectDiscord?.() ?? null;
-            case "discord-allow":
-              return api.allowDiscord?.({ userIds: write.userIds }) ?? null;
             case "channel":
               return (
                 api.setAppChannel?.(appId, write.source, { channelId: write.channelId }) ?? null

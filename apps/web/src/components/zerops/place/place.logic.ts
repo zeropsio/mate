@@ -4,11 +4,12 @@
  * joined with everything else the platform runs there), who reaches it folded to faces, and the
  * release it rolls back to.
  */
-import type {
-  FlowReleaseRow,
-  GroupEnvironmentTier,
-  GroupRowTone,
-  ZeropsPublicRoute,
+import {
+  isPlatformSubdomain,
+  type FlowReleaseRow,
+  type GroupEnvironmentTier,
+  type GroupRowTone,
+  type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import {
   NOTHING_DEPLOYED,
@@ -121,9 +122,7 @@ export function placeStatus(input: {
   };
 }
 
-/** Whether an address is the platform's own subdomain rather than a domain of the project's. */
-const isSubdomain = (route: Pick<ZeropsPublicRoute, "host">) =>
-  /\.zerops\.app(?::\d+)?(?:\/|$)/u.test(route.host);
+const isSubdomain = (route: Pick<ZeropsPublicRoute, "host">) => isPlatformSubdomain(route.host);
 
 /**
  * The address a place stands for, linked in its head: production's first own domain, else its

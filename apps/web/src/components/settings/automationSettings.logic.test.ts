@@ -365,7 +365,6 @@ describe("who an organization-wide credential is held as", () => {
       connected: true,
       interactionsUrl: "https://hq.example/api/intake/discord/pub-2",
       inviteUrl: null,
-      allowed: [],
       connectedBy: "u-gone",
       connectedAt: "2026-11-06T09:00:00.000Z",
     });
@@ -373,7 +372,6 @@ describe("who an organization-wide credential is held as", () => {
       connected: true,
       interactionsUrl: "https://hq.example/api/intake/discord/pub-2",
       inviteUrl: null,
-      allowed: [],
     });
     expect(connectedByLine(slack, nameOf, day)).toBe("Connected by Ada Lovelace on 2026-11-07.");
     expect(connectedByLine(discord, nameOf, day)).toBe("Connected on 2026-11-06.");

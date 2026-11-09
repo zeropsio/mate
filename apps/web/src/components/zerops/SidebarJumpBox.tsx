@@ -3,10 +3,10 @@
  * search of the conversations, and what finding and writing do.
  *
  * Finding goes to the thing found. A Mate, or words in its conversation, open
- * that conversation, as its row does (`useOpenMate`). A project, a stop or a
+ * that conversation, as its row does (`useOpenMate`). A project, a place or a
  * change is shown where it is in the menu — its project opened, its row
- * focused and flashed — or, on the
- * settings pages, whose menu is their own, that thing's own page.
+ * focused and flashed — or, on the settings pages, whose menu is their own,
+ * that thing's own page. The overview, a settings section or a setting opens.
  *
  * Writing sends without opening anything, with what a send from the Mate's
  * own composer carries: the conversation's own model and modes, and what the
@@ -189,6 +189,15 @@ function useJumpPages(): JumpPages {
             repository: change.repository,
             number: String(change.number),
           },
+        });
+      },
+      // A setting opens on its section scrolled to it and marked, as the settings' own search
+      // leaves it (`SettingsPageContainer` reads the hash).
+      openPage: (page) => {
+        void router.navigate({
+          to: page.to,
+          ...(page.hash === undefined ? {} : { hash: page.hash }),
+          hashScrollIntoView: false,
         });
       },
       // Its dialog, over whatever is on screen (`ZeropsNewProjectHost`).

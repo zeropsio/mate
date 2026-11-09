@@ -202,7 +202,7 @@ describe("jumpGroups — what a query finds, grouped", () => {
       groups: [
         { group: "Mates", items: ["mate:shop-nova", "mate:shop-kai"] },
         { group: "Projects", items: ["project:shop"] },
-        { group: "Stops", items: ["stop:shop-stage", "stop:shop-prod"] },
+        { group: "Places", items: ["stop:shop-stage", "stop:shop-prod"] },
       ],
     },
     {
@@ -218,12 +218,12 @@ describe("jumpGroups — what a query finds, grouped", () => {
     {
       case: "a stop by its project and its name",
       value: "shop prod",
-      groups: [{ group: "Stops", items: ["stop:shop-prod"] }],
+      groups: [{ group: "Places", items: ["stop:shop-prod"] }],
     },
     {
       case: "a stop by what it runs",
       value: "v2.11",
-      groups: [{ group: "Stops", items: ["stop:shop-prod"] }],
+      groups: [{ group: "Places", items: ["stop:shop-prod"] }],
     },
     {
       case: "a Mate by the task it is on",

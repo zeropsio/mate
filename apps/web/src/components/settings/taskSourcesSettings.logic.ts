@@ -157,7 +157,6 @@ export function workingWords(verb: TaskSourceWrite["kind"]): string {
     case "task-stop":
       return "Stopping…";
     case "channel":
-    case "discord-allow":
     case "task-limits":
       return "Saving…";
   }
@@ -224,19 +223,6 @@ export function readLimits(
   const amount = Number(typedCost);
   if (!Number.isFinite(amount) || amount <= 0 || amount > COST_MAX) return { error: COST_WORDS };
   return { limits: { minutes: whole, costUsd: amount } };
-}
-
-/** The Discord allowlist after one ID added or removed, as HQ takes it: whole, each once. */
-export function allowlistAfter(
-  held: ReadonlyArray<string>,
-  change: { readonly add: string } | { readonly remove: string },
-): { readonly userIds: ReadonlyArray<string> } | { readonly error: string } {
-  if ("remove" in change) return { userIds: held.filter((id) => id !== change.remove) };
-  const id = change.add.trim();
-  // As HQ takes it (`mate-hq apps/hq/src/discord.ts`): a snowflake of up to 20 digits.
-  if (!/^\d{1,20}$/u.test(id))
-    return { error: "A Discord user ID is a number of up to 20 digits." };
-  return { userIds: held.includes(id) ? held : [...held, id] };
 }
 
 /** Slack's page that makes an app, from a manifest when one is given. */

@@ -466,7 +466,7 @@ function HarnessPage() {
                           }
                           renderBlockCommits={(block) =>
                             block.pullRequestNumber === undefined ? null : (
-                              <div>
+                              <div className="-ms-2.5 flex">
                                 <Button size="sm" variant="ghost">
                                   History
                                 </Button>

@@ -9,6 +9,10 @@
  * words) and then the server's search of every conversation's history
  * (`useThreadSearch`), each hit put under the Mate whose conversation it is.
  *
+ * Beyond the menu, the box finds the app's own pages by name (`JumpPage`): the overview, Git,
+ * Usage, each settings section and each setting in one, from the settings' own search
+ * (`jumpPages.ts`).
+ *
  * Typing `@` turns the box from finding to writing: it lists the Mates by
  * name, the free ones first, and once one is picked, what is typed goes to
  * that Mate. A Mate the viewer may not write to (D6) is not offered. When the
@@ -23,6 +27,9 @@ import { maskSecrets, messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+
+import type { SettingsPath } from "../settings/settingsSearch";
+import type { SidebarAccountDestination } from "./SidebarZeropsAccount.logic";
 
 import type { MateDecision } from "./mateDecision.logic";
 import type { ChipDot } from "./SidebarProductionChip.logic";
@@ -92,7 +99,7 @@ export interface JumpStop {
   /** The stop's own Zerops project. */
   readonly projectId: string;
   readonly groupId: string;
-  /** Its name under its project (`projectNameInApp`): `production`, of `Shop - production`. */
+  /** Its title under its project (`environmentTitle`): `Production`, `Stage`, `Client demo`. */
   readonly title: string;
   /** The project it belongs to: found by it too. */
   readonly projectName: string;
@@ -102,6 +109,22 @@ export interface JumpStop {
   readonly dot: ChipDot;
   /** Where it stands, in words: the dot's accessible name. */
   readonly word: string;
+}
+
+/** A page of the app's own, found by its name: the overview, a settings section, one setting. */
+export interface JumpPage {
+  /** Unique among pages: `overview`, `section:/settings/team`, `setting:word-wrap`. */
+  readonly key: string;
+  readonly title: string;
+  /** Where it lives, its row's second line: `Settings`, `Settings · Appearance`. */
+  readonly where: string | undefined;
+  /** Its glyph: the settings section it is or is in, else the account menu's for the page. */
+  readonly glyph:
+    | { readonly kind: "section"; readonly section: SettingsPath }
+    | { readonly kind: "destination"; readonly id: SidebarAccountDestination["id"] };
+  readonly to: SettingsPath | "/zerops" | "/git" | "/usage";
+  /** The setting its page scrolls to and marks, as the settings' own search does. */
+  readonly hash: string | undefined;
 }
 
 /** Everything the menu holds, in its own order. */
@@ -227,6 +250,7 @@ export type JumpItem =
   | { readonly kind: "project"; readonly value: string; readonly project: JumpProject }
   | { readonly kind: "change"; readonly value: string; readonly change: JumpChange }
   | { readonly kind: "stop"; readonly value: string; readonly stop: JumpStop }
+  | { readonly kind: "page"; readonly value: string; readonly page: JumpPage }
   /** Starting a project: the projects' last item, as it is the menu's last row (D11). */
   | { readonly kind: "new-project"; readonly value: "new-project" }
   | {
@@ -252,6 +276,7 @@ export const JUMP_LIMITS = {
   projects: 4,
   changes: 4,
   stops: 4,
+  pages: 5,
   conversations: 5,
 } as const;
 
@@ -299,6 +324,15 @@ const projectItem = (project: JumpProject): JumpItem => ({
 });
 
 const NOBODY: ReadonlySet<string> = new Set();
+const NO_PAGES = (): ReadonlyArray<JumpPage> => [];
+
+/** What a place is found by: its name with its project's, as its row says it, and what it runs. */
+export function stopFoundBy(stop: JumpStop, text: string): boolean {
+  return (
+    contains(`${stop.projectName} · ${stop.title}`, text) ||
+    contains(`${stop.projectName} ${stop.title} ${stop.line}`, text)
+  );
+}
 
 /** What the new-project item is found by, and says. */
 export const NEW_PROJECT_LABEL = "New project";
@@ -307,7 +341,8 @@ const NEW_PROJECT_ITEM: JumpItem = { kind: "new-project", value: "new-project" }
 /**
  * What the box lists for what was typed, group by group. `readOnly` holds the
  * Mates the viewer may not write to (D6): writing never offers them. `newProject`:
- * the viewer's role creates projects (`roleOffers`); without it, no new project.
+ * the viewer's role creates projects (`roleOffers`); without it, no new project. `findPages`: the
+ * app's own pages for what was typed (`findJumpPages`), listed after the menu's things.
  */
 export function jumpGroups(
   index: SidebarJumpIndex,
@@ -315,6 +350,7 @@ export function jumpGroups(
   hits: ReadonlyArray<JumpHit>,
   readOnly: ReadonlySet<string> = NOBODY,
   newProject = true,
+  findPages: (text: string) => ReadonlyArray<JumpPage> = NO_PAGES,
 ): ReadonlyArray<JumpGroup> {
   const newProjectItems = newProject ? [NEW_PROJECT_ITEM] : [];
   const query = readJumpQuery(value);
@@ -358,9 +394,11 @@ export function jumpGroups(
   const changes = index.changes
     .filter((change) => contains(change.label, text))
     .slice(0, JUMP_LIMITS.changes);
-  const stops = index.stops
-    .filter((stop) => contains(`${stop.projectName} ${stop.title} ${stop.line}`, text))
-    .slice(0, JUMP_LIMITS.stops);
+  const stops = index.stops.filter((stop) => stopFoundBy(stop, text)).slice(0, JUMP_LIMITS.stops);
+  const pages = startsFirst(findPages(text), (page) => page.title, text).slice(
+    0,
+    JUMP_LIMITS.pages,
+  );
   return [
     ...group("mates", "Mates", text, mates.map(mateItem)),
     ...group("projects", "Projects", text, [
@@ -379,9 +417,15 @@ export function jumpGroups(
     ),
     ...group(
       "stops",
-      "Stops",
+      "Places",
       text,
       stops.map((stop) => ({ kind: "stop" as const, value: `stop:${stop.projectId}`, stop })),
+    ),
+    ...group(
+      "pages",
+      "Pages and settings",
+      text,
+      pages.map((page) => ({ kind: "page" as const, value: `page:${page.key}`, page })),
     ),
     ...group("conversations", "In conversations", text, saidIn(index, text, hits)),
   ];

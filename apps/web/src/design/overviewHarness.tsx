@@ -491,7 +491,12 @@ const PROJECTS: ReadonlyArray<Project> = [
       }),
       line: "",
     },
-    stages: [stop("harbor-stage", "stage", { version: version("a41c9e2") })],
+    stages: [
+      stop("harbor-stage", "stage", {
+        version: version("a41c9e2"),
+        addresses: [{ service: "app", url: "https://app-harbor-stage.prg1.zerops.app" }],
+      }),
+    ],
     chip: { label: "prod", state: "down", version: "v2.4.0" },
     since: ago(60 * 24 * 3),
   }),
