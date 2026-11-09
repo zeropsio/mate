@@ -233,8 +233,9 @@ export function useZeropsReleaseEnded(
 }
 
 /**
- * The releases a conversation places: those that carried a change its loaded messages link to
- * (as each release recorded what it put live), and those made after one of its production asks —
+ * The releases a conversation places: those that carried a change its Mate made or its loaded
+ * messages link to (as each release recorded what it put live), and those made after one of its
+ * production asks —
  * each one from the ask up to the first that did not fail — that ended after its first loaded
  * message. A Mate's other conversations stay free of releases that were never theirs.
  */
@@ -252,6 +253,8 @@ export function conversationReleases(input: {
   readonly hqAddress: string | undefined;
   /** When each production ask of the conversation was raised. */
   readonly asks: ReadonlyArray<string>;
+  /** The changes the conversation's own Mate made, as `repo#number`: a release of its work is its. */
+  readonly mine?: ReadonlySet<string> | undefined;
 }): ReadonlyArray<ReleaseEndedEvent> {
   const { events, releases, messages, hqAddress } = input;
   const first = messages[0];
@@ -263,9 +266,10 @@ export function conversationReleases(input: {
   );
   const ours = new Set(
     releases.flatMap((release) =>
-      release.history?.changes.some((change) =>
-        mentioned.has(`${change.repo}#${String(change.number)}`),
-      ) === true
+      release.history?.changes.some((change) => {
+        const key = `${change.repo}#${String(change.number)}`;
+        return mentioned.has(key) || input.mine?.has(key) === true;
+      }) === true
         ? [release.tag]
         : [],
     ),
@@ -299,12 +303,28 @@ export function useZeropsConversationReleases(
     () => (groupId === undefined || groupId === null ? NO_APPS : [groupId]),
     [groupId],
   );
-  const releases = useCompactProjectFlows(appIds).flows.get(groupId ?? "")?.releases;
+  const flow = useCompactProjectFlows(appIds).flows.get(groupId ?? "");
+  const releases = flow?.releases;
+  // What the Mate itself made: a release that carried it is told in its conversation, whether or
+  // not a message of it links the change.
+  const mateProjectId = mate?.project.id;
+  const merged = flow?.merged;
+  const mine = useMemo(
+    () =>
+      new Set(
+        (merged ?? []).flatMap((change) =>
+          change.mateProjectId === mateProjectId
+            ? [`${change.repository}#${String(change.number)}`]
+            : [],
+        ),
+      ),
+    [mateProjectId, merged],
+  );
   return useMemo(
     () =>
       releases === undefined
         ? NO_ENDS
-        : conversationReleases({ events, releases, messages, hqAddress, asks }),
-    [asks, events, hqAddress, messages, releases],
+        : conversationReleases({ events, releases, messages, hqAddress, asks, mine }),
+    [asks, events, hqAddress, messages, mine, releases],
   );
 }
