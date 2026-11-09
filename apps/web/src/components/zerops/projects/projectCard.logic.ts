@@ -131,10 +131,7 @@ export function projectWaitWords(wait: ProjectWait): {
         verb: "Answer",
       };
     case "plan":
-      return {
-        text: text === undefined ? `${name} has a plan for you` : `${name}'s plan: ${text}`,
-        verb: "See plan",
-      };
+      return { text: `${name} has a plan for you to approve`, verb: "See plan" };
     case "failed":
       return { text: `${name} stopped on an error`, verb: "Ask to fix it" };
   }

@@ -44,7 +44,7 @@ import { comingMateLine, stopLine } from "./projectsView.logic";
 import { ChangeRow } from "../system/ChangeRow";
 import { nextReleaseTitle } from "../system/NextRelease.logic";
 import { PlaceLine } from "../system/PlaceLine";
-import { SectionLabel } from "../system/SectionLabel";
+import { SectionAction, SectionLabel } from "../system/SectionLabel";
 import type {
   ProjectsFlowGroup,
   StageSettingUp,
@@ -405,13 +405,15 @@ function CardComingMate<T>({
   );
 }
 
+const NO_PARTS: ReadonlyArray<never> = [];
+
 /** At most this many Mates stand on a card; the rest are on the project's page. */
 const CARD_MATES = 3;
 
 /**
  * A card's Mates: up to three, the ones that need someone first, each as its menu row says it and
  * never lifted (what waits on the viewer is the card's Waiting on you); "+ N more" opens the
- * project's page, and *Add a Mate* closes the list.
+ * project's page, and *+ Add a Mate* is the label's action.
  */
 function CardMates<T>({
   entry,
@@ -434,7 +436,15 @@ function CardMates<T>({
   const more = mates.length - shown.length;
   return (
     <section aria-label="Mates" className="ov-sec ov-mates" data-zerops-step="mates">
-      <SectionLabel count={mates.length > 1 ? mates.length : undefined} level={3}>
+      <SectionLabel
+        action={
+          onAdd === undefined || addWhy !== null ? undefined : (
+            <SectionAction onClick={onAdd}>+ Add a Mate</SectionAction>
+          )
+        }
+        count={mates.length > 1 ? mates.length : undefined}
+        level={3}
+      >
         Mates
       </SectionLabel>
       {shown.map((mate) =>
@@ -448,21 +458,17 @@ function CardMates<T>({
           <Fragment key={props.getKey(mate.item)}>
             {props.renderMate(mate.item, {
               layout: "row",
-              parts: mate.mate.parts ?? [],
+              // Its previews are the card's ··· (`renderGroupMenu`): the row is face, name, what
+              // it is doing and when, as the menu's row says it.
+              parts: NO_PARTS,
               quiet: true,
             })}
           </Fragment>
         ),
       )}
       {more > 0 ? <MoreLink groupId={entry.group.groupId} more={more} /> : null}
-      {onAdd === undefined ? null : addWhy === null ? (
-        <button className="ov-add" data-zerops-surface="add-mate" onClick={onAdd} type="button">
-          <span aria-hidden="true" className="ov-add-face">
-            <PlusIcon className="size-4" />
-          </span>
-          <span>Add a Mate</span>
-        </button>
-      ) : (
+      {/* Standing off, Add a Mate says why under its words, where the label has no room. */}
+      {onAdd === undefined || addWhy === null ? null : (
         <button
           aria-describedby={`${entry.group.groupId}-add-why`}
           className="ov-add"

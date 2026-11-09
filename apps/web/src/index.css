@@ -7044,6 +7044,7 @@ a.ov-card-site:hover {
 /* What waits on you, lifted: one tinted box under the places, each wait a row on the card's own
    ground inside it — a sentence and its one verb. */
 .ov-waits {
+  container: ov-waits / inline-size;
   display: grid;
   gap: 6px;
   margin-top: 16px;
@@ -7082,11 +7083,24 @@ a.ov-card-site:hover {
   font-size: 14px;
   line-height: 19px;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 }
 
 .ov-wait-verb {
   display: flex;
+}
+
+/* A narrow card puts the verb under the sentence, never squeezing the sentence to a word. */
+@container ov-waits (max-width: 17rem) {
+  .ov-wait {
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: start;
+    row-gap: 6px;
+  }
+
+  .ov-wait-verb {
+    grid-column: 2;
+  }
 }
 
 /* "+ N more": the rest of a list, on the project's page. */
