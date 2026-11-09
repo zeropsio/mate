@@ -399,7 +399,7 @@ function AppRow({
               {installation.manageUrl === null ? null : (
                 <>
                   <span className="text-muted-foreground">·</span>
-                  <OutLink href={installation.manageUrl}>Manage on GitHub</OutLink>
+                  <OutLink href={installation.manageUrl}>Repository access</OutLink>
                 </>
               )}
               {installation.suspended && manage ? (
