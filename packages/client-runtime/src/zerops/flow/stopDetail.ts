@@ -818,7 +818,15 @@ export function releaseNotCreated(input: {
       (job) => job?.state === "live" && job.cause === "release" && job.ref === tag,
     ),
   );
-  return { tag, missing: input.missing, reason: creation?.reason, deployed };
+  // HQ names what the release was to create; an older HQ names nothing, and the page then says
+  // what the setup files declare and Zerops lacks.
+  const named = creation?.services ?? [];
+  return {
+    tag,
+    missing: named.length > 0 ? named : input.missing,
+    reason: creation?.reason,
+    deployed,
+  };
 }
 
 /** What a release's row says where HQ refused it before anything of it deployed. */
