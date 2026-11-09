@@ -318,6 +318,7 @@ const fakes = (world: World) =>
         instanceId: ProviderInstanceId.make("opencode"),
         model,
       })),
+      takePersona: () => Effect.void,
       changes: [Stream.fromPubSub(world.moved)],
     }),
     Layer.mock(ProjectionSnapshotQuery)({

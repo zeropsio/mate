@@ -30,6 +30,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   agentIdForProviderInstance,
+  type MatePersona,
   type ModelSelection,
   OrchestrationDispatchCommandError,
   type OrchestrationThreadShell,
@@ -60,6 +61,7 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "../config.ts";
 import { MateEngine, type ConversationView } from "../engine/MateEngine.ts";
 import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
 import { ServerCommandReadiness } from "../spi/serverCommandReadiness.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
@@ -123,6 +125,11 @@ export class ZeropsSetupReads extends Context.Service<
     readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
     /** What an automated Mate's agents start on: its organization's model (`ZeropsAutomation`). */
     readonly automatedModel: Effect.Effect<ModelSelection>;
+    /**
+     * Gives the Mate the persona chosen when it was made (`MateSelf.standupPersona`), unless it
+     * holds one: a persona its person set since is theirs to keep.
+     */
+    readonly takePersona: (persona: MatePersona) => Effect.Effect<void>;
     /**
      * The change streams of what decides whether the stand-up may go: HQ's state (`hq`), the
      * sign-ins (`signers`), the agent-auth feed (`agents`) and the providers (`providers`).
@@ -581,6 +588,11 @@ export const makeZeropsSetup = Effect.gen(function* () {
       const asker = hq.mate.standupRequestedBy ?? undefined;
       // An automated Mate runs on the organization's key only: its OpenCode, nobody's sign-in.
       const automated = hq.mate.automated === true;
+      // Taken as the stand-up is decided, so its first turn already runs with it.
+      const takePersona =
+        hq.mate.standupPersona === undefined
+          ? Effect.void
+          : reads.takePersona(hq.mate.standupPersona);
       const allProviders = yield* reads.providers;
       const providers = automated
         ? allProviders.filter(
@@ -636,7 +648,10 @@ export const makeZeropsSetup = Effect.gen(function* () {
         ready: readyHere?.instanceId,
         spoken: resuming === undefined && spokenIn(main),
       });
-      if (decision.kind === "spoken") return yield* settle("skipped");
+      if (decision.kind === "spoken") {
+        yield* takePersona;
+        return yield* settle("skipped");
+      }
       if (decision.kind !== "start") return false;
 
       const now = yield* nowIso;
@@ -671,6 +686,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
         if (!claimed) return false;
       }
       const sent = yield* Effect.gen(function* () {
+        yield* takePersona;
         if (!(yield* engine.assignAgent(conversationId, agentOf(selection, providers)))) {
           return false;
         }
@@ -938,6 +954,7 @@ export const liveReadsLayer = Layer.effect(
     const instances = yield* ProviderInstances;
     const agentAuth = yield* ZeropsAgentAuth;
     const automation = yield* ZeropsAutomation;
+    const settings = yield* ServerSettingsService;
     const zerops = (yield* ServerConfig.ServerConfig).zerops;
     const statusFilePath = zerops?.statusFile;
     return ZeropsSetupReads.of({
@@ -959,6 +976,18 @@ export const liveReadsLayer = Layer.effect(
       processGone: (zcp) => zcpProcessGone(fs, zcp),
       providers: Effect.zipWith(instances.providers, agentAuth.latest, overlayZeropsAgentAuth),
       automatedModel: automation.modelSelection,
+      takePersona: (persona) =>
+        settings.getSettings.pipe(
+          Effect.flatMap((current) =>
+            current.persona === null ? settings.updateSettings({ persona }) : Effect.void,
+          ),
+          Effect.asVoid,
+          Effect.catch((error) =>
+            Effect.logWarning("zerops setup: the persona chosen at its making was not taken", {
+              reason: error.message,
+            }),
+          ),
+        ),
       changes: [link.changes, projectSigners.changes, agentAuth.changes, instances.changes],
     });
   }),
