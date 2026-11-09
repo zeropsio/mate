@@ -46,7 +46,7 @@ export function useGitTargetOperations(appId: string) {
             disconnect: async (repo: string) => {
               await operations.run({ kind: "disconnect-git-remote", ...scope, repo }, options);
             },
-            /** Through the org's app `githubAppId`; absent, the one whose installation reaches it. */
+            // `githubAppId`: the org app to go through, where the organization holds several.
             viaApp: async (repo: string, repository: string, githubAppId?: number) => {
               await operations.run(
                 {

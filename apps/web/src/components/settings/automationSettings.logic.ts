@@ -97,6 +97,7 @@ export type GithubSeal =
   | { readonly kind: "needed" };
 
 export const NEEDS_CONFIRM = "Needs an Owner or Admin to confirm it before Mate uses it.";
+export const CONFIRM_WHO_CAN = "Ask one of them to confirm it here.";
 
 function githubSeal(app: HqGithubApp): GithubSeal {
   return app.sealedBy === null
@@ -410,12 +411,14 @@ export function unansweredInstallations(view: HqGithubView | null): number {
   );
 }
 
-/** Whether some app of the organization's has an installation Mate acts on. */
+/** Whether some app of the organization's, vouched for, has an installation Mate acts on. */
 export function githubConnected(view: HqGithubView | null): boolean {
   return (
     view !== null &&
-    view.apps.some((app) =>
-      app.installations.some((installation) => installationStanding(installation) === "accepted"),
+    view.apps.some(
+      (app) =>
+        app.sealedBy !== null &&
+        app.installations.some((installation) => installationStanding(installation) === "accepted"),
     )
   );
 }
