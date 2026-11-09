@@ -13,7 +13,7 @@ import { groupWithoutMate, projectDeleteOffered } from "../ZeropsDeleteApplicati
 
 /** HQ's applications needing a row without a listed project, including unfinished deletion. */
 export function emptyApplications(
-  view: Pick<HqNavigationView, "orgId" | "live" | "reconnecting"> & {
+  view: Pick<HqNavigationView, "orgId"> & {
     readonly structure: {
       readonly apps: ReadonlyArray<
         Pick<HqStructure["apps"][number], "id" | "name" | "projects" | "contents">
@@ -37,9 +37,9 @@ export function groupIsEmpty(
   return group.environments.length === 0 && group.pending.length === 0;
 }
 
-/** Only HQ's current answer for this organization and application can establish emptiness. */
+/** Only HQ's answer for this organization and application, as last read, establishes emptiness. */
 export function applicationContents(
-  view: Pick<HqNavigationView, "orgId" | "live" | "reconnecting"> & {
+  view: Pick<HqNavigationView, "orgId"> & {
     readonly structure: {
       readonly apps: ReadonlyArray<
         Pick<HqStructure["apps"][number], "id" | "name" | "projects" | "contents">
@@ -49,7 +49,7 @@ export function applicationContents(
   organizationId: string | undefined,
   appId: string,
 ): HqAppContents | undefined {
-  if (view.orgId !== organizationId || !view.live) return undefined;
+  if (view.orgId !== organizationId) return undefined;
   return view.structure?.apps.find((app) => app.id === appId)?.contents;
 }
 

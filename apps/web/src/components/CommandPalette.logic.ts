@@ -229,8 +229,6 @@ export type BuildThreadActionItemsThread = Pick<
 export interface CommandPaletteHqThreads {
   /** HQ's Mates, by project; null while nothing is known. */
   readonly mates: HqMates | null;
-  /** `mates` is HQ's answer now; a status kept from before is not drawn as if it were. */
-  readonly current: boolean;
   /** This browser holds a socket to the environment: its chats come from its own threads. */
   readonly connected: (environmentId: EnvironmentId) => boolean;
   /** A link into the environment would open: the route gate's verdict. */
@@ -347,7 +345,7 @@ function hqChats(hq: CommandPaletteHqThreads | undefined): {
         digest,
         mateName,
         mateApp,
-        status: hq.current ? hq.renderStatus({ kind, toneId: toneIdForKind(kind) }) : null,
+        status: hq.renderStatus({ kind, toneId: toneIdForKind(kind) }),
       });
     }
   }

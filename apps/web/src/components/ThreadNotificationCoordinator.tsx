@@ -55,7 +55,6 @@ export function ThreadNotificationCoordinator() {
     [view, attention],
   );
   const told = view?.mates ?? null;
-  const current = view?.current === true;
   const watched = useMemo(() => {
     const mates = new Map<string, WatchedMate>();
     for (const projectId of projectIds) {
@@ -68,13 +67,13 @@ export function ThreadNotificationCoordinator() {
           ? read.live
             ? attentionWatch(read.attention, titled)
             : undefined
-          : current && overview !== undefined
+          : overview !== undefined
             ? overviewWatch(overview)
             : undefined;
       if (look !== undefined) mates.set(projectId, look);
     }
     return mates;
-  }, [attention, current, projectIds, told]);
+  }, [attention, projectIds, told]);
   const mode = useClientSettings((settings) => settings.notificationMode);
   const inAppNotificationsEnabled = useClientSettings(
     (settings) => settings.inAppNotificationsEnabled,

@@ -39,11 +39,10 @@ export function useGitEnvironmentFormInputs(
   const add = hqOffers.state(app?.can, "add_git_environment");
   const offered = (verb: string) => hqOffers.state(app?.can, verb).kind === "allowed";
   return {
-    takenNames:
-      navigation.live && Array.isArray(app?.environments)
-        ? app.environments.map((environment) => environment.name)
-        : undefined,
-    repos: detail.live ? detail.repos : undefined,
+    takenNames: Array.isArray(app?.environments)
+      ? app.environments.map((environment) => environment.name)
+      : undefined,
+    repos: detail.repos,
     offered: {
       add: add.kind === "allowed",
       // HQ admits connecting a remote and replacing its token on one offer.
@@ -57,7 +56,7 @@ export function useGitEnvironmentFormInputs(
 
 /**
  * The application a Zerops project is in, as HQ's structure holds it: its id, name and
- * environments — `undefined` while HQ's structure is not live or refuses them.
+ * environments, as last read — `undefined` while HQ's structure refuses them.
  */
 export function useApplicationOfProject(projectId: string | undefined):
   | {
@@ -76,7 +75,6 @@ export function useApplicationOfProject(projectId: string | undefined):
     : {
         id: app.id,
         name: app.name,
-        environments:
-          navigation.live && Array.isArray(app.environments) ? app.environments : undefined,
+        environments: Array.isArray(app.environments) ? app.environments : undefined,
       };
 }

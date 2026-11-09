@@ -109,13 +109,6 @@ describe("ZeropsHqCardView — its state", () => {
     expect(html).toContain("Needs attention");
     expect(html).toContain(`data-hq-trouble="true">${line}</li>`);
   });
-
-  it("is down since HQ stopped answering", () => {
-    const html = card({ standing: { kind: "unavailable", since: 7 } });
-    expect(html).toContain('data-hq-state="down"');
-    expect(html).toContain('data-tone="danger"');
-    expect(html).toContain("Unavailable since t7");
-  });
 });
 
 describe("ZeropsHqCardView — who reads what", () => {

@@ -550,7 +550,6 @@ describe("buildThreadActionItems — chats HQ lists", () => {
               ],
             ]),
           ),
-          current: false,
           visibilityByProject,
         },
         projectTitleById: new Map(),
@@ -639,23 +638,6 @@ describe("buildThreadActionItems — chats HQ lists", () => {
     expect(items.map((item) => [item.value, item.title, item.titleTrailingContent])).toEqual([
       ["thread:thread-parked", "Checkout flow", undefined],
     ]);
-  });
-
-  it("lists the chats of HQ's view kept from before without a status", () => {
-    const [item] = buildThreadActionItems({
-      threads: [],
-      hq: {
-        ...hq(new Map([["project-parked", mate(PARKED, [digest("t1", { kind: "approval" })])]])),
-        current: false,
-      },
-      projectTitleById: new Map(),
-      sortOrder: "updated_at",
-      icon: null,
-      runThread: async (_thread) => undefined,
-    });
-
-    expect(item?.value).toBe("thread:t1");
-    expect(item?.titleLeadingContent).toBeUndefined();
   });
 });
 

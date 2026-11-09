@@ -46,7 +46,7 @@ import { useCallback, useContext, useEffect, useMemo, useReducer, useState } fro
 
 import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
-import { hqDownSinceAtom, hqProjectAtom } from "../state/zerops";
+import { hqProjectAtom } from "../state/zerops";
 import { useClientSettings } from "../hooks/useSettings";
 import { hqOutage, type HqOutage } from "../zerops/hqNavigation";
 import { useNowMs } from "../zerops/useNowMs";
@@ -72,14 +72,13 @@ const ANSWERED = Atom.make(true).pipe(Atom.withLabel("route-gate:no-listing-read
 const HQ_DUE = Atom.make<HqIndexWord>("due").pipe(Atom.withLabel("route-gate:no-hq"));
 /** HQ as a route that does not wait on it reads it: answering, so nothing of it is said. */
 const HQ_ANSWERING = Atom.make<Parameters<typeof hqOutage>[0]>({
-  live: true,
+  link: { kind: "live" },
   refusal: null,
+  retrying: false,
   capped: false,
-  reconnecting: false,
   slow: false,
   structure: null,
 }).pipe(Atom.withLabel("route-gate:hq-answering"));
-const NOT_DOWN = Atom.make<number | null>(null).pipe(Atom.withLabel("route-gate:hq-not-down"));
 const NO_ROW = Atom.make<ProjectValue | null>(null).pipe(Atom.withLabel("route-gate:no-row"));
 const NO_PREVIEW = Atom.make<RoutePreview | null>(null).pipe(
   Atom.withLabel("route-gate:no-preview"),
@@ -304,7 +303,6 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   // What the menu says of HQ now, from the same reads and clock the menu's header says it from.
   const outage = hqOutage(
     useAtomValue(onHq ? shownCanonicalHqListNavigationAtom : HQ_ANSWERING),
-    useAtomValue(onHq ? hqDownSinceAtom : NOT_DOWN),
     useClientSettings((settings) => settings.timestampFormat),
     useNowMs(onHq),
   );

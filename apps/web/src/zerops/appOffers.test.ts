@@ -8,18 +8,13 @@ import { describe, expect, it } from "vite-plus/test";
 import { releaseGateOf, type OfferReading } from "./appOffers";
 
 const LIVE: OfferReading = {
-  state: (can, verb) => hqOffer(can, verb, { current: true, unavailableSince: null }),
+  state: hqOffer,
   words: (state) =>
     state.kind === "refused"
       ? `HQ: ${state.reason}`
       : state.kind === "unknown"
         ? "unsaid"
         : undefined,
-};
-const DOWN: OfferReading = {
-  ...LIVE,
-  state: (can, verb) => hqOffer(can, verb, { current: false, unavailableSince: 5 }),
-  words: () => "HQ unavailable",
 };
 
 describe("releaseGateOf", () => {
@@ -38,12 +33,6 @@ describe("releaseGateOf", () => {
       gate: { allowed: false, reason: "HQ: not_releaser", refusedBy: "hq" },
     },
     { name: "HQ not saying", reading: LIVE, can: {}, gate: { allowed: false, reason: "unsaid" } },
-    {
-      name: "HQ not answering",
-      reading: DOWN,
-      can: { release: { allow: true } as const },
-      gate: { allowed: false, reason: "HQ unavailable" },
-    },
   ])("reads $name", ({ reading, can, gate }) => {
     expect(releaseGateOf(reading, can)).toEqual(gate);
   });

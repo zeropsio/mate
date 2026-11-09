@@ -244,7 +244,6 @@ describe("enrollmentRefusalWords — HQ's refusal of a Mate's enrollment", () =>
 });
 
 describe("hqOfferWords — what a control says beside a verb HQ does not offer", () => {
-  const at = (ms: number) => `@${String(ms)}`;
   it.each<[string, HqOfferState, string | undefined]>([
     ["nothing for an offered verb", { kind: "allowed" }, undefined],
     [
@@ -253,13 +252,8 @@ describe("hqOfferWords — what a control says beside a verb HQ does not offer",
       "Only an owner or admin of the organization can do this.",
     ],
     ["that HQ has not said yet", { kind: "unknown" }, "HQ has not said yet."],
-    [
-      "since when HQ does not answer",
-      { kind: "unavailable", since: 2_000 },
-      "HQ unavailable since @2000.",
-    ],
   ])("%s", (_, state, words) => {
-    expect(hqOfferWords(state, { at })).toBe(words);
+    expect(hqOfferWords(state)).toBe(words);
   });
 });
 

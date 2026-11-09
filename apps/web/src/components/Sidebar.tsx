@@ -99,7 +99,6 @@ import {
   useThreadShells,
 } from "../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
-import { hqDownSinceAtom } from "../state/zerops";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
@@ -1437,11 +1436,10 @@ export default function Sidebar() {
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
-  // HQ not answering: the menu draws the structure it last read, says since when and how old that
-  // is (SPEC §6.2.3); the Mates' conversations go on without HQ.
+  // HQ away: the menu draws the structure it last read and, past HQ's budget, says since when
+  // (SPEC §6.2.3); the Mates' conversations go on without HQ.
   const zeropsHqOutage = hqOutage(
     useAtomValue(shownCanonicalHqListNavigationAtom),
-    useAtomValue(hqDownSinceAtom),
     timestampFormat,
     zeropsNowMs,
   );

@@ -34,27 +34,25 @@ describe("mateCrewOf — a Mate's crew as HQ holds it", () => {
   ])(
     "reads its crew's status with no socket to it, its digest once applied: $case",
     ({ crew, status, digest }) => {
-      const read = mateCrewOf(mate({ crew }), true);
+      const read = mateCrewOf(mate({ crew }));
       expect([read.status, read.crew]).toEqual([status, digest]);
     },
   );
 
   it("knows nothing of the crew of a Mate HQ holds no overview of", () => {
     const old = { presence: { online: true, since: "2026-10-03T10:00:00.000Z", overview: "none" } };
-    expect(mateCrewOf(old as MateLiveView, true)).toMatchObject({ status: null, crew: null });
-    expect(mateCrewOf(undefined, true)).toMatchObject({ status: null, crew: null });
+    expect(mateCrewOf(old as MateLiveView)).toMatchObject({ status: null, crew: null });
+    expect(mateCrewOf(undefined)).toMatchObject({ status: null, crew: null });
   });
 
   it.each([
-    { case: "HQ's answer now, the Mate live", current: true, overview: "live", live: true },
-    { case: "HQ's answer from before", current: false, overview: "live", live: false },
-    { case: "the Mate asleep, its last overview", current: true, overview: "stored", live: false },
+    { case: "HQ's answer now, the Mate live", overview: "live", live: true },
+    { case: "the Mate asleep, its last overview", overview: "stored", live: false },
   ] as const)(
     "is current only while HQ answers now of a live Mate: $case",
-    ({ current, overview, live }) => {
+    ({ overview, live }) => {
       const read = mateCrewOf(
         mate({ presence: { online: overview === "live", since: "x", overview } }),
-        current,
       );
       expect(read.current).toBe(live);
     },

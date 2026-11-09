@@ -367,8 +367,6 @@ export function mirrorAuthorityLine(offer: HqOfferState): string | null {
         : hqRefusalWords({ code: "forbidden", reason: offer.reason });
     case "unknown":
       return "HQ hasn't said yet whether you can connect this project's code to GitHub.";
-    case "unavailable":
-      return "HQ isn't answering, so connecting to GitHub waits until it does.";
   }
 }
 

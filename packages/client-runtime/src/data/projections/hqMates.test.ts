@@ -308,7 +308,7 @@ describe("keyed HQ Mate readers", () => {
     expect(registry.get(overview)).toEqual({
       presence: { ...presence, online: false, overview: "stored" },
     });
-    expect(registry.get(linked).live).toBe(false);
+    expect(registry.get(linked)?.online).toBe(false);
     expect(registry.get(store.data.project(hqMateReady, key("a")))).toBeUndefined();
     expect(registry.get(store.data.project(hqMateLogins, key("a")))).toBeUndefined();
     const scope = placementsScope("org");

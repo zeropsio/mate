@@ -8,9 +8,9 @@
  * - **A verb not decided is unknown** — Zerops not read yet, the thing absent — never a guess.
  * - **A Mate's moves** (`moveTo`) are choices, not a verb: each application, or `new`, with the
  *   kinds the move rule lets it take there; HQ answers them as the move opens.
- * - **Four states a control draws** (`hqOffer`): allowed, refused with the rule's reason (its words
- *   are `hq/refusals.ts`'), unknown, and unavailable since HQ stopped answering: nothing HQ
- *   enforces can be pressed then. Nothing compares a time to now.
+ * - **Three states a control draws** (`hqOffer`): allowed, refused with the rule's reason (its words
+ *   are `hq/refusals.ts`'), and unknown. HQ away changes none of them: a write while it is away is
+ *   answered at once (`hqAwayAnswer`).
  *
  * Pure.
  *
@@ -61,23 +61,10 @@ export const HQ_REMOTE_WRITE_VERB = "structure" satisfies HqApplicationVerb;
 export type HqOfferState =
   | { readonly kind: "allowed" }
   | { readonly kind: "refused"; readonly reason: string }
-  | { readonly kind: "unknown" }
-  /** HQ does not answer: since when, wall ms. */
-  | { readonly kind: "unavailable"; readonly since: number };
+  | { readonly kind: "unknown" };
 
-/**
- * One verb's state, from its `can` record and whether HQ answers now: once it stopped answering,
- * every HQ-enforced verb is unavailable since then; while it is only being read again, the record
- * stands.
- */
-export function hqOffer(
-  can: HqOffers | undefined,
-  verb: string,
-  hq: { readonly current: boolean; readonly unavailableSince: number | null },
-): HqOfferState {
-  if (!hq.current && hq.unavailableSince !== null) {
-    return { kind: "unavailable", since: hq.unavailableSince };
-  }
+/** One verb's state, from its `can` record as last read. */
+export function hqOffer(can: HqOffers | undefined, verb: string): HqOfferState {
   const decision = can?.[verb];
   if (decision === undefined) return { kind: "unknown" };
   return decision.allow ? { kind: "allowed" } : { kind: "refused", reason: decision.reason };

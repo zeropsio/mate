@@ -113,13 +113,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   const listed = projectFlow?.codeRepos ?? projectFlow?.repos;
   const repos = useMemo(() => listed?.filter((entry) => entry.name !== RECIPE_REPO), [listed]);
   const git = useGitTargetOperations(groupId ?? "");
-  const writes =
-    mirrorAuthorityLine(
-      hqOffer(git.can, HQ_REMOTE_WRITE_VERB, {
-        current: git.live,
-        unavailableSince: git.live ? null : 0,
-      }),
-    ) === null;
+  const writes = mirrorAuthorityLine(hqOffer(git.can, HQ_REMOTE_WRITE_VERB)) === null;
   // The apps are asked only where a repository's stop is told by them.
   const mirror = useGitMirrorApps(
     (repos ?? []).some(

@@ -362,20 +362,20 @@ describe("hqNavigation", () => {
     {
       name: "not asked",
       state: emptyAccount,
-      expected: { read: "unread", structure: null, live: false },
+      expected: { read: "unread", structure: null, link: { kind: "unreachable" } },
     },
     {
       name: "first catchup",
       state: demanded,
-      expected: { read: "reading", structure: null, live: false },
+      expected: { read: "reading", structure: null, link: { kind: "unreachable" } },
     },
-    { name: "read", state: read, expected: { read: "read", live: true, reconnecting: false } },
-    { name: "HQ down", state: down, expected: { read: "read", live: false, reconnecting: true } },
+    { name: "read", state: read, expected: { read: "read", link: { kind: "live" } } },
+    { name: "HQ down", state: down, expected: { read: "read", link: { kind: "unreachable" } } },
     {
       name: "refused",
       state: refused,
       expected: {
-        live: false,
+        link: { kind: "live" },
         refusal: "Zerops refused HQ.",
         unavailableReason: "expired-session",
       },
@@ -594,7 +594,7 @@ describe("hqNavigation", () => {
         stream(scope, { kind: "handshake" }),
       ]),
     ]);
-    expect(navigation(asking)).toMatchObject({ live: false, reconnecting: true });
+    expect(navigation(asking)).toMatchObject({ link: { kind: "unreachable" } });
   });
 
   it("a planned HQ reconnect is no outage: what it read stays current while HQ confirms it again", () => {
@@ -606,13 +606,12 @@ describe("hqNavigation", () => {
         stream(scope, { kind: "handshake" }, 100_080),
       ]),
     );
-    expect(navigation(reasking)).toMatchObject({ live: true, reconnecting: false });
-    expect(navigation(reasking).downSince).toBeUndefined();
+    expect(navigation(reasking)).toMatchObject({ link: { kind: "live" } });
     const confirmed = apply(reasking, [
       { kind: "hq-ready", scopes: NAV.map((scope) => ({ scope, generation: 2 })) },
       ...NAV.map((scope) => stream(scope, { kind: "baseline-committed" }, 100_200)),
     ]);
-    expect(navigation(confirmed)).toMatchObject({ live: true, reconnecting: false });
+    expect(navigation(confirmed)).toMatchObject({ link: { kind: "live" } });
   });
 
   it("is down only once HQ stays away past the grace, and down since it went away", () => {
@@ -628,11 +627,9 @@ describe("hqNavigation", () => {
       ),
       ...NAV.map((scope) => stream(scope, { kind: "parent-lost" }, 60_000)),
     ]);
-    expect(navigation(lost)).toMatchObject({ live: true, reconnecting: false });
+    expect(navigation(lost)).toMatchObject({ link: { kind: "live" } });
     expect(navigation(pastGrace(lost))).toMatchObject({
-      live: false,
-      reconnecting: true,
-      downSince: 60_000,
+      link: { kind: "unreachable", since: 60_000 },
     });
   });
 
@@ -724,13 +721,13 @@ describe("hqMates", () => {
   ]);
 
   it.each([
-    { name: "a relayed Mate, live", state: withMate, live: true, mates: { ada: { presence } } },
-    { name: "none relayed yet", state: read, live: true, mates: {} },
-  ])("$name", ({ state, live, mates }) => {
-    expect(hqMates.derive(readsOfState(state), ORG)).toEqual({ live, mates });
+    { name: "a relayed Mate", state: withMate, mates: { ada: { presence } } },
+    { name: "none relayed yet", state: read, mates: {} },
+  ])("$name", ({ state, mates }) => {
+    expect(hqMates.derive(readsOfState(state), ORG)).toEqual({ mates });
   });
 
-  it("keeps a Mate's last word through an outage, no longer live", () => {
+  it("keeps a Mate's last word through an outage", () => {
     const outage = pastGrace(
       apply(withMate, [
         stream(linkKeys.hq(ORG), {
@@ -740,10 +737,7 @@ describe("hqMates", () => {
         }),
       ]),
     );
-    expect(hqMates.derive(readsOfState(outage), ORG)).toEqual({
-      live: false,
-      mates: { ada: { presence } },
-    });
+    expect(hqMates.derive(readsOfState(outage), ORG)).toEqual({ mates: { ada: { presence } } });
   });
 });
 

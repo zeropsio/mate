@@ -75,10 +75,6 @@ const status = (tone: SitesTone, word: string, sentence: string, section: string
 const sentenceOf = (fact: string, rest: string | undefined) =>
   rest === undefined || rest.length === 0 ? fact : `${fact} · ${rest}`;
 
-/** What HQ last said, never said as current while its link is paused. */
-const asKnown = (chip: ProductionChip, words: string) =>
-  chip.lastKnown === true ? `Last known: ${words}` : words;
-
 /** "Stage", or the stage's own name where the project has several. */
 const stageWord = (stages: HeadingLineInput["stages"], name: string) =>
   stages.length > 1 ? placeTitle(name) : "Stage";
@@ -119,7 +115,7 @@ export function projectSitesStatus(input: {
       prodChip.version === undefined
         ? "Release failed"
         : `Release failed · still runs ${prodChip.version}`;
-    return status("amber", "Release failed", asKnown(prodChip, words), PRODUCTION);
+    return status("amber", "Release failed", words, PRODUCTION);
   }
   if (git !== undefined)
     return git.blocked || git.standing === "partly" || git.standing === "refused"

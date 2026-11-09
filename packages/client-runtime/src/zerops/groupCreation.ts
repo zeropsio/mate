@@ -32,13 +32,9 @@ const OFFERED: GroupVerb = { offered: true };
 /**
  * Whether this person is offered *Add project* — HQ's offer of making an application
  * (`create_app`) — and what the row says instead: a member HQ refuses simply is not the one who
- * does this; before HQ has said, or while it does not answer, that.
+ * does this; before HQ has said, that.
  */
-export function resolveAddProjectVerb(input: {
-  readonly offer: HqOfferState;
-  /** Words a wall time, for since when HQ does not answer. */
-  readonly at: (ms: number) => string;
-}): GroupVerb {
+export function resolveAddProjectVerb(input: { readonly offer: HqOfferState }): GroupVerb {
   if (input.offer.kind === "allowed") return OFFERED;
   if (input.offer.kind === "refused") {
     return {
@@ -46,12 +42,12 @@ export function resolveAddProjectVerb(input: {
       reason:
         input.offer.reason === "not_structure_writer"
           ? ONLY_ADMINS_ADD_A_PROJECT
-          : hqOfferWords(input.offer, { at: input.at }),
+          : hqOfferWords(input.offer),
     };
   }
   return {
     offered: false,
-    reason: hqOfferWords(input.offer, { at: input.at }),
+    reason: hqOfferWords(input.offer),
   };
 }
 

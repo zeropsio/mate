@@ -126,10 +126,7 @@ export function GithubConnectPicker({
     readAfterReturn(project, repo);
     again();
   }, [again, project, repo]);
-  const writes = hqOffer(git.can, HQ_REMOTE_WRITE_VERB, {
-    current: git.live,
-    unavailableSince: git.live ? null : 0,
-  });
+  const writes = hqOffer(git.can, HQ_REMOTE_WRITE_VERB);
   const leave = () => {
     rememberLeaving(project, repo, apps);
     setBefore(seenBefore(project, repo));

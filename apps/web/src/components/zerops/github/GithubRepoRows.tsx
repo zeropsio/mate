@@ -73,10 +73,7 @@ export function ProjectRepositories({
     (entry) => entry.remote?.via === "app" && entry.remote.invalidSince !== null,
   );
   const mirror = useGitMirrorApps(needsApps);
-  const writes = hqOffer(git.can, HQ_REMOTE_WRITE_VERB, {
-    current: git.live,
-    unavailableSince: git.live ? null : 0,
-  });
+  const writes = hqOffer(git.can, HQ_REMOTE_WRITE_VERB);
   return (
     <>
       <RepoRowsView

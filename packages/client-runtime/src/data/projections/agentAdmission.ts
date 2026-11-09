@@ -1,6 +1,6 @@
 import type { Projection } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
-import { hqMateOverview, hqMatePresence } from "./hqMates.ts";
+import { hqMateOverview } from "./hqMates.ts";
 import { sameValue } from "./equal.ts";
 import type {
   ProviderInstanceId,
@@ -383,7 +383,6 @@ export const mateAdmissionSummary: Projection<
     if (placed.kind === "known" && placed.value.mate?.automated === true) return null;
     const overview = hqMateOverview.derive(read, key);
     if (
-      !hqMatePresence.derive(read, key).live ||
       overview?.presence.overview !== "live" ||
       overview.presence.online !== true ||
       overview.identity?.environmentId === undefined ||

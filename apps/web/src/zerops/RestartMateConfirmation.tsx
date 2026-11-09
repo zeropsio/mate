@@ -23,7 +23,7 @@ function useRestartWords({ name, projectId, environmentId }: RestartTarget): str
     name,
     environmentId,
     threads,
-    hq?.current && told?.presence.online && told.presence.overview === "live" ? told : undefined,
+    told?.presence.online && told.presence.overview === "live" ? told : undefined,
   );
 }
 

@@ -130,7 +130,7 @@ const surfaces = (store: AccountStore, nowMs: number) => {
     }),
   );
   return {
-    topBar: hqOutage(navigation, navigation.downSince ?? null, "24-hour", nowMs)?.line ?? null,
+    topBar: hqOutage(navigation, "24-hour", nowMs)?.line ?? null,
     rows,
   };
 };
@@ -155,8 +155,9 @@ describe("HQ's planned segment end, as the menu shows it", () => {
     expect(surfaces(store, 61_000)).toEqual(before);
   });
 
-  it("HQ gone past its grace: the top bar says it is not reachable since it went away, the rows what HQ last said", () => {
+  it("HQ gone past its budget: the top bar says it is not reachable since it went away, the rows keep what HQ last said", () => {
     const store = seeded();
+    const before = surfaces(store, 60_000);
     const wentAway = Date.parse("2026-10-09T13:27:00.000Z");
     hqDrops(store, ORG, wentAway);
     for (const input of graceOver(store.state())) store.dispatch(input);
@@ -167,6 +168,6 @@ describe("HQ's planned segment end, as the menu shows it", () => {
       hourCycle: "h23",
     }).format(wentAway);
     expect(after.topBar).toContain(`HQ is not reachable since ${since}`);
-    expect(after.rows.vera?.reply).toMatchObject({ lastKnown: true });
+    expect(after.rows).toEqual(before.rows);
   });
 });

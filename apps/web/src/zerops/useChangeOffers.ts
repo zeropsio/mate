@@ -1,8 +1,8 @@
 /**
  * What the person may do with an application (`can`, `@t3tools/shared/hqOffers`), decided from
  * their live Zerops roles: its changes' verbs, a deploy asked again, and each environment's deploy
- * key. Drawn here, never decided; HQ decides the write again at the press. While HQ does not
- * answer, every one of them is unavailable since then; before the roles are read, none is known.
+ * key. Drawn here, never decided; HQ decides the write again at the press, and answers at once
+ * while it is away (`hqAwayAnswer`). Before the roles are read, none is known.
  */
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { useCallback } from "react";

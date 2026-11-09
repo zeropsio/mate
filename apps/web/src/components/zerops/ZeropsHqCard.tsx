@@ -24,13 +24,13 @@ import { hqCardView, hqNavigationTrouble, type HqCardView } from "./ZeropsHqCard
 import { Badge } from "~/components/ui/badge";
 
 /**
- * How many of the Mates the viewer observes in `organizationId` are online, while HQ's view of them
- * is live: a number, so the card is not drawn again each time a Mate at work moves its overview.
+ * How many of the Mates the viewer observes in `organizationId` are online, as HQ last said: a
+ * number, so the card is not drawn again each time a Mate at work moves its overview.
  */
 const hqOnlineMatesAtom = Atom.family((organizationId: string) =>
   Atom.make((get): number | undefined => {
     const view = get(hqMatesAtom);
-    if (view?.organizationId !== organizationId || !view.current || view.mates === null) {
+    if (view?.organizationId !== organizationId || view.mates === null) {
       return undefined;
     }
     let online = 0;

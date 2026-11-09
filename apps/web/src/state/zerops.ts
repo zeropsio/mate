@@ -19,7 +19,6 @@ import {
   type CandidateRow,
 } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentId } from "@t3tools/contracts";
-import * as Option from "effect/Option";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { Atom } from "effect/reactivity";
 import {
@@ -35,7 +34,6 @@ import {
   shownHqStatusAtom,
   shownProjectsAtom,
   type HqNavigationPeople,
-  type HqNavigationRead,
   type CanonicalHqNavigationRead,
   shownCanonicalHqMenuNavigationAtom,
 } from "@t3tools/client-runtime/data";
@@ -100,37 +98,19 @@ export const appTasksWaitingAtom = Atom.family((appId: string) =>
   ).pipe(Atom.withLabel(`zerops:tasks-waiting:${appId}`)),
 );
 
-/** HQ stopped answering what it answered: catching up, refused, or its retries capped. */
-export const hqDown = (
-  view: Pick<HqNavigationRead, "live" | "reconnecting" | "capped" | "refusal">,
-): boolean => !view.live && (view.reconnecting || view.capped || view.refusal !== null);
-
-/**
- * When HQ stopped answering the organization in view (wall ms): when its stream went away, not when
- * its grace ran out — else as this tab first saw it. Null while HQ answers, or before it ever did.
- */
-export const hqDownSinceAtom = Atom.make((get): number | null => {
-  const navigation = get(shownHqNavigationAtom);
-  const down = navigation.read === "read" && !navigation.live;
-  if (!down) return null;
-  return navigation.downSince ?? Option.getOrNull(get.self<number | null>()) ?? Date.now();
-}).pipe(Atom.keepAlive, Atom.withLabel("zerops:hq-down-since"));
-
 const HQ_STANDING_UNKNOWN: HqStanding = { kind: "unknown" };
 
 /**
- * Where the organization in view's HQ stands, as its navigation says it (SPEC §4): serving — with
- * the Core it runs and its parts — while it answers, unavailable while it does not; no read of its
- * own, nothing on a timer.
+ * Where the organization in view's HQ stands, as its navigation last said it (SPEC §4): serving —
+ * with the Core it runs and its parts — or refusing this person; no read of its own, nothing on a
+ * timer.
  */
 export const hqStandingAtom = Atom.make((get): HqStanding => {
   const navigation = get(shownHqNavigationAtom);
-  const since = get(hqDownSinceAtom);
   if (navigation.refusal !== null) return { kind: "refused" };
-  if (since !== null) return { kind: "unavailable", since };
   const organization = navigation.organization;
   const status = get(shownHqStatusAtom);
-  if (!navigation.live || organization === null || status === null) return HQ_STANDING_UNKNOWN;
+  if (organization === null || status === null) return HQ_STANDING_UNKNOWN;
   return {
     kind: "healthy",
     build: organization.build,
@@ -165,16 +145,14 @@ export const hqPlacementStatusAtom = Atom.make((get) => {
 export interface HqMatesView {
   readonly organizationId: string;
   readonly mates: HqMates;
-  /** HQ relays them now; else what was last known of them, and none of them is live. */
-  readonly current: boolean;
 }
 
 /** The Mates of the organization in view, as HQ last told them; null without one in view. */
 export const hqMatesAtom = Atom.make((get): HqMatesView | null => {
   const orgId = get(accountReadsAtom)?.orgId ?? null;
   if (orgId === null) return null;
-  const { mates, live } = get(shownHqMatesAtom);
-  return { organizationId: orgId, mates: new Map(Object.entries(mates)), current: live };
+  const { mates } = get(shownHqMatesAtom);
+  return { organizationId: orgId, mates: new Map(Object.entries(mates)) };
 }).pipe(Atom.withLabel("zerops:hq-mates"));
 
 /** The project whose Mate HQ says serves `environmentId`, in `view`; null where HQ names none. */
@@ -340,7 +318,7 @@ export const candidateListingWholeAtom = Atom.make((get): boolean => {
  */
 export const takenBotNamesAtom = Atom.make((get): TakenBotNames =>
   takenBotNames(get(shownListingAtom).listing, {
-    structureKnown: get(hqPlacementsAtom) !== null && get(shownHqNavigationAtom).live,
+    structureKnown: get(hqPlacementsAtom) !== null,
   }),
 ).pipe(Atom.withLabel("zerops:taken-bot-names"));
 

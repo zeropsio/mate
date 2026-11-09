@@ -1,7 +1,7 @@
 /**
  * Each Mate HQ places, as HQ relays it: whether it is online and its last overview, by project.
- * A Mate HQ said nothing of yet is absent; one it relayed keeps its last word through an outage,
- * and `live` says whether that word is current.
+ * A Mate HQ said nothing of yet is absent; one it relayed keeps its last word while HQ is away
+ * (`hqLink`): HQ away says nothing of a Mate.
  *
  * @module data/projections/hqMates
  */
@@ -10,18 +10,15 @@ import type { Reachability } from "../../zerops/environments/index.ts";
 
 import { hqMateScope } from "../families/hqMate.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
-import { linkKeys, type ScopeKey } from "../model.ts";
+import type { ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
 import { sameValue } from "./equal.ts";
-import { liveOrHeld } from "../streamMachine.ts";
 import { scopeSlow } from "./freshness.ts";
 import { zeropsPeople } from "./zeropsPeople.ts";
 
 export interface HqMatesRead {
   readonly mates: Readonly<Record<string, MateLiveView>>;
-  /** HQ relays them now: its link is live. Each Mate's own presence says whether it is up. */
-  readonly live: boolean;
 }
 
 export const hqMates: Projection<string, HqMatesRead> = {
@@ -34,12 +31,7 @@ export const hqMates: Projection<string, HqMatesRead> = {
       if (fact.kind !== "known") continue;
       mates[projectId] = { presence: fact.value.presence, ...fact.value.overview };
     }
-    return {
-      mates,
-      live:
-        liveOrHeld(read.stream(linkKeys.hq(orgId))) &&
-        liveOrHeld(read.stream(placementsScope(orgId))),
-    };
+    return { mates };
   },
   equals: sameValue,
 };
@@ -189,19 +181,10 @@ export const hqMateRefusal: Projection<
 };
 
 /** Field readers retain access/freshness dependencies without publishing unrelated overview sections. */
-export const hqMatePresence: Projection<
-  MateProjectKey,
-  { readonly presence: MateLiveView["presence"] | null; readonly live: boolean }
-> = {
+export const hqMatePresence: Projection<MateProjectKey, MateLiveView["presence"] | null> = {
   name: "hqMatePresence",
   keyOf: hqMateOverview.keyOf,
-  derive: (read, key) => ({
-    presence: overviewOf(read, key)?.presence ?? null,
-    live:
-      liveOrHeld(read.stream(linkKeys.hq(key.orgId))) &&
-      liveOrHeld(read.stream(placementsScope(key.orgId))) &&
-      liveOrHeld(read.stream(hqMateScope(key.orgId, key.projectId))),
-  }),
+  derive: (read, key) => overviewOf(read, key)?.presence ?? null,
   equals: sameValue,
 };
 export const hqMateLogins: Projection<MateProjectKey, MateLiveView["logins"]> = {

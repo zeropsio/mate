@@ -74,14 +74,11 @@ describe("project rename in the row and detail menu, as HQ offers it", () => {
     expect(tree!.root.findAllByType("button")).toHaveLength(0);
   });
 
-  it.each<HqOfferState>([{ kind: "unavailable", since: 1 }, { kind: "unknown" }])(
-    "draws it not pressable while HQ does not answer, or has not said: %j",
-    (offer) => {
-      mock.rename = offer;
-      mount();
-      expect(mock.actions).toMatchObject([{ id: "rename-group", disabled: true }]);
-    },
-  );
+  it("draws it not pressable while HQ has not said", () => {
+    mock.rename = { kind: "unknown" };
+    mount();
+    expect(mock.actions).toMatchObject([{ id: "rename-group", disabled: true }]);
+  });
 
   it("offers a project whose name could not be read the same rename, never a naming", () => {
     mount({ ...GROUP, nameSource: "unread" });

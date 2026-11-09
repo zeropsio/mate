@@ -13,11 +13,9 @@ const ACME: ZeropsRegistry = {
   ],
 };
 
-const at = (ms: number) => `@${String(ms)}`;
-
 describe("who may add a project: whom HQ offers making an application", () => {
   it("offers it where HQ does", () => {
-    expect(resolveAddProjectVerb({ offer: { kind: "allowed" }, at })).toEqual({ offered: true });
+    expect(resolveAddProjectVerb({ offer: { kind: "allowed" } })).toEqual({ offered: true });
   });
 
   it("does not offer it to a member who can create projects — the registry is not theirs", () => {
@@ -25,16 +23,15 @@ describe("who may add a project: whom HQ offers making an application", () => {
     // right, writing the registry is not.
     const verb = resolveAddProjectVerb({
       offer: { kind: "refused", reason: "not_structure_writer" },
-      at,
     });
     expect(verb).toEqual({ offered: false, reason: "Only an owner or admin adds a project." });
   });
 
-  it.each([
-    [{ kind: "unknown" } as const, "HQ has not said yet."],
-    [{ kind: "unavailable", since: 5 } as const, "HQ unavailable since @5."],
-  ])("offers it neither before HQ has said nor while it does not answer: %j", (offer, reason) => {
-    expect(resolveAddProjectVerb({ offer, at })).toEqual({ offered: false, reason });
+  it("does not offer it before HQ has said", () => {
+    expect(resolveAddProjectVerb({ offer: { kind: "unknown" } })).toEqual({
+      offered: false,
+      reason: "HQ has not said yet.",
+    });
   });
 });
 
