@@ -275,8 +275,10 @@ function LiveMcpProposal(
     if (compact) return;
     dockAsk(threadKey, {
       askId: proposal.id,
+      // Keyed by its proposal: the dock falling back to another ask draws that one afresh.
       render: () => (
         <McpProposalCardContainer
+          key={proposal.id}
           density="compact"
           driver={props.driver}
           environmentId={environmentId}
