@@ -56,6 +56,8 @@ import {
   usePageTrail,
 } from "../system";
 import type { ReleaseOffer } from "../ZeropsReleaseVerb";
+import { placeVaultOf } from "../vault/placeVault.logic";
+import { PlaceVaultButton } from "../vault/StopVault";
 import { StopLine } from "../ZeropsGroupDetail";
 import {
   BROUGHT_SHOWN,
@@ -456,6 +458,19 @@ function ProjectPlaces<T>({
       </Button>
     );
   };
+  /** A place line's end: its fix where it is not well, then its Vault where it has one. */
+  const placeEnd = (line: PlaceLineData) => {
+    const fix = fixVerb(line);
+    const open = props.openPlaceVault;
+    const vault = open === undefined ? undefined : placeVaultOf(line);
+    if (vault === undefined || open === undefined) return fix;
+    return (
+      <span className="flex items-center gap-2">
+        {fix}
+        <PlaceVaultButton name={vault.name} onOpen={() => open(vault)} />
+      </span>
+    );
+  };
   // Not live yet: production's empty slot is the Going live card, an empty stage slot its
   // optional row; every other place keeps its own card under Places.
   const productionSlot = facts.declared
@@ -554,7 +569,11 @@ function ProjectPlaces<T>({
     const line = lineOf(projectId);
     const notice = facts.withheldNotice?.(projectId) ?? null;
     return (
-      <div className="pp-card pp-place" data-zerops-place={environment.tier} key={slot.id}>
+      <div
+        className="group/place pp-card pp-place"
+        data-zerops-place={environment.tier}
+        key={slot.id}
+      >
         {line === undefined || notice !== null ? (
           <StopLine
             environment={environment}
@@ -568,7 +587,7 @@ function ProjectPlaces<T>({
             density="row"
             groupId={groupId}
             line={{ ...line, projectId: environment.id }}
-            trailing={fixVerb(line)}
+            trailing={placeEnd(line)}
           />
         )}
         {notice !== null ? null : environment.tier === "production" ? (
@@ -605,11 +624,16 @@ function ProjectPlaces<T>({
             ) : (
               lines.map((line) => (
                 <div
-                  className="pp-card pp-place"
+                  className="group/place pp-card pp-place"
                   data-zerops-place={line.kind}
                   key={`${line.kind}:${line.projectId ?? line.name}`}
                 >
-                  <PlaceLine density="row" groupId={groupId} line={line} trailing={fixVerb(line)} />
+                  <PlaceLine
+                    density="row"
+                    groupId={groupId}
+                    line={line}
+                    trailing={placeEnd(line)}
+                  />
                   {line.kind === "production" ? productionTail(line, undefined) : null}
                 </div>
               ))

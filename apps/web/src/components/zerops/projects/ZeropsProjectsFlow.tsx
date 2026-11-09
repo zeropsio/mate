@@ -25,6 +25,7 @@ import { Button } from "../../ui/button";
 import { MateFace, type MateFaceSize } from "../primitives";
 import { firstRunWords } from "./firstRun.logic";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
+import type { PlaceVault } from "../vault/placeVault.logic";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { OverviewCardsStandIn } from "./OverviewStandIn";
 import { OtherContainers, OtherProjects } from "./ProjectList";
@@ -256,6 +257,11 @@ export interface ZeropsProjectsFlowProps<T> {
         | { readonly fixer: string | undefined; readonly onVerb: (from: HTMLElement) => void }
         | undefined)
     | undefined;
+  /**
+   * Opens a place's vault over the page (`usePlaceVaultDrawer`): each place line that has one
+   * (`placeVaultOf`) ends in its Vault icon. None where the account reads no organization.
+   */
+  readonly openPlaceVault?: ((place: PlaceVault) => void) | undefined;
   /** One project's own page in place of the overview (`ProjectPageSlot`). */
   readonly page?: ProjectPageSlot | undefined;
   /** The applications HQ knows that the tree leaves out (`InventoryGroupsView.undrawn`). */
