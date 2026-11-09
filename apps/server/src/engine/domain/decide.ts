@@ -57,6 +57,7 @@ import {
   TrimmedNonEmptyString,
   WORK_ENDED,
 } from "@t3tools/contracts";
+import { HqRemoteUrl } from "@t3tools/shared/hqChanges";
 import { changedOptionIds } from "@t3tools/shared/modelOptions";
 
 import type { TurnOutcome } from "../bridge/spi3.ts";
@@ -87,6 +88,7 @@ import {
   type ArmedWake,
   type RunRecord,
   type SessionRecord,
+  type MirrorAsk,
   type OriginAsk,
   type VaultAsk,
 } from "./state.ts";
@@ -1259,6 +1261,7 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
   if (!request.answerable) throw new Rejected("not-answerable");
   if (request.kind === "vault") return answerVault(b, request, command);
   if (request.kind === "origin") return answerOrigin(b, request, command);
+  if (request.kind === "mirror") return answerMirror(b, request, command);
   if (request.dismissible === true) return answerByMessage(b, request, command);
   // A helper's ask may outlive the run the state keeps: the session it asked in takes the answer.
   const run = b.state.runs[request.runId];
@@ -1352,6 +1355,15 @@ export type VaultOutcome = "saved" | "declined";
  * organization's GitHub app; `declined`, in Mate — GitHub is not connected, only followed.
  */
 export type OriginOutcome = "connected" | "declined";
+/**
+ * How a repository asked to be connected to GitHub ended: `connected`, at the GitHub address HQ
+ * shows as its remote — the person's client set it itself; `declined`, not now.
+ */
+export type MirrorOutcome =
+  | { readonly kind: "connected"; readonly url: string }
+  | {
+      readonly kind: "declined";
+    };
 
 /** An answer that says only how it ended (`{ outcome }`), as one of `outcomes`; anything more is none. */
 const cardOutcome = <Outcome extends string>(
@@ -1396,6 +1408,22 @@ const settleOrigins = (
   }
 };
 
+/**
+ * Closes the open asks to connect `repo` to GitHub, none of them answered by the person: their
+ * card draws nothing and the conversation waits on them no more.
+ */
+const settleMirrors = (b: StepBuilder, repo: string): void => {
+  for (const request of Object.values(b.state.requests)) {
+    if (request.mirror?.repo !== repo) continue;
+    b.emit({
+      _tag: "RequestClosed",
+      runId: request.runId,
+      requestId: request.id,
+      state: "dismissed",
+    });
+  }
+};
+
 /** Whether a card still asks the person for `ask`'s value in `ask`'s vault. */
 const vaultAskOpen = (state: ConversationState, ask: Pick<VaultAsk, "key" | "scope">): boolean =>
   Object.values(state.requests).some(
@@ -1428,6 +1456,36 @@ export const originAnswerWords = (
   outcome: OriginOutcome,
 ): string =>
   `Origin request for ${ask.url}: ${outcome === "connected" ? `kept on GitHub, connected as ${ask.repo}` : "kept in Mate and only followed, not connected"}.`;
+
+/** The agent's line on a repository it asked to connect to GitHub: where it went, or that it did not. */
+export const mirrorAnswerWords = (ask: Pick<MirrorAsk, "repo">, outcome: MirrorOutcome): string =>
+  outcome.kind === "connected"
+    ? `The person connected ${ask.repo} to GitHub at ${outcome.url}.`
+    : `The person declined connecting ${ask.repo} to GitHub.`;
+
+/** The longest remote address the agent's line carries (as `EngineAnswer`'s). */
+const REMOTE_URL_MAX = 512;
+const isRemoteUrl = Schema.is(HqRemoteUrl);
+
+/**
+ * A remote address as HQ keeps one — https, a host, no whitespace, credentials, query or fragment
+ * — normalized; `null` for any other, or one too long.
+ */
+const remoteAddress = (url: unknown): string | null =>
+  typeof url === "string" && url.length <= REMOTE_URL_MAX && isRemoteUrl(url)
+    ? new URL(url).href
+    : null;
+
+/** A mirror ask's answer (`{ outcome: "connected", url }` or `{ outcome: "declined" }`); anything more is none. */
+const mirrorOutcome = (answer: unknown): MirrorOutcome | null => {
+  if (cardOutcome(answer, ["declined"]) === "declined") return { kind: "declined" };
+  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
+  const { outcome, url, ...rest } = answer as Record<string, unknown>;
+  const address = remoteAddress(url);
+  return outcome === "connected" && address !== null && Object.keys(rest).length === 0
+    ? { kind: "connected", url: address }
+    : null;
+};
 
 /**
  * An ask on a card is answered there: the person's client does the work as them (writes the
@@ -1517,10 +1575,32 @@ const answerOrigin = (
   });
 };
 
+const answerMirror = (
+  b: StepBuilder,
+  request: OpenRequest,
+  command: Extract<Command, { _tag: "Answer" }>,
+): void => {
+  const outcome = mirrorOutcome(command.answer);
+  if (outcome === null || request.mirror === undefined) {
+    throw new Rejected(
+      "not-answerable",
+      "A repository asked to be connected to GitHub is answered connected at its address or declined, never with a token.",
+    );
+  }
+  answerOnCard(b, request, {
+    declined: outcome.kind === "declined",
+    summary: outcome.kind === "connected" ? `Connected to ${outcome.url}` : "Declined",
+    wake: MIRROR_ANSWER_WAKE,
+    text: mirrorAnswerWords(request.mirror, outcome),
+  });
+};
+
 /** The wake that tells the agent how a value it asked for ended. */
 export const VAULT_ANSWER_WAKE = "vault-answer";
 /** The wake that tells the agent how an origin it asked for ended. */
 export const ORIGIN_ANSWER_WAKE = "origin-answer";
+/** The wake that tells the agent how a repository it asked to connect to GitHub ended. */
+export const MIRROR_ANSWER_WAKE = "mirror-answer";
 
 /** The answer a run's message carries: its own, or the one of the run it continues after a restart. */
 const answerCarried = (b: StepBuilder, run: RunRecord): OpenRequest | undefined => {
@@ -2448,6 +2528,9 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         const { url, repo } = signal.ask;
         settleOrigins(b, (asked) => asked.repo === repo && sameOriginAddress(asked.url, url));
       }
+      // A repository asked again to be connected to GitHub is the one question: the new ask
+      // replaces the earlier one.
+      if (signal.ask.kind === "mirror") settleMirrors(b, signal.ask.repo);
       const live = isLive(run);
       // Asked by message: the agent does not wait on it, and a message answers it after its turn.
       // An ask on a card is not waited on either: the person answers it there after the turn.
@@ -2532,6 +2615,12 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         b,
         (asked) => sameOriginAddress(asked.url, url) && (repo === undefined || asked.repo === repo),
       );
+      return;
+    }
+    case "mirror-settled": {
+      // zcp found the repository already on GitHub in HQ, or the agent withdrew its ask. The
+      // agent knows already: no word reaches it.
+      settleMirrors(b, signal.repo);
       return;
     }
     case "turn-ended": {

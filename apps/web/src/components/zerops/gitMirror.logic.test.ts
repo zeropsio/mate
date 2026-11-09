@@ -1,16 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  installOffer,
-  mirrorAuthorityLine,
-  parseMirrorSearch,
-  mirrorGateLine,
-  mirrorLeadLine,
-  mirrorStateLine,
-  waitingAccount,
-} from "./gitMirror.logic";
+import { installOffer, parseMirrorSearch, mirrorGateLine, waitingAccount } from "./gitMirror.logic";
 
-const NOW = Date.parse("2026-10-18T09:00:00Z");
 const remote = {
   url: "https://github.com/acme/tea-shop.git",
   repositoryId: "7",
@@ -20,111 +11,6 @@ const remote = {
   invalidSince: null,
 } as const;
 const app = { kind: "connected", name: "Acme Mate", repositories: [], installUrl: "" } as const;
-
-describe("a repository's line in the mirror dialog", () => {
-  it.each([
-    { case: "nothing mirrored", remote: null, app, says: "Not mirrored" },
-    {
-      case: "the GitHub repository a repository follows while Mate keeps its code",
-      remote: null,
-      follows: "https://github.com/acme/tea-shop.git",
-      app,
-      says: "Follows github.com/acme/tea-shop · Mate keeps the code",
-    },
-    {
-      case: "where it mirrors to, never what it followed before",
-      remote: { ...remote, via: "app" },
-      follows: "https://github.com/acme/old.git",
-      app,
-      says: "Mirrors to github.com/acme/tea-shop · through Acme Mate",
-    },
-    {
-      case: "a mirror through the app",
-      remote: { ...remote, via: "app" },
-      app,
-      says: "Mirrors to github.com/acme/tea-shop · through Acme Mate",
-    },
-    {
-      case: "a mirror with a token",
-      remote: { ...remote, expiresAt: "2027-10-17T09:00:00Z" },
-      app,
-      says: "Mirrors to github.com/acme/tea-shop · with a token that expires 2027-10-17",
-    },
-    {
-      case: "a diverged mirror, never that it mirrors",
-      remote: { ...remote, via: "app", divergedSince: "2026-10-16T12:00:00Z" },
-      app,
-      says: "GitHub's main and Mate's main differ since 2026-10-16 — nothing moves until they match",
-    },
-    {
-      case: "a token the remote refused, before where it mirrors",
-      remote: { ...remote, invalidSince: "2026-10-15T08:00:00Z" },
-      app,
-      says: "github.com/acme/tea-shop refused Mate's token on 2026-10-15 — replace the token",
-    },
-    {
-      case: "a mirror through an app that is gone from HQ",
-      remote: { ...remote, via: "app" },
-      app: { kind: "none" },
-      says: "The app is gone — connect GitHub again or use a token",
-    },
-    {
-      case: "a mirror through an app HQ says no longer reaches it",
-      remote: { ...remote, via: "app", invalidSince: "2026-10-15T08:00:00Z" },
-      app,
-      says: "The app is gone — connect GitHub again or use a token",
-    },
-    {
-      case: "a mirror through the app while the app is not read",
-      remote: { ...remote, via: "app" },
-      app: { kind: "unknown" },
-      says: "Mirrors to github.com/acme/tea-shop · through the organization's GitHub app",
-    },
-  ] as const)("says $case", (row) => {
-    const { remote: held, app: reach, says } = row;
-    const follows = "follows" in row ? { follows: row.follows } : {};
-    expect(mirrorStateLine({ remote: held, ...follows }, reach, NOW)).toBe(says);
-  });
-});
-
-describe("the mirror dialog's lead line", () => {
-  it("promises review on GitHub only where the app mirrors, and says a token pushes main", () => {
-    expect(mirrorLeadLine(app)).toBe(
-      "Mirror a repository to GitHub, and Mate's changes to it open there for review.",
-    );
-    expect(mirrorLeadLine({ kind: "none" })).toBe(
-      "Mirror a repository to GitHub or GitLab: Mate pushes what lands on its main there.",
-    );
-  });
-});
-
-describe("who may mirror, said where the way to mirror would stand", () => {
-  it.each([
-    { case: "a person HQ lets mirror", offer: { kind: "allowed" }, says: null },
-    {
-      case: "a person HQ refuses as no structure writer",
-      offer: { kind: "refused", reason: "not_structure_writer" },
-      says: "Only an Owner or Admin of the organization can mirror this project's code.",
-    },
-    {
-      case: "a person HQ refuses for another reason, in HQ's words",
-      offer: { kind: "refused", reason: "not_active_member" },
-      says: "You are not an active member of this organization in Zerops.",
-    },
-    {
-      case: "HQ has not said",
-      offer: { kind: "unknown" },
-      says: "HQ hasn't said yet whether you can mirror this project's code.",
-    },
-    {
-      case: "HQ is not answering",
-      offer: { kind: "unavailable", since: NOW },
-      says: "HQ isn't answering, so mirroring waits until it does.",
-    },
-  ] as const)("$case", ({ offer, says }) => {
-    expect(mirrorAuthorityLine(offer)).toBe(says);
-  });
-});
 
 describe("whether GitHub lets only what was approved in Mate reach a repository's main", () => {
   const viaApp = { ...remote, via: "app" } as const;

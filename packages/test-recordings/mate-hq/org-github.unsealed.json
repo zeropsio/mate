@@ -1,26 +1,29 @@
 {
   "$provenance": {
     "producer": "mate-hq",
-    "revision": "d9eadf39372c17286a6df55e5ee5e12df558ac70",
+    "revision": "095038f73398946a4b0bdd2f316c2393f95dafa1",
     "via": "s10a-github-app.test.ts",
     "schema": "GET /api/org/github"
   },
   "value": {
-    "state": "connected",
-    "slug": "s10a-mate-11",
-    "appId": 1001,
-    "botLogin": "s10a-mate-11[bot]",
-    "owner": "acme",
-    "appUrl": "https://github.com/apps/s10a-mate-11",
-    "installUrl": "https://github.com/apps/s10a-mate-11/installations/new",
-    "public": true,
-    "installations": [
+    "apps": [
       {
-        "id": 10012,
-        "state": "unknown"
+        "appId": 1001,
+        "slug": "s10a-mate-11",
+        "botLogin": "s10a-mate-11[bot]",
+        "owner": "acme",
+        "appUrl": "https://github.com/apps/s10a-mate-11",
+        "installUrl": "https://github.com/apps/s10a-mate-11/installations/new",
+        "public": true,
+        "sealedBy": null,
+        "sealedAt": null,
+        "installations": [
+          {
+            "id": 10012,
+            "state": "unknown"
+          }
+        ]
       }
-    ],
-    "sealedBy": null,
-    "sealedAt": null
+    ]
   }
 }

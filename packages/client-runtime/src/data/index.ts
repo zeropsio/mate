@@ -711,6 +711,8 @@ export {
   engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
+  MIRROR_ASK_ACTIVITY_KIND,
+  type MirrorAskActivityPayload,
   ORIGIN_ASK_ACTIVITY_KIND,
   type OriginAskActivityPayload,
   VAULT_ASK_ACTIVITY_KIND,

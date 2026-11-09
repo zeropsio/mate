@@ -510,26 +510,40 @@ describe("an application's tasks", () => {
 });
 
 describe("the organization's GitHub app", () => {
-  const none: HqGithubView = { state: "none" };
-  const app: HqGithubView = {
-    state: "connected",
+  const none: HqGithubView = { apps: [] };
+  const acme = {
+    appId: 42,
     slug: "acme-mate",
     botLogin: "acme-mate[bot]",
     owner: "acme",
     appUrl: "https://github.com/apps/acme-mate",
     installUrl: "https://github.com/apps/acme-mate/installations/new",
+    public: true,
+    sealedBy: "user-1",
+    sealedAt: "2026-11-01T09:00:00Z",
     installations: [
       {
         id: 7,
         account: "acme",
         accountType: "Organization",
         repositorySelection: "selected",
-        repositories: [{ fullName: "acme/tea-shop", private: true, defaultBranch: "main" }],
+        repositories: [
+          {
+            id: 701,
+            fullName: "acme/tea-shop",
+            private: true,
+            defaultBranch: "main",
+            usedBy: null,
+          },
+        ],
         suspended: false,
+        state: "accepted",
         manageUrl: "https://github.com/organizations/acme/settings/installations/7",
+        addedBy: "user-1",
       },
     ],
-  };
+  } satisfies HqGithubView["apps"][number];
+  const app: HqGithubView = { apps: [acme] };
   // GitHub's one-time state binding its return to this request: built from parts.
   const STATE = ["state", "tea", "shop", "0042"].join("-");
   const manifest: HqGithubManifestView = {
@@ -585,11 +599,13 @@ describe("the organization's GitHub app", () => {
     r.close();
   });
 
-  it("disconnects, and shows done once a read after HQ's answer says none", async () => {
+  it("forgets one app, and shows done once a read after HQ's answer no longer lists it", async () => {
     let held: HqGithubView = app;
+    const forgot: Array<number> = [];
     const r = rig({
       github: async () => held,
-      githubDisconnect: async () => {
+      githubForget: async (githubAppId) => {
+        forgot.push(githubAppId);
         held = none;
       },
     });
@@ -597,34 +613,46 @@ describe("the organization's GitHub app", () => {
     const release = r.host.demandOrg("hqGithub", ORG);
     await read;
     const done = waitFor(r.store, () => r.read("hqGithub").action.kind === "done");
-    await r.host.write(ORG, { kind: "github-disconnect" });
+    await r.host.write(ORG, { kind: "github-forget", githubAppId: 42 });
     await done;
+    expect(forgot).toEqual([42]);
     expect(r.read("hqGithub").setting).toMatchObject({ state: "known", held: none });
     release();
     r.close();
   });
 
   const waiting: HqGithubView = {
-    ...app,
-    public: true,
-    installations: [
-      ...(app.state === "connected" ? app.installations : []),
+    apps: [
       {
-        id: 9,
-        account: "stranger",
-        accountType: "User",
-        repositorySelection: "selected",
-        repositories: [{ fullName: "stranger/notes", private: true, defaultBranch: "main" }],
-        suspended: false,
-        state: "waiting",
-        manageUrl: "https://github.com/settings/installations/9",
+        ...acme,
+        installations: [
+          ...acme.installations,
+          {
+            id: 9,
+            account: "stranger",
+            accountType: "User",
+            repositorySelection: "selected",
+            repositories: [
+              {
+                id: 901,
+                fullName: "stranger/notes",
+                private: true,
+                defaultBranch: "main",
+                usedBy: null,
+              },
+            ],
+            suspended: false,
+            state: "waiting",
+            manageUrl: "https://github.com/settings/installations/9",
+            addedBy: null,
+          },
+        ],
       },
     ],
   };
   const standing = (view: HqGithubView, id: number) =>
-    view.state === "connected"
-      ? view.installations.find((installation) => installation.id === id)?.state
-      : undefined;
+    view.apps.flatMap((one) => one.installations).find((installation) => installation.id === id)
+      ?.state;
   /** HQ holding a waiting installation 9, its answer to `write` of it leaving it `state`. */
   const judged = (
     write: "github-accept" | "github-suspend" | "github-resume",
@@ -634,15 +662,16 @@ describe("the organization's GitHub app", () => {
     const asked: Array<number> = [];
     const change = async (id: number) => {
       asked.push(id);
-      if (held.state === "connected")
-        held = {
-          ...held,
-          installations: held.installations.map((installation) =>
+      held = {
+        apps: held.apps.map((one) => ({
+          ...one,
+          installations: one.installations.map((installation) =>
             installation.id === id && installation.state !== "unknown"
               ? { ...installation, state, suspended: state === "suspended" }
               : installation,
           ),
-        };
+        })),
+      };
     };
     return {
       asked,
@@ -687,13 +716,13 @@ describe("the organization's GitHub app", () => {
     const url = `https://github.com/apps/acme-mate/installations/new?state=${STATE}`;
     const r = rig({
       github: async () => app,
-      githubInstall: async (request) => {
-        sent.push(request);
+      githubInstall: async (githubAppId, request) => {
+        sent.push([githubAppId, request]);
         return { url };
       },
     });
-    expect(await r.host.githubInstall(ORG, "https://mate.example/settings")).toBe(url);
-    expect(sent).toEqual([{ returnTo: "https://mate.example/settings" }]);
+    expect(await r.host.githubInstall(ORG, 42, "https://mate.example/settings")).toBe(url);
+    expect(sent).toEqual([[42, { returnTo: "https://mate.example/settings" }]]);
     expect(r.records()).not.toContain(STATE);
     r.close();
   });
@@ -702,7 +731,7 @@ describe("the organization's GitHub app", () => {
     const r = rig({ github: async () => waiting });
     await r.host.write(ORG, { kind: "github-accept", installationId: 9 });
     expect(r.read("hqGithub").action).toEqual({ kind: "failed", words: GITHUB_UNSUPPORTED });
-    expect(await r.host.githubInstall(ORG, "https://mate.example/settings")).toBeNull();
+    expect(await r.host.githubInstall(ORG, 42, "https://mate.example/settings")).toBeNull();
     r.close();
   });
 
@@ -718,7 +747,7 @@ describe("the organization's GitHub app", () => {
         });
       },
     });
-    expect(await r.host.githubInstall(ORG, "https://mate.example/settings")).toBeNull();
+    expect(await r.host.githubInstall(ORG, 42, "https://mate.example/settings")).toBeNull();
     expect(r.read("hqGithub").action).toEqual({ kind: "failed", words: GITHUB_UNSUPPORTED });
     r.close();
   });

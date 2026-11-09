@@ -675,7 +675,7 @@ export type Item = typeof Item.Type;
 
 export const RequestAsk = forwardCompatibleUnion({
   key: "kind",
-  known: ["approval", "question", "vault", "origin", "plan", "unknown"],
+  known: ["approval", "question", "vault", "origin", "mirror", "plan", "unknown"],
   members: [
     Schema.Struct({
       kind: Schema.Literal("approval"),
@@ -711,6 +711,15 @@ export const RequestAsk = forwardCompatibleUnion({
       repo: Schema.String,
       reason: Schema.NullOr(Schema.String),
     }),
+    /**
+     * A code repository the agent asks the person to connect to GitHub, and why. The person picks
+     * the GitHub repository on its card; the ask is done when HQ shows the repository's remote.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("mirror"),
+      repo: Schema.String,
+      reason: Schema.NullOr(Schema.String),
+    }),
     Schema.Struct({ kind: Schema.Literal("plan"), planItemId: ItemId }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),
@@ -719,12 +728,13 @@ export const RequestAsk = forwardCompatibleUnion({
 export type RequestAsk = typeof RequestAsk.Type;
 
 /**
- * Asked of the person on a card — a value, or an origin to connect: it outlives the turn that
+ * Asked of the person on a card — a value, an origin to connect, or a repository to connect to
+ * GitHub: it outlives the turn that
  * asked, holds no run, no session and no update, and is answered with how it ended, never with
  * the value or a token. Takes an ask's kind, as a request or a row's `on` names it.
  */
 export const isCardAsk = (kind: string | undefined): boolean =>
-  kind === "vault" || kind === "origin";
+  kind === "vault" || kind === "origin" || kind === "mirror";
 
 /** `expired`: answered, but the driver could no longer take an answer (its callback was gone). */
 const REQUEST_STATES = ["open", "answered", "declined", "dismissed", "lapsed", "expired"] as const;
@@ -816,7 +826,7 @@ export const ConversationRowState = forwardCompatibleUnion({
     Schema.Struct({
       kind: Schema.Literal("waiting"),
       /** What it waits on; one a later engine adds reads as `unknown`, never a refusal. */
-      on: forwardCompatibleLiterals(["approval", "question", "vault", "origin", "plan"]),
+      on: forwardCompatibleLiterals(["approval", "question", "vault", "origin", "mirror", "plan"]),
       words: Schema.NullOr(Schema.String),
     }),
     Schema.Struct({ kind: Schema.Literal("paused"), resetsAt: Schema.NullOr(Millis) }),

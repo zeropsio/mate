@@ -4,7 +4,7 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { GitStopDetailPage } from "./GitStopDetail";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
 import { GitMirrorDialog } from "./GitMirrorDialog";
-import { connectedRepos, GitRemoteLines } from "./GitRemoteSettings";
+import { ProjectRepositories } from "./github/GithubRepoRows";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { unreadEnvironmentsWords } from "@t3tools/client-runtime/zerops/hq";
 import {
@@ -431,14 +431,17 @@ export function ZeropsRuntimeStops({
  */
 export function ZeropsGroupDetailPage({
   groupId,
-  mirrorReturned = false,
+  connectReturned = null,
 }: {
   readonly groupId: string;
-  /** Back from GitHub's install page, which the mirror dialog left for: it opens again. */
-  readonly mirrorReturned?: boolean;
+  /**
+   * Back from GitHub's install page, which the connect dialog left for: it opens again, for the
+   * code repository it was open for (`repo`; absent: asked first).
+   */
+  readonly connectReturned?: { readonly repo?: string | undefined } | null;
 }) {
   const groupName = useGroupName(groupId);
-  const [mirroring, setMirroring] = useState(mirrorReturned);
+  const [mirroring, setMirroring] = useState(connectReturned !== null);
   const crumbs = useCrumbs({ groupId, name: groupName });
   // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
   const addMate = useAddMate();
@@ -464,6 +467,7 @@ export function ZeropsGroupDetailPage({
           onClose={() => {
             setMirroring(false);
           }}
+          repo={connectReturned?.repo}
         />
       ) : null}
     </ZeropsHostedFrame>
@@ -588,8 +592,6 @@ function KnownGroupAside({
   const release = useReleaseOffer(groupId, flow);
   const { withheldNotice } = useWithheldStops(environments);
   const firstDeployOf = useStageFirstDeploys(flow);
-  // *Mirror code to GitHub or GitLab…* over this page, as from the overview card's ···.
-  const [mirroring, setMirroring] = useState(false);
   const environmentFacts = useApplicationEnvironmentFacts();
   const addEnvironment = useAddEnvironment();
   const openPutLive = useOpenPutLive();
@@ -658,9 +660,16 @@ function KnownGroupAside({
         repo={repo}
         withheldNotice={withheldNotice}
         firstDeployOf={firstDeployOf}
-        onMirror={() => {
-          setMirroring(true);
-        }}
+        repositories={
+          groupName === undefined ? undefined : (
+            <ProjectRepositories
+              environments={environments}
+              groupId={groupId}
+              groupName={groupName}
+              repos={flow.codeRepos ?? flow.repos}
+            />
+          )
+        }
         spend={spend}
         automation={
           <ProjectAutomation
@@ -670,15 +679,6 @@ function KnownGroupAside({
           />
         }
       />
-      {mirroring && groupName !== undefined ? (
-        <GitMirrorDialog
-          appId={groupId}
-          appName={groupName}
-          onClose={() => {
-            setMirroring(false);
-          }}
-        />
-      ) : null}
     </>
   );
 }
@@ -715,7 +715,7 @@ export function ZeropsGroupPane({
   repo,
   withheldNotice,
   firstDeployOf,
-  onMirror,
+  repositories,
   spend,
   automation,
 }: {
@@ -749,8 +749,8 @@ export function ZeropsGroupPane({
   readonly withheldNotice?: (projectId: string) => string | null;
   /** Where a stage that runs nothing stands on its first deploy (`useStageFirstDeploys`). */
   readonly firstDeployOf?: (projectId: string) => FirstDeploy | undefined;
-  /** *Mirror code to GitHub or GitLab…*, as the overview card's ··· opens it. */
-  readonly onMirror?: (() => void) | undefined;
+  /** Its Repositories rows (`ProjectRepositories`), once it has a code repository. */
+  readonly repositories?: React.ReactNode;
   /** Its Spend section, from the project page (`ProjectPageSpend`), above its automation. */
   readonly spend?: React.ReactNode;
   /** Its Automation section (`ProjectAutomation`), above its repositories. */
@@ -879,23 +879,9 @@ export function ZeropsGroupPane({
 
       {spend}
       {automation}
-      {/* Where its code mirrors, and the way to mirror it: once it has a repository. */}
-      {(codeRepos ?? repos ?? []).length === 0 ||
-      (onMirror === undefined && connectedRepos(codeRepos ?? repos).length === 0) ? null : (
-        <SideSection title="Repositories">
-          {connectedRepos(codeRepos ?? repos).length === 0 ? null : (
-            <div className="px-2">
-              <GitRemoteLines repos={codeRepos ?? repos} />
-            </div>
-          )}
-          {onMirror === undefined ? null : (
-            <div className="px-2 py-1">
-              <Button onClick={onMirror} size="sm" variant="secondary">
-                Mirror code to GitHub or GitLab…
-              </Button>
-            </div>
-          )}
-        </SideSection>
+      {/* Each code repository and where its code goes: once it has one. */}
+      {repositories === undefined || (codeRepos ?? repos ?? []).length === 0 ? null : (
+        <SideSection title="Repositories">{repositories}</SideSection>
       )}
       <SideSection title="History">
         {repo === undefined ? (

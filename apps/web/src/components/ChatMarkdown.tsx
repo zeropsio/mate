@@ -1,6 +1,7 @@
 import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
+import { renderBareChangeNumbers } from "./zerops/BareChangeNumber";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
 import { PictureAskFence } from "./ask/PictureAsk";
 import { ExpressDesignLinkChip } from "./express/ExpressDesignLinkChip";
@@ -2315,8 +2316,12 @@ const CHAT_MARKDOWN_COMPONENTS = {
   h5: markdownHeadingRenderer(5),
   h6: markdownHeadingRenderer(6),
   p: function MarkdownParagraph({ node: _node, children, ...props }) {
-    const { skills } = use(ChatMarkdownRendererContext);
-    return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</p>;
+    const { skills, threadRef } = use(ChatMarkdownRendererContext);
+    return (
+      <p {...props}>
+        {renderSkillInlineMarkdownChildren(renderBareChangeNumbers(children, threadRef), skills)}
+      </p>
+    );
   },
   blockquote: function MarkdownBlockquote({ node: _node, children, ...props }) {
     const kind = String((props as Record<string, unknown>)["data-alert"] ?? "");
@@ -2352,13 +2357,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
     );
   },
   li: function MarkdownListItem({ node, children, ...props }) {
-    const { text, skills } = use(ChatMarkdownRendererContext);
+    const { text, skills, threadRef } = use(ChatMarkdownRendererContext);
     const listItemStart = node?.position?.start.offset;
     const markerOffset =
       typeof listItemStart === "number" ? findTaskListMarkerOffset(text, listItemStart) : null;
     return (
       <li {...props} data-task-marker-offset={markerOffset ?? undefined}>
-        {renderSkillInlineMarkdownChildren(children, skills)}
+        {renderSkillInlineMarkdownChildren(renderBareChangeNumbers(children, threadRef), skills)}
       </li>
     );
   },

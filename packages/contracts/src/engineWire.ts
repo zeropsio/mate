@@ -450,7 +450,7 @@ export type EngineStopInput = typeof EngineStopInput.Type;
 /** The person's answer to a request, as its kind takes it. */
 export const EngineAnswer = forwardCompatibleUnion({
   key: "kind",
-  known: ["approval", "input", "secret", "origin", "unknown"],
+  known: ["approval", "input", "secret", "origin", "mirror", "unknown"],
   members: [
     Schema.Struct({ kind: Schema.Literal("approval"), decision: ProviderApprovalDecision }),
     Schema.Struct({
@@ -475,6 +475,16 @@ export const EngineAnswer = forwardCompatibleUnion({
     Schema.Struct({
       kind: Schema.Literal("origin"),
       outcome: Schema.Literals(["connected", "declined"]),
+    }),
+    /**
+     * A repository asked to be connected to GitHub (a `mirror` request): `connected`, with the
+     * GitHub address HQ shows as its remote — the person's client set it itself; `declined`, not
+     * now. Never a token.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("mirror"),
+      outcome: Schema.Literals(["connected", "declined"]),
+      url: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(512))),
     }),
   ],
   fallback: Schema.Struct({ kind: Schema.Literal("unknown"), type: Schema.String }),

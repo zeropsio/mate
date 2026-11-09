@@ -18,8 +18,32 @@ export function useGitTargetOperations(appId: string) {
     unobserved: "HQ isn't answering. Check the original operation when it returns.",
   };
   return {
+    orgId,
     can: app?.can,
     live: navigation?.live ?? false,
+    /**
+     * Records and sends a remote write under `requestId` without waiting for its end: the press
+     * follows it through its operation's record (`useRepoPress`).
+     */
+    send:
+      scope === null || operations === null
+        ? undefined
+        : {
+            disconnect: (repo: string, requestId: string) =>
+              operations.submit({ kind: "disconnect-git-remote", ...scope, repo }, requestId),
+            viaApp: (repo: string, repository: string, githubAppId: number, requestId: string) =>
+              operations.submit(
+                {
+                  kind: "connect-git-remote-via-app",
+                  orgId: scope.orgId,
+                  appId,
+                  repo,
+                  repository,
+                  githubAppId,
+                },
+                requestId,
+              ),
+          },
     actions:
       scope === null || operations === null
         ? undefined
@@ -46,9 +70,17 @@ export function useGitTargetOperations(appId: string) {
             disconnect: async (repo: string) => {
               await operations.run({ kind: "disconnect-git-remote", ...scope, repo }, options);
             },
-            viaApp: async (repo: string, repository: string) => {
+            // `githubAppId`: the org app to go through, where the organization holds several.
+            viaApp: async (repo: string, repository: string, githubAppId?: number) => {
               await operations.run(
-                { kind: "connect-git-remote-via-app", orgId: scope.orgId, appId, repo, repository },
+                {
+                  kind: "connect-git-remote-via-app",
+                  orgId: scope.orgId,
+                  appId,
+                  repo,
+                  repository,
+                  ...(githubAppId === undefined ? {} : { githubAppId }),
+                },
                 options,
               );
             },

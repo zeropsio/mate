@@ -713,6 +713,45 @@ function originAskActivity(
   );
 }
 
+/** The activity a repository asked to be connected to GitHub is: one card in its run. */
+export const MIRROR_ASK_ACTIVITY_KIND = "mirror.requested";
+
+/**
+ * What the card for a repository asked to be connected to GitHub reads: the HQ repository, the
+ * agent's why, and how the ask stands — open, connected (the GitHub address is HQ's remote, read
+ * there), declined, who and when, or closed some other way. Never a token.
+ */
+export interface MirrorAskActivityPayload {
+  readonly requestId: string;
+  readonly repo: string;
+  readonly reason: string | null;
+  readonly state: "open" | "connected" | "declined" | "closed";
+  readonly answer: { readonly by: Principal; readonly at: number } | null;
+}
+
+function mirrorAskActivity(
+  request: Request,
+  ask: Extract<RequestAsk, { readonly kind: "mirror" }>,
+  card: string | null,
+): OrchestrationThreadActivity {
+  const payload: MirrorAskActivityPayload = {
+    requestId: request.id,
+    repo: ask.repo,
+    reason: ask.reason,
+    state: ORIGIN_ASK_STATES[request.state] ?? "closed",
+    answer: request.answer === undefined ? null : { by: request.answer.by, at: request.answer.at },
+  };
+  return activity(
+    `${request.id}#mirror`,
+    MIRROR_ASK_ACTIVITY_KIND,
+    "Connect to GitHub requested",
+    { ...payload },
+    card,
+    request.at,
+    request.seq,
+  );
+}
+
 /** A request as the asks the panels answer, and its resolution once it is no longer open. */
 function requestActivities(
   request: Request,
@@ -722,6 +761,7 @@ function requestActivities(
   const card = cardOf(request.runId);
   if (ask.kind === "vault") return [vaultAskActivity(request, ask, card)];
   if (ask.kind === "origin") return [originAskActivity(request, ask, card)];
+  if (ask.kind === "mirror") return [mirrorAskActivity(request, ask, card)];
   const asked =
     ask.kind === "approval"
       ? activity(

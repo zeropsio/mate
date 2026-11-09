@@ -1127,9 +1127,17 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                       }
                     : answer.kind === "secret" || answer.kind === "origin"
                       ? { outcome: answer.outcome }
-                      : null,
+                      : answer.kind === "mirror"
+                        ? {
+                            outcome: answer.outcome,
+                            ...(answer.url === undefined ? {} : { url: answer.url }),
+                          }
+                        : null,
               // A card's record is worded by the engine: the client's words never reach it.
-              summary: answer.kind === "secret" || answer.kind === "origin" ? "" : input.summary,
+              summary:
+                answer.kind === "secret" || answer.kind === "origin" || answer.kind === "mirror"
+                  ? ""
+                  : input.summary,
             };
           },
         );

@@ -22,7 +22,7 @@ import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
-import { useGitMirrorApp } from "~/zerops/useGitMirrorApp";
+import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { HQ_REMOTE_WRITE_VERB } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
@@ -46,6 +46,7 @@ import {
   keepInMate,
   originAskOf,
   originConnected,
+  originGithubApp,
 } from "./originAsk.logic";
 
 export function OriginAskCardContainer({
@@ -100,8 +101,9 @@ function AskCard({
   const offer = hqOffers.state(target.can, HQ_REMOTE_WRITE_VERB);
   const viaApp = target.actions?.viaApp;
   const follow = appId === null ? undefined : target.actions?.follow;
-  // The app is read while the GitHub way can still be picked.
-  const github = useGitMirrorApp(ask.state === "open");
+  // The apps are read while the GitHub way can still be picked.
+  const github = useGitMirrorApps(ask.state === "open");
+  const { app, githubAppId } = originGithubApp(github.apps, ask.url);
   const admin = roleAtLeast(useZeropsSession().activeOrganization?.roleCode, "ADMIN");
   const navigate = useNavigate();
   // A pick on its way: the engine's record outranks it once it says so.
@@ -180,7 +182,7 @@ function AskCard({
         appId === null
           ? undefined
           : {
-              app: github.app,
+              app,
               repos,
               mountable: offer.kind === "allowed" && viaApp !== undefined,
               refusal: hqOffers.words(offer),
@@ -188,7 +190,8 @@ function AskCard({
                 if (viaApp === undefined) return "HQ doesn't let you connect a repository here.";
                 try {
                   // Each repository the asks name, through the app, to the one GitHub repository.
-                  for (const repo of unmounted) await viaApp(repo, repository);
+                  for (const repo of unmounted)
+                    await viaApp(repo, repository, githubAppId ?? undefined);
                   return null;
                 } catch (cause) {
                   return cause instanceof OperationStopped
@@ -199,7 +202,10 @@ function AskCard({
               onCheckAgain: github.again,
               onOpenAutomation: () => void navigate({ to: "/settings/automation" }),
               admin,
-              onInstall: github.install,
+              onInstall: () => {
+                if (app?.kind === "connected" && app.appId !== undefined)
+                  void github.install(app.appId);
+              },
             }
       }
       mateName={mate?.name ?? "Your Mate"}

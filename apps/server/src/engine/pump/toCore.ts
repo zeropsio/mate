@@ -42,6 +42,7 @@ import type {
 import type { ZeropsActivityResult } from "../../zerops/zeropsActivityResult.ts";
 import type { ProviderSignal } from "../domain/command.ts";
 import { AGENT_TURN_DUE_MS } from "../domain/decide.ts";
+import { mirrorAskOfCall, mirrorSettledOfCall } from "./mirrorAsk.ts";
 import { originAskOfCall, originSettledOfCall } from "./originAsk.ts";
 import { vaultAskOfCall, vaultStoredOfCall } from "./vaultAsk.ts";
 
@@ -357,9 +358,10 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
             ...(detail === undefined ? {} : { detail }),
             ...afterEnd,
           });
-          // A call that asked the person for a value, or to connect an origin, opens the ask on
-          // its turn: the agent does not wait on it, and the person answers it on its card.
-          const asked = vaultAskOfCall(body) ?? originAskOfCall(body);
+          // A call that asked the person for a value, to connect an origin, or to connect a
+          // repository to GitHub, opens the ask on its turn: the agent does not wait on it, and
+          // the person answers it on its card.
+          const asked = vaultAskOfCall(body) ?? originAskOfCall(body) ?? mirrorAskOfCall(body);
           if (asked !== null) {
             signals.push({
               kind: "request-opened",
@@ -374,6 +376,9 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
           // A call that finds an asked origin already connected, or withdraws an ask, settles it.
           const settled = originSettledOfCall(body);
           if (settled !== null) signals.push({ kind: "origin-settled", ...settled });
+          // A call that finds the repository already on GitHub, or withdraws its ask, settles it.
+          const mirrored = mirrorSettledOfCall(body);
+          if (mirrored !== null) signals.push({ kind: "mirror-settled", ...mirrored });
           if (images !== undefined) pictures.push({ key: signal.item, images });
           live.push({ _tag: "Settle", key: signal.item });
           // The record holds it now: its text and state are let go.

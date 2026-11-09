@@ -53,6 +53,7 @@ const TONE_GLYPH: Record<ServiceStatusToneId, string> = {
 export function ZeropsChangeLinkChip({
   href,
   words,
+  inferred = false,
   children,
 }: {
   readonly href: string | undefined;
@@ -61,6 +62,11 @@ export function ZeropsChangeLinkChip({
    * keeps in place of the change's line: the sentence was written around them.
    */
   readonly words?: ReactNode;
+  /**
+   * The address was worked out from bare words ("change #17"), not written: a change it does not
+   * reach is said nothing of, and the words stay as written.
+   */
+  readonly inferred?: boolean;
   readonly children: ReactNode;
 }) {
   const openInApp = useContext(AppLinkContext);
@@ -86,8 +92,14 @@ export function ZeropsChangeLinkChip({
   // Missing, refused and unavailable are answers, shown beside the original link.
   const reading =
     pull === undefined && link !== null && (landed.kind === "idle" || landed.kind === "reading");
+  // Worked out from bare words, the chip waits for HQ: a guessed change it does not reach would be
+  // a chip taken back.
+  if (inferred && reading) return children;
   if (pull === undefined && !reading) {
-    if (landed.kind === "gone" || landed.kind === "refused" || landed.kind === "unavailable") {
+    if (
+      !inferred &&
+      (landed.kind === "gone" || landed.kind === "refused" || landed.kind === "unavailable")
+    ) {
       return (
         <span className="inline-flex flex-wrap items-baseline gap-1">
           {children}

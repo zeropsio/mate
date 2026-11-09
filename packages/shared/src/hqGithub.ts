@@ -1,38 +1,59 @@
 /**
- * The organization's GitHub app, as HQ makes and keeps it, and the pull requests it mirrors Mate's
- * changes to: the wire between HQ and the client.
+ * The organization's GitHub apps, as HQ makes and keeps them, and the pull requests they mirror
+ * Mate's changes to: the wire between HQ and the client.
  *
- * HQ makes the app with GitHub's manifest flow, so it is the organization's own (`<name>[bot]`),
- * its private key sealed in HQ and its webhook pointed at HQ. Every comment, reaction, branch and
- * pull request HQ writes on a repository the app is installed on is the app's, never a person's.
+ * An organization holds any number of apps, each made with GitHub's manifest flow, so each is its
+ * own (`<name>[bot]`), its private key sealed in HQ and its webhook pointed at HQ. A repository
+ * connects through one of them; every comment, reaction, branch and pull request HQ writes there is
+ * that app's, never a person's.
  *
  * - `GET /api/org/github` → {@link HqGithubView}, any member;
  * - `POST /api/org/github/manifest` {@link HqGithubManifestRequest} → {@link HqGithubManifestView},
  *   owner or admin: the browser posts `manifest` to `postUrl` as a form, and GitHub's page creates
- *   the app; GitHub sends the browser back to HQ, which keeps the app and sends it on to install it;
- * - `POST /api/org/github/install` {@link HqGithubInstallRequest} → {@link HqGithubInstallView},
- *   owner or admin: GitHub's install page with a one-time state, so what is installed from it
- *   comes back accepted;
+ *   the app; GitHub sends the browser back to HQ, which adds it (never replacing another) and sends
+ *   it on to install it;
+ * - `POST /api/org/github/apps/:appId/install` {@link HqGithubInstallRequest} →
+ *   {@link HqGithubInstallView}, owner or admin: GitHub's install page with a one-time state, so
+ *   what is installed from it comes back accepted and added by the caller;
+ * - `POST /api/org/github/apps/:appId/confirm` → 204, owner or admin: the caller vouches for an app
+ *   nobody sealed, once HQ proved its key still answers GitHub;
+ * - `DELETE /api/org/github/apps/:appId` → 204, owner or admin: HQ forgets that app and its
+ *   installations (deleting it is GitHub's); remotes through it read invalid;
  * - `POST /api/org/github/installations/:id/accept` | `…/suspend` | `…/resume` → 204, owner or
  *   admin: HQ acts on a waiting installation's repositories, or GitHub suspends or resumes it;
- * - `DELETE /api/org/github` → 204, owner or admin: HQ forgets the app (deleting it is GitHub's);
  * - `PUT /api/apps/:appId/repos/:repo/remote/app` {@link HqRepoRemoteViaAppRequest} → 204, a
- *   structure writer: the repository mirrors to one the app is installed on, with no token.
+ *   structure writer: the repository mirrors to one an app is installed on, with no token.
  *
  * @module hqGithub
  */
 import * as Schema from "effect/Schema";
 
-/** A repository the app is installed on. */
+/** A repository an app is installed on. */
 export const HqGithubRepository = Schema.Struct({
+  /** GitHub's repository id. */
+  id: Schema.Number,
   /** `owner/name`. */
   fullName: Schema.String,
   private: Schema.Boolean,
   defaultBranch: Schema.String,
+  /**
+   * The Mate code repository whose remote (through any app, or a token) is this GitHub repository:
+   * its HQ application id and repository name, and the organization's app its remote goes through
+   * (`null` for a token); `null` while none is.
+   */
+  usedBy: Schema.NullOr(
+    // Application and repo both null: an application the caller may not read uses it — taken,
+    // never named. `githubAppId` is said to every member.
+    Schema.Struct({
+      application: Schema.NullOr(Schema.String),
+      repo: Schema.NullOr(Schema.String),
+      githubAppId: Schema.NullOr(Schema.Number),
+    }),
+  ),
 });
 export type HqGithubRepository = typeof HqGithubRepository.Type;
 
-/** Where the app is installed, as GitHub answered HQ's read: an account and the repositories it may reach there. */
+/** Where an app is installed, as GitHub answered HQ's read: an account and the repositories it may reach there. */
 export const HqGithubReadInstallation = Schema.Struct({
   id: Schema.Number,
   account: Schema.String,
@@ -42,12 +63,13 @@ export const HqGithubReadInstallation = Schema.Struct({
   suspended: Schema.Boolean,
   /**
    * `accepted`: HQ acts on its repositories; `waiting`: nobody here started it, and HQ acts on none
-   * of them until an Owner or Admin accepts it; `suspended`: GitHub suspended it. Absent from an
-   * older HQ, which acts on every installation it lists.
+   * of them until an Owner or Admin accepts it; `suspended`: GitHub suspended it.
    */
-  state: Schema.optionalKey(Schema.Literals(["accepted", "waiting", "suspended"])),
+  state: Schema.Literals(["accepted", "waiting", "suspended"]),
   /** GitHub's page to change which repositories it reaches. */
   manageUrl: Schema.String,
+  /** The Zerops user id whose install trip added it; `null` when it was added on GitHub. */
+  addedBy: Schema.NullOr(Schema.String),
 });
 export type HqGithubReadInstallation = typeof HqGithubReadInstallation.Type;
 
@@ -63,44 +85,41 @@ export const HqGithubInstallation = Schema.Union([
 ]);
 export type HqGithubInstallation = typeof HqGithubInstallation.Type;
 
-export const HqGithubView = Schema.Union([
-  Schema.Struct({ state: Schema.Literal("none") }),
-  Schema.Struct({
-    state: Schema.Literal("connected"),
-    /** The app's slug; its bot is `<slug>[bot]`. */
-    slug: Schema.String,
-    /**
-     * The app's id on GitHub: the source a ruleset pins `mate/gate` to. Absent from an older HQ.
-     */
-    appId: Schema.optionalKey(Schema.Number),
-    /** The app's name as GitHub shows it ("Acme Mate"); absent from an HQ that keeps none. */
-    name: Schema.optionalKey(Schema.String),
-    /** What GitHub shows as the author of everything it writes: `<slug>[bot]`. */
-    botLogin: Schema.String,
-    /** The account that owns the app (an organization or a person). */
-    owner: Schema.String,
-    /** Whether `owner` is an organization or a person; absent while HQ does not know. */
-    ownerType: Schema.optionalKey(Schema.Literals(["User", "Organization"])),
-    /** The app's page on GitHub. */
-    appUrl: Schema.String,
-    /** GitHub's page to install it on more repositories; what is installed from it waits. */
-    installUrl: Schema.String,
-    /**
-     * Whether it installs beyond its owner: `false`, only on `owner`; `null` while GitHub does not
-     * say; absent from an older HQ.
-     */
-    public: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
-    installations: Schema.Array(HqGithubInstallation),
-    /**
-     * The Zerops user id of the Owner or Admin who sealed the app's secrets, and when (ISO). Both
-     * `null` for an app nobody is recorded to have sealed: HQ acts with it on nothing
-     * (`needs_owner_seal`) until an Owner or Admin makes it again. Absent from an older HQ, which
-     * keeps no such record and uses the app.
-     */
-    sealedBy: Schema.optionalKey(Schema.NullOr(Schema.String)),
-    sealedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  }),
-]);
+/** One of the organization's GitHub apps. */
+export const HqGithubApp = Schema.Struct({
+  /** The app's id on GitHub: what names it on HQ's routes, and the source a ruleset pins `mate/gate` to. */
+  appId: Schema.Number,
+  /** The app's slug; its bot is `<slug>[bot]`. */
+  slug: Schema.String,
+  /** The app's name as GitHub shows it ("Acme Mate"); absent from an HQ that keeps none. */
+  name: Schema.optionalKey(Schema.String),
+  /** What GitHub shows as the author of everything it writes: `<slug>[bot]`. */
+  botLogin: Schema.String,
+  /** The account that owns the app (an organization or a person). */
+  owner: Schema.String,
+  /** Whether `owner` is an organization or a person; absent while HQ does not know. */
+  ownerType: Schema.optionalKey(Schema.Literals(["User", "Organization"])),
+  /** The app's page on GitHub. */
+  appUrl: Schema.String,
+  /** GitHub's page to install it on more repositories; what is installed from it waits. */
+  installUrl: Schema.String,
+  /** Whether it installs beyond its owner: `false`, only on `owner`; `null` while GitHub does not say. */
+  public: Schema.NullOr(Schema.Boolean),
+  /**
+   * The Zerops user id of the Owner or Admin who sealed the app's secrets or confirmed it, and when
+   * (ISO). Both `null` for an app nobody vouched for: HQ acts with it on nothing
+   * (`needs_owner_seal`) until an Owner or Admin confirms it.
+   */
+  sealedBy: Schema.NullOr(Schema.String),
+  sealedAt: Schema.NullOr(Schema.String),
+  installations: Schema.Array(HqGithubInstallation),
+});
+export type HqGithubApp = typeof HqGithubApp.Type;
+
+export const HqGithubView = Schema.Struct({
+  /** Oldest first; empty while the organization has none. */
+  apps: Schema.Array(HqGithubApp),
+});
 export type HqGithubView = typeof HqGithubView.Type;
 
 export const HqGithubManifestRequest = Schema.Struct({
@@ -136,8 +155,13 @@ export const HqGithubInstallView = Schema.Struct({
 export type HqGithubInstallView = typeof HqGithubInstallView.Type;
 
 export const HqRepoRemoteViaAppRequest = Schema.Struct({
-  /** `owner/name` of a repository the app is installed on. */
+  /** `owner/name` of a repository an app is installed on. */
   repository: Schema.String.check(Schema.isMinLength(3)),
+  /**
+   * The organization's app to go through. Absent: the one app whose accepted installation reaches
+   * the repository; with several, HQ refuses `app_ambiguous`.
+   */
+  githubAppId: Schema.optionalKey(Schema.Number),
 });
 export type HqRepoRemoteViaAppRequest = typeof HqRepoRemoteViaAppRequest.Type;
 

@@ -11,7 +11,7 @@ import {
   connectedByLine,
   defaultAppName,
   githubReturnLine,
-  githubSealLine,
+  appSetUpWords,
   githubReturnTo,
   githubSection,
   githubStatus,
@@ -20,48 +20,62 @@ import {
 } from "./automationSettings.logic";
 import { recorded } from "@t3tools/test-recordings/recorded";
 
-const CONNECTED: HqGithubView = {
-  state: "connected",
+const repo = (id: number, fullName: string, isPrivate = true) => ({
+  id,
+  fullName,
+  private: isPrivate,
+  defaultBranch: "main",
+  usedBy: null,
+});
+const ACME = {
+  appId: 1,
   slug: "acme-mate",
   name: "Acme Mate",
   botLogin: "acme-mate[bot]",
   owner: "acme",
   appUrl: "https://github.com/apps/acme-mate",
   installUrl: "https://github.com/apps/acme-mate/installations/new",
+  public: true,
+  sealedBy: "u-ada",
+  sealedAt: "2026-11-07T14:11:01.000Z",
   installations: [
     {
       id: 1,
       account: "acme",
       accountType: "Organization",
       repositorySelection: "selected",
-      repositories: [
-        { fullName: "acme/tea-shop", private: true, defaultBranch: "main" },
-        { fullName: "acme/api", private: true, defaultBranch: "main" },
-        { fullName: "acme/web", private: false, defaultBranch: "main" },
-      ],
+      repositories: [repo(11, "acme/tea-shop"), repo(12, "acme/api"), repo(13, "acme/web", false)],
       suspended: false,
+      state: "accepted",
       manageUrl: "https://github.com/organizations/acme/settings/installations/1",
+      addedBy: "u-ada",
     },
     {
       id: 2,
       account: "nova",
       accountType: "User",
       repositorySelection: "all",
-      repositories: [{ fullName: "nova/notes", private: true, defaultBranch: "main" }],
+      repositories: [repo(21, "nova/notes")],
       suspended: false,
+      state: "accepted",
       manageUrl: "https://github.com/settings/installations/2",
+      addedBy: null,
     },
     {
       id: 3,
       account: "juno",
       accountType: "Organization",
       repositorySelection: "selected",
-      repositories: [{ fullName: "juno/old", private: true, defaultBranch: "main" }],
+      repositories: [repo(31, "juno/old")],
       suspended: true,
+      state: "suspended",
       manageUrl: "https://github.com/organizations/juno/settings/installations/3",
+      addedBy: null,
     },
   ],
-};
+} satisfies HqGithubView["apps"][number];
+const CONNECTED: HqGithubView = { apps: [ACME] };
+const NONE: HqGithubView = { apps: [] };
 const decodeGithub = Schema.decodeUnknownSync(HqGithubView);
 const decodeSlack = Schema.decodeUnknownSync(HqSlackView);
 const decodeDiscord = Schema.decodeUnknownSync(HqDiscordView);
@@ -71,21 +85,21 @@ describe("Settings › Automation's GitHub section", () => {
   it.each([
     {
       case: "an organization with no app",
-      setting: known({ state: "none" }),
+      setting: known(NONE),
       admin: true,
-      says: "Not connected",
+      says: "No GitHub app yet",
     },
     {
       case: "a member where no app is connected",
-      setting: known({ state: "none" }),
+      setting: known(NONE),
       admin: false,
-      says: "Not connected · The organization's Owner and Admins connect it.",
+      says: "No GitHub app yet · The organization's Owner and Admins add GitHub apps.",
     },
     {
       case: "a connected app",
       setting: known(CONNECTED),
       admin: false,
-      says: "Connected as acme-mate[bot]",
+      says: "1 GitHub app · pushes as acme-mate[bot]",
     },
     {
       case: "an HQ older than the app",
@@ -111,16 +125,13 @@ describe("Settings › Automation's GitHub section", () => {
   });
 
   it("offers making the app only to the organization's Owner and Admins", () => {
-    expect(githubSection(known({ state: "none" }), true)).toEqual({ kind: "none", connect: true });
-    expect(githubSection(known({ state: "none" }), false)).toEqual({
-      kind: "none",
-      connect: false,
-    });
+    expect(githubSection(known(NONE), true)).toEqual({ kind: "apps", apps: [], manage: true });
+    expect(githubSection(known(NONE), false)).toEqual({ kind: "apps", apps: [], manage: false });
   });
 
   it("lists where a connected app is installed, each with its page on GitHub", () => {
     const section = githubSection(known(CONNECTED), true);
-    expect(section.kind === "connected" ? section.installations : null).toEqual([
+    expect(section.kind === "apps" ? section.apps[0]?.installations : null).toEqual([
       {
         id: 1,
         line: "acme · 3 repositories",
@@ -196,7 +207,7 @@ describe("the repositories the app reaches", () => {
       "acme/web",
       "nova/notes",
     ]);
-    expect(appRepositories({ state: "none" })).toEqual([]);
+    expect(appRepositories(NONE)).toEqual([]);
     expect(appRepositories(null)).toEqual([]);
   });
 });
@@ -207,10 +218,10 @@ describe("an installation GitHub did not answer about", () => {
   // witness: apps/web/src/components/settings/automationSettings.logic.ts | if (installation.state === "unknown") return "unknown"; → if (installation.state === "unknown") return "waiting";
   it("GitHub settings list it by its id, with no page to manage it, and no account waiting", () => {
     const section = githubSection(known(unread), true);
-    expect(section.kind === "connected" ? section.installations : null).toEqual([
+    expect(section.kind === "apps" ? section.apps[0]?.installations : null).toEqual([
       { id: 10006, line: expect.any(String), manageUrl: null, suspended: false },
     ]);
-    expect(section.kind === "connected" ? section.waiting : null).toEqual([]);
+    expect(section.kind === "apps" ? section.apps[0]?.waiting : null).toEqual([]);
   });
 
   // witness: apps/web/src/components/settings/automationSettings.logic.ts | (installation) => installation.state === "unknown" → (installation) => installation.state === "suspended"
@@ -226,53 +237,53 @@ describe("an installation GitHub did not answer about", () => {
 describe("coming back from GitHub", () => {
   it("confirms a connected app, and says an owner's approval is asked where GitHub asked one", () => {
     expect(githubReturnLine("connected", githubSection(known(CONNECTED), true))).toBe(
-      "GitHub is connected. Mate acts there as acme-mate[bot] from now on.",
+      "Acme Mate is set up. Mate acts through it as acme-mate[bot].",
     );
     expect(githubReturnLine("requested", githubSection(known(CONNECTED), true))).toBe(
-      "GitHub asked an owner of acme to approve the app; it's installed once they do.",
-    );
-    expect(githubReturnLine("requested", githubSection(known({ state: "none" }), true))).toBe(
-      "GitHub asked an owner of the organization to approve the app; it's installed once they do.",
+      "GitHub asked an owner of the GitHub account to approve the app; it's installed once they do.",
     );
     expect(githubReturnLine(null, githubSection(known(CONNECTED), true))).toBeNull();
-    expect(githubReturnLine("connected", githubSection(known({ state: "none" }), true))).toBeNull();
+    expect(githubReturnLine("connected", githubSection(known(NONE), true))).toBeNull();
   });
 });
 
 describe("one app on many GitHub accounts", () => {
   const MANY: HqGithubView = {
-    ...CONNECTED,
-    public: true,
-    installations: [
-      { ...CONNECTED.installations[0]!, state: "accepted" },
-      { ...CONNECTED.installations[1]!, state: "accepted" },
+    apps: [
       {
-        id: 4,
-        account: "stranger",
-        accountType: "User",
-        repositorySelection: "selected",
-        repositories: [
-          { fullName: "stranger/notes", private: true, defaultBranch: "main" },
-          { fullName: "stranger/site", private: false, defaultBranch: "main" },
+        ...ACME,
+        installations: [
+          ...ACME.installations.slice(0, 2),
+          {
+            id: 4,
+            account: "stranger",
+            accountType: "User",
+            repositorySelection: "selected",
+            repositories: [repo(41, "stranger/notes"), repo(42, "stranger/site", false)],
+            suspended: false,
+            state: "waiting",
+            manageUrl: "https://github.com/settings/installations/4",
+            addedBy: null,
+          },
         ],
-        suspended: false,
-        state: "waiting",
-        manageUrl: "https://github.com/settings/installations/4",
       },
     ],
-  } as HqGithubView;
+  };
+  const first = (view: HqGithubView, admin: boolean) => {
+    const section = githubSection(known(view), admin);
+    return section.kind === "apps" ? section.apps[0] : undefined;
+  };
 
   it("an app installed on two accounts lists both", () => {
-    const section = githubSection(known(MANY), true);
-    expect(
-      section.kind === "connected" ? section.installations.map(({ line }) => line) : null,
-    ).toEqual(["acme · 3 repositories", "nova · all repositories"]);
+    expect(first(MANY, true)?.installations.map(({ line }) => line)).toEqual([
+      "acme · 3 repositories",
+      "nova · all repositories",
+    ]);
     expect(appRepositories(MANY)).toEqual(["acme/api", "acme/tea-shop", "acme/web", "nova/notes"]);
   });
 
   it("an installation not started here waits for an admin's OK and its repositories aren't offered", () => {
-    const section = githubSection(known(MANY), false);
-    expect(section.kind === "connected" ? section.waiting : null).toEqual([
+    expect(first(MANY, false)?.waiting).toEqual([
       {
         id: 4,
         account: "stranger",
@@ -282,26 +293,12 @@ describe("one app on many GitHub accounts", () => {
     expect(appRepositories(MANY)).not.toContain("stranger/notes");
   });
 
-  it("an HQ that says nothing of an installation's standing offers it as before, and nothing of the app's reach", () => {
-    const section = githubSection(known(CONNECTED), true);
-    expect(section).toMatchObject({
-      kind: "connected",
-      waiting: [],
-      privateTo: null,
-      installTrip: false,
-    });
-    expect(githubSection(known(MANY), true)).toMatchObject({ installTrip: true });
-    expect(appRepositories(CONNECTED)).toContain("nova/notes");
-  });
-
   it("a private app says it installs only on its owner, with the page that makes it public", () => {
     const owned = (ownerType?: "User" | "Organization") =>
-      githubSection(
-        known({
-          ...MANY,
-          public: false,
-          ...(ownerType === undefined ? {} : { ownerType }),
-        } as HqGithubView),
+      first(
+        {
+          apps: [{ ...ACME, public: false, ...(ownerType === undefined ? {} : { ownerType }) }],
+        },
         true,
       );
     expect(owned("Organization")).toMatchObject({
@@ -318,7 +315,7 @@ describe("one app on many GitHub accounts", () => {
     expect(owned()).toMatchObject({
       privateTo: { url: "https://github.com/apps/acme-mate", settings: false },
     });
-    expect(githubSection(known(MANY), true)).toMatchObject({ privateTo: null });
+    expect(first(MANY, true)).toMatchObject({ privateTo: null });
   });
 
   it("says GitHub's install waits for an OK only while an installation here waits for one", () => {
@@ -327,7 +324,7 @@ describe("one app on many GitHub accounts", () => {
     );
     // Accepted or suspended since, another organization's, or one with no app: nothing to say.
     expect(githubReturnLine("waiting", githubSection(known(CONNECTED), true))).toBeNull();
-    expect(githubReturnLine("waiting", githubSection(known({ state: "none" }), true))).toBeNull();
+    expect(githubReturnLine("waiting", githubSection(known(NONE), true))).toBeNull();
   });
 });
 
@@ -335,45 +332,22 @@ describe("who an organization-wide credential is held as", () => {
   const people = new Map([["u-ada", "Ada Lovelace"]]);
   const nameOf = (userId: string) => people.get(userId);
   const day = (iso: string) => iso.slice(0, 10);
-  // HQ main's GitHub view (mate-hq 01e86bfe81, spec/protocol.md S10a) and v0.4.2's, which keeps no seal.
-  const github = (seal: object) => {
-    const view = decodeGithub({
-      state: "connected",
-      slug: "acme-mate",
-      appId: 123456,
-      botLogin: "acme-mate[bot]",
-      owner: "acme",
-      appUrl: "https://github.com/apps/acme-mate",
-      installUrl: "https://github.com/apps/acme-mate/installations/new",
-      public: true,
-      installations: [],
-      ...seal,
-    });
+  const github = (seal: { readonly sealedBy: string; readonly sealedAt: string }) => {
+    const view = decodeGithub({ apps: [{ ...ACME, installations: [], ...seal }] });
     const section = githubSection(known(view), true);
-    return section.kind === "connected" ? githubSealLine(section.seal, nameOf, day) : section.kind;
+    const app = section.kind === "apps" ? section.apps[0] : undefined;
+    return app === undefined ? null : appSetUpWords(app.seal, nameOf, day);
   };
 
-  // witness: apps/web/src/components/settings/automationSettings.logic.ts | if (view.sealedBy === null) return { kind: "needed" }; → if (view.sealedBy === null) return { kind: "unrecorded" };
-  it("a GitHub app nobody is recorded to have sealed says Mate uses it for nothing until an Owner or Admin makes it again", () => {
-    expect(github({ sealedBy: null, sealedAt: null })).toBe(
-      "Nobody is recorded to have set this app up, so Mate uses it for nothing until an Owner or Admin makes it again.",
-    );
-  });
-
-  // witness: apps/web/src/components/settings/automationSettings.logic.ts | const name = by === null || by === undefined ? undefined : nameOf(by); → const name = undefined;
+  // witness: apps/web/src/components/settings/automationSettings.logic.ts | const name = nameOf(seal.by) ?? "an Owner or Admin"; → const name = "an Owner or Admin";
   it("a GitHub app names the Owner or Admin who sealed it, as the member list names them, and when", () => {
     expect(github({ sealedBy: "u-ada", sealedAt: "2026-11-07T14:11:01.000Z" })).toBe(
-      "Set up by Ada Lovelace on 2026-11-07.",
+      "set up by Ada Lovelace, 2026-11-07",
     );
-    // Somebody the member list does not hold goes unnamed.
+    // Somebody the member list does not hold is said by their role.
     expect(github({ sealedBy: "u-gone", sealedAt: "2026-11-07T14:11:01.000Z" })).toBe(
-      "Set up on 2026-11-07.",
+      "set up by an Owner or Admin, 2026-11-07",
     );
-  });
-
-  // witness: apps/web/src/components/settings/automationSettings.logic.ts | if (view.sealedBy === undefined) return { kind: "unrecorded" }; → if (view.sealedBy === undefined) return { kind: "needed" };
-  it("an older HQ's GitHub app, which keeps no seal record, says nothing of who set it up and is not asked to be made again", () => {
-    expect(github({})).toBeNull();
   });
 
   // witness: apps/web/src/components/settings/automationSettings.logic.ts | const tail = sealedWords(view.connectedBy, view.connectedAt, nameOf, day); → const tail = "";
