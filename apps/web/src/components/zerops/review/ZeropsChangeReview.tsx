@@ -699,6 +699,9 @@ export interface ChangeReviewViewProps {
   readonly onClose: () => void;
 }
 
+/** Where a change merges: every change here merges into `main`. */
+const MERGES_INTO = { words: "main" } as const;
+
 export function ChangeReviewView(props: ChangeReviewViewProps) {
   const { pull, readout, mate, press, closing } = props;
   const read = readout.kind === "read" ? readout.value : undefined;
@@ -801,6 +804,15 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const fromRelease = props.back !== undefined;
   const primary = fromRelease ? undefined : model.primary;
   const secondary = model.secondary;
+  // The ask to close it, where the review offers it: asked, the quiet word keeps it open instead.
+  const closeOffer = asked || fromRelease ? undefined : secondary;
+  const onPage = props.frame === "page";
+  // Beside Merge, closing it is rare and takes the change away: it stands behind ⋯ in the sheet's
+  // top line. Where closing is what the review is for — nothing to merge, its Mate gone — and on a
+  // page, which has no top line, it stays in the foot.
+  const closeInMenu =
+    closeOffer !== undefined && !onPage && primary !== undefined && model.orphan === undefined;
+  const busy = model.verdict.state === "merging" || model.verdict.state === "closing";
   const files = useReviewFold();
   const checks = useReviewFold();
   const talk = useReviewFold();
@@ -873,7 +885,19 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                 recipe: pull.kind === "recipe",
               })
       }
-      dismiss={over && !fromRelease ? "Close" : undefined}
+      // Beside the one button the quiet way out stands where a release's Cancel does, and leaves
+      // the change open; with nothing to press, × closes the sheet.
+      dismiss={
+        fromRelease
+          ? undefined
+          : over
+            ? "Close"
+            : primary === undefined
+              ? undefined
+              : busy
+                ? "Close"
+                : "Keep it open"
+      }
       face={mate.tint === undefined ? undefined : { tint: mate.tint, shape: mate.shape }}
       frame={props.frame}
       fix={
@@ -916,6 +940,19 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           </GitBrowserLink>
         )
       }
+      menu={
+        closeOffer === undefined || !closeInMenu
+          ? undefined
+          : [
+              {
+                label: closeOffer.label,
+                destructive: true,
+                onPress: () => {
+                  props.onClosing("ask");
+                },
+              },
+            ]
+      }
       onOpenPage={props.onOpenPage}
       onClose={props.onClose}
       primary={
@@ -923,7 +960,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           ? undefined
           : {
               ...primary,
-              busy: model.verdict.state === "merging" || model.verdict.state === "closing",
+              busy,
               label:
                 model.verdict.state === "merging"
                   ? "Merging"
@@ -944,7 +981,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             }
       }
       secondary={
-        secondary === undefined
+        secondary === undefined || closeInMenu
           ? undefined
           : {
               ...secondary,
@@ -967,6 +1004,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       title={pull.title}
       titleId={props.titleId}
       verdict={model.verdict}
+      where={MERGES_INTO}
       whySaid={!onLine && whySaid(model.verdict, pull.ready === false)}
     >
       <HqProblems problems={model.problems} />
