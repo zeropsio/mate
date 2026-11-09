@@ -32,6 +32,8 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { MateFace } from "~/components/zerops/primitives";
+import { MirrorAskCard } from "~/components/zerops/mirror/MirrorAskCard";
+import { mirrorAskState } from "~/components/zerops/mirror/mirrorAsk.logic";
 import { OriginAskCard } from "~/components/zerops/origin/OriginAskCard";
 import { originAskState } from "~/components/zerops/origin/originAsk.logic";
 import { VaultAsk } from "~/components/zerops/vault/VaultAsk";
@@ -504,6 +506,69 @@ function Choose({ density }: { readonly density: AskDensity }) {
   );
 }
 
+// ── connect a repository to GitHub (the mirror ask itself) ───────────────────────────────────
+
+const MIRROR_STATES = [
+  ["waiting", "Waiting on you"],
+  ["working", "Working"],
+  ["done", "Done"],
+  ["notNow", "Not now"],
+  ["failed", "Failed"],
+  ["othersToAnswer", "Someone else's to answer"],
+  ["replaced", "Replaced"],
+] as const;
+type MirrorState = (typeof MIRROR_STATES)[number][0];
+const MIRROR = {
+  repo: "shop",
+  reason: "You asked for pull requests on GitHub. shop isn't connected to a repository yet.",
+  remote: "https://github.com/acme/shop",
+};
+
+function Mirror({ density }: { readonly density: AskDensity }) {
+  const [state, setState] = useState<MirrorState>("waiting");
+  const answered = state === "done" || state === "notNow";
+  return (
+    <Specimen
+      chips={<States label="Connect" onChange={setState} states={MIRROR_STATES} value={state} />}
+      density={density}
+      name="Connect: a repository to GitHub"
+    >
+      <MirrorAskCard
+        askId="mirror"
+        density={density}
+        face={FACE}
+        mateName={MATE}
+        onNotNow={NOTHING}
+        onRetry={NOTHING}
+        onShowInConversation={density === "compact" ? NOTHING : undefined}
+        reason={MIRROR.reason}
+        remoteUrl={state === "done" ? MIRROR.remote : null}
+        repo={MIRROR.repo}
+        state={mirrorAskState({
+          state:
+            state === "done"
+              ? "connected"
+              : state === "notNow"
+                ? "declined"
+                : state === "replaced"
+                  ? "closed"
+                  : "open",
+          pending: state === "working" ? "declined" : null,
+          refusal: state === "failed" ? "The Mate did not take the answer." : null,
+          remote: state === "done" ? MIRROR.remote : null,
+          refused:
+            state === "othersToAnswer"
+              ? "Only an Owner or Admin can connect a repository to GitHub here."
+              : null,
+          mateName: MATE,
+          by: answered ? "Aleš" : null,
+          at: answered ? "12:20" : null,
+        })}
+      />
+    </Specimen>
+  );
+}
+
 // ── an organization's proposal, narrowed by the approver ─────────────────────────────────────
 
 const SCOPE_STATES = [
@@ -599,6 +664,7 @@ function Harness() {
           <Connect density={density} />
           <Reveal density={density} />
           <Choose density={density} />
+          <Mirror density={density} />
           <OrganizationScope density={density} />
         </div>
       </div>
