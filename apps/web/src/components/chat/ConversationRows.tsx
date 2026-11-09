@@ -14,6 +14,7 @@ import { NO_MATE_LIMIT, type MateLimit } from "@t3tools/client-runtime/data";
  * Presentational: every word comes from the row. Every row here has its final
  * height from its first frame; only words and fixed-size marks change in place.
  */
+import type { ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
@@ -277,6 +278,47 @@ function EventShell({
   );
 }
 
+/**
+ * How a production release ended, said into the conversation between two rules as a day's seam
+ * is: nobody here did it, and the Mate's next words follow from it. One line at one height, so it
+ * moves nothing as it arrives.
+ */
+function ReleaseEndedLine({
+  event,
+  at,
+  timestampFormat,
+}: {
+  readonly event: ReleaseEndedEvent;
+  readonly at: string;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  const tag = (name: string) => <span className="font-mono">{name}</span>;
+  return (
+    <div
+      className="flex min-h-7 min-w-0 items-center gap-3 text-caption text-muted-foreground"
+      data-conversation-event="release"
+      data-release-outcome={event.outcome}
+    >
+      <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-border" />
+      <Tooltip>
+        <TooltipTrigger render={<span className="min-w-0 truncate" />}>
+          {event.outcome === "live" ? (
+            <>{tag(event.tag)} is live</>
+          ) : (
+            <>
+              Release {tag(event.tag)} didn't go live
+              {event.cause === undefined ? null : `: ${event.cause}`}
+              {event.stillRuns === undefined ? null : <> · {tag(event.stillRuns)} still runs</>}
+            </>
+          )}
+        </TooltipTrigger>
+        <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
+      </Tooltip>
+      <span aria-hidden="true" className="h-px min-w-6 flex-1 bg-border" />
+    </div>
+  );
+}
+
 /** Something that happened in the conversation, not something the Mate wrote. */
 export function EventLine({
   event,
@@ -300,6 +342,8 @@ export function EventLine({
           <span className="font-medium text-foreground">{event.event.title}</span> merged
         </EventShell>
       );
+    case "release":
+      return <ReleaseEndedLine at={at} event={event.event} timestampFormat={timestampFormat} />;
     case "compaction":
       return (
         <EventShell

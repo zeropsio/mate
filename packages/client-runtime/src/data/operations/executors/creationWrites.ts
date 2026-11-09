@@ -7,7 +7,8 @@
  */
 import * as Effect from "effect/Effect";
 
-import type { ZeropsApiClient } from "../../../zerops/api.ts";
+import type { ZeropsApiClient, ZeropsServiceImportResult } from "../../../zerops/api.ts";
+import type { CreateServicesResult } from "../createServices.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
@@ -93,4 +94,48 @@ export function creationWritesExecutor(
         );
     }
   };
+}
+
+/**
+ * Creating a project's missing services, followed to its end (`create-services`): Zerops' answer
+ * names each service it began and the processes bringing it up, which the receipt holds as its
+ * handles until each ended. An answer naming no process is its end.
+ */
+export function createServicesExecutor(platform: {
+  readonly importServicesIntoProject: (
+    projectId: string,
+    yaml: string,
+  ) => Promise<ZeropsServiceImportResult>;
+  readonly nowMs: () => number;
+}) {
+  return (requestId: string, intent: IntentOf<"create-services">) =>
+    Effect.map(
+      verb(() => platform.importServicesIntoProject(intent.projectId, intent.yaml)),
+      (answer): OperationReceipt => {
+        const services = (answer.serviceStacks ?? []).map((stack) => ({
+          hostname: stack.name,
+          serviceId: stack.id,
+          processIds: (stack.processes ?? []).map((process) => process.id),
+        }));
+        const result: CreateServicesResult = {
+          acceptedAtMs: platform.nowMs(),
+          services,
+        };
+        const processes = [...new Set(services.flatMap((service) => service.processIds))];
+        const [first] = processes;
+        if (first === undefined) return done(requestId, intent.projectId, result);
+        return {
+          requestId,
+          operationId: first,
+          executor: "zerops",
+          affected: [
+            { family: "project", id: intent.projectId },
+            ...processes.map((id) => ({ family: "process" as const, id })),
+          ],
+          handles: processes,
+          acceptance: { kind: "accepted", result },
+          outcome: { kind: "pending" },
+        };
+      },
+    );
 }

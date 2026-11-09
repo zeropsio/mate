@@ -54,7 +54,7 @@ import type {
   ZeropsOperation,
   ZeropsTimelineEntry,
 } from "@t3tools/client-runtime/zerops/model";
-import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
+import type { ChangeLandedEvent, ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
 
 import {
   isImageAttachment,
@@ -404,7 +404,21 @@ export type TimelineEntry =
       kind: "change-landed";
       createdAt: string;
       event: ChangeLandedEvent;
+    }
+  | {
+      id: string;
+      /**
+       * A production release of this Mate's application ending, placed at the moment it ended: it
+       * runs there now, or it did not go live. A fact about production, not about the agent, read
+       * from the application's releases.
+       */
+      kind: "release-ended";
+      createdAt: string;
+      event: ReleaseEndedEvent;
     };
+
+/** What the forge and production say into a conversation: a change landing, a release ending. */
+export type TimelineFlowEvent = ChangeLandedEvent | ReleaseEndedEvent;
 
 export function workLogEntryIsToolLike(entry: WorkLogEntry): boolean {
   if (entry.tone === "tool" || entry.tone === "thinking" || entry.tone === "error") {
@@ -2049,13 +2063,12 @@ function timelineEntryFromZerops(zeropsEntry: ZeropsTimelineEntry): TimelineEntr
   );
 }
 
-function timelineEntryFromChangeLanded(event: ChangeLandedEvent): TimelineEntry {
-  return rememberedTimelineEntry(event, () => ({
-    id: `zerops:${event.key}`,
-    kind: "change-landed",
-    createdAt: event.landedAt,
-    event,
-  }));
+function timelineEntryFromChangeLanded(event: TimelineFlowEvent): TimelineEntry {
+  return rememberedTimelineEntry(event, () =>
+    "outcome" in event
+      ? { id: `zerops:${event.key}`, kind: "release-ended", createdAt: event.endedAt, event }
+      : { id: `zerops:${event.key}`, kind: "change-landed", createdAt: event.landedAt, event },
+  );
 }
 
 /**
@@ -2165,7 +2178,7 @@ export interface TimelineEntriesProjection {
   readonly turnPlans: ReadonlyArray<TurnPlanEntry>;
   readonly workEntries: ReadonlyArray<WorkLogEntry>;
   readonly zeropsEntries: ReadonlyArray<ZeropsTimelineEntry>;
-  readonly changeEvents: ReadonlyArray<ChangeLandedEvent>;
+  readonly changeEvents: ReadonlyArray<TimelineFlowEvent>;
   readonly entries: TimelineEntry[];
 }
 
@@ -2338,7 +2351,7 @@ export function deriveTimelineEntriesWithState(
   previous: TimelineEntriesProjection | null = null,
   turnPlans: ReadonlyArray<TurnPlanEntry> = [],
   givenZeropsEntries: ReadonlyArray<ZeropsTimelineEntry> = [],
-  changeEvents: ReadonlyArray<ChangeLandedEvent> = [],
+  changeEvents: ReadonlyArray<TimelineFlowEvent> = [],
 ): TimelineEntriesProjection {
   const zeropsEntries = sameZeropsEntriesAsBefore(givenZeropsEntries, previous?.zeropsEntries);
   const sources = { messages, proposedPlans, turnPlans, workEntries, zeropsEntries, changeEvents };
@@ -2397,7 +2410,7 @@ export function deriveTimelineEntries(
   workEntries: ReadonlyArray<WorkLogEntry>,
   turnPlans: ReadonlyArray<TurnPlanEntry> = [],
   zeropsEntries: ReadonlyArray<ZeropsTimelineEntry> = [],
-  changeEvents: ReadonlyArray<ChangeLandedEvent> = [],
+  changeEvents: ReadonlyArray<TimelineFlowEvent> = [],
 ): TimelineEntry[] {
   return deriveTimelineEntriesWithState(
     messages,

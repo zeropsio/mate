@@ -466,24 +466,77 @@ export function productionRelease(
 }
 
 /**
+ * A production release ending, as a conversation places it and its Mate is told of it: it runs
+ * there now, or it did not go live. Read from the application's releases as the flow holds them,
+ * never from a passing event, so a reload says the same.
+ */
+export interface ReleaseEndedEvent {
+  /** Stable across reads, so a timeline can key on it. */
+  readonly key: string;
+  readonly tag: string;
+  readonly outcome: "live" | "failed";
+  /** When HQ made the release. */
+  readonly taggedAt: string;
+  /** When it ended, as far as the flow says: its deploy's end, else when HQ made it. */
+  readonly endedAt: string;
+  /** A failed one's cause in a clause, where the flow knows it: "db could not be created". */
+  readonly cause: string | undefined;
+  /** A failed one: the release production still runs, where an earlier one does. */
+  readonly stillRuns: string | undefined;
+}
+
+/** "Release v0.1.5 didn't go live: db could not be created · v0.1.3 still runs", "v0.1.6 is live". */
+export function releaseEndedWords(event: ReleaseEndedEvent): string {
+  if (event.outcome === "live") return `${event.tag} is live`;
+  const failed = `Release ${event.tag} didn't go live${event.cause === undefined ? "" : `: ${event.cause}`}`;
+  return event.stillRuns === undefined ? failed : `${failed} · ${event.stillRuns} still runs`;
+}
+
+/**
  * What to tell a Mate of its application's production, in the turn that wakes it: a release that
- * went live there since it last spoke, and where the app answers now. Its own address previews the
- * work with test data; once production runs a release, that is the app the person uses, and a
- * Mate that was never told keeps sending them to its preview.
+ * went live there since it last spoke, and where the app answers now — or the newest release that
+ * did not go live since, why, and what still runs. Its own address previews the work with test
+ * data; once production runs a release, that is the app the person uses, and a Mate that was never
+ * told keeps sending them to its preview. A Mate never told a release failed goes on as if its
+ * work were live.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  */
 export function productionTurnNotes(
   live: ProductionLive | undefined,
   since: string | undefined,
+  ended: ReadonlyArray<ReleaseEndedEvent> = [],
 ): ReadonlyArray<string> {
-  if (live === undefined || since === undefined) return [];
-  if (!(Date.parse(live.taggedAt) > Date.parse(since))) return [];
-  return [
-    live.address === undefined
-      ? `${live.tag} is live on production: that is the app now. Your own address is only their preview.`
-      : `${live.tag} is live on production at ${live.address}: that is the app now. Send the person there for anything real; your own address is only their preview.`,
-  ];
+  if (since === undefined) return [];
+  const spoke = Date.parse(since);
+  const notes: Array<string> = [];
+  if (live !== undefined && Date.parse(live.taggedAt) > spoke)
+    notes.push(
+      live.address === undefined
+        ? `${live.tag} is live on production: that is the app now. Your own address is only their preview.`
+        : `${live.tag} is live on production at ${live.address}: that is the app now. Send the person there for anything real; your own address is only their preview.`,
+    );
+  // A failure a later release put behind it is history: the live note says what matters now.
+  const failed = ended.findLast(
+    (event) =>
+      event.outcome === "failed" &&
+      Date.parse(event.endedAt) > spoke &&
+      (live === undefined || Date.parse(event.taggedAt) > Date.parse(live.taggedAt)),
+  );
+  if (failed !== undefined) {
+    // A long cause is cut so what still runs and where to read more stay in the line.
+    const cause = failed.cause?.trim().slice(0, AGENT_NOTE_TITLE);
+    notes.push(
+      [
+        `Release ${failed.tag} did not go live on production${cause === undefined || cause === "" ? "" : `: ${cause}`}.`,
+        failed.stillRuns === undefined
+          ? "Nothing of it runs there."
+          : `Production still runs ${failed.stillRuns}.`,
+        "zerops_observe (action deployments) has Zerops' own words for why.",
+      ].join(" "),
+    );
+  }
+  return notes;
 }
 
 /**

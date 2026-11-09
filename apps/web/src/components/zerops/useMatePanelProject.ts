@@ -24,7 +24,7 @@ export function useMatePanelProject(
   const location = useMateOfEnvironment(environmentId);
   const application = useApplicationOfProject(location?.projectId ?? mate?.projectId);
   const groupId = application?.id;
-  const { groupName, places, next } = useApplicationPlaces(groupId ?? "");
+  const { groupName, places, next, groupFlow } = useApplicationPlaces(groupId ?? "");
   const name = groupName ?? application?.name;
   return useMemo(
     () =>
@@ -35,10 +35,11 @@ export function useMatePanelProject(
             name,
             places,
             next,
+            groupFlow,
             onOpenProject: () => {
               void navigate({ to: "/group/$groupId/flow", params: { groupId } });
             },
           },
-    [groupId, name, navigate, next, places],
+    [groupFlow, groupId, name, navigate, next, places],
   );
 }

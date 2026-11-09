@@ -14,7 +14,7 @@ import {
   type BatchRule,
   type LiveBatch,
 } from "@t3tools/shared/liveBatch";
-import type { ChangeLandedEvent } from "@t3tools/client-runtime/zerops";
+import type { ChangeLandedEvent, ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
@@ -477,6 +477,8 @@ export function liveCallsOf(now: TurnHeaderActivity | null): ReadonlyArray<LiveC
 
 export type ConversationEvent =
   | { readonly type: "landed"; readonly event: ChangeLandedEvent }
+  /** A production release of the Mate's application ended: live, or not, why, and what runs. */
+  | { readonly type: "release"; readonly event: ReleaseEndedEvent }
   | { readonly type: "compaction"; readonly label: string }
   | { readonly type: "command"; readonly command: SlashCommand; readonly done: boolean }
   /** The server resumed the thread itself after a usage limit reset. */
@@ -2116,6 +2118,14 @@ function stretchRecord(input: {
           event: { type: "landed", event: entry.event },
         });
         break;
+      case "release-ended":
+        push({
+          kind: "event",
+          key: `event:${entry.id}`,
+          at: entry.createdAt,
+          event: { type: "release", event: entry.event },
+        });
+        break;
       case "proposed-plan":
         rows.push({
           kind: "proposed-plan",
@@ -3536,6 +3546,13 @@ export function deriveMessagesTimelineRows(input: {
           id: `event:${entry.id}`,
           createdAt: entry.createdAt,
           event: { type: "landed", event: entry.event },
+        });
+      } else if (entry.kind === "release-ended") {
+        rows.push({
+          kind: "event",
+          id: `event:${entry.id}`,
+          createdAt: entry.createdAt,
+          event: { type: "release", event: entry.event },
         });
       } else if (entry.kind === "work" && entry.entry.crewSeam !== undefined) {
         rows.push(crewSeamRow(entry.id, entry.entry, entry.entry.crewSeam));

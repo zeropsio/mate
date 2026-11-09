@@ -12,6 +12,7 @@ import {
   gitBlock,
   type FlowPullRequest,
   type GitCheckoutState,
+  type GroupFlow,
 } from "@t3tools/client-runtime/zerops";
 import type {
   ZeropsServiceMapView,
@@ -57,9 +58,14 @@ import {
 import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import type { RepoState } from "~/components/zerops/gitMirror.logic";
 import { MatePanelColumn, type MatePanelProject } from "~/components/zerops/MatePanelPlaces";
-import { gitWorkRows } from "~/components/zerops/matePanels.logic";
+import { gitWorkRows, lineWork, mateLineInput } from "~/components/zerops/matePanels.logic";
+import { projectLine, type ProjectLineView } from "~/components/zerops/system";
 import { MateFace } from "~/components/zerops/primitives";
-import type { CardReady, PlaceLine } from "~/components/zerops/projects/projectCard.logic";
+import type {
+  CardChange,
+  CardReady,
+  PlaceLine,
+} from "~/components/zerops/projects/projectCard.logic";
 import { ZeropsGitPanel, type ZeropsGitRepository } from "~/components/zerops/ZeropsGitPanel";
 import { ZeropsServiceMap } from "~/components/zerops/ZeropsServiceMap";
 import { ZeropsAgentAuthCard } from "~/components/zerops/ZeropsAgentAuthCard";
@@ -386,11 +392,138 @@ interface Scenario {
   readonly changes: "both" | "branch" | "open" | "nothing" | "no-code" | "reading";
   /** The Mate's home needs the person: an agent signed in by someone else, an update that waits. */
   readonly homeNeedsYou?: boolean;
+  /** Dana's changes the project lists beyond its repositories' rows: beads on the line alone. */
+  readonly lineChanges?: ReadonlyArray<CardChange>;
+  /** Dana's changes in review wait on the viewer. */
+  readonly waits?: boolean;
+}
+
+// ---------------------------------------------------------------- the line
+
+/** Other Mates' changes in the project: on Dana's line they are a count. */
+const OTHERS: ReadonlyArray<CardChange> = [
+  ...[41, 40, 39].map((number): CardChange => ({
+    pull: change({ number, title: "Another Mate's change", mateProjectId: "p-odo" }),
+    open: true,
+    words: "Ready to merge",
+    tone: "off",
+    at: ago(90),
+  })),
+  ...[29, 28].map((number): CardChange => ({
+    pull: change({
+      number,
+      title: "Another Mate's change",
+      mateProjectId: "p-odo",
+      merged: true,
+      state: "merged",
+      mergedAt: ago(60 * 30),
+    }),
+    open: false,
+    words: "Merged · waits for production",
+    tone: "off",
+    at: ago(60 * 30),
+    where: { kind: "waits-for-production" },
+  })),
+];
+
+/**
+ * The project's line as Dana's Code page draws it, from the scenario's own fixtures: its places as
+ * stations, the changes its repositories' rows show, and Dana's work on disk.
+ */
+function harnessLine(scenario: Scenario): ProjectLineView | undefined {
+  const { places } = scenario.project;
+  // HQ has not answered: the line's card holds its room.
+  if (places.length === 0) return undefined;
+  const shown = scenario.repositories.flatMap(({ work }) =>
+    work.flatMap((row): ReadonlyArray<CardChange> =>
+      row.kind !== "change"
+        ? []
+        : [
+            {
+              pull: row.pull,
+              open: row.open,
+              words: row.state,
+              tone: row.tone,
+              at: row.at,
+              ...(row.open
+                ? {}
+                : {
+                    where: row.state.startsWith("Live in")
+                      ? { kind: "released" as const, tag: row.state.slice(8), live: true }
+                      : { kind: "waits-for-production" as const },
+                  }),
+            },
+          ],
+    ),
+  );
+  const changes = [...shown, ...(scenario.lineChanges ?? []), ...OTHERS];
+  const live = places.some((line) => line.kind === "production" && line.projectId !== undefined);
+  // The flow as far as the line reads it: its Mates, its open changes, its places' setup.
+  const flow = {
+    mates: [
+      { projectId: "p-dana", name: "Dana" },
+      { projectId: "p-odo", name: "Odo" },
+    ],
+    pullRequests: changes
+      .filter((entry) => entry.open)
+      .map((entry) => ({ pull: entry.pull, blocked: null, state: undefined, review: true })),
+    production: live ? { kind: "live" } : { kind: "absent" },
+    stages: places
+      .filter((line) => line.kind === "stage" && line.projectId !== undefined)
+      .map((line) => ({
+        projectId: line.projectId,
+        name: line.name,
+        state: "deployed",
+        source: "main",
+        addresses: line.addresses,
+      })),
+  } as unknown as Pick<GroupFlow, "mates" | "production" | "stages" | "pullRequests">;
+  return projectLine({
+    ...mateLineInput({
+      flow,
+      places,
+      changes,
+      next: scenario.project.next,
+      mate: { projectId: "p-dana", tint: "rose" },
+      waits: scenario.waits === true,
+    }),
+    work: lineWork(scenario.repositories, "p-dana"),
+  });
 }
 
 const TEA = "Tea Shop";
 
 const SCENARIOS: ReadonlyArray<Scenario> = [
+  {
+    id: "line",
+    changes: "both",
+    waits: true,
+    title: "The line · work on disk, a change waiting on you, one merged · a release ready",
+    project: project(TEA, [PRODUCTION, STAGE], 4),
+    repositories: [
+      repository({
+        checkout: checkout({ changed: [{ path: "src/call.ts", insertions: 24, deletions: 3 }] }),
+        change: change({ number: 34, title: "Sold-out switch remembered across visits" }),
+        github: IN_SYNC,
+      }),
+    ],
+    lineChanges: [
+      {
+        pull: change({
+          number: 31,
+          title: "Seasonal menu on the front page",
+          merged: true,
+          state: "merged",
+          mergedAt: ago(60 * 20),
+        }),
+        open: false,
+        words: "On stage",
+        tone: "off",
+        at: ago(60 * 20),
+        where: { kind: "on-stage" },
+      },
+    ],
+  },
   {
     id: "uncommitted",
     changes: "both",
@@ -893,6 +1026,7 @@ function HarnessPage() {
                             <ZeropsGitPanel
                               mateFace={face}
                               mateName="Dana"
+                              line={harnessLine(scenario)}
                               model={{ repositories: scenario.repositories }}
                               onCheckAgain={() => {}}
                               onConnect={() => {}}

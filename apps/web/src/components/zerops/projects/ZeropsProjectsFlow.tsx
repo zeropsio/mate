@@ -18,6 +18,7 @@ import type {
 } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
+import type { MateTintId } from "@t3tools/shared/brand";
 import { PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -145,6 +146,8 @@ export interface ZeropsProjectsFlowProps<T> {
   ) => ReactNode;
   /** A Mate's face, beside its name in a row. */
   readonly renderMateFace: (item: T, size: MateFaceSize) => ReactNode;
+  /** A Mate's tint: the colour of its changes on the project's line. */
+  readonly mateTint?: ((item: T) => MateTintId | undefined) | undefined;
   /** A pending shared birth's phase and its actions, where HQ has one. */
   readonly renderComingBirth?:
     | ((projectId: string) => { readonly line: string; readonly menu: ReactNode } | undefined)

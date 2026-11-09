@@ -574,6 +574,19 @@ const MANAGED_WORDS: Readonly<
   valkey: { kind: "cache", words: "Cache · Valkey" },
 };
 
+/**
+ * A declared service type as a person reads it, with its version: `postgresql@18` → "Database ·
+ * PostgreSQL 18", `nodejs@22` → "Node.js app 22"; a type nobody named here stays as written.
+ */
+export function serviceTypeWords(serviceType: string): string {
+  const type = typeWord(serviceType) ?? serviceType;
+  const words = MANAGED_WORDS[type]?.words ?? RUNTIME_WORDS[type] ?? type;
+  const version = serviceType.split("@")[1]?.trim();
+  return version === undefined || version === "" || version === "latest"
+    ? words
+    : `${words} ${version}`;
+}
+
 /** A service as a person reads it: what it is ("Node.js app", "Database · PostgreSQL"). */
 export function serviceWords(scope: VaultScope): {
   readonly kind: VaultServiceKind;
