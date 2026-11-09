@@ -84,9 +84,7 @@ export function ZeropsGitPanel({
         data-zerops-surface="git-panel"
       >
         {/* The project and where the work goes: the same card the Zerops panel opens with. */}
-        {project === undefined ? null : (
-          <MateProjectCard mateName={mateName} panel="git" project={project} />
-        )}
+        {project === undefined ? null : <MateProjectCard mateName={mateName} project={project} />}
         {repositories.length === 0 ? (
           <p className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground">
             {model.emptyLine ?? NO_REPOSITORY_LINE}

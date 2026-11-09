@@ -26,13 +26,7 @@ export interface MatePanelProject {
 }
 
 /** The project's places, one compact line each. Lines hold their height while they are read. */
-export function MatePlaces({
-  project,
-  panel,
-}: {
-  readonly project: MatePanelProject;
-  readonly panel: "zerops" | "git";
-}) {
+export function MatePlaces({ project }: { readonly project: MatePanelProject }) {
   // Production is always said once read: no line at all is a read still out.
   if (project.places.length === 0)
     return (
@@ -43,7 +37,7 @@ export function MatePlaces({
     );
   return (
     <div className="grid min-w-0 gap-1" data-zerops-surface="panel-places">
-      {panelPlaces(project.places, panel).map((line) => (
+      {panelPlaces(project.places).map((line) => (
         <PlaceLine
           density="compact"
           groupId={project.groupId}
@@ -65,11 +59,8 @@ export function MatePlaces({
 export function MateProjectCard({
   project,
   mateName,
-  panel = "zerops",
 }: {
   readonly project: MatePanelProject;
-  /** Which panel opens with it: the Git panel says what a missing stage means for the work. */
-  readonly panel?: "zerops" | "git";
   /** The Mate whose panel it is, for "Dana's project"; undefined while it is not known. */
   readonly mateName: string | undefined;
 }) {
@@ -106,7 +97,7 @@ export function MateProjectCard({
         </div>
       ) : (
         <div className="px-4 pt-1 pb-3">
-          <MatePlaces panel={panel} project={project} />
+          <MatePlaces project={project} />
         </div>
       )}
       {notLive || project.next === null ? null : (
