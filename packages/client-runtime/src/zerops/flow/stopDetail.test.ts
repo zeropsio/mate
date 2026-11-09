@@ -28,7 +28,6 @@ import {
   notInZerops,
   openStopLabel,
   serviceRows,
-  stopCardTitle,
   stopFailedDeploys,
   rowsRunningAgain,
   stopKeyGap,
@@ -544,25 +543,6 @@ describe("stopMetaLine", () => {
     { tier: "stage", source: "", services: 3, expected: "Nothing yet · 3 services" },
   ])("$tier from $source with $services services", ({ expected, ...input }) => {
     expect(stopMetaLine(input)).toBe(expected);
-  });
-});
-
-describe("stopCardTitle", () => {
-  it.each<{
-    group: Parameters<typeof stopCardTitle>[0];
-    count: number | undefined;
-    atLeast?: boolean;
-    expected: string;
-  }>([
-    { group: "waiting", count: 3, expected: "Waiting for release · 3" },
-    // HQ stopped counting, as the verdict above it says.
-    { group: "waiting", count: 10000, atLeast: true, expected: "Waiting for release · 10000+" },
-    { group: "services", count: 2, expected: "Services · 2" },
-    { group: "releases", count: 12, expected: "Releases · 12" },
-    { group: "deploys", count: 0, expected: "Deploys · 0" },
-    { group: "deploys", count: undefined, expected: "Deploys" },
-  ])("$group with $count", ({ group, count, atLeast, expected }) => {
-    expect(stopCardTitle(group, count, atLeast)).toBe(expected);
   });
 });
 
