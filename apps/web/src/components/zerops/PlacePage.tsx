@@ -100,7 +100,7 @@ import { possessive } from "./matePanels.logic";
 import { Link } from "@tanstack/react-router";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
-import { MateFace, VerdictPanel } from "./primitives";
+import { MateFace, VerdictPanel, VerdictPanelWaiting } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
 import { ReleaseList, ReleaseRowsWaiting, ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -1230,6 +1230,9 @@ export function ZeropsStopPane({
       trail={trail}
     >
       {readFailures}
+      {/* A place the header already calls failed will say why: its statement's room is held
+          until the statement is read, so it arrives without moving the page. */}
+      {verdictShown || headerLine.pill?.tone !== "danger" ? null : <VerdictPanelWaiting />}
       {!verdictShown ? null : (
         <div>
           <VerdictPanel detail={panel.detail} text={panel.text} tone={panel.tone}>
