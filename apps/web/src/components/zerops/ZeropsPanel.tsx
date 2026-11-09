@@ -42,19 +42,16 @@ import { useCrew } from "../../zerops/crew/useCrew";
 import { useLeaseChats } from "../../zerops/useLeaseChats";
 import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
-import { activityOfNow, mateFaceFor } from "../../zerops/agentActivity";
-import { useMatesActivity } from "../../zerops/useZeropsAgentActivity";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useHqPersonNames } from "../../zerops/useZeropsMateOwners";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
-import { mateIdentityPose, zeropsMateAt } from "../../zerops/mateIdentities";
-import { useNowMs } from "../../zerops/useNowMs";
-import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";
 import { OpenCodeAgentKeys } from "./OpenCodeAgentKeys";
 import { ZeropsAgentAuthCard } from "./ZeropsAgentAuthCard";
 import { ZeropsAgentSignInDialog } from "./ZeropsAgentSignIn";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
+import { useMateOnPanel } from "./useMateOnPanel";
+import { useMatePanelProject } from "./useMatePanelProject";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
 import { MicroLabel } from "./primitives";
 import { automatedAgentsLine } from "~/zerops/automatedMate.logic";
@@ -129,33 +126,11 @@ export function ZeropsPanel({
   const authorizationLogin = logins.find(
     (login) => !login.default && login.id === authorizationLoginId,
   );
-  const mates = useZeropsMateDirectory();
-  const activity = useMatesActivity();
-  const nowMs = useNowMs();
   const environmentId = threadRef?.environmentId;
   // An environment the Mate list has not reached shows the panel without a
   // Mate, and no service is marked as its container until one is known.
-  const whoLivesHere = environmentId === undefined ? null : zeropsMateAt(mates, environmentId);
-  const mateIdentity = whoLivesHere?.kind === "mate" ? whoLivesHere.mate : undefined;
-  // What it does now, where its attention is a word of now.
-  const live =
-    environmentId === undefined ? undefined : activityOfNow(activity.ofEnvironment(environmentId));
-  const mate =
-    mateIdentity === undefined || environmentId === undefined
-      ? undefined
-      : {
-          name: mateIdentity.name,
-          tint: mateIdentity.tint,
-          shape: mateIdentity.shape,
-          // Asleep until its socket is up or HQ's live word says what it does, as the
-          // lists draw it: a Mate is known from its project's tags and its container's
-          // origin before there is anything to resolve — see `ChatHeader`.
-          face: mateFaceFor(
-            mateIdentity.connected || live !== undefined,
-            live,
-            mateIdentityPose(mateIdentity, nowMs),
-          ),
-        };
+  const { identity: mateIdentity, mate } = useMateOnPanel(environmentId);
+  const project = useMatePanelProject(environmentId);
   const signOutPending = new Set<ZeropsAgentId>(
     (agentAuthCard?.agents ?? [])
       .filter((agent) => agentSignOut.statusFor(agent.agentId).pending)
@@ -261,6 +236,7 @@ export function ZeropsPanel({
             error={topology.error}
             liveness={topology.liveness}
             mate={mate}
+            project={project}
             mateUpdate={
               // The Mate's version and its one verb live with its body: the
               // same control the project page's menus read, so an update

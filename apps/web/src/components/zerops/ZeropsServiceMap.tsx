@@ -30,12 +30,10 @@ import type {
   PoolWorkspace,
   ZeropsRouteChoice,
   ZeropsServiceFact,
-  ZeropsServiceMapGroup,
   ZeropsServiceMapView,
   ZeropsServiceMetric,
   ZeropsServiceRow,
   ZeropsServiceTone,
-  ZeropsServiceTrends,
   ZeropsTrendPoint,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import type {
@@ -46,12 +44,15 @@ import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
-import { Skeleton } from "~/components/ui/skeleton";
 import { cn } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "@t3tools/client-runtime/data";
 import { ZeropsDataLinkContext } from "./dataLink";
 import { LivenessLine, MateFace, MicroLabel, MintPanel, STATUS_BADGE_TONE } from "./primitives";
+import { possessive } from "./matePanels.logic";
+import { MatePlaces, ProjectPageLink, type MatePanelProject } from "./MatePanelPlaces";
+import { placeServiceRows } from "./place/place.logic";
+import { SectionLabel, ServiceList, ServiceMeters, ServiceRow } from "./system";
 import { sparklineGeometry } from "./sparkline";
 import { Badge } from "~/components/ui/badge";
 
@@ -65,16 +66,6 @@ const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> =
 /** A graph's box, in its own units; the stroke does not scale with it. */
 const GRAPH_WIDTH = 48;
 const GRAPH_HEIGHT = 14;
-
-/** The three resources, in the dashboard's order. */
-const RESOURCES: ReadonlyArray<{
-  readonly id: "cores" | "memory" | "disk";
-  readonly label: string;
-}> = [
-  { id: "cores", label: "Cores" },
-  { id: "memory", label: "RAM" },
-  { id: "disk", label: "Disk" },
-];
 
 const NO_WORKSPACES: ReadonlyArray<PoolWorkspace> = [];
 
@@ -294,106 +285,15 @@ export function ResourceGraph({
   );
 }
 
-/** A figure the card can show: an allocation the service holds right now. */
-interface ResourceFigure {
-  readonly id: ZeropsServiceMetric["id"];
-  readonly value: string;
-  readonly unit: string | undefined;
-}
-
-const figureOf = (metric: ZeropsServiceMetric | undefined): ResourceFigure | undefined =>
-  metric === undefined || metric.value === undefined
-    ? undefined
-    : { id: metric.id, value: metric.value, unit: metric.unit };
-
-/** One resource on the line: its label, the figure it holds, and its graph beside it. */
-function ResourceItem({
-  label,
-  figure,
-  trend,
-  graphId,
-}: {
-  label: string;
-  figure: ResourceFigure | undefined;
-  trend: ReadonlyArray<ZeropsTrendPoint> | undefined;
-  graphId: string;
-}) {
-  return (
-    <span
-      className="inline-flex min-w-0 items-baseline gap-1.5"
-      data-zerops-service-resource={figure?.id ?? label.toLowerCase()}
-    >
-      <MicroLabel>{label}</MicroLabel>
-      {figure === undefined ? (
-        <Skeleton className="h-3 w-8 self-center" data-zerops-service-figure="pending" />
-      ) : (
-        <span
-          className="text-xs leading-none font-medium text-foreground tabular-nums"
-          data-zerops-service-figure="live"
-        >
-          {figure.value}
-          {figure.unit === undefined ? null : (
-            <span className="ml-0.5 font-normal text-muted-foreground">{figure.unit}</span>
-          )}
-        </span>
-      )}
-      {trend === undefined ? (
-        <Skeleton className="h-3.5 w-12 self-center" data-zerops-service-graph="pending" />
-      ) : (
-        <ResourceGraph id={graphId} trend={trend} />
-      )}
-    </span>
-  );
-}
-
 /**
- * The resources line under the name. Its shape is reserved until the reads
- * answer; a service holding nothing — not deployed yet, stopped — shows no
- * resources at all once usage is known.
+ * A service's CPU, RAM and disk as every service row says them (`ServiceMeters`), under its name;
+ * nothing for a service holding nothing once its use is known (the envelope alone is the pop's).
  */
-function ServiceResources({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
+function Meters({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
+  if (usageRead && row.metrics.every((metric) => metric.value === undefined)) return null;
   return (
-    <ResourcesRow
-      idPrefix={row.service.serviceId}
-      metrics={row.metrics}
-      trends={row.trends}
-      usageRead={usageRead}
-    />
-  );
-}
-
-/** The line itself, so a dev half and the stage folded under it read alike. */
-function ResourcesRow({
-  idPrefix,
-  metrics,
-  trends,
-  usageRead,
-}: {
-  idPrefix: string;
-  metrics: ReadonlyArray<ZeropsServiceMetric>;
-  trends: ZeropsServiceTrends | undefined;
-  usageRead: boolean;
-}) {
-  // The envelope alone (`range` without `value`) is the pop's, not the card's.
-  if (usageRead && metrics.every((metric) => metric.value === undefined)) {
-    return null;
-  }
-  return (
-    <div
-      className="mt-2 flex min-w-0 max-w-full flex-wrap items-baseline gap-x-5 gap-y-1.5"
-      data-zerops-service-resources
-    >
-      {RESOURCES.map((resource) => (
-        <ResourceItem
-          graphId={`${idPrefix}-${resource.id}`}
-          key={resource.id}
-          figure={
-            usageRead ? figureOf(metrics.find((metric) => metric.id === resource.id)) : undefined
-          }
-          label={resource.label}
-          trend={trends?.[resource.id]}
-        />
-      ))}
+    <div className="mt-2 min-w-0" data-zerops-service-resources>
+      <ServiceMeters row={row} usageRead={usageRead} />
     </div>
   );
 }
@@ -714,8 +614,7 @@ function StageLine({
   tone,
   label,
   needsWord,
-  metrics,
-  trends,
+  meters,
   portLabel,
   routes,
   folded,
@@ -729,8 +628,8 @@ function StageLine({
   tone: ZeropsServiceTone;
   label: string;
   needsWord: boolean;
-  metrics: ReadonlyArray<ZeropsServiceMetric>;
-  trends: ZeropsServiceTrends | undefined;
+  /** The stage as a row of its own, for its meters: its service, its use, its last day. */
+  meters: ZeropsServiceRow;
   portLabel: string | undefined;
   usageRead: boolean;
 }) {
@@ -747,12 +646,7 @@ function StageLine({
         title={title}
         tone={tone}
       />
-      <ResourcesRow
-        idPrefix={stage.serviceId}
-        metrics={metrics}
-        trends={trends}
-        usageRead={usageRead}
-      />
+      <Meters row={meters} usageRead={usageRead} />
     </div>
   );
 }
@@ -806,21 +700,25 @@ function ServiceCardBody({
         </p>
       )}
       <DevServers servers={row.devServers} />
-      <ServiceResources row={row} usageRead={usageRead} />
+      <Meters row={row} usageRead={usageRead} />
       {row.stage === undefined ||
       row.stageTone === undefined ||
       row.stageStatusLabel === undefined ? null : (
         <StageLine
           label={row.stageStatusLabel}
           needsWord={row.stageStatusNeedsWord ?? true}
-          metrics={row.stageMetrics ?? []}
+          meters={{
+            ...row,
+            service: row.stage,
+            metrics: row.stageMetrics ?? [],
+            ...(row.stageTrends === undefined ? {} : { trends: row.stageTrends }),
+          }}
           portLabel={row.stagePortLabel}
           folded={row.stageRoutesFolded ?? false}
           routes={row.stageRoutes ?? []}
           stage={row.stage}
           title={row.stage.hostname}
           tone={row.stageTone}
-          trends={row.stageTrends}
           usageRead={usageRead}
         />
       )}
@@ -917,54 +815,71 @@ function ControlPlaneRow({
   );
 }
 
-function ServiceRow({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
+/**
+ * The buttons at a Mate's own service's row end, before its ···: its addresses, opened in the
+ * panel's browser, and a database's data, opened in the Data tab — the one thing a person reaches
+ * for without hovering.
+ */
+function ServiceButtons({ row }: { row: ZeropsServiceRow }) {
+  const dataLink = useContext(ZeropsDataLinkContext);
+  const openData = row.service.group === "data" ? dataLink : null;
+  if (row.routes.length === 0 && openData === null) return null;
+  const [main] = row.routes;
+  const unavailable = row.workspaces?.filter((workspace) => workspace.url === undefined) ?? [];
   return (
-    <li data-zerops-service-row="service">
-      <ServiceCard render={<Card size="sm" variant="flat" />} row={row} usageRead={usageRead} />
-    </li>
+    <span className="flex items-center gap-1" data-zerops-service-routes-buttons>
+      {openData === null ? null : <DataButton hostname={row.service.hostname} onOpen={openData} />}
+      {row.routesFolded ? (
+        <>
+          {main === undefined ? null : <RouteButton route={main.route} />}
+          <RouteMenu routes={row.routes} unavailable={unavailable} />
+        </>
+      ) : (
+        row.routes.map((choice) => <RouteButton key={choice.route.url} route={choice.route} />)
+      )}
+    </span>
   );
 }
 
-function ServiceGroup({
-  group,
-  usageRead,
-  mate,
-  mateUpdate,
-  agents,
-  currentServiceId,
-}: {
-  group: ZeropsServiceMapGroup;
-  usageRead: boolean;
-  mate: ZeropsMateOnMap | undefined;
-  mateUpdate: ReactNode;
-  agents: ReactNode;
-  currentServiceId: string | undefined;
-}) {
+/**
+ * What a Mate's own service carries under its row that a place's service does not: what it rests
+ * on, its dev servers, and the stage folded into a dev service, with its own meters.
+ */
+function ServiceExtras({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
+  const stage = row.stage;
+  const folded =
+    stage !== undefined && row.stageTone !== undefined && row.stageStatusLabel !== undefined;
+  if (row.restNote === undefined && (row.devServers?.length ?? 0) < 2 && !folded) return null;
   return (
-    <section className="space-y-1.5" data-zerops-service-group={group.group}>
-      <h3 className="flex items-baseline gap-1.5">
-        <MicroLabel>{group.title}</MicroLabel>
-        {group.rows.length < 2 ? null : (
-          <span className="text-xs text-muted-foreground tabular-nums">{group.rows.length}</span>
-        )}
-      </h3>
-      <ul className="space-y-1.5">
-        {group.rows.map((row) =>
-          row.isControlPlane ? (
-            <ControlPlaneRow
-              agents={row.service.serviceId === currentServiceId ? agents : undefined}
-              key={row.service.serviceId}
-              mate={row.service.serviceId === currentServiceId ? mate : undefined}
-              mateUpdate={row.service.serviceId === currentServiceId ? mateUpdate : undefined}
-              row={row}
-              usageRead={usageRead}
-            />
-          ) : (
-            <ServiceRow key={row.service.hostname} row={row} usageRead={usageRead} />
-          ),
-        )}
-      </ul>
-    </section>
+    <div className="min-w-0" data-zerops-service-extras>
+      {row.restNote === undefined ? null : (
+        <p className="text-xs leading-snug text-muted-foreground" data-zerops-service-rest>
+          {row.restNote}
+        </p>
+      )}
+      <DevServers servers={row.devServers} />
+      {stage === undefined ||
+      row.stageTone === undefined ||
+      row.stageStatusLabel === undefined ? null : (
+        <StageLine
+          folded={row.stageRoutesFolded ?? false}
+          label={row.stageStatusLabel}
+          meters={{
+            ...row,
+            service: stage,
+            metrics: row.stageMetrics ?? [],
+            ...(row.stageTrends === undefined ? {} : { trends: row.stageTrends }),
+          }}
+          needsWord={row.stageStatusNeedsWord ?? true}
+          portLabel={row.stagePortLabel}
+          routes={row.stageRoutes ?? []}
+          stage={stage}
+          title={stage.hostname}
+          tone={row.stageTone}
+          usageRead={usageRead}
+        />
+      )}
+    </div>
   );
 }
 
@@ -976,6 +891,7 @@ export function ZeropsServiceMap({
   mateUpdate,
   agents,
   currentServiceId,
+  project,
 }: {
   readonly view: ZeropsServiceMapView | undefined;
   /** The platform-websocket connection's own state — `useProjectTopology`'s signal, not the view's. */
@@ -994,55 +910,115 @@ export function ZeropsServiceMap({
   readonly agents?: ReactNode;
   /** Exact service of the current environment; absence never implies the first row. */
   readonly currentServiceId?: string | undefined;
+  /**
+   * The project the Mate works in, once known: its places on top, each opening its page, and the
+   * way to the project's page (decision P6 of the pages pass, 2026-11-09).
+   */
+  readonly project?: MatePanelProject | undefined;
 }) {
   // No view yet — no session, no resolved project, or the first read still pending.
   if (view === undefined) {
     return null;
   }
+  const rows = view.groups.flatMap((group) => group.rows);
+  // The Mate's own services, drawn as a place's page draws its services (`ServiceRow`).
+  const services = placeServiceRows([], rows);
+  const servicesLabel = mate === undefined ? "Services" : possessive(mate.name, "services");
 
   return (
     <div className="space-y-6" data-zerops-service-map>
-      {error !== undefined ? (
-        <LivenessLine data-zerops-map-degraded="true" label={error} state="last-read-failed" />
-      ) : liveness === "live" ? (
-        <LivenessLine
-          data-zerops-map-liveness="live"
-          label="Live · updated just now"
-          state="live"
-        />
-      ) : liveness === "recovering" ? (
-        <LivenessLine
-          data-zerops-map-liveness="recovering"
-          label="Connecting live updates"
-          state="recovering"
-        />
-      ) : (
-        <LivenessLine state="absent" />
+      {project === undefined ? null : (
+        <section className="space-y-1" data-zerops-surface="panel-project">
+          <SectionLabel action={<ProjectPageLink project={project} />} level={3}>
+            {project.name}
+          </SectionLabel>
+          <MatePlaces panel="zerops" project={project} />
+        </section>
       )}
-      {view.runningTool === undefined ? null : (
-        <Badge
-          dot
-          data-zerops-running-tool={view.runningTool}
-          tone="info"
-        >{`${view.runningTool} running`}</Badge>
-      )}
-      {view.isEmpty ? (
-        <p className="text-muted-foreground text-sm" data-zerops-map-empty>
-          No services yet. Ask the agent to build something and they will appear here.
-        </p>
-      ) : (
-        view.groups.map((group) => (
-          <ServiceGroup
-            agents={agents}
-            currentServiceId={currentServiceId}
-            group={group}
-            key={group.group}
-            mate={mate}
-            mateUpdate={mateUpdate}
-            usageRead={view.usageRead}
-          />
-        ))
-      )}
+      <section className="space-y-1.5" data-zerops-surface="panel-services">
+        <SectionLabel
+          level={3}
+          // Calm says itself in words; only a state that is not calm wears a badge.
+          count={
+            liveness === "live" && error === undefined ? (
+              <span data-zerops-map-liveness="live">live, updated just now</span>
+            ) : undefined
+          }
+          action={
+            error !== undefined ? (
+              <LivenessLine
+                data-zerops-map-degraded="true"
+                label={error}
+                state="last-read-failed"
+              />
+            ) : liveness === "recovering" ? (
+              <LivenessLine
+                data-zerops-map-liveness="recovering"
+                label="Connecting live updates"
+                state="recovering"
+              />
+            ) : undefined
+          }
+        >
+          {servicesLabel}
+        </SectionLabel>
+        {view.runningTool === undefined ? null : (
+          <Badge
+            dot
+            data-zerops-running-tool={view.runningTool}
+            tone="info"
+          >{`${view.runningTool} running`}</Badge>
+        )}
+        {view.isEmpty ? (
+          <p className="text-muted-foreground text-sm" data-zerops-map-empty>
+            No services yet. Ask the agent to build something and they will appear here.
+          </p>
+        ) : (
+          <>
+            {services.length === 0 ? null : (
+              <Card variant="flat">
+                <div className="px-3.5 py-0.5">
+                  <ServiceList label={servicesLabel}>
+                    {services.map((service) => (
+                      <ServiceRow
+                        actions={
+                          service.platform === undefined ? undefined : (
+                            <ServiceButtons row={service.platform} />
+                          )
+                        }
+                        density="compact"
+                        key={service.hostname}
+                        row={service}
+                        usageRead={view.usageRead}
+                      >
+                        {service.platform === undefined ? null : (
+                          <ServiceExtras row={service.platform} usageRead={view.usageRead} />
+                        )}
+                      </ServiceRow>
+                    ))}
+                  </ServiceList>
+                </div>
+              </Card>
+            )}
+            {/* The control plane is the Mate's home: its card, the agents it signs in to and its
+                workspace stay as they were, after the services it built. */}
+            <ul className="space-y-1.5">
+              {rows
+                .filter((row) => row.isControlPlane)
+                .map((row) => (
+                  <ControlPlaneRow
+                    agents={row.service.serviceId === currentServiceId ? agents : undefined}
+                    key={row.service.serviceId}
+                    mate={row.service.serviceId === currentServiceId ? mate : undefined}
+                    mateUpdate={row.service.serviceId === currentServiceId ? mateUpdate : undefined}
+                    row={row}
+                    usageRead={view.usageRead}
+                  />
+                ))}
+            </ul>
+          </>
+        )}
+      </section>
       {view.warnings.map((warning) => (
         <p className="text-muted-foreground text-xs" key={warning}>
           {warning}
