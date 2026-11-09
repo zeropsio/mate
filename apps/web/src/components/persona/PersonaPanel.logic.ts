@@ -149,15 +149,15 @@ function orgNote(org: OrgPersonaTemplatesInput): PersonaGroupNote | null {
   }
 }
 
-export function personaPage(input: PersonaPageInput): PersonaPageModel {
-  if (input.capability === null) return { kind: "loading" };
-  if (!input.capability)
-    return { kind: "update", line: PERSONA_WORDS.update(input.mate), action: "update-mate" };
-  if (!input.settingsLoaded) return { kind: "loading" };
-
-  const { persona, org } = input;
-  const ref = persona?.template;
-  const orgTemplates = org.state === "ready" ? org.templates : [];
+/**
+ * The templates a persona can start from, as the page and the add-Mate dialog list them: Zerops's
+ * by what they shape, then the organization's. `ref` marks the template the persona came from.
+ */
+export function personaTemplateGroups(
+  premade: readonly PremadePersonaTemplate[],
+  org: OrgPersonaTemplatesInput,
+  ref?: MatePersonaTemplateRef,
+): PersonaTemplateGroup[] {
   const rowsOf = (source: PersonaTemplateSource, templates: readonly PersonaTemplate[]) =>
     templates.map((template): PersonaTemplateRow => ({
       key: `${source}:${template.id}`,
@@ -175,21 +175,33 @@ export function personaPage(input: PersonaPageInput): PersonaPageModel {
     title,
     rows: rowsOf(
       "premade",
-      input.premade.filter((template) => template.about === about),
+      premade.filter((template) => template.about === about),
     ),
     note: null,
   });
-  const groups: PersonaTemplateGroup[] = [
+  return [
     premadeAbout("you", PERSONA_WORDS.aboutYou),
     premadeAbout("work", PERSONA_WORDS.aboutWork),
     {
       key: "org",
       source: "org",
       title: PERSONA_WORDS.orgTemplates(org.orgName),
-      rows: rowsOf("org", orgTemplates),
+      rows: rowsOf("org", org.state === "ready" ? org.templates : []),
       note: orgNote(org),
     },
   ];
+}
+
+export function personaPage(input: PersonaPageInput): PersonaPageModel {
+  if (input.capability === null) return { kind: "loading" };
+  if (!input.capability)
+    return { kind: "update", line: PERSONA_WORDS.update(input.mate), action: "update-mate" };
+  if (!input.settingsLoaded) return { kind: "loading" };
+
+  const { persona, org } = input;
+  const ref = persona?.template;
+  const orgTemplates = org.state === "ready" ? org.templates : [];
+  const groups = personaTemplateGroups(input.premade, org, ref);
 
   if (persona === null) {
     return { kind: "ready", persona: null, groups };

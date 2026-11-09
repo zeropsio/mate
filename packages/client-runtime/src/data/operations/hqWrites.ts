@@ -7,6 +7,7 @@
  *
  * @module data/operations/hqWrites
  */
+import type { MatePersona } from "@t3tools/contracts";
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
 import type { HqAttach, HqMateSetUp } from "../../zerops/hq/client.ts";
@@ -37,6 +38,7 @@ declare module "../model.ts" {
       readonly chief?: true;
       readonly standUp?: boolean;
       readonly automated?: true;
+      readonly standupPersona?: MatePersona;
     };
     readonly "bind-birth": {
       readonly orgId: string;

@@ -36,6 +36,7 @@ import {
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
+import type { MatePersona } from "@t3tools/contracts";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import { RegistryContext } from "@effect/atom-react";
 import {
@@ -171,12 +172,16 @@ export async function addedMateBirth(
     readonly face: string;
     readonly standUp: boolean;
     readonly automated?: true;
+    readonly standupPersona?: MatePersona;
     readonly intent: BirthIntent;
   }) => Promise<string>,
   input: {
     readonly groupId: string;
     readonly role: ZeropsEnvironmentRole;
-    readonly choice: Pick<EnvironmentCreationChoice, "face" | "withAgent" | "recipe" | "automated">;
+    readonly choice: Pick<
+      EnvironmentCreationChoice,
+      "face" | "withAgent" | "recipe" | "automated" | "persona"
+    >;
     readonly projectName: string;
     readonly displayName: string;
     readonly agents: ReadonlyArray<ZeropsAgentType>;
@@ -213,6 +218,8 @@ export async function addedMateBirth(
     },
     // Made automated from its birth: the attach that closes it, in any browser, makes it so.
     ...(choice.automated === true ? { automated: true as const } : {}),
+    // Its persona rides with its stand-up ask: the Mate takes it when its stand-up runs.
+    ...(standUp && choice.persona !== undefined ? { standupPersona: choice.persona } : {}),
   });
 }
 
