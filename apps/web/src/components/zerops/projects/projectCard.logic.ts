@@ -15,7 +15,6 @@ import {
   changeAsksForReview,
   changeInMateReview,
   changeState,
-  changesCountWords,
   ENVIRONMENT_NOT_ADDED,
   placeAddresses,
   PRODUCTION_DEPLOYING,
@@ -655,41 +654,6 @@ export function releaseProductionRuns(
   inFlight: string | undefined,
 ): string | undefined {
   return releases.find((release) => release.standing === "live" && release.tag !== inFlight)?.tag;
-}
-
-/** "3 changes ready to release", "1 change ready to release". */
-export function readyTitle(ready: CardReady): string {
-  if (ready.changeCount !== undefined)
-    return `${changesCountWords(ready.count, ready.atLeast, ready.changeCount)} ready to release`;
-  const count = `${ready.atLeast ? "At least " : ""}${String(ready.count)}`;
-  return `${count} change${ready.count === 1 ? "" : "s"} ready to release`;
-}
-
-/**
- * "On stage. Production runs v2.3.1." — where the changes are as the stage's deploys say, never
- * that anyone tried them there: nothing a release offers says a test ran on the stage.
- */
-export function readyLine(
-  ready: CardReady,
-  /** The stage runs every change the release carries; `undefined` while that is unread. */
-  onStage: boolean | undefined,
-): string | undefined {
-  const where =
-    ready.stage === undefined || onStage === undefined
-      ? "Merged."
-      : onStage
-        ? `On ${ready.stage}.`
-        : `Not on ${ready.stage} yet.`;
-  // Nothing released is production's own line ("Not released yet"), and merged is the title's:
-  // with no stage there is nothing more to say (a stage's line keeps its place while it is read).
-  if (!ready.failed && ready.from === undefined)
-    return ready.stage === undefined ? undefined : where;
-  const runs = ready.failed
-    ? ready.from === undefined
-      ? "Production's last release failed."
-      : `Production's last release failed; it still runs ${ready.from}.`
-    : `Production runs ${ready.from}.`;
-  return `${where} ${runs}`;
 }
 
 /** What a Mate waiting on the viewer is lifted onto a card with, and its buttons. */

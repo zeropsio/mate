@@ -37,8 +37,6 @@ import {
   releaseProductionRuns,
   placeLines,
   placeServices,
-  readyLine,
-  readyTitle,
   rollBackTarget,
   setupChangeWords,
   siteOf,
@@ -536,102 +534,6 @@ describe("since when production runs what it runs", () => {
 
 describe("a release ready to go", () => {
   const stage = stop({ projectId: "stage", name: "stage", source: "main" });
-
-  // D28: releasing the fix is how a broken production is mended, so the release stays offered.
-  it("is offered beside a production whose last release failed, and says so plainly", () => {
-    const ready = cardReady({
-      production: {
-        kind: "deploy-failed",
-        stop: stop({ version: { ...stop().version!, label: "v1.8.2" } }),
-        line: "",
-        candidate: { tag: "v1.9.1", waiting: 2 },
-      },
-      stages: [stage],
-      main: { head: undefined, hasCode: true, notLive: 2, notLiveAtLeast: false },
-    });
-    expect(ready === undefined ? undefined : [readyTitle(ready), readyLine(ready, true)]).toEqual([
-      "2 changes ready to release",
-      "On stage. Production's last release failed; it still runs v1.8.2.",
-    ]);
-  });
-  it("says how many changes, where they were tested and what production runs", () => {
-    const ready = cardReady({
-      production: {
-        kind: "ready-to-release",
-        stop: stop(),
-        line: "",
-        candidate: { tag: "v2.4.0", waiting: 3 },
-      },
-      stages: [stage],
-      main: { head: undefined, hasCode: true, notLive: 3, notLiveAtLeast: false },
-    });
-    expect(ready === undefined ? undefined : [readyTitle(ready), readyLine(ready, true)]).toEqual([
-      "3 changes ready to release",
-      "On stage. Production runs v2.3.1.",
-    ]);
-  });
-
-  // The onboarding run: "On stage, tested" while nobody had tried the stage, and before it ran them.
-  it.each([
-    { case: "the stage runs them all", onStage: true, line: "On stage. Production runs v2.3.1." },
-    {
-      case: "the stage does not run them all yet",
-      onStage: false,
-      line: "Not on stage yet. Production runs v2.3.1.",
-    },
-    {
-      case: "what the stage runs is unread",
-      onStage: undefined,
-      line: "Merged. Production runs v2.3.1.",
-    },
-  ])("says only what the stage runs, never that anyone tested it: $case", ({ onStage, line }) => {
-    const ready = cardReady({
-      production: {
-        kind: "ready-to-release",
-        stop: stop(),
-        line: "",
-        candidate: { tag: "v2.4.0", waiting: 3 },
-      },
-      stages: [stage],
-      main: { head: undefined, hasCode: true, notLive: 3, notLiveAtLeast: false },
-    });
-    expect(ready === undefined ? undefined : readyLine(ready, onStage)).toBe(line);
-  });
-
-  // The onboarding run: "Merged. Nothing is released yet." under "2 changes ready to release",
-  // beside production's "Not released yet" — the title says they are merged, production the rest.
-  it("says nothing more where no stage runs them and production runs no release yet", () => {
-    const ready = cardReady({
-      production: {
-        kind: "ready-to-release",
-        stop: stop({ state: "empty", version: undefined }),
-        line: "",
-        candidate: { tag: "v0.1.0", waiting: 1 },
-      },
-      stages: [],
-      main: { head: undefined, hasCode: true, notLive: 1, notLiveAtLeast: false },
-    });
-    expect(ready === undefined ? null : readyLine(ready, undefined)).toBeUndefined();
-  });
-
-  it("names the stage main feeds, the one whose deploys say whether it runs them, never another", () => {
-    const ready = cardReady({
-      production: {
-        kind: "ready-to-release",
-        stop: stop(),
-        line: "",
-        candidate: { tag: "v2.4.0", waiting: 3 },
-      },
-      stages: [
-        stop({ projectId: "qa", name: "qa", source: "release" }),
-        stop({ projectId: "stage", name: "stage", source: "main", state: "deploying" }),
-      ],
-      main: { head: undefined, hasCode: true, notLive: 3, notLiveAtLeast: false },
-    });
-    expect(ready === undefined ? undefined : readyLine(ready, false)).toBe(
-      "Not on stage yet. Production runs v2.3.1.",
-    );
-  });
 
   it.each([
     {
@@ -1884,22 +1786,6 @@ describe("a card's unread places", () => {
         })),
       ).toEqual(lines);
     },
-  );
-});
-
-it("Release overview counts distinguish recorded changes from the commits they carry.", () => {
-  const ready = cardReady({
-    production: {
-      kind: "ready-to-release",
-      stop: stop(),
-      line: "",
-      candidate: { tag: "v1.0.0", waiting: 6 },
-    },
-    stages: [],
-    main: { head: undefined, hasCode: true, notLive: 6, notLiveAtLeast: false, changeCount: 1 },
-  });
-  expect(ready === undefined ? undefined : readyTitle(ready)).toBe(
-    "1 change · 6 commits ready to release",
   );
 });
 
