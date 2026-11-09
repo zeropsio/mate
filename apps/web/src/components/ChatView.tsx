@@ -236,6 +236,7 @@ import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
+import { mirrorAskPlaces, mirrorAskPlacesKey } from "./zerops/mirror/mirrorAsk.logic";
 import { originAskPlaces, originAskPlacesKey } from "./zerops/origin/originAsk.logic";
 import { MateFaceAsMark } from "./zerops/primitives";
 import { mateAsker } from "./zerops/SidebarMateRow.logic";
@@ -2719,6 +2720,8 @@ function ConversationView(props: ChatViewProps) {
   // The origins the engine asked of the person, by run card: a key, so streaming draws nothing.
   const originAskKey = useMemo(() => originAskPlacesKey(threadActivities), [threadActivities]);
   const originAsks = useMemo(() => originAskPlaces(originAskKey), [originAskKey]);
+  const mirrorAskKey = useMemo(() => mirrorAskPlacesKey(threadActivities), [threadActivities]);
+  const mirrorAsks = useMemo(() => mirrorAskPlaces(mirrorAskKey), [mirrorAskKey]);
   const activeContextWindow = useMemo(
     () => deriveLatestContextWindowSnapshot(threadActivities),
     [threadActivities],
@@ -8626,6 +8629,7 @@ function ConversationView(props: ChatViewProps) {
                   workingStepLabel,
                   isCompacting,
                   originAsks,
+                  mirrorAsks,
                   isStopping,
                   activeTurnStartedAt: activeWorkStartedAt,
                   listRef: legendListRef,

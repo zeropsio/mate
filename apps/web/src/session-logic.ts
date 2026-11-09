@@ -7,6 +7,7 @@ import {
   formatCommandValue,
 } from "@t3tools/client-runtime/work-log/activity-normalization";
 import {
+  MIRROR_ASK_ACTIVITY_KIND,
   ORIGIN_ASK_ACTIVITY_KIND,
   VAULT_ASK_ACTIVITY_KIND,
   projectActivityLimit,
@@ -974,9 +975,11 @@ export function deriveWorkLogEntries(
     if (activity.kind === "task.updated") continue;
     if (activity.kind === "tool.progress") continue;
     if (activity.kind === "context-window.updated") continue;
-    // A value or an origin asked of the person draws as its card in the run, after its words.
+    // A value, an origin or a repository to connect asked of the person draws as its card in
+    // the run, after its words.
     if (activity.kind === VAULT_ASK_ACTIVITY_KIND) continue;
     if (activity.kind === ORIGIN_ASK_ACTIVITY_KIND) continue;
+    if (activity.kind === MIRROR_ASK_ACTIVITY_KIND) continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isNoContentRuntimeWarning(activity)) continue;
     if (isPlanBoundaryToolActivity(activity)) continue;

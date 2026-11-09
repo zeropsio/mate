@@ -23,6 +23,7 @@ const EMPTY_QUEUED_MESSAGES: ReadonlyArray<QueuedComposerMessage> = [];
 const EMPTY_NOTICES: ReadonlyArray<ConversationNotice> = [];
 const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 const EMPTY_ORIGIN_ASKS: ReadonlyArray<OriginAskPlace> = [];
+const EMPTY_MIRROR_ASKS: ReadonlyArray<MirrorAskPlace> = [];
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
 import {
   classifyTimelineScroll,
@@ -233,6 +234,8 @@ import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
 import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer";
 import { useProposalDecisionsRead } from "../../zerops/proposalRecord";
+import { MirrorAskCardContainer } from "../zerops/mirror/MirrorAskCardContainer";
+import { type MirrorAskPlace } from "../zerops/mirror/mirrorAsk.logic";
 import { OriginAskCardContainer } from "../zerops/origin/OriginAskCardContainer";
 import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
 import { VaultRequestCardContainer } from "../zerops/vault/VaultAskContainer";
@@ -382,6 +385,8 @@ interface MessagesTimelineProps {
   isCompacting?: boolean;
   /** The origins the engine asked of the person, each by its run card (`originAskPlaces`). */
   originAsks?: ReadonlyArray<OriginAskPlace>;
+  /** The repositories the engine asked the person to connect to GitHub (`mirrorAskPlaces`). */
+  mirrorAsks?: ReadonlyArray<MirrorAskPlace>;
   /** A person's Stop is in force (`conversationStop`). */
   isStopping?: boolean;
   activeTurnStartedAt: string | null;
@@ -486,6 +491,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   workingStepLabel = null,
   isCompacting = false,
   originAsks = EMPTY_ORIGIN_ASKS,
+  mirrorAsks = EMPTY_MIRROR_ASKS,
   isStopping = false,
   activeTurnStartedAt,
   agentPanelModel,
@@ -682,11 +688,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         liveLines,
         isCompacting,
         originAsks,
+        mirrorAsks,
       }),
     [
       cardPaging,
       liveLines,
       originAsks,
+      mirrorAsks,
       isCompacting,
       runCards,
       nowMs,
@@ -2960,6 +2968,7 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "page" ? <PageTimelineRow row={row} /> : null}
       {row.kind === "vault-request" ? <VaultRequestTimelineRow row={row} /> : null}
       {row.kind === "origin-request" ? <OriginRequestTimelineRow row={row} /> : null}
+      {row.kind === "mirror-request" ? <MirrorRequestTimelineRow row={row} /> : null}
       {row.kind === "proposal" ? <ProposalTimelineRow row={row} /> : null}
       {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
       {row.kind === "crew-seam" ? <CrewSeamActivity seam={row.seam} words={row.words} /> : null}
@@ -4051,6 +4060,24 @@ const OriginRequestTimelineRow = memo(function OriginRequestTimelineRow({
       <OriginAskCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
         requestIds={row.requestIds}
+        threadRef={ctx.threadRef}
+      />
+    </div>
+  );
+});
+
+/** A repository the Mate asked the person to connect to GitHub, after its run: the card that does. */
+const MirrorRequestTimelineRow = memo(function MirrorRequestTimelineRow({
+  row,
+}: {
+  row: Extract<TimelineRow, { kind: "mirror-request" }>;
+}) {
+  const ctx = use(TimelineRowCtx);
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      <MirrorAskCardContainer
+        environmentId={ctx.activeThreadEnvironmentId}
+        requestId={row.requestId}
         threadRef={ctx.threadRef}
       />
     </div>
