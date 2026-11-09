@@ -8,7 +8,7 @@
  */
 import type { ReactNode } from "react";
 
-import type { AskState } from "../../ask/ask.logic";
+import { type AskState, NOT_NOW } from "../../ask/ask.logic";
 import { AskCard, type AskDensity, AskFooter } from "../../ask/AskCard";
 import { Button } from "../../ui/button";
 import { mirrorAskTitle } from "./mirrorAsk.logic";
@@ -42,6 +42,10 @@ export function MirrorAskCard(props: MirrorAskCardProps) {
     state.kind === "failed" ? (
       <Button onClick={props.onRetry} size={size} variant="secondary">
         Try again
+      </Button>
+    ) : state.kind === "othersToAnswer" ? (
+      <Button onClick={props.onNotNow} size={size} variant="ghost">
+        {NOT_NOW}
       </Button>
     ) : state.kind === "done" && props.remoteUrl !== null ? (
       <Button

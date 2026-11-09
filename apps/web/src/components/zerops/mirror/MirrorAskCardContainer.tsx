@@ -22,6 +22,7 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
+import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useHqOffers } from "~/zerops/useHqOffers";
@@ -30,6 +31,7 @@ import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import type { AskDensity } from "../../ask/AskCard";
 import { dockAsk, showAskInConversation, undockAsk } from "../../ask/askReveal";
 import { ComposerAskFace } from "../../chat/ComposerAsk";
+import { GithubConnectPicker } from "../github/GithubConnectPicker";
 import { MirrorAskCard } from "./MirrorAskCard";
 import {
   type MirrorAskPending,
@@ -141,6 +143,8 @@ function MirrorAsk({
   // It waits on the person while open with no remote: then it stands above the composer too.
   const waits = ask.state === "open" && remote === null;
   const compact = density === "compact";
+  // The organization's apps are read while the card's picker can still connect it.
+  const github = useGitMirrorApps(waits && !compact);
   const threadKey = scopedThreadKey(threadRef);
   useEffect(() => {
     if (!waits) {
@@ -170,6 +174,18 @@ function MirrorAsk({
       mateName={mateName}
       onNotNow={notNow}
       onRetry={retry}
+      picker={
+        appId === null || github.apps === null ? (
+          <p className="text-body text-muted-foreground">Reading your organization's GitHub…</p>
+        ) : (
+          <GithubConnectPicker
+            apps={github.apps}
+            density="compact"
+            project={appId}
+            repo={ask.repo}
+          />
+        )
+      }
       onShowInConversation={
         compact
           ? () =>
