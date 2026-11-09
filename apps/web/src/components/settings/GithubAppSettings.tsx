@@ -512,9 +512,14 @@ function AppRow({
               </p>
               <ul className="grid gap-1 text-xs">
                 {app.uses.map((use) => (
-                  <li className="text-foreground" key={`${use.application}/${use.repo}`}>
-                    {applicationOf(use.application) ?? "Another project"} · {use.repo} →{" "}
-                    <span className="font-mono">{use.fullName}</span>
+                  <li
+                    className="text-foreground"
+                    key={`${use.application ?? ""}/${use.repo ?? use.fullName}`}
+                  >
+                    {use.application === null || use.repo === null
+                      ? "A project you can't open"
+                      : `${applicationOf(use.application) ?? "Another project"} · ${use.repo}`}{" "}
+                    → <span className="font-mono">{use.fullName}</span>
                   </li>
                 ))}
               </ul>

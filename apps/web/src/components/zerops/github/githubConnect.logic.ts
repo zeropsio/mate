@@ -131,7 +131,9 @@ export function pickerRepositories(input: {
     const taken =
       usedBy === null || mine
         ? null
-        : `${projectNameOf(usedBy.application) ?? "Another project"} · ${usedBy.repo} uses it`;
+        : usedBy.application === null || usedBy.repo === null
+          ? "A project you can't open uses it"
+          : `${projectNameOf(usedBy.application) ?? "Another project"} · ${usedBy.repo} uses it`;
     return {
       repository,
       taken,

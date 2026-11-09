@@ -24,8 +24,9 @@ const WITHHELD = "Only the organization's Owner and Admins see this.";
 
 /** A Mate code repository connected through an app: HQ's application id, its repository, and GitHub's. */
 export interface GithubAppUse {
-  readonly application: string;
-  readonly repo: string;
+  /** `null` (with `repo`) for an application the viewer may not read. */
+  readonly application: string | null;
+  readonly repo: string | null;
   /** `owner/name` on GitHub. */
   readonly fullName: string;
 }
@@ -195,10 +196,13 @@ export function appUses(app: HqGithubApp): ReadonlyArray<GithubAppUse> {
     if (installation.state === "unknown") continue;
     for (const repository of installation.repositories)
       if (repository.usedBy !== null)
-        seen.set(`${repository.usedBy.application}/${repository.usedBy.repo}`, {
-          ...repository.usedBy,
-          fullName: repository.fullName,
-        });
+        seen.set(
+          `${repository.usedBy.application ?? ""}/${repository.usedBy.repo ?? repository.fullName}`,
+          {
+            ...repository.usedBy,
+            fullName: repository.fullName,
+          },
+        );
   }
   return [...seen.values()];
 }

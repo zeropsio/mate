@@ -15,8 +15,11 @@ export interface GitMirrorRepository {
   readonly fullName: string;
   readonly private: boolean;
   readonly defaultBranch: string;
-  /** The Mate code repository already connected to it (any app or a token), else `null`. */
-  readonly usedBy: { readonly application: string; readonly repo: string } | null;
+  /**
+   * The Mate code repository already connected to it (any app or a token), else `null`; both
+   * names `null` where it is an application the viewer may not read.
+   */
+  readonly usedBy: { readonly application: string | null; readonly repo: string | null } | null;
 }
 
 export interface GitMirrorInstallation {

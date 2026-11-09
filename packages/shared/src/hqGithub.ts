@@ -40,7 +40,13 @@ export const HqGithubRepository = Schema.Struct({
    * The Mate code repository whose remote (through any app, or a token) is this GitHub repository:
    * its HQ application id and repository name; `null` while none is.
    */
-  usedBy: Schema.NullOr(Schema.Struct({ application: Schema.String, repo: Schema.String })),
+  usedBy: Schema.NullOr(
+    // Both null: an application the caller may not read uses it — taken, never named.
+    Schema.Struct({
+      application: Schema.NullOr(Schema.String),
+      repo: Schema.NullOr(Schema.String),
+    }),
+  ),
 });
 export type HqGithubRepository = typeof HqGithubRepository.Type;
 
