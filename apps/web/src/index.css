@@ -7033,6 +7033,151 @@ a.ov-card-site:hover {
   line-height: 18px;
 }
 
+/* A card's places, a line each, under its name: they hug the name, the waits stand apart. */
+.ov-places {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 0 6px;
+}
+
+.ov-place {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.ov-place-line {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--radius-control);
+}
+
+a.ov-place-line:hover .ov-place-name {
+  text-decoration: underline 1px color-mix(in oklab, currentColor 45%, transparent);
+  text-underline-offset: 3px;
+}
+
+.ov-place-name {
+  flex: none;
+  font-weight: 500;
+}
+
+.ov-place[data-quiet] .ov-place-name {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.ov-place-host {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.ov-place-host:hover {
+  color: var(--foreground);
+}
+
+/* What waits on you, lifted: one tinted box under the places, each wait a row on the card's own
+   ground inside it — a sentence and its one verb. */
+.ov-waits {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--ov-wait-ground);
+}
+
+.ov-card {
+  --ov-wait-ground: color-mix(in oklab, var(--zerops-status-attention-text) 9%, var(--ov-ground));
+}
+
+.ov-waits-name {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.ov-waits-name {
+  padding: 0 4px;
+}
+
+.ov-sec-count {
+  font-weight: 400;
+}
+
+.ov-wait {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 8px 8px 8px 10px;
+  border-radius: 12px;
+  background: var(--ov-ground);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--contrast-foreground) 6%, transparent);
+}
+
+.ov-wait-face {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--primary);
+}
+
+.ov-wait-text {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 19px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.ov-wait-verb {
+  display: flex;
+}
+
+/* "+ N more": the rest of a list, on the project's page. */
+.ov-more {
+  justify-self: start;
+  padding: 2px 6px;
+  border-radius: var(--radius-control);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.ov-more:hover {
+  color: var(--foreground);
+}
+
+.ov-more:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* Put it live, at the card's foot while the project has no production. */
+.ov-card-foot {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 0 6px 4px;
+}
+
 /* A Mate: its face, its name and time, its line; what waits on you lifted onto a white card. */
 .ov-mates {
   display: grid;

@@ -19,7 +19,6 @@ import type {
   GroupFlowStop,
   ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
-import type { AddressDomain, PlaceAddresses } from "@t3tools/client-runtime/data";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { EllipsisIcon } from "lucide-react";
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
@@ -36,10 +35,9 @@ import { createRoot } from "react-dom/client";
 
 import { ArrivalWelcome } from "~/components/zerops/projects/ArrivalWelcome";
 import { PutLiveRow } from "~/components/zerops/ProductionRun";
-import { MateFace, PersonAvatar } from "~/components/zerops/primitives";
+import { MateFace } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
-import { PlacePanel, type PlacePanelModel } from "~/components/zerops/projects/PlacePanel";
 import { MateAutomatedMark } from "~/components/zerops/MateAutomatedMark";
 import {
   CardChanges,
@@ -51,15 +49,12 @@ import {
   CARD_CHANGES,
   cardChanges,
   cardMateReading,
-  cardPeople,
-  releaseLineOpens,
 } from "~/components/zerops/projects/projectCard.logic";
 import {
   ZeropsProjectsFlow,
   type ProjectsFlowGroup,
 } from "~/components/zerops/projects/ZeropsProjectsFlow";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import { placeAddresses, withPlaceAddresses } from "~/zerops/__fixtures__/placeAddresses";
 import "../index.css";
 import { harnessProjectPage } from "./projectPageFixtures";
 import { Button } from "~/components/ui/button";
@@ -168,8 +163,6 @@ interface Project {
   readonly releaseSince?: number;
   readonly canPutLive: boolean;
   readonly merged?: { readonly by: Mate; readonly title: string; readonly at: string };
-  readonly panels: Partial<Record<"stage" | "production", Omit<PlacePanelModel, "line">>>;
-  readonly actions: Partial<Record<"stage" | "production", ReadonlyArray<string>>>;
 }
 
 function project(input: {
@@ -186,8 +179,6 @@ function project(input: {
   readonly releaseSince?: number;
   readonly canPutLive?: boolean;
   readonly merged?: Project["merged"];
-  readonly panels?: Project["panels"];
-  readonly actions?: Project["actions"];
 }): Project {
   const group: ZeropsGroup = {
     groupId: input.id,
@@ -244,8 +235,6 @@ function project(input: {
     ...(input.releaseSince === undefined ? {} : { releaseSince: input.releaseSince }),
     ...(input.merged === undefined ? {} : { merged: input.merged }),
     canPutLive: input.canPutLive ?? false,
-    panels: input.panels ?? {},
-    actions: input.actions ?? {},
   };
 }
 
@@ -273,39 +262,6 @@ const inReview = (number: number, title: string, mateProjectId: string) => ({
   review: false,
 });
 
-const panel = (over: Partial<Omit<PlacePanelModel, "line">>): Omit<PlacePanelModel, "line"> => ({
-  version: undefined,
-  note: undefined,
-  brought: [],
-  services: [],
-  ...over,
-});
-
-/** A place's addresses as read: its own domains, and each service's zerops.app address. */
-const readPlace = (
-  domains: ReadonlyArray<AddressDomain>,
-  services: ReadonlyArray<string>,
-): PlaceAddresses => ({
-  ...placeAddresses([]),
-  domains,
-  zerops: services.map((service) => ({
-    serviceId: service,
-    serviceName: service,
-    on: true,
-    hosts: [
-      {
-        port: 3000,
-        url: `https://teashop-a1b2.prg1.zerops.app`,
-        host: `teashop-a1b2.prg1.zerops.app`,
-      },
-    ],
-    port: 3000,
-  })),
-});
-
-/** Tea Shop's production has no domain of its own yet: Put it on your domain. */
-const inAccount = withPlaceAddresses({ "tea-prod": readPlace([], ["app"]) });
-
 const JUNO_ASKS = mate("juno", "Juno", "sky", {
   face: "needs",
   status: "input",
@@ -318,16 +274,6 @@ const JUNO_ASKS = mate("juno", "Juno", "sky", {
     dot: "attention",
   },
 });
-
-/** Acme Store's production: six services, one of them storage. */
-const STORE_SERVICES: ReadonlyArray<readonly [string, string, string]> = [
-  ["app", "Node.js 22", "nodejs@22"],
-  ["api", "Node.js 22", "nodejs@22"],
-  ["worker", "Node.js 22", "nodejs@22"],
-  ["db", "PostgreSQL 16", "postgresql@16"],
-  ["cache", "Valkey 7", "valkey@7.2"],
-  ["files", "Object storage", "objectstorage"],
-];
 
 const PROJECTS: ReadonlyArray<Project> = [
   // (a) Setting up: its first Mate on its way, nothing runs.
@@ -413,22 +359,6 @@ const PROJECTS: ReadonlyArray<Project> = [
     notLive: 3,
     since: ago(60 * 24 * 6),
     merged: { by: mate("vera-t", "Vera", "amber"), title: "Prices per 100 g", at: ago(25) },
-    panels: {
-      stage: panel({
-        services: [
-          { hostname: "app", state: "up" },
-          { hostname: "db", state: "up" },
-        ],
-      }),
-      production: panel({
-        version: "v0.1.3",
-        services: [
-          { hostname: "app", state: "up" },
-          { hostname: "db", state: "up" },
-        ],
-      }),
-    },
-    actions: { production: ["Roll back to v0.1.2"] },
   }),
   // (e) Many places: production runs six services, three stages each follow their own source.
   project({
@@ -497,19 +427,6 @@ const PROJECTS: ReadonlyArray<Project> = [
       title: "Gift cards at checkout",
       at: ago(60 * 5),
     },
-    panels: {
-      stage: panel({
-        services: [
-          { hostname: "app", state: "up" },
-          { hostname: "db", state: "up" },
-        ],
-      }),
-      production: panel({
-        version: "v0.1.59",
-        services: STORE_SERVICES.map(([hostname]) => ({ hostname, state: "up" as const })),
-      }),
-    },
-    actions: { production: ["Roll back to v0.1.58"] },
   }),
   // (g) A release on its way, sent by this tab's run: production's line says it once, with its
   // clock; the run draws no second line.
@@ -527,9 +444,6 @@ const PROJECTS: ReadonlyArray<Project> = [
     chip: { label: "prod", state: "releasing", version: "v0.1.1", next: "v0.1.2" },
     since: ago(60),
     releaseSince: NOW - 42_000,
-    panels: {
-      production: panel({ version: "v0.1.1", services: [{ hostname: "app", state: "up" }] }),
-    },
   }),
   // (f) Nothing released yet, no stage: one Mate at work.
   project({
@@ -553,21 +467,6 @@ const PROJECTS: ReadonlyArray<Project> = [
     },
     stages: [stop("flip-stage", "stage", { state: "empty" })],
     chip: { label: "prod", state: "empty" },
-    panels: {
-      production: panel({
-        services: [
-          { hostname: "db", state: "up" },
-          { hostname: "flip", state: "idle" },
-        ],
-      }),
-      stage: panel({
-        services: [
-          { hostname: "db", state: "up" },
-          { hostname: "flip", state: "idle" },
-        ],
-      }),
-    },
-    actions: { production: ["History"] },
   }),
   // (d) Release failed: v0.1.3 did not go live, production still runs v0.1.2.
   project({
@@ -588,18 +487,6 @@ const PROJECTS: ReadonlyArray<Project> = [
       title: "Remember where you stopped",
       at: ago(60),
     },
-    panels: {
-      stage: panel({ services: [{ hostname: "app", state: "up" }] }),
-      production: panel({
-        version: "v0.1.2",
-        note: {
-          text: "v0.1.3 did not go live: the build stopped at npm run build. Production keeps running v0.1.2.",
-          tone: "attention",
-        },
-        services: [{ hostname: "app", state: "up" }],
-      }),
-    },
-    actions: { production: ["Ask Raya to fix it", "Open logs"] },
   }),
 ];
 
@@ -737,16 +624,6 @@ function HarnessPage() {
                 />
               ) : null
             }
-            renderCardPeople={(entry) => {
-              const people = cardPeople([...entry.mates.values()].map((value) => value.owner));
-              return people.length === 0 ? null : (
-                <span className="ov-card-people">
-                  {people.map((person) => (
-                    <PersonAvatar key={person.userId} name={person.name} size={20} />
-                  ))}
-                </span>
-              );
-            }}
             renderEnvironment={() => null}
             renderGroupMenu={() => (
               <Button aria-label="Project menu" size="icon-sm" variant="ghost">
@@ -791,32 +668,6 @@ function HarnessPage() {
               );
             }}
             renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
-            renderPlacePanel={(entry, line) => {
-              const found = byId.get(entry.group.groupId);
-              const model = found?.panels[line.kind];
-              if (found === undefined || model === undefined) return null;
-              return inAccount(
-                <PlacePanel
-                  groupId={entry.group.groupId}
-                  actions={(found.actions[line.kind] ?? []).map((label, index) => (
-                    <Button
-                      key={label}
-                      size="sm"
-                      variant={index === 0 && line.trouble ? "primary" : "secondary"}
-                    >
-                      {label}
-                    </Button>
-                  ))}
-                  model={{ ...model, line }}
-                  onOpenLine={
-                    releaseLineOpens(line, entry.flow.production, undefined) === undefined
-                      ? undefined
-                      : () => acted.push(`open-release:${entry.group.groupId}`)
-                  }
-                  roomy={PAGE !== null}
-                />,
-              );
-            }}
             renderReleaseVerb={() => <Button>Review release</Button>}
             setUpProduction={(entry) =>
               byId.get(entry.group.groupId)?.canPutLive === true

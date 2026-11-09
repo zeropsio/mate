@@ -90,6 +90,7 @@ export function OverviewCardMate({
   containerLine,
   containerActions,
   onOpen,
+  quiet = false,
 }: {
   readonly candidate: ZeropsCandidate;
   readonly name: string;
@@ -111,6 +112,11 @@ export function OverviewCardMate({
   /** A verb its container needs (Start, Remove). */
   readonly containerActions: ReactNode;
   readonly onOpen: (() => void) | undefined;
+  /**
+   * Its card's Waiting on you says what it waits on the viewer for: the row is never lifted and
+   * carries no verb of its own, only its words and its time.
+   */
+  readonly quiet?: boolean;
 }) {
   const projectId = candidate.project.id;
   // What its row in the menu reads (`useProjectMateActivity`): HQ's word, or its socket's.
@@ -268,9 +274,9 @@ export function OverviewCardMate({
   // Its time: a free automated Mate's, when its last task ended (`mateRowTime`).
   const time = mateRowTime({ slot: view.slot, at: activity?.at, automated });
   // A Mate still coming up, or that never came, says only that: nothing of it is lifted.
-  const reading: CardMateReading =
+  const said =
     view.coming !== undefined
-      ? { text: undefined, tone: "muted", lift: undefined }
+      ? ({ text: undefined, tone: "muted", lift: undefined } satisfies CardMateReading)
       : cardMateReading({
           view,
           status: activity?.kind,
@@ -285,6 +291,7 @@ export function OverviewCardMate({
             pausedUntil: (at) => formatShortTimestamp(at, timestampFormat),
           }),
         });
+  const reading: CardMateReading = quiet ? { ...said, lift: undefined } : said;
   const askMate = useAskMate();
   const askToFix = useAskMateToFix();
   const openReview = useOpenReview();
@@ -303,7 +310,7 @@ export function OverviewCardMate({
   // empty. While its line says something else, a step on its way, the Review keeps the time's
   // place: a change never goes without its button.
   const review =
-    change === undefined || groupId === undefined || deleting || outsideHq
+    quiet || change === undefined || groupId === undefined || deleting || outsideHq
       ? undefined
       : { mine: people?.waitsOnViewer !== false };
   const marked =

@@ -219,6 +219,8 @@ import {
   useStopDeploymentsShown,
 } from "~/zerops/projectFlows";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
+import { useAskMateToFix } from "~/zerops/fixRequest";
+import { mateReviewCount } from "~/zerops/agentActivity";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone, setUpMateRecord } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
@@ -231,6 +233,7 @@ import {
   type ProjectPageSlot,
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
+import { projectWaits } from "./projects/projectCard.logic";
 import {
   lastActivityAt,
   overviewKeeps,
@@ -1747,6 +1750,7 @@ export function ZeropsProjectsContent({
     });
   };
   const openReview = useOpenReview();
+  const askToFix = useAskMateToFix();
   // The change that adds a project's setup files, where one waits: what moves on a stage or a
   // production held for want of them.
   const setupChangeOf = (groupId: string) => {
@@ -2057,14 +2061,6 @@ export function ZeropsProjectsContent({
         />
       );
     },
-    fixerOf: (entry) => {
-      const mine = [...entry.mates.values()].find(
-        (candidate) => projectPeople[candidate.project.id]?.waitsOnViewer === true,
-      );
-      return mine === undefined
-        ? undefined
-        : { projectId: mine.project.id, name: projectNameInApp(mine.project) };
-    },
     nowMs,
   });
   // The person's Chief is the organization's, not a project: no card of its own.
@@ -2259,6 +2255,12 @@ export function ZeropsProjectsContent({
       : () => openMate(candidate);
   };
 
+  /** Opens a Mate's conversation by its project, where it can open. */
+  const openMateById = (projectId: string) => {
+    const candidate = candidates.find((entry) => entry.project.id === projectId);
+    if (candidate !== undefined) mateOpenerOf(candidate)?.();
+  };
+
   const renderEnvironment = (
     candidate: ZeropsCandidatePresentation,
     role: ZeropsEnvironmentRole | undefined,
@@ -2352,10 +2354,12 @@ export function ZeropsProjectsContent({
       layout,
       parts,
       review,
+      quiet,
     }: {
       readonly layout: "card" | "row";
       readonly parts: ReadonlyArray<MatePart>;
       readonly review?: FlowPullRequest | undefined;
+      readonly quiet?: boolean | undefined;
     },
   ): React.ReactNode => {
     const role = roleOf.get(candidate.project.id);
@@ -2438,6 +2442,7 @@ export function ZeropsProjectsContent({
           name={name}
           onOpen={select}
           outsideHq={input.outsideHq === true}
+          quiet={quiet === true}
           shape={shape}
           tint={tint}
         />
@@ -2753,7 +2758,6 @@ export function ZeropsProjectsContent({
             releaseSince: run?.phase === "releasing" ? run.stepAt : undefined,
           };
         }}
-        renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
         renderHistory={overview.renderHistory}
         setUpProduction={({ group }) =>
@@ -2791,7 +2795,48 @@ export function ZeropsProjectsContent({
           },
           why: creationRunning ? PUT_LIVE_AFTER_CREATION : addMateWhy(group.groupId),
         })}
-        renderCardPeople={overview.renderCardPeople}
+        cardWaits={(entry) =>
+          projectWaits({
+            items: waiting.items,
+            mateIds: entry.flow.mates.map((mate) => mate.projectId),
+            reviewCount: (projectId) =>
+              mateReviewCount(projectFlow.flows.get(entry.group.groupId), projectId),
+          }).map((wait) => ({
+            wait,
+            face: (
+              <MateFace
+                shape={wait.mate.shape}
+                size={24}
+                state={wait.mate.face}
+                tint={wait.mate.tint}
+              />
+            ),
+            onVerb: (from) => {
+              if (wait.kind === "review") {
+                const { change } = wait;
+                if (change === undefined) {
+                  openMateById(wait.mate.projectId);
+                  return;
+                }
+                openReview(
+                  {
+                    kind: "change",
+                    groupId: change.groupId,
+                    repository: change.repository,
+                    number: change.number,
+                  },
+                  { from },
+                );
+              } else if (wait.ask === "failed") {
+                askToFix(wait.mate.projectId, {
+                  what: `${wait.mate.name} stopped on an error`,
+                  error: wait.mate.text,
+                  ask: "Find out why, fix it, and carry on.",
+                });
+              } else openMateById(wait.mate.projectId);
+            },
+          }))
+        }
         renderProductionRun={({ group }) => <ProductionRun groupId={group.groupId} />}
         renderReleaseVerb={({ group, flow }) => {
           const { production } = flow;

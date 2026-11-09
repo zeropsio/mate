@@ -1,4 +1,3 @@
-import { GitDeliveryStatus } from "../GitDeliveryStatus";
 /**
  * What the overview's cards are handed from the page's reads: each project's places as the left
  * menu's chips read them (`productionChip`, `stageStopChip`), each place's panel with its facts and
@@ -7,9 +6,7 @@ import { GitDeliveryStatus } from "../GitDeliveryStatus";
  * The chips are read from the same inputs the menu reads them from — the platform's deployments
  * and services, HQ's releases — so a card's foot and the menu say the same of one production.
  */
-import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import {
   formatRunClock,
   releaseFailureOf,
@@ -20,7 +17,6 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { deployActivatedAt, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
-import { useNavigate } from "@tanstack/react-router";
 import { EnvironmentId, ThreadId, type ProviderApprovalDecision } from "@t3tools/contracts";
 import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime";
 import { useState, type ReactNode } from "react";
@@ -29,20 +25,17 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { formatShortTimestamp } from "~/timestampFormat";
 import { buildPlanImplementationPrompt } from "~/proposedPlan";
 import { findLatestProposedPlan } from "~/session-logic";
-import { useAskMateToFix } from "~/zerops/fixRequest";
 import { useMateWrite } from "~/zerops/useMateWrite";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenReview } from "~/zerops/review";
 import { mainStageOf } from "../review/reviewReads";
 import { mateDecision } from "../mateDecision.logic";
-import { PersonAvatar } from "../primitives";
 import { SidebarMateAge } from "../SidebarMateAge";
 import type { MateRowSlot } from "../SidebarMateRow.logic";
 import {
   buildingOf,
   drawnChip,
   productionChip,
-  productionMenu,
   rollbacksOf,
   stageStopChip,
   stopServing,
@@ -50,29 +43,21 @@ import {
   type ReleasesAnswer,
   type StopServing,
 } from "../SidebarProductionChip.logic";
-import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
-import { ActionHeld, CardChanges, CardMateLiftActions } from "./ProjectCards";
+import { CardChanges, CardMateLiftActions } from "./ProjectCards";
 import { ProjectHistory } from "./ProjectHistory";
 import {
-  broughtBy,
-  historyHeld,
   historyOffered,
   placeLines,
-  placeServices,
   CARD_CHANGES,
   cardChanges,
-  cardPeople,
   productionBuilding,
-  releaseLineOpens,
   releaseProductionRuns,
   rollBackTarget,
   type CardMateReading,
   type CardStage,
-  type PlaceLine,
 } from "./projectCard.logic";
 import { CHANGES_UNKNOWN_LINE } from "./projectsView.logic";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
-import { Button } from "~/components/ui/button";
 
 /** What a card's places need of an environment: how its services stand and where they answer. */
 export interface PlaceItem {
@@ -98,17 +83,9 @@ export interface PlaceItem {
 const UNKNOWN: StopServing = { kind: "unknown" };
 const NO_UNTOLD: ReadonlyArray<string> = [];
 
-/** A Mate the person may ask to fix a place: theirs, in the project. */
-export interface PlaceFixer {
-  readonly projectId: string;
-  readonly name: string;
-}
-
 export function useOverviewSlots<T extends PlaceItem>(input: {
   readonly flows: ReadonlyMap<string, ZeropsProjectFlow>;
   readonly deployments: ReadonlyMap<string, Shown<Deployment>>;
-  /** The viewer's Mate in a project that would fix a place of it. */
-  readonly fixerOf: (entry: ProjectsFlowGroup<T>) => PlaceFixer | undefined;
   /** A Mate's face, small: whose a change is, beside it. */
   readonly mateFace: (item: T) => ReactNode;
   readonly nowMs: number;
@@ -116,10 +93,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   readonly onPage?: boolean | undefined;
 }) {
   const { flows, deployments, nowMs } = input;
-  const people = useAtomValue(shownHqProjectPeopleAtom);
-  const askToFix = useAskMateToFix();
   const openReview = useOpenReview();
-  const navigate = useNavigate();
 
   const itemOf = (entry: ProjectsFlowGroup<T>, projectId: string | undefined) =>
     projectId === undefined ? undefined : entry.stops.get(projectId)?.item;
@@ -257,179 +231,36 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     return line?.dot === "failed" || line?.dot === "down";
   };
 
-  const renderPlacePanel = (entry: ProjectsFlowGroup<T>, line: PlaceLine): ReactNode => {
-    const places = placesOf(entry);
-    const { read, chip } = places;
-    const groupId = entry.group.groupId;
-    const fixer = input.fixerOf(entry);
-    const stop =
-      line.kind === "production"
-        ? places.prodStop
-        : entry.flow.stages.find((stage) => stage.projectId === line.projectId);
-    const gitEnvironment = read?.environments.find(
-      (environment) => environment.id === line.projectId,
-    );
-    if (gitEnvironment?.target.kind === "git")
-      return (
-        <div className="ov-panel">
-          <GitDeliveryStatus
-            environment={{ target: gitEnvironment.target, tier: gitEnvironment.tier }}
-            delivery={gitEnvironment.git}
-            repos={read?.repos}
-          />
-          <Button
-            onClick={() => {
-              void navigate({
-                to: "/group/$groupId/$projectId",
-                params: { groupId, projectId: gitEnvironment.id },
-              });
-            }}
-            variant="secondary"
-          >
-            Details and history
-          </Button>
-        </div>
-      );
-    const item = itemOf(entry, line.projectId);
-    const menu =
-      line.kind === "production" && chip !== undefined
-        ? productionMenu({
-            chip,
-            projectId: line.projectId,
-            failure: places.releases.kind === "answered" ? places.releases.failure : undefined,
-            down: places.down.get(line.projectId ?? "") ?? [],
-            routes: item?.routes ?? [],
-            nowMs,
-          }).stops[0]
-        : undefined;
-    const note =
-      menu?.note !== undefined
-        ? {
-            text: menu.note,
-            tone: menu.tone === "red" ? ("failed" as const) : ("attention" as const),
-          }
-        : line.trouble
-          ? {
-              text: line.words.join(" · "),
-              tone: line.dot === "down" ? ("failed" as const) : ("attention" as const),
-            }
-          : undefined;
+  /**
+   * What production's rarer verbs need on its card's ···: its place, the release it would roll
+   * back to while it runs well, and whether it has a history to open — `undefined` with no
+   * production to speak of.
+   */
+  const productionVerbs = (
+    entry: ProjectsFlowGroup<T>,
+  ):
+    | {
+        readonly projectId: string;
+        readonly rollBack: string | undefined;
+        readonly history: boolean;
+      }
+    | undefined => {
+    const { production } = entry.flow;
+    if (!("stop" in production) || production.stop.git !== undefined) return undefined;
+    const read = flows.get(entry.group.groupId);
     const releases = read?.releasesKnown === true ? read.releases : [];
-    const back = line.kind === "production" && !line.trouble ? rollBackTarget(releases) : undefined;
-    const down = places.down.get(line.projectId ?? "") ?? [];
-    const model: PlacePanelModel = {
-      line,
-      version: stop?.version?.label,
-      note,
-      // What the release brought is the card's Changes, under its tag: an overview card says it
-      // once (the onboarding run listed it twice); the project's own page names it in full.
-      brought:
-        line.kind === "production" && !line.trouble && input.onPage === true
-          ? broughtBy(read?.merged ?? [], releases).map((pull) => ({
-              key: `${pull.repository}#${String(pull.number)}`,
-              // A change by its title: HQ's own number never stands beside a pull request's.
-              title: pull.title,
-            }))
-          : [],
-      services: placeServices(item?.services?.statuses ?? [], down),
+    return {
+      projectId: production.stop.projectId,
+      rollBack: productionBroken(entry) ? undefined : rollBackTarget(releases),
+      history: historyOffered({
+        releases: releases.length,
+        runs:
+          releaseProductionRuns(
+            releases,
+            production.kind === "releasing" ? production.tag : undefined,
+          ) !== undefined,
+      }),
     };
-    const problem = menu?.fix;
-    const openStop =
-      line.projectId === undefined
-        ? undefined
-        : () => {
-            void navigate({
-              to: "/group/$groupId/$projectId",
-              params: { groupId, projectId: line.projectId ?? "" },
-            });
-          };
-    const actions = line.trouble ? (
-      <>
-        {fixer === undefined ? null : (
-          <Button
-            onClick={() => {
-              askToFix(
-                fixer.projectId,
-                problem ?? {
-                  what: `The ${line.name} ${line.words.join(", ").toLowerCase()}`,
-                  ask: "Find out why and fix it.",
-                },
-              );
-            }}
-          >
-            Ask {fixer.name} to fix it
-          </Button>
-        )}
-        {openStop === undefined ? null : (
-          <Button onClick={openStop} variant="secondary">
-            Open logs
-          </Button>
-        )}
-      </>
-    ) : line.kind === "production" ? (
-      <>
-        {back === undefined ? null : (
-          <Button
-            onClick={(event) => {
-              openReview({ kind: "rollback", groupId, tag: back }, { from: event.currentTarget });
-            }}
-            variant="secondary"
-          >
-            Roll back to {back}
-          </Button>
-        )}
-        {/* Its releases, once it runs one (`historyOffered`) — and on the project's own page its
-            history stands beside the card. Production runs a release only once it has landed
-            (`releaseProductionRuns`), so a first release on its way holds History's room and a
-            second keeps History. */}
-        {input.onPage === true ? null : historyOffered({
-            releases: releases.length,
-            runs:
-              releaseProductionRuns(
-                releases,
-                entry.flow.production.kind === "releasing" ? entry.flow.production.tag : undefined,
-              ) !== undefined,
-          }) ? (
-          <Button
-            onClick={() => {
-              void navigate({ to: "/group/$groupId/flow", params: { groupId } });
-            }}
-            variant="secondary"
-          >
-            History
-          </Button>
-        ) : historyHeld({
-            kind: entry.flow.production.kind,
-            dot: line.dot,
-            runsNamed: (chip?.version ?? stop?.version) !== undefined,
-          }) ? (
-          <ActionHeld>History</ActionHeld>
-        ) : null}
-      </>
-    ) : null;
-    // A release on its way is production's line alone: the line opens its review, as the card's
-    // own block of it did — a roll back's by the release it goes back to.
-    const opens = releaseLineOpens(line, entry.flow.production, places.rollsBackTo);
-    return (
-      <PlacePanel
-        actions={actions}
-        groupId={groupId}
-        model={model}
-        onOpenLine={
-          opens === undefined
-            ? undefined
-            : (from) => {
-                openReview(
-                  opens.kind === "release"
-                    ? { kind: "release", groupId }
-                    : { kind: "rollback", groupId, tag: opens.tag },
-                  { from },
-                );
-              }
-        }
-        roomy={input.onPage === true}
-      />
-    );
   };
 
   /**
@@ -518,33 +349,12 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     />
   );
 
-  /** The people on a project — its Mates' owners — beside its name, where more than one. */
-  const renderCardPeople = (entry: ProjectsFlowGroup<T>): ReactNode => {
-    const owners = cardPeople(
-      [...entry.mates.values()].map((item) => people[item.project.id]?.owner ?? null),
-    );
-    if (owners.length === 0) return null;
-    return (
-      <span className="ov-card-people">
-        {owners.map((owner) => (
-          <PersonAvatar
-            key={owner.userId}
-            name={owner.name}
-            picture={owner.avatarUrl ?? null}
-            size={20}
-          />
-        ))}
-      </span>
-    );
-  };
-
   return {
     cardPlaces,
     productionBroken,
-    renderPlacePanel,
+    productionVerbs,
     renderChanges,
     renderHistory,
-    renderCardPeople,
   };
 }
 

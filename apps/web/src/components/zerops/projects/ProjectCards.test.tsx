@@ -79,10 +79,9 @@ vi.mock("~/components/ui/sidebar", async (original) => ({
   useSidebar: () => ({ isMobile: false, setOpenMobile: () => {} }),
 }));
 
-import { PlacePanel } from "./PlacePanel";
 import { CardMate, ProjectCards } from "./ProjectCards";
 import { cardMateReading } from "./projectCard.logic";
-import { born, entry, FLOW_PROPS, item, placed, STAGE_STOP, WREN } from "./flowTestFixtures";
+import { born, entry, FLOW_PROPS, item, placed, WREN } from "./flowTestFixtures";
 import { SidebarZeropsAccountRow } from "../SidebarZeropsAccount";
 
 // The browser owns viewport intersection; this render case holds both already-visible cards.
@@ -416,22 +415,7 @@ async function drawCard(group: ReturnType<typeof entry>) {
   document.body.append(container);
   const root = createRoot(container);
   await act(async () =>
-    root.render(
-      <ProjectCards
-        focusGroup={undefined}
-        groups={[group]}
-        props={{
-          ...FLOW_PROPS,
-          renderPlacePanel: ({ group: { groupId } }, line) => (
-            <PlacePanel
-              actions={null}
-              groupId={groupId}
-              model={{ line, version: undefined, note: undefined, brought: [], services: [] }}
-            />
-          ),
-        }}
-      />,
-    ),
+    root.render(<ProjectCards focusGroup={undefined} groups={[group]} props={FLOW_PROPS} />),
   );
   return {
     container,
@@ -453,77 +437,6 @@ it("a card's title opens its project's page", async () => {
     expect(title?.querySelector("[data-test-menu]")).toBeNull();
   } finally {
     await card.done();
-  }
-});
-
-it("a project with three stage environments lists each with its state and address", async () => {
-  const stageOf = (projectId: string, name: string, host: string) => ({
-    ...STAGE_STOP,
-    projectId,
-    name,
-    addresses: [{ service: "app", url: `https://${host}` }],
-  });
-  const card = await drawCard(
-    entry([WREN], {
-      stops: [
-        stageOf("acme-stage", "stage", "stage.acme.example"),
-        stageOf("acme-checkout", "stage-checkout", "checkout.acme.example"),
-        stageOf("acme-perf", "stage-perf", "perf.acme.example"),
-      ],
-    }),
-  );
-  try {
-    const stages = [...card.container.querySelectorAll('[data-zerops-place="stage"]')];
-    expect(
-      stages.map((stage) => [
-        stage.querySelector("b")?.textContent,
-        stage.querySelector("a")?.getAttribute("href"),
-        // Its state: a dot and the words beside it, in the state's ink.
-        [...stage.querySelectorAll("[data-dot]")].some(
-          (said) => (said.textContent ?? "").trim().length > 0,
-        ),
-      ]),
-    ).toEqual([
-      ["Stage", "https://stage.acme.example", true],
-      ["Stage-checkout", "https://checkout.acme.example", true],
-      ["Stage-perf", "https://perf.acme.example", true],
-    ]);
-  } finally {
-    await card.done();
-  }
-});
-
-it("a project with no stage offers to add one where HQ offers it, and assumes none", async () => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.stubGlobal("IntersectionObserver", VisibleCard);
-  const added: string[] = [];
-  const group = entry([WREN]);
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  await act(async () =>
-    root.render(
-      <ProjectCards
-        focusGroup={undefined}
-        groups={[group]}
-        props={{ ...FLOW_PROPS, setUpStage: () => () => added.push("stage") }}
-      />,
-    ),
-  );
-  try {
-    // Where a stage would stand, only the way to add one: no stage's state is assumed.
-    const places = [...container.querySelectorAll('[data-zerops-place="stage"]')];
-    expect(places).toHaveLength(1);
-    expect(places[0]?.querySelector('[data-zerops-place-setup="stage"]')).not.toBeNull();
-    expect(places[0]?.querySelector("[data-dot]")).toBeNull();
-    const add = [...container.querySelectorAll("button")].find((button) =>
-      button.textContent?.includes("Add stage"),
-    );
-    await act(async () => add?.click());
-    expect(added).toEqual(["stage"]);
-  } finally {
-    await act(async () => root.unmount());
-    container.remove();
   }
 });
 
