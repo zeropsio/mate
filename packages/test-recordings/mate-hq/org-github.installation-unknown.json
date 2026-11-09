@@ -1,27 +1,31 @@
 {
   "$provenance": {
     "producer": "mate-hq",
-    "revision": "d9eadf39372c17286a6df55e5ee5e12df558ac70",
+    "revision": "095038f73398946a4b0bdd2f316c2393f95dafa1",
     "via": "s10a-github-app.test.ts",
     "schema": "GET /api/org/github"
   },
   "value": {
-    "state": "connected",
-    "slug": "s10a-mate-5",
-    "appId": 1000,
-    "botLogin": "s10a-mate-5[bot]",
-    "owner": "acme",
-    "ownerType": "Organization",
-    "appUrl": "https://github.com/apps/s10a-mate-5",
-    "installUrl": "https://github.com/apps/s10a-mate-5/installations/new",
-    "public": true,
-    "installations": [
+    "apps": [
       {
-        "id": 10006,
-        "state": "unknown"
+        "appId": 1000,
+        "slug": "s10a-mate-5",
+        "name": "Acme Mate",
+        "botLogin": "s10a-mate-5[bot]",
+        "owner": "acme",
+        "ownerType": "Organization",
+        "appUrl": "https://github.com/apps/s10a-mate-5",
+        "installUrl": "https://github.com/apps/s10a-mate-5/installations/new",
+        "public": true,
+        "sealedBy": "s10a-person-2",
+        "sealedAt": "2026-01-01T00:00:01Z",
+        "installations": [
+          {
+            "id": 10006,
+            "state": "unknown"
+          }
+        ]
       }
-    ],
-    "sealedBy": "s10a-person-2",
-    "sealedAt": "2026-01-01T00:00:01Z"
+    ]
   }
 }

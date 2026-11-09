@@ -1,9 +1,21 @@
 {
   "$provenance": {
     "producer": "mate-hq",
-    "revision": "7473a0e70617b7bcd03f6f307afefe3cf3f5bac7",
+    "revision": "7011b1e3d338c6a4ae372a1cfedde2590493f76b",
     "via": "rolling-restart.test.ts",
-    "schema": "navigation project:<id>"
+    "schema": "navigation project:<id>",
+    "target": "Two local HQ processes on one disposable PostgreSQL database with fake Zerops and a fake Mate",
+    "steps": [
+      "In a clean checkout of writerCommit, install conformance dependencies; put PostgreSQL 17 and Git 2.44 or newer on PATH and set GOTOOLCHAIN=local.",
+      "In a standalone Node development check use conformance/scripts/test-hq-build.ts prepareTestBinaries to build HQ, the box and the test operators; startHq with the s8-helpers and s12a-helpers environments and its migrated template, then startPeer on the same database. Zerops, object storage and Mate are local fakes.",
+      "Using s5-helpers.ts, setup the owner and first Mate project, enroll it, and placeMate for the second project. Open the first Mate link and wait for firstState.",
+      "Send the full overviewOf with claude-code signedInBy and lastSignedInBy owner, present true and token false. Subscribe to navigation on the first HQ and wait until project:<first project ID> reports signedInNow claude-code owner.",
+      "Subscribe to navigation on the peer and take the first delivery's value for project:<first project ID>. Save it normalized with stable from conformance/harness/recordings.ts. Close both navigation sockets and the Mate link, stop the peer and HQ, and release the disposable local PostgreSQL and fake services.",
+      "In standalone Node, set HQ_RECORD_EXEMPLARS to an output directory, set expect.getState().testPath to conformance/rolling-restart.test.ts using expect.setState, and call recordExemplar from conformance/harness/recordings.ts with the saved peer value and this target and steps. Compare its value to this recording. The standalone check did not run the conformance case or suite."
+    ],
+    "date": "2026-11-09",
+    "writerCommit": "7011b1e3d338c6a4ae372a1cfedde2590493f76b",
+    "capturedAt": "2026-11-09T08:45:58.962Z"
   },
   "value": {
     "appId": "00000000-0000-4000-8000-000000000001",
