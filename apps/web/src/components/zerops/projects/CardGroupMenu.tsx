@@ -12,6 +12,7 @@ import {
 import type { ZeropsGroup } from "@t3tools/client-runtime/zerops";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
+import { useRef } from "react";
 
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useOpenReview } from "~/zerops/review";
@@ -61,6 +62,7 @@ export function CardGroupMenu({
   const orgId = useAccountOrgId();
   const openReview = useOpenReview();
   const navigate = useNavigate();
+  const anchor = useRef<HTMLSpanElement>(null);
   const projectId = production?.projectId;
   const place = useProjection(
     placeAddresses,
@@ -86,7 +88,12 @@ export function CardGroupMenu({
                   id: "roll-back",
                   label: `Roll back to ${production.rollBack}`,
                   onSelect: () => {
-                    openReview({ kind: "rollback", groupId, tag: production.rollBack ?? "" });
+                    // The review returns focus to the menu's trigger when it closes.
+                    const from = anchor.current?.querySelector<HTMLElement>("button");
+                    openReview(
+                      { kind: "rollback", groupId, tag: production.rollBack ?? "" },
+                      from === null || from === undefined ? undefined : { from },
+                    );
                   },
                 },
               ]),
@@ -132,15 +139,17 @@ export function CardGroupMenu({
               ]),
         ];
   return (
-    <ZeropsProjectRenameMenu
-      actions={[
-        ...entries,
-        ...(entries.length === 0 || actions.length === 0
-          ? []
-          : [{ id: "production-end", separator: true as const }]),
-        ...actions,
-      ]}
-      group={group}
-    />
+    <span className="contents" ref={anchor}>
+      <ZeropsProjectRenameMenu
+        actions={[
+          ...entries,
+          ...(entries.length === 0 || actions.length === 0
+            ? []
+            : [{ id: "production-end", separator: true as const }]),
+          ...actions,
+        ]}
+        group={group}
+      />
+    </span>
   );
 }
