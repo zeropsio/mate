@@ -1,7 +1,7 @@
 /** Application history reads recorded release membership; only an expanded row requests Git content. */
 import { releaseFailure, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { ChevronRightIcon } from "lucide-react";
-import { createContext, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
@@ -19,9 +19,6 @@ import {
   shownReleases,
   type HistoryRelease,
 } from "./projectHistory.logic";
-
-/** The page's History section, which the page's flow alone can draw, for its column. */
-export const ProjectPageHistory = createContext<ReactNode>(null);
 
 /** A project's History from its recorded release membership and domain change rows. */
 export function ProjectHistory({
