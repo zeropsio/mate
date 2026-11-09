@@ -21,7 +21,7 @@ import { Button } from "~/components/ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Skeleton } from "~/components/ui/skeleton";
 import type { PlaceServiceRow } from "../place/place.logic";
-import { ResourceGraph } from "../ZeropsServiceMap";
+import { ResourceGraph } from "../ResourceGraph";
 import { serviceRowState } from "./ServiceRow.logic";
 
 const METERS: ReadonlyArray<{ readonly id: "cores" | "memory" | "disk"; readonly label: string }> =

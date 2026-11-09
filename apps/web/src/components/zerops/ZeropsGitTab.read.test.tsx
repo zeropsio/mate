@@ -55,7 +55,7 @@ it("a repository git could not read says so and reads it again on request, never
       ),
     );
     const api = host.querySelector('[data-zerops-git-block="api"]')!;
-    expect(api.textContent).toContain("Could not read this repository.");
+    expect(api.textContent).toContain("Could not read this repository");
     expect(api.textContent).toContain(read.failure);
     expect(api.textContent).not.toContain("Reading repository…");
     const again = [...api.querySelectorAll("button")].find(

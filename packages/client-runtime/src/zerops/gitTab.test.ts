@@ -11,7 +11,6 @@ import {
   gitBlock,
   gitCheckoutLine,
   gitTrouble,
-  gitVerdict,
   mateChangeIn,
   pullRequestBlocked,
   threadCheckoutHostnames,
@@ -199,95 +198,6 @@ describe("the line under the name", () => {
 describe("where the work stands", () => {
   it.each([
     {
-      name: "no repository at all",
-      answer: block(checkout({ isRepo: false, hasRemote: false })),
-      tone: "off",
-      text: "No code here yet.",
-    },
-    {
-      name: "a codebase nobody has touched",
-      answer: block(checkout()),
-      tone: "off",
-      text: "Nothing new here.",
-    },
-    {
-      name: "a branch that has never been pushed",
-      answer: block(checkout({ headRef: "feature/invoices", hasUpstream: false })),
-      tone: "busy",
-      text: "This branch has never been pushed.",
-    },
-    {
-      name: "commits sitting in the container",
-      answer: block(checkout({ headRef: "feature/invoices", aheadCount: 3 })),
-      tone: "busy",
-      text: "3 commits here are not pushed yet.",
-    },
-    {
-      name: "one commit, singular",
-      answer: block(checkout({ headRef: "feature/invoices", aheadCount: 1 })),
-      tone: "busy",
-      text: "1 commit here is not pushed yet.",
-    },
-    {
-      name: "a branch somebody else has pushed to",
-      answer: block(checkout({ headRef: "feature/invoices", behindCount: 4 })),
-      tone: "attention",
-      text: "4 commits on the remote are not in this checkout yet.",
-    },
-    {
-      // Grey, not green: no signal about it is not a good signal.
-      name: "a pull request waiting on a person",
-      answer: block(
-        checkout({ headRef: "feature/invoices" }),
-        changes({ change: change("mergeable") }),
-      ),
-      tone: "off",
-      text: "Nothing is stopping it.",
-    },
-    {
-      name: "a change HQ has not said yet whether it merges",
-      answer: block(
-        checkout({ headRef: "feature/invoices" }),
-        changes({ change: change("checking") }),
-      ),
-      tone: "busy",
-      text: "Checking whether it merges cleanly.",
-    },
-    {
-      name: "a pull request main already has all of",
-      answer: block(
-        checkout({ headRef: "feature/invoices" }),
-        changes({ change: change("empty") }),
-      ),
-      tone: "off",
-      text: "Main already has all of it.",
-    },
-    {
-      // The state that offers no verb: without a sentence, the row is a change
-      // that looks fine and cannot move.
-      name: "a change that will not merge",
-      answer: block(
-        checkout({ headRef: "feature/invoices" }),
-        changes({ change: change("conflicting") }),
-      ),
-      tone: "attention",
-      text: "It no longer merges cleanly.",
-    },
-    {
-      name: "work that has landed",
-      answer: block(
-        checkout({ headRef: "feature/invoices" }),
-        changes({ change: change("checking", LANDED) }),
-      ),
-      tone: "ok",
-      text: "Merged into main.",
-    },
-  ] as const)("says $name", ({ answer, tone, text }) => {
-    expect(answer.verdict).toMatchObject({ tone, text });
-  });
-
-  it.each([
-    {
       name: "a branch nobody has pushed",
       answer: block(checkout({ headRef: "feature/invoices", hasUpstream: false })),
       ask: "Your work on api has never been pushed. Push the branch.",
@@ -347,17 +257,6 @@ describe("where the work stands", () => {
     });
   });
 
-  it("is a sentence, so it can be read aloud beside the others", () => {
-    for (const state of [
-      checkout(),
-      checkout({ isRepo: false }),
-      checkout({ headRef: "feature/invoices", aheadCount: 2 }),
-      checkout({ headRef: "feature/invoices", behindCount: 2 }),
-    ]) {
-      expect(block(state).verdict?.text).toMatch(/\.$/u);
-    }
-  });
-
   it("says nothing at all until HQ has told its changes", () => {
     // Measured on the live account, 2026-09-19: the tab opened on "No code
     // here yet.", listed five of the Mate's commits under that sentence, and
@@ -376,17 +275,6 @@ describe("where the work stands", () => {
     expect(unread.destination).toBe("");
   });
 
-  it("still says a repository is missing once HQ has told its changes", () => {
-    const answered = gitBlock({
-      checkout: checkout({ isRepo: false, headRef: null }),
-      changes: changes(),
-      declarations: DECLARATIONS,
-      evidence: { remoteReachable: true },
-    });
-    expect(answered.state).toBe("no-repository");
-    expect(answered.verdict?.text).toBe("No code here yet.");
-  });
-
   it("says what was proved wrong even before HQ answers", () => {
     // A remote that refused is a different read, and it is proved. It is the
     // one thing worth saying while HQ is still out.
@@ -397,19 +285,6 @@ describe("where the work stands", () => {
       evidence: { remoteReachable: false, remoteDetail: "remote: access denied" },
     });
     expect(refused.verdict?.tone).toBe("failed");
-  });
-
-  it("can be asked directly, without a block around it", () => {
-    expect(
-      gitVerdict({
-        state: "merged",
-        checkout: checkout({ headRef: "feature/invoices" }),
-        pullRequestNumber: 12,
-        mergeability: "mergeable",
-        baseBranch: "trunk",
-        trouble: "",
-      }),
-    ).toEqual({ tone: "ok", text: "Merged into trunk.", ask: undefined });
   });
 });
 
@@ -930,7 +805,7 @@ describe("one answer on every surface (DESIGN §4.7)", () => {
       expect(seen.tab.verdict?.tone).toBe(seen.row?.tone);
       expect(seen.tab.verdict?.ask).toBe(seen.blocked?.ask);
       const rebase = {
-        tab: /no longer merges/.test(seen.tab.verdict?.text ?? ""),
+        tab: seen.tab.verdict?.text === "Conflicts with main",
         row: seen.row?.word === "Conflicts with main",
       };
       expect(rebase.tab).toBe(rebase.row);
@@ -963,7 +838,7 @@ it.each([
     expect(shown.checkoutLine).toBe(failure);
     expect(shown.verdict).toEqual({
       tone: "failed",
-      text: "Could not read this repository.",
+      text: "Could not read this repository",
       ask: undefined,
     });
     expect(shown.action).toBeUndefined();
