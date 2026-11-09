@@ -157,11 +157,7 @@ it("paints a card once, whole: it stands in until HQ said its detail, never an e
   const root = createRoot(container);
   const render = () =>
     root.render(
-      <ProjectCards
-        focusGroup={undefined}
-        groups={groups}
-        props={{ ...FLOW_PROPS, groups, renderChanges: () => <p>No changes yet</p> }}
-      />,
+      <ProjectCards focusGroup={undefined} groups={groups} props={{ ...FLOW_PROPS, groups }} />,
     );
   try {
     await act(async () => render());

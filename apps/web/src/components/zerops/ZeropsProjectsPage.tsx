@@ -224,7 +224,6 @@ import {
 } from "~/zerops/projectFlows";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useAskMateToFix } from "~/zerops/fixRequest";
-import { mateReviewCount } from "~/zerops/agentActivity";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone, setUpMateRecord } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
@@ -240,7 +239,6 @@ import {
 import { projectWaits } from "./projects/projectCard.logic";
 import { CardGroupMenu } from "./projects/CardGroupMenu";
 import {
-  lastActivityAt,
   overviewKeeps,
   overviewOrder,
   parseProjectsSearch,
@@ -1756,6 +1754,7 @@ export function ZeropsProjectsContent({
   };
   const openReview = useOpenReview();
   const askToFix = useAskMateToFix();
+  const navigate = useNavigate();
   // The change that adds a project's setup files, where one waits: what moves on a stage or a
   // production held for want of them.
   const setupChangeOf = (groupId: string) => {
@@ -2052,7 +2051,6 @@ export function ZeropsProjectsContent({
   );
   // The cards' places as the menu's chips read them, their panels, and the people on each.
   const overview = useOverviewSlots<ZeropsCandidatePresentation>({
-    onPage: project !== undefined,
     flows: groupDeploys,
     deployments,
     mateFace: (candidate) => {
@@ -2195,7 +2193,6 @@ export function ZeropsProjectsContent({
       broken: overview.productionBroken(entry),
       asks: waitKinds.asks.has(entry.group.groupId),
       reviews: waitKinds.reviews.has(entry.group.groupId),
-      lastAt: lastActivityAt(entry),
     }),
   );
 
@@ -2777,7 +2774,6 @@ export function ZeropsProjectsContent({
             releaseSince: run?.phase === "releasing" ? run.stepAt : undefined,
           };
         }}
-        renderChanges={overview.renderChanges}
         renderHistory={overview.renderHistory}
         setUpProduction={({ group }) =>
           !addableTiers(group).includes("production") || groupIsEmpty(group)
@@ -2797,15 +2793,6 @@ export function ZeropsProjectsContent({
             ? creationNow(creation.progress, "stage")
             : undefined
         }
-        setUpStage={({ group }) =>
-          !addableTiers(group).includes("stage") || groupIsEmpty(group)
-            ? undefined
-            : creationRunning
-              ? "busy"
-              : () => {
-                  requestEnvironment(group.groupId, "stage");
-                }
-        }
         // As the project's own page offers it: always there, standing off with why where HQ says
         // one — never coming and going with what the platform says of its Mates.
         addMate={({ group }) => ({
@@ -2814,13 +2801,37 @@ export function ZeropsProjectsContent({
           },
           why: creationRunning ? PUT_LIVE_AFTER_CREATION : addMateWhy(group.groupId),
         })}
+        // A broken production waits on the viewer: their own Mate in the project is asked to fix
+        // it, as the menu's production chip asks; with none of theirs there, its page says why.
+        placeFix={(entry) => {
+          const fixer = [...entry.mates.values()].find(
+            (candidate) => projectPeople[candidate.project.id]?.waitsOnViewer === true,
+          );
+          const { production } = entry.flow;
+          const projectId = "stop" in production ? production.stop.projectId : undefined;
+          return {
+            fixer: fixer === undefined ? undefined : projectNameInApp(fixer.project),
+            onVerb: () => {
+              if (fixer !== undefined) {
+                askToFix(
+                  fixer.project.id,
+                  overview.productionFix(entry) ?? {
+                    what: "Production is not running as it should.",
+                    ask: "Find out why and fix it.",
+                  },
+                );
+                return;
+              }
+              if (projectId === undefined) return;
+              void navigate({
+                to: "/group/$groupId/$projectId",
+                params: { groupId: entry.group.groupId, projectId },
+              });
+            },
+          };
+        }}
         cardWaits={(entry) =>
-          projectWaits({
-            items: waiting.items,
-            mateIds: entry.flow.mates.map((mate) => mate.projectId),
-            reviewCount: (projectId) =>
-              mateReviewCount(projectFlow.flows.get(entry.group.groupId), projectId),
-          }).map((wait) => ({
+          projectWaits({ items: waiting.items, flow: entry.flow }).map((wait) => ({
             wait,
             face: (
               <MateFace

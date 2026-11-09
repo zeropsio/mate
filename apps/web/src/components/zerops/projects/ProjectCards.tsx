@@ -11,36 +11,28 @@ import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.
 import { PackageIcon, PlusIcon } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import {
-  recipeReach,
-  REVIEW_LABEL,
-  type FlowPullRequest,
-  type RecipeReach,
-} from "@t3tools/client-runtime/zerops";
+import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
 import { Link } from "@tanstack/react-router";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
 import { useNowMs } from "~/zerops/useNowMs";
-import { mergedMain, useZeropsChangeDetail } from "~/zerops/useZeropsChangeDetail";
 import { StopReadAgain } from "../StopReadAgain";
 import { heldLine } from "./emptyApps.logic";
 import { ProjectCardStandIn } from "./OverviewStandIn";
 import { ComingMateFace, drawn, GroupName, matesOf, type FlowMateEntry } from "./flowSteps";
 import {
-  cardChangeRows,
   cardReady,
   foldMates,
   mateIsLoud,
   placeLines,
+  placeFixWords,
+  projectWaitLabel,
   projectWaitWords,
-  setupChangeWords,
-  type CardChange,
   type CardMateReading,
   type PlaceLine as PlaceLineData,
 } from "./projectCard.logic";
 import { comingMateLine, stopLine } from "./projectsView.logic";
-import { ChangeRow } from "../system/ChangeRow";
 import { nextReleaseTitle } from "../system/NextRelease.logic";
 import { PlaceLine } from "../system/PlaceLine";
 import { SectionAction, SectionLabel } from "../system/SectionLabel";
@@ -189,165 +181,6 @@ function QuietPlace({ children }: { readonly children: string }) {
 }
 
 /** How long ago a change last moved, as a menu row says its time: "3h", "2d". */
-/**
- * A card's latest changes: each with its Mate's face, what it is, whose, and where it stands — a
- * click opens it — with the releases cut among them and production's marked (`cardChangeRows`).
- */
-export function CardChanges({
-  changes,
-  changesKnown = true,
-  changesFailure,
-  releases = [],
-  face,
-  mateName,
-  onOpen,
-  unknown,
-  setupReview,
-}: {
-  readonly changes: ReadonlyArray<CardChange>;
-  /** HQ has told the project's changes: until then none listed is no answer (`changesKnown`). */
-  readonly changesKnown?: boolean;
-  /** Why they are not told — HQ refuses them to this person, or does not answer — in its words. */
-  readonly changesFailure?: string | undefined;
-  /** Newest first, as the flow lists them. */
-  readonly releases?: ReadonlyArray<{
-    readonly tag: string;
-    readonly taggedAt: string;
-    readonly live: boolean;
-  }>;
-  /** The face of the Mate a change is from, where the card holds it. */
-  readonly face?: ((projectId: string) => ReactNode) | undefined;
-  readonly mateName: (projectId: string) => string | undefined;
-  readonly onOpen: (change: CardChange, from: HTMLElement) => void;
-  /** Why its changes are not known, where HQ did not tell them (`changesUnknownOf`). */
-  readonly unknown?: string | undefined;
-  /** What a waiting setup change's review is read by, so its row says what it changes. */
-  readonly setupReview?: SetupReview | undefined;
-}) {
-  const rows = cardChangeRows(changes, releases);
-  return (
-    <section aria-label="Changes" className="ov-sec" data-zerops-surface="card-changes">
-      <h3 className="ov-sec-name">Changes</h3>
-      {rows.length === 0 ? (
-        unknown !== undefined ? (
-          <p className="ov-sec-empty">{unknown}</p>
-        ) : changesFailure !== undefined ? (
-          <p className="ov-sec-empty">{changesFailure}</p>
-        ) : changesKnown ? (
-          <p className="ov-sec-empty">No changes yet — a Mate opens one as it works.</p>
-        ) : (
-          // Until HQ answers, its line's place is held: the card does not grow when it lands.
-          <p aria-hidden="true" className="ov-sec-empty" data-zerops-changes-held="" />
-        )
-      ) : (
-        <ul className="ov-changes">
-          {rows.map((row) => {
-            if (row.kind === "release")
-              return (
-                <li
-                  className="ov-change-release"
-                  data-zerops-surface="card-release"
-                  key={`release:${row.tag}`}
-                >
-                  <span className="ov-release-tag">{row.tag}</span>
-                  {row.live ? <span className="ov-release-live">Production</span> : null}
-                </li>
-              );
-            const { change } = row;
-            const by = mateName(change.pull.mateProjectId);
-            const key = `${change.pull.repository}#${String(change.pull.number)}`;
-            if (change.setup === true && setupReview !== undefined)
-              return (
-                <SetupChangeRow
-                  by={by}
-                  change={change}
-                  face={face?.(change.pull.mateProjectId)}
-                  key={key}
-                  onOpen={(from) => {
-                    onOpen(change, from);
-                  }}
-                  review={setupReview}
-                />
-              );
-            return (
-              <ChangeRow
-                at={change.at}
-                face={face?.(change.pull.mateProjectId)}
-                key={key}
-                line={by === undefined ? change.words : `${by} · ${change.words}`}
-                onOpen={(from) => {
-                  onOpen(change, from);
-                }}
-                open={change.open}
-                pull={change.pull}
-                tone={change.tone}
-              />
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-/** The project a card's setup changes are reviewed in, as their review reads them. */
-export interface SetupReview {
-  readonly appId: string;
-  /** Each repository's `main` as the flow last told it (`mergedMain`). */
-  readonly repos:
-    | ReadonlyArray<{ readonly name: string; readonly mainHead?: string | null | undefined }>
-    | undefined;
-  readonly merged: ReadonlyArray<FlowPullRequest>;
-  readonly environments: Parameters<typeof recipeReach>[0]["environments"];
-}
-
-/**
- * A setup change waiting for a person: what it changes, read as its review reads it — the files HQ
- * recorded (`recipeReach`) — and the project's setup until they are read.
- */
-function SetupChangeRow({
-  change,
-  review,
-  by,
-  face,
-  onOpen,
-}: {
-  readonly change: CardChange;
-  readonly review: SetupReview;
-  readonly by: string | undefined;
-  readonly face: ReactNode;
-  readonly onOpen: (from: HTMLElement) => void;
-}) {
-  const { pull } = change;
-  const detail = useZeropsChangeDetail({
-    link: { appId: review.appId, repo: pull.repository, number: pull.number },
-    head: pull.headSha,
-    main:
-      review.repos?.find((repo) => repo.name === pull.repository)?.mainHead ??
-      mergedMain(pull.repository, review.merged),
-  });
-  const read = detail.readout.kind === "read" ? detail.readout.value : undefined;
-  const reach: RecipeReach | undefined =
-    read?.filesKnown === true
-      ? recipeReach({
-          files: read.files.map((file) => ({ filename: file.path })),
-          environments: review.environments,
-        })
-      : undefined;
-  const words = setupChangeWords(reach);
-  return (
-    <ChangeRow
-      at={change.at}
-      face={face}
-      line={by === undefined ? words : `${by} · ${words}`}
-      onOpen={onOpen}
-      open={change.open}
-      pull={pull}
-      tone={change.tone}
-    />
-  );
-}
-
 /** A Mate being created: waking, named, how far its birth has got, nothing to press. */
 function CardComingMate<T>({
   mate,
@@ -387,9 +220,12 @@ function CardMates<T>({
   props,
   onAdd,
   addWhy = null,
+  moreLinked,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
+  /** Its "+ N more" opens the page, where no other link on the card already does. */
+  readonly moreLinked: boolean;
   readonly onAdd?: (() => void) | undefined;
   /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
   readonly addWhy?: string | null;
@@ -433,7 +269,14 @@ function CardMates<T>({
           </Fragment>
         ),
       )}
-      {more > 0 ? <MoreLink groupId={entry.group.groupId} more={more} /> : null}
+      {more > 0 ? (
+        <MoreLink
+          groupId={entry.group.groupId}
+          label={`${String(more)} more Mates in ${entry.group.name}`}
+          linked={moreLinked}
+          more={more}
+        />
+      ) : null}
       {/* Standing off, Add a Mate says why under its words, where the label has no room. */}
       {onAdd === undefined || addWhy === null ? null : (
         <button
@@ -458,10 +301,30 @@ function CardMates<T>({
   );
 }
 
-/** "+ N more": the rest of a card's list, on the project's page. */
-function MoreLink({ groupId, more }: { readonly groupId: string; readonly more: number }) {
+/**
+ * "+ N more": the rest of a card's list, on the project's page, named for a screen reader by what
+ * and where ("2 more waiting in Tea Shop"). A card holds one such link: where another already
+ * opens the page, the count stands as words.
+ */
+function MoreLink({
+  groupId,
+  more,
+  label,
+  linked = true,
+}: {
+  readonly groupId: string;
+  readonly more: number;
+  readonly label: string;
+  readonly linked?: boolean;
+}) {
+  if (!linked)
+    return (
+      <span className="ov-more" data-quiet="">
+        + {more} more
+      </span>
+    );
   return (
-    <Link className="ov-more" params={{ groupId }} to="/group/$groupId/flow">
+    <Link aria-label={label} className="ov-more" params={{ groupId }} to="/group/$groupId/flow">
       + {more} more
     </Link>
   );
@@ -476,9 +339,11 @@ const CARD_WAITS = 2;
  */
 function CardWaits({
   groupId,
+  project,
   waits,
 }: {
   readonly groupId: string;
+  readonly project: string;
   readonly waits: ReadonlyArray<{
     readonly key: string;
     readonly face: ReactNode;
@@ -500,7 +365,13 @@ function CardWaits({
           <span className="ov-wait-verb">{wait.verb}</span>
         </div>
       ))}
-      {more > 0 ? <MoreLink groupId={groupId} more={more} /> : null}
+      {more > 0 ? (
+        <MoreLink
+          groupId={groupId}
+          label={`${String(more)} more waiting in ${project}`}
+          more={more}
+        />
+      ) : null}
     </section>
   );
 }
@@ -579,10 +450,52 @@ function ProjectCard<T>({
   const production = lines.find((line) => line.kind === "production");
   const notLive = flow.production.kind === "absent";
   const putLive = notLive ? props.setUpProduction?.(entry) : undefined;
-  // Its Mates' asks first, the most urgent; then its release; then its changes to review.
-  const mateWaits = props.cardWaits?.(entry) ?? [];
+  // A broken production first, the most urgent; then its Mates' asks; then its release; then its
+  // changes to review.
+  const broken =
+    production !== undefined && (production.dot === "down" || production.dot === "failed")
+      ? production
+      : undefined;
+  const fix = broken === undefined ? undefined : props.placeFix?.(entry);
+  const fixWords =
+    broken === undefined || fix === undefined
+      ? undefined
+      : placeFixWords(broken, fix.fixer, group.name);
+  const verb = (label: string, words: string, onVerb: (from: HTMLElement) => void) => (
+    <Button
+      aria-label={label}
+      onClick={(event) => {
+        onVerb(event.currentTarget);
+      }}
+      size="sm"
+      variant="secondary"
+    >
+      {words}
+    </Button>
+  );
+  const mateWaits = (props.cardWaits?.(entry) ?? []).map((wait) => ({
+    kind: wait.wait.kind,
+    key: wait.wait.key,
+    face: wait.face,
+    text: projectWaitWords(wait.wait).text,
+    verb: verb(
+      projectWaitLabel(wait.wait, group.name),
+      projectWaitWords(wait.wait).verb,
+      wait.onVerb,
+    ),
+  }));
   const waits = [
-    ...mateWaits.filter((wait) => wait.wait.kind === "ask"),
+    ...(fix === undefined || fixWords === undefined
+      ? []
+      : [
+          {
+            key: "place",
+            face: <PlaceDot dot={broken?.dot ?? "failed"} />,
+            text: fixWords.text,
+            verb: verb(fixWords.label, fixWords.verb, fix.onVerb),
+          },
+        ]),
+    ...mateWaits.filter((wait) => wait.kind === "ask"),
     ...(ready === undefined || !releaseShown
       ? []
       : [
@@ -593,27 +506,8 @@ function ProjectCard<T>({
             verb: drawn(releaseDoor) ? releaseDoor : null,
           },
         ]),
-    ...mateWaits.filter((wait) => wait.wait.kind === "review"),
-  ].map((wait) =>
-    "wait" in wait
-      ? {
-          key: wait.wait.key,
-          face: wait.face,
-          text: projectWaitWords(wait.wait).text,
-          verb: (
-            <Button
-              onClick={(event) => {
-                wait.onVerb(event.currentTarget);
-              }}
-              size="sm"
-              variant="secondary"
-            >
-              {projectWaitWords(wait.wait).verb}
-            </Button>
-          ),
-        }
-      : wait,
-  );
+    ...mateWaits.filter((wait) => wait.kind === "review"),
+  ];
   if (!detail.answered)
     return <ProjectCardStandIn id={cardId(group.groupId)} label={group.name} ref={detail.ref} />;
   return (
@@ -650,40 +544,44 @@ function ProjectCard<T>({
         )}
         {/* A release or Put it live run is production's, never a Mate's conversation's. */}
         {props.renderProductionRun?.(entry)}
-        {notLive
-          ? null
-          : lines
-              .filter((line) => line.kind === "stage")
-              .map((line) =>
-                settingUp === undefined ? (
-                  <PlaceLine
-                    density="compact"
-                    groupId={group.groupId}
-                    key={`stage:${line.projectId ?? line.name}`}
-                    line={line}
-                  />
-                ) : (
-                  <div
-                    data-zerops-place="stage"
-                    data-zerops-setting-up="true"
-                    key={`stage:${line.projectId ?? line.name}`}
-                  >
-                    <PlaceLine density="compact" groupId={group.groupId} line={line} />
-                  </div>
-                ),
-              )}
-        {notLive ? null : devstage !== undefined ? (
+        {lines
+          .filter((line) => line.kind === "stage")
+          .map((line) =>
+            settingUp === undefined ? (
+              <PlaceLine
+                density="compact"
+                groupId={group.groupId}
+                key={`stage:${line.projectId ?? line.name}`}
+                line={line}
+              />
+            ) : (
+              <div
+                data-zerops-place="stage"
+                data-zerops-setting-up="true"
+                key={`stage:${line.projectId ?? line.name}`}
+              >
+                <PlaceLine density="compact" groupId={group.groupId} line={line} />
+              </div>
+            ),
+          )}
+        {devstage !== undefined ? (
           <PlaceLine density="compact" line={{ ...NEW_STAGE, words: [devstage] }} />
         ) : stageComing ? (
           <div data-zerops-place="stage" data-zerops-setting-up="true">
             <PlaceLine density="compact" line={settingUpLine(NEW_STAGE, settingUp)} />
           </div>
-        ) : flow.stages.length === 0 && (flow.unreadStages ?? []).length === 0 ? (
+        ) : !notLive && flow.stages.length === 0 && (flow.unreadStages ?? []).length === 0 ? (
           <QuietPlace>No stage</QuietPlace>
         ) : null}
       </div>
-      <CardWaits groupId={group.groupId} waits={waits} />
-      <CardMates addWhy={addMate?.why ?? null} entry={entry} onAdd={addMate?.onAdd} props={props} />
+      <CardWaits groupId={group.groupId} project={group.name} waits={waits} />
+      <CardMates
+        addWhy={addMate?.why ?? null}
+        entry={entry}
+        moreLinked={waits.length <= CARD_WAITS}
+        onAdd={addMate?.onAdd}
+        props={props}
+      />
       {putLive === undefined ? null : (
         <div className="ov-card-foot" data-zerops-place-setup="production">
           <Button
@@ -707,7 +605,8 @@ function ProjectCard<T>({
 }
 
 /**
- * Every project with Mates, in the person's order. `focusGroup` (`?group=`) scrolls its card into
+ * Every project with Mates, in the overview's order (`overviewOrder`: what waits on the person
+ * first, then the menu's own order). `focusGroup` (`?group=`) scrolls its card into
  * view and pulses it, once when it is first there, and again while cards before it arrive — until
  * the person scrolls or types for themselves.
  */

@@ -39,14 +39,9 @@ import { MateFace } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { MateAutomatedMark } from "~/components/zerops/MateAutomatedMark";
-import { CardChanges, CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
+import { CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
 import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
-import {
-  CARD_CHANGES,
-  cardChanges,
-  cardMateReading,
-  projectWaits,
-} from "~/components/zerops/projects/projectCard.logic";
+import { cardMateReading, projectWaits } from "~/components/zerops/projects/projectCard.logic";
 import {
   ZeropsProjectsFlow,
   type ProjectsFlowGroup,
@@ -313,6 +308,8 @@ const PROJECTS: ReadonlyArray<Project> = [
       mate("vale", "Vale", "violet", { owner: INES, time: "1h" }),
     ],
     production: { kind: "absent" },
+    // Not live yet, with a stage whose deploy failed: the card still lists it.
+    stages: [stop("play-stage", "stage", { state: "failed" })],
     notLive: 4,
     canPutLive: true,
     merged: {
@@ -615,12 +612,13 @@ function HarnessPage() {
             groups={overviewOrder(
               PROJECTS.map((entry) => entry.entry),
               (entry) => ({
-                broken: byId.get(entry.group.groupId)?.chip?.state === "down",
+                broken: ["down", "failed"].includes(
+                  byId.get(entry.group.groupId)?.chip?.state ?? "",
+                ),
                 asks: waitingOf(entry).some((item) => item.kind !== "change"),
                 reviews:
                   waitingOf(entry).some((item) => item.kind === "change") ||
                   entry.flow.production.kind === "ready-to-release",
-                lastAt: undefined,
               }),
             )}
             hqCard={null}
@@ -636,51 +634,6 @@ function HarnessPage() {
                     unread: () => null,
                   }
             }
-            renderChanges={(entry) => {
-              const found = byId.get(entry.group.groupId);
-              const live =
-                entry.flow.production.kind === "absent" ||
-                entry.flow.production.kind === "unread" ||
-                entry.flow.production.kind === "creating"
-                  ? undefined
-                  : entry.flow.production.stop.version?.label;
-              const merged =
-                found?.merged === undefined
-                  ? []
-                  : [
-                      {
-                        ...change(40, found.merged.title, found.merged.by.id),
-                        merged: true,
-                        mergedAt: found.merged.at,
-                      },
-                    ];
-              return (
-                <CardChanges
-                  changes={cardChanges({
-                    open: entry.flow.pullRequests.map((pull) => pull.pull),
-                    merged,
-                    releases: [],
-                    stage: undefined,
-                    production: live !== undefined,
-                    limit: CARD_CHANGES,
-                  })}
-                  face={(projectId) => {
-                    const owner = entry.mates.get(projectId);
-                    return owner === undefined ? undefined : (
-                      <MateFace size={16} state="idle" tint={owner.tint} />
-                    );
-                  }}
-                  mateName={(projectId) => entry.mates.get(projectId)?.name}
-                  onOpen={(opened) => acted.push(`change:${String(opened.pull.number)}`)}
-                  releases={
-                    // On its page the project's History says its releases.
-                    live === undefined || PAGE !== null
-                      ? []
-                      : [{ tag: live, taggedAt: ago(60 * 24 * 6), live: true }]
-                  }
-                />
-              );
-            }}
             renderProductionRun={(entry) =>
               entry.group.groupId === "tea" ? (
                 <PutLiveRow
@@ -749,14 +702,14 @@ function HarnessPage() {
             }}
             renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
             renderReleaseVerb={() => <Button size="sm">Review release</Button>}
+            // Harbor Radio's production is down and Nell, the viewer's, would fix it; Watchlist's
+            // failed release has no Mate of theirs, so its wait opens the place.
+            placeFix={(entry) => ({
+              fixer: entry.group.groupId === "harbor" ? "Nell" : undefined,
+              onVerb: () => acted.push(`fix-place:${entry.group.groupId}`),
+            })}
             cardWaits={(entry) =>
-              projectWaits({
-                items: waitingOf(entry),
-                mateIds: entry.flow.mates.map((each) => each.projectId),
-                reviewCount: (projectId) =>
-                  entry.flow.pullRequests.filter((pull) => pull.pull.mateProjectId === projectId)
-                    .length,
-              }).map((wait) => ({
+              projectWaits({ items: waitingOf(entry), flow: entry.flow }).map((wait) => ({
                 wait,
                 face: <MateFace size={24} state={wait.mate.face} tint={wait.mate.tint} />,
                 onVerb: () => acted.push(`wait:${wait.key}`),
@@ -767,7 +720,6 @@ function HarnessPage() {
                 ? () => acted.push(`put-live:${entry.group.groupId}`)
                 : undefined
             }
-            setUpStage={() => () => acted.push("add-stage")}
             addMate={(entry) => ({
               onAdd: () => acted.push(`add-mate:${entry.group.groupId}`),
               why: null,

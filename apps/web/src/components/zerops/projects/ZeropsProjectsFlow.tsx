@@ -203,8 +203,6 @@ export interface ZeropsProjectsFlowProps<T> {
    * for a while, or stopped with its one action — the project's, never a Mate's conversation's.
    */
   readonly renderProductionRun?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
-  /** A project's latest changes, open and merged (`cardChanges`); without it, none. */
-  readonly renderChanges?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** A project page's History: its releases, each with what it put live (`historyReleases`). */
   readonly renderHistory?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /**
@@ -214,14 +212,6 @@ export interface ZeropsProjectsFlowProps<T> {
    * set up: the button stays, not to be pressed.
    */
   readonly setUpProduction?:
-    | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
-    | undefined;
-  /**
-   * Adds a stage to a project that has none, where HQ offers it to this person: its card offers it
-   * where the stage would stand (the onboarding run's owner searched 21 s for it in the card's
-   * ··· menu). `"busy"` while another environment is being set up.
-   */
-  readonly setUpStage?:
     | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
     | undefined;
   /**
@@ -251,6 +241,18 @@ export interface ZeropsProjectsFlowProps<T> {
    * Mate's face and what its one verb does — lifted on its card.
    */
   readonly cardWaits?: ((entry: ProjectsFlowGroup<T>) => ReadonlyArray<CardWait>) | undefined;
+  /**
+   * A broken production as what waits on the viewer: who would fix it — their own Mate in the
+   * project (`useAskMateToFix`) — or none, and what its verb does: asks that Mate, or opens the
+   * place's page.
+   */
+  readonly placeFix?:
+    | ((
+        entry: ProjectsFlowGroup<T>,
+      ) =>
+        | { readonly fixer: string | undefined; readonly onVerb: (from: HTMLElement) => void }
+        | undefined)
+    | undefined;
   /** One project's own page in place of the overview (`ProjectPageSlot`). */
   readonly page?: ProjectPageSlot | undefined;
   /** The applications HQ knows that the tree leaves out (`InventoryGroupsView.undrawn`). */
