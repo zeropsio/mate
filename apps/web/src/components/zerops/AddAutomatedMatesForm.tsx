@@ -100,7 +100,7 @@ export interface AddAutomatedMatesFormProps {
 const HELD_SOURCES: AutomatedSources = { kind: "withheld" };
 
 const READING_PEOPLE = "Reading who reaches this project…";
-const PEOPLE_FAILED = "Couldn't read who reaches this project. Close and try again.";
+const PEOPLE_FAILED = "Couldn't read who reaches this project.";
 const UPDATE_HQ = hqNeedsUpdate("make automated Mates");
 
 export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
@@ -345,6 +345,12 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
           id={`${id}-line`}
         >
           {line}
+          {line === PEOPLE_FAILED && people.kind === "failed" && people.again !== undefined ? (
+            <>
+              {" "}
+              <InlineButton onClick={people.again}>Try again</InlineButton>
+            </>
+          ) : null}
         </p>
         <Button onClick={props.onCancel} type="button" variant="ghost">
           Cancel
