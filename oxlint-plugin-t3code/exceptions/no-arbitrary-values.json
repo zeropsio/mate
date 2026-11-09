@@ -680,7 +680,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "path": "apps/web/src/components/zerops/PlacePage.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"mt-1.5 px-3 text-sm text-[var(--zerops-status-failed-text)]\"",
     "owner": "web-intake",
@@ -688,7 +688,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "path": "apps/web/src/components/zerops/PlacePage.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"mt-2 text-sm text-[var(--zerops-status-failed-text)]\"",
     "owner": "web-intake",
@@ -696,7 +696,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "path": "apps/web/src/components/zerops/PlacePage.tsx",
     "kind": "Literal",
     "fingerprint": "<> text-[var(--zerops-status-failed-text)] in \"py-2 text-sm text-[var(--zerops-status-failed-text)]\"",
     "owner": "web-intake",

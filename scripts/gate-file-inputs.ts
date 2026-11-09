@@ -151,7 +151,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "oxlint-plugin-t3code/rules/no-environment-as-project.test.ts": [
     "apps/web/src/routes/_chat.group.$groupId.$projectId.tsx",
     "apps/web/src/routes/_chat.mate.$projectId.tsx",
-    "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+    "apps/web/src/components/zerops/PlacePage.tsx",
   ],
   "oxlint-plugin-t3code/rules/no-failure-to-empty.test.ts": [
     "packages/client-runtime/src/data/projections/hqAutoUpdatePolicy.ts",

@@ -58,14 +58,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
-import {
-  detailTrail,
-  ZeropsStopDetailPage,
-  ZeropsStopPane,
-  ZeropsRuntimeStops,
-  runtimeStopsOf,
-  stopRepository,
-} from "./ZeropsGroupDetail";
+import { detailTrail, ZeropsRuntimeStops, runtimeStopsOf } from "./ZeropsGroupDetail";
+import { ZeropsStopDetailPage, ZeropsStopPane, stopRepository } from "./PlacePage";
 import { ZeropsGroupPane } from "./ProjectPage";
 import { markupDom } from "../../../test/markupDom";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
