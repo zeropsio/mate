@@ -28,7 +28,10 @@ function OtherProject<T>({
   readonly props: ZeropsProjectsFlowProps<T>;
 }) {
   const nowMs = useNowMs();
-  const [line] = placeLines({ flow: entry.flow, ...props.cardPlaces?.(entry), nowMs });
+  // Production's line: `placeLines` lists the stages first.
+  const line = placeLines({ flow: entry.flow, ...props.cardPlaces?.(entry), nowMs }).find(
+    (place) => place.kind === "production",
+  );
   const held = entry.line ?? heldLine(entry.flow.mates.length, entry.contents);
   return (
     <li
