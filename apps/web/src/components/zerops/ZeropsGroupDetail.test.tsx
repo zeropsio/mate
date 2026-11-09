@@ -61,12 +61,12 @@ import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import {
   detailTrail,
   ZeropsStopDetailPage,
-  ZeropsGroupPane,
   ZeropsStopPane,
   ZeropsRuntimeStops,
   runtimeStopsOf,
   stopRepository,
 } from "./ZeropsGroupDetail";
+import { ZeropsGroupPane } from "./ProjectPage";
 import { markupDom } from "../../../test/markupDom";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
 

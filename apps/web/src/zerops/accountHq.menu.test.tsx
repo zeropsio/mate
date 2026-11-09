@@ -589,6 +589,7 @@ async function mountMenu(
             }),
       });
       const FlowPages = flowPage ? await import("../components/zerops/ZeropsGroupDetail") : null;
+      const ProjectPages = flowPage ? await import("../components/zerops/ProjectPage") : null;
       Object.assign(window, {
         matchMedia: () => ({
           matches: false,
@@ -823,8 +824,9 @@ async function mountMenu(
                   <sidebarUi.SidebarProvider>
                     {FullSidebar === null ? <Menu /> : <FullSidebar />}
                     {FlowPages !== null &&
+                      ProjectPages !== null &&
                       (environmentId === null ? (
-                        <FlowPages.ZeropsGroupDetailPage groupId="shop" />
+                        <ProjectPages.ZeropsGroupDetailPage groupId="shop" />
                       ) : (
                         <FlowPages.ZeropsStopDetailPage
                           groupId="shop"
