@@ -20,8 +20,6 @@ export interface ZeropsGitBlockProps {
    * work. Filled by the caller, which owns the read; a block stays pure.
    */
   readonly commits?: ReactNode;
-  /** Says which repository it is, where the tab lists several. */
-  readonly named?: boolean;
   readonly className?: string;
 }
 
@@ -66,7 +64,7 @@ function DiffStat({
   );
 }
 
-export function ZeropsGitBlock({ block, commits, named = false, className }: ZeropsGitBlockProps) {
+export function ZeropsGitBlock({ block, commits, className }: ZeropsGitBlockProps) {
   const insertions = block.changed.reduce((total, file) => total + file.insertions, 0);
   const deletions = block.changed.reduce((total, file) => total + file.deletions, 0);
   const hasCommits = commits !== undefined && commits !== null;
@@ -76,7 +74,6 @@ export function ZeropsGitBlock({ block, commits, named = false, className }: Zer
       className={cn("flex min-w-0 flex-col gap-2", className)}
       data-zerops-surface="git-history"
     >
-      {named ? <SectionLabel level={3}>{block.label ?? block.repository}</SectionLabel> : null}
       {hasCommits ? commits : null}
 
       {block.changed.length === 0 ? null : (

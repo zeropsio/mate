@@ -145,6 +145,7 @@ export {
 export {
   derivePublicRouteOffers,
   derivePublicRoutes,
+  isPlatformSubdomain,
   type ZeropsPublicRoute,
   type ZeropsRouteOffer,
 } from "./publicRoutes.ts";

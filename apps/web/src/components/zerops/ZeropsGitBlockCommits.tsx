@@ -44,9 +44,12 @@ export function ZeropsGitBlockCommits({
   if (appId === undefined || change === undefined) return null;
   if (!historyOpen)
     return (
-      <Button variant="ghost" size="sm" onClick={() => setOpenedChange(identity)}>
-        History
-      </Button>
+      // Its own size at the column's start, not a bar across it; its words on the column's edge.
+      <div className="-ms-2.5 flex">
+        <Button variant="ghost" size="sm" onClick={() => setOpenedChange(identity)}>
+          History
+        </Button>
+      </div>
     );
 
   if (readout.kind !== "read" || readout.value.commits.length === 0) return null;
