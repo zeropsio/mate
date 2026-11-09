@@ -109,9 +109,9 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
   );
 
   // Each repository's state on GitHub, in the words its row on the project's page says it.
-  const repos = (projectFlow?.codeRepos ?? projectFlow?.repos)?.filter(
-    (entry) => entry.name !== RECIPE_REPO,
-  );
+  // Kept by the flow's own lists, so a render that reads nothing new words nothing again.
+  const listed = projectFlow?.codeRepos ?? projectFlow?.repos;
+  const repos = useMemo(() => listed?.filter((entry) => entry.name !== RECIPE_REPO), [listed]);
   const git = useGitTargetOperations(groupId ?? "");
   const writes =
     mirrorAuthorityLine(

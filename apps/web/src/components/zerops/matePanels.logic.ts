@@ -14,7 +14,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { cardChanges, type PlaceLine } from "./projects/projectCard.logic";
-import { applicationStage } from "./system";
+import { applicationStage, openChangeWords } from "./system";
 
 /** One row of a repository's work, as a change row draws it. */
 export type GitWorkRow =
@@ -41,10 +41,12 @@ export function uncommittedWords(count: number): string {
 const CALM = new Set<GitBlock["state"]>(["untouched", "unpushed", "in-review"]);
 
 /**
- * A repository's work as rows: the Mate's open change with its state (or, while files wait on
- * disk, that count); a landed change in the project's own words for where it went
- * (`landedWords`, "Merged · waits for production"), under a row for new work on disk; and with no
- * change, the one sentence `gitTab.ts` gives its state.
+ * A repository's work as rows. With no change, the one sentence `gitTab.ts` gives its state — or,
+ * where its state is calm, what waits on disk. An open change under review says where it stands,
+ * or what of its work is not committed or pushed yet. A landed change says where it went in the
+ * project's own words (`landedWords`, "Merged · waits for production"), under a row for each kind
+ * of new work since — files on disk, commits not pushed — or for what was proved wrong. A change
+ * whose checkout no longer reads as a repository is drawn as it stands, never as one under review.
  */
 export function gitWorkRows(
   block: GitBlock,
@@ -58,11 +60,13 @@ export function gitWorkRows(
 ): ReadonlyArray<GitWorkRow> {
   const verdict = block.verdict;
   if (verdict === undefined) return [{ kind: "held" }];
+  const troubled = block.trouble.length > 0;
   const uncommitted = block.changed.length;
   const onDisk =
-    uncommitted > 0 && block.trouble.length === 0 && verdict.tone !== "attention"
+    uncommitted > 0 && !troubled && verdict.tone !== "attention"
       ? uncommittedWords(uncommitted)
       : undefined;
+  const unpushed = troubled ? undefined : block.unpushed;
   if (change === undefined || block.state === "unreadable")
     return [
       {
@@ -72,31 +76,48 @@ export function gitWorkRows(
       },
     ];
   const { pull } = change;
-  if (block.state === "merged")
+  if (block.state === "in-review") {
+    // Fresher news than a calm review: work on disk, then commits the change does not have yet.
+    const fresher = verdict.tone === "attention" ? undefined : (onDisk ?? unpushed);
     return [
-      ...(block.trouble.length > 0
-        ? [{ kind: "plain" as const, title: verdict.text, tone: verdict.tone }]
-        : onDisk === undefined
-          ? []
-          : [{ kind: "plain" as const, title: onDisk, tone: "busy" as const }]),
       {
         kind: "change",
         pull,
-        state: change.landedWords ?? verdict.text,
+        state: fresher ?? verdict.text,
+        tone: fresher === undefined ? verdict.tone : "busy",
+        open: true,
+        at: pull.updatedAt,
+      },
+    ];
+  }
+  const since: ReadonlyArray<GitWorkRow> = troubled
+    ? [{ kind: "plain", title: verdict.text, tone: verdict.tone }]
+    : [
+        ...(onDisk === undefined
+          ? []
+          : [{ kind: "plain" as const, title: onDisk, tone: "busy" as const }]),
+        ...(unpushed === undefined
+          ? []
+          : [{ kind: "plain" as const, title: unpushed, tone: "busy" as const }]),
+      ];
+  if (pull.merged)
+    return [
+      ...since,
+      {
+        kind: "change",
+        pull,
+        state: change.landedWords ?? "Merged",
         tone: "off",
         open: false,
         at: pull.mergedAt ?? pull.updatedAt,
       },
     ];
+  // Still open, but the checkout says nothing of a review (it is no repository now): the change as
+  // HQ tells it — its review is still the way to it — under what was proved wrong, if anything.
+  const open = openChangeWords(pull);
   return [
-    {
-      kind: "change",
-      pull,
-      state: onDisk ?? verdict.text,
-      tone: onDisk === undefined ? verdict.tone : "busy",
-      open: true,
-      at: pull.updatedAt,
-    },
+    ...(troubled ? since : []),
+    { kind: "change", pull, state: open.words, tone: open.tone, open: true, at: pull.updatedAt },
   ];
 }
 
