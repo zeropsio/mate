@@ -169,7 +169,7 @@ export function useJumpBoxModel(
   };
 }
 
-/** Where a find goes where the menu cannot show it: its own page. */
+/** A find's own page: a place's always, a project's or a change's where the menu cannot show it. */
 export interface JumpPages {
   readonly openMate: (mate: JumpMate) => void;
   readonly openProject: (groupId: string) => void;
@@ -183,10 +183,10 @@ export interface JumpPages {
 
 /**
  * What choosing a row does. `@`'s Mate with a conversation becomes the one
- * written to; any other Mate, or words in its conversation, open it. A
- * project, a place or a change is shown in the menu, which comes out to show
- * it (`showable`), and opens its own page where the menu cannot. The app's own
- * pages open.
+ * written to; any other Mate, or words in its conversation, open it. A place
+ * opens its own page. A project or a change is shown in the menu, which comes
+ * out to show it (`showable`), and opens its own page where the menu cannot.
+ * The app's own pages open.
  */
 export function chooseJumpItem(
   item: JumpItem,
@@ -215,9 +215,7 @@ export function chooseJumpItem(
       else pages.openProject(item.project.groupId);
       return;
     case "stop":
-      if (showable)
-        reveal({ kind: "stop", groupId: item.stop.groupId, projectId: item.stop.projectId });
-      else pages.openStop(item.stop);
+      pages.openStop(item.stop);
       return;
     case "page":
       pages.openPage(item.page);

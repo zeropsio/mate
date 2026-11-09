@@ -306,16 +306,21 @@ function releaseClock(line: PlaceLineData, since: number | undefined): PlaceLine
 
 /**
  * What a card says where a place is not there to open: "Not live yet", "No stage" — a hollow dot
- * and quiet words, in a place line's room.
+ * and quiet words, in a place line's room. `verb` is the one press that makes the place (*Put it
+ * live*), at the line's end: taller than the line, it overhangs it, so the line keeps a place
+ * line's height and the card does not move when the place comes.
  */
-function QuietPlace({ children }: { readonly children: string }) {
+function QuietPlace({ children, verb }: { readonly children: string; readonly verb?: ReactNode }) {
   return (
     <div
-      className="flex min-h-6 min-w-0 items-center gap-2 text-body text-muted-foreground"
+      className="flex min-h-5 min-w-0 items-center gap-2 text-body text-muted-foreground"
       data-zerops-place-quiet=""
     >
       <PlaceDot dot="none" />
-      {children}
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {verb === undefined || verb === null ? null : (
+        <span className="-my-1 flex shrink-0">{verb}</span>
+      )}
     </div>
   );
 }
@@ -546,9 +551,9 @@ function StopReads<T>({ entry }: { readonly entry: ProjectsFlowGroup<T> }) {
 
 /**
  * A project's card, top to bottom: its name, which opens its page, and its ···; production and
- * each stage, one line each, which open the place — or "Not live yet"; what waits on the viewer,
- * lifted; its Mates; and *Put it live* while it has no production. Its changes, its history and
- * production's rarer verbs are on its pages and in its ··· (P2).
+ * each stage, one line each, which open the place — or "Not live yet", with *Put it live* at its
+ * end; what waits on the viewer, lifted; and its Mates. Its changes, its history and production's
+ * rarer verbs are on its pages and in its ··· (P2).
  */
 function ProjectCard<T>({
   entry,
@@ -680,7 +685,33 @@ function ProjectCard<T>({
       </header>
       <div className="ov-places" data-zerops-surface="card-places">
         {notLive || production === undefined ? (
-          <QuietPlace>Not live yet</QuietPlace>
+          <>
+            <QuietPlace
+              verb={
+                putLive === undefined ? undefined : (
+                  <Button
+                    aria-describedby={
+                      putLive === "busy" ? `${group.groupId}-put-live-why` : undefined
+                    }
+                    data-zerops-place-setup="production"
+                    disabled={putLive === "busy"}
+                    onClick={putLive === "busy" ? undefined : putLive}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {environmentDoorLabel("production", "production")}
+                  </Button>
+                )
+              }
+            >
+              Not live yet
+            </QuietPlace>
+            {putLive === "busy" ? (
+              <p className="ov-place-note" id={`${group.groupId}-put-live-why`} role="status">
+                {PUT_LIVE_AFTER_CREATION}
+              </p>
+            ) : null}
+          </>
         ) : (
           <CardPlace groupId={group.groupId} line={production} onVault={props.openPlaceVault} />
         )}
@@ -725,23 +756,6 @@ function ProjectCard<T>({
           onAdd={addMate?.onAdd}
           props={props}
         />
-        {putLive === undefined ? null : (
-          <div className="ov-card-foot" data-zerops-place-setup="production">
-            <Button
-              disabled={putLive === "busy"}
-              onClick={putLive === "busy" ? undefined : putLive}
-              size="sm"
-              variant="secondary"
-            >
-              {environmentDoorLabel("production", "production")}
-            </Button>
-            {putLive === "busy" ? (
-              <p className="ov-card-note" role="status">
-                {PUT_LIVE_AFTER_CREATION}
-              </p>
-            ) : null}
-          </div>
-        )}
         <StopReads entry={entry} />
       </CardBody>
     </article>

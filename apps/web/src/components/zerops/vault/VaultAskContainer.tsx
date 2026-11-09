@@ -41,6 +41,7 @@ import {
   type VaultAskPress,
   engineVaultAskFor,
   openVaultAsk,
+  vaultAskLabel,
   vaultAskOf,
   vaultAskRowHolds,
   vaultAskState,
@@ -123,6 +124,30 @@ const selectOpenId = (detail: { readonly activities?: unknown } | null) =>
 /** The request the engine keeps open longest in the conversation: the one above the composer. */
 export function useOpenVaultAskId(threadRef: ScopedThreadRef | null): string | null {
   return useThreadDetail(threadRef, selectOpenId);
+}
+
+/**
+ * The same open request for a surface outside the conversation (its header's status): what it asks
+ * for, in people's words, and the way to its card's row.
+ */
+export function useOpenVaultAskDoor(
+  threadRef: ScopedThreadRef | null,
+): { readonly name: string; readonly show: () => void } | null {
+  const open = useThreadDetail(threadRef, selectOpenAsk);
+  return useMemo(
+    () =>
+      open === null
+        ? null
+        : {
+            name: vaultAskLabel(open.ask),
+            show: () =>
+              showAskInConversation({
+                askId: open.requestId,
+                holds: vaultAskRowHolds(open.ask),
+              }),
+          },
+    [open],
+  );
 }
 
 /** The oldest open ask above the composer, with "Show in conversation" to its card. */
