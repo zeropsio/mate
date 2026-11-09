@@ -159,6 +159,7 @@ describe("a release as HQ records it", () => {
         { service: "web", commit: WEB },
       ],
       taggedAt: "2026-10-02T10:00:00.000Z",
+      by: "u1",
     });
   });
 

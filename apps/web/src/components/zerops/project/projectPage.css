@@ -1,0 +1,191 @@
+/* A project's own page: its header, then a main column for what changes day to day and a side
+   column for what is set up once. Side by side once both have room, the side column under the
+   main one below that. A heading hugs its rows; groups stand three times further apart. */
+.pp {
+  display: grid;
+  min-width: 0;
+  gap: 20px;
+}
+
+.pp-head {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 12px;
+}
+
+.pp-title {
+  min-width: 0;
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.02em;
+}
+
+.pp-head-acts {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.pp-cols {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 24px 20px;
+}
+
+@container flow (min-width: 980px) {
+  .pp-cols {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
+.pp-main,
+.pp-side {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 24px;
+}
+
+/* One group of the main column: its label hugging its card. */
+.pp-group {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+/* A card of the page: the overview card's ground and edge, so a project reads as one thing on
+   both. */
+.pp-card {
+  --ov-ground: var(--card);
+  --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
+  --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
+  --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
+  display: grid;
+  min-width: 0;
+  border-radius: 16px;
+  background: var(--ov-ground);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
+    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 4%, transparent),
+    0 8px 24px -12px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
+}
+
+.dark .pp-card {
+  --ov-ground: color-mix(in oklab, var(--foreground) 4%, var(--background));
+  --ov-lift: color-mix(in oklab, var(--foreground) 8%, var(--background));
+  --ov-rule: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+/* A card of rows: its rows' hover runs to its edge less a hair. */
+.pp-list {
+  gap: 2px;
+  padding: 8px;
+}
+
+.pp-list > .ov-changes {
+  margin: 0;
+}
+
+/* A place: its line, then what its release brought, then what goes to it next. */
+.pp-place {
+  gap: 10px;
+  padding: 12px 16px;
+}
+
+.pp-brought {
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+  text-wrap: pretty;
+}
+
+.pp-brought-more {
+  color: var(--primary);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pp-brought-more:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pp-place-note,
+.pp-empty {
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+}
+
+.pp-empty {
+  padding: 6px 8px;
+}
+
+.pp-more {
+  display: flex;
+  padding: 0 8px 0 38px;
+}
+
+/* The side column's card: one row a setup, each split from the last by a hairline. */
+.pp-setup {
+  padding: 4px 16px;
+}
+
+.pp-setup-row {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 12px 0;
+}
+
+.pp-setup-row + .pp-setup-row {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-addresses {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* An address opened beside the page: its host, then the arrow that says it leaves. */
+.pp-site {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+  text-underline-offset: 2px;
+}
+
+.pp-site:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
+.pp-detail {
+  padding: 12px;
+}
+
+/* Who has access, opened here: the table's own section stands on this card, named by its label. */
+.pp-detail > .ov-sec {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.pp-detail > .ov-sec > .ov-sec-name {
+  display: none;
+}

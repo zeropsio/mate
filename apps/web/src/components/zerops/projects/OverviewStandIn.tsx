@@ -1,6 +1,6 @@
 /**
  * The overview while it is read: its own shape — the title row, the filters' row and the project
- * cards side by side — at the places the page draws them, painted once and replaced by the page
+ * cards in their grid — at the places the page draws them, painted once and replaced by the page
  * in one frame. It says no words but its title, which is the page's own and never taken back.
  * The reload's whole path stands in with it (the router, the chat's layout, the door, HQ's member
  * read), so a reload paints this once and then the cards in the same places.
@@ -26,16 +26,13 @@ function TitleRow() {
 }
 
 /**
- * One project card's box, its words grey; `page` is the card a project's own page draws. A card
- * waiting for its detail stands in with it under the card's own name (`label`, `ref`, `id`).
+ * One project card's box, its words grey. A card waiting for its detail stands in with it under the card's own name (`label`, `ref`, `id`).
  */
 export function ProjectCardStandIn({
-  page = false,
   label,
   id,
   ref,
 }: {
-  readonly page?: boolean;
   readonly label?: string | undefined;
   readonly id?: string | undefined;
   readonly ref?: ((element: HTMLElement | null) => void) | undefined;
@@ -45,10 +42,9 @@ export function ProjectCardStandIn({
       aria-busy={label === undefined ? undefined : "true"}
       aria-label={label}
       className="ov-card gap-3"
-      data-page={page ? "" : undefined}
       id={id}
       ref={ref}
-      role={label === undefined || page ? undefined : "listitem"}
+      role={label === undefined ? undefined : "listitem"}
     >
       <div className="flex items-center gap-2.5 px-1">
         <Skeleton className="size-8 shrink-0" shape="pill" />
@@ -67,7 +63,7 @@ export function ProjectCardStandIn({
 }
 
 /**
- * The cards' rail, as `ProjectCards` lays it out: the same row and card boxes, their words grey —
+ * The cards' grid, as `ProjectCards` lays it out: the same grid and card boxes, their words grey —
  * as many as this browser's overview drew last.
  */
 export function OverviewCardsStandIn({ count }: { readonly count?: number }) {
@@ -76,8 +72,8 @@ export function OverviewCardsStandIn({ count }: { readonly count?: number }) {
   const cards = count ?? remembered;
   return (
     <Loading label="Your projects">
-      <div className="ov-rail">
-        <div className="ov-row" data-overview-stand-in-cards="">
+      <div className="@container/flow">
+        <div className="ov-grid" data-overview-stand-in-cards="">
           {Array.from({ length: cards }, (_, index) => (
             <ProjectCardStandIn key={index} />
           ))}

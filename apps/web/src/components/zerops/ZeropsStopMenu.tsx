@@ -115,7 +115,7 @@ export function ZeropsStopMenu({
                 .open({ orgId, projectId, ...(groupId === undefined ? {} : { groupId }) });
             }}
           >
-            Addresses
+            Manage addresses
           </MenuItem>
         )}
         <MenuItem

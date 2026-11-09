@@ -1,8 +1,8 @@
 /**
- * A project's spend over the last 30 days, a section of its page's column: the figure, a bar a day
- * against the daily average, and what the figure is made of. Each day stacks compute (Zerops) under
- * model tokens (the organization's key); a bar's tooltip says the day's split. Nothing shows, and
- * no room is kept, when either half cannot be read.
+ * A project's spend over the last 30 days, a row of its page's side column: the figure, what it is
+ * a day, and a bar a day. Each day stacks compute (Zerops) under model tokens (the organization's
+ * key); a bar's tooltip says the day's split. Nothing shows, and no room is kept, when either half
+ * cannot be read.
  */
 import {
   agentUsage,
@@ -13,7 +13,7 @@ import {
   type ComputeSpendRead,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
-import { createContext, useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 
 import { Skeleton } from "~/components/ui/skeleton";
 import {
@@ -25,20 +25,17 @@ import {
 import { cn } from "~/lib/utils";
 import { useAccountOrgId, useDetailDemand, useProjection } from "~/zerops/accountData";
 
+import { SetupRow } from "../project/SetupCard";
+import { spendDaily } from "../project/projectSetup.logic";
 import {
-  averageLine,
-  dayLabel,
   formatUsd,
   moneyParts,
   spendBarPx,
   spendState,
-  subscriptionLine,
-  TOKEN_SOURCE,
   tokenSpendQuery,
   tooltipDay,
   type SpendSeries,
   type SpendState,
-  type SubscriptionMate,
 } from "./projectSpend.logic";
 
 const READING_COMPUTE = Atom.make<ComputeSpendRead>({ kind: "reading" });
@@ -106,8 +103,9 @@ interface BarsGeometry {
   readonly radius: string;
 }
 
-const CARD_BARS: BarsGeometry = {
-  height: 92,
+/** The sparkline's plot: a bar a day at a line's height. */
+const ROW_BARS: BarsGeometry = {
+  height: 28,
   bar: "w-[calc(100%-5px)]",
   slot: null,
   radius: "rounded-t-sm",
@@ -119,11 +117,9 @@ const SEGMENT_GAP = 2;
 function SpendBars({
   series,
   geometry,
-  average = false,
 }: {
   readonly series: SpendSeries;
   readonly geometry: BarsGeometry;
-  readonly average?: boolean;
 }) {
   const scale = series.maxUsd > 0 ? (geometry.height - SEGMENT_GAP) / series.maxUsd : 0;
   const px = (usd: number) => spendBarPx(usd, scale);
@@ -199,134 +195,44 @@ function SpendBars({
             </TooltipTrigger>
           );
         })}
-        {average && series.averageUsd > 0 ? (
-          <span
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 border-t border-dashed border-muted-foreground/60"
-            style={{ bottom: Math.round(series.averageUsd * scale) }}
-          />
-        ) : null}
       </div>
     </>
   );
 }
 
-function LegendRow({
-  fill,
-  label,
-  usd,
-}: {
-  readonly fill: string;
-  readonly label: string;
-  readonly usd: number;
-}) {
-  return (
-    <div className="grid max-w-80 grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-2">
-      <span aria-hidden="true" className={cn("size-2.5 rounded-xs", fill)} />
-      <span className="truncate text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums text-foreground">{formatUsd(usd)}</span>
-    </div>
-  );
-}
-
-const NO_MATES: ReadonlyArray<SubscriptionMate> = [];
-
-/** A section of the page's column (`ov-side`): its name, then what it holds. */
-function SpendSection({
-  busy = false,
-  children,
-}: {
-  readonly busy?: boolean;
-  readonly children: ReactNode;
-}) {
-  return (
-    <section
-      aria-busy={busy ? "true" : undefined}
-      aria-label="Spend"
-      className="ov-side"
-      data-zerops-surface="project-spend"
-    >
-      <h2 className="ov-side-name">Spend</h2>
-      <div className="px-2 pb-1.5">{children}</div>
-    </section>
-  );
-}
-
-/** The project page's Spend: the figure, a bar a day against the average, and its parts. */
-export function ProjectSpendSectionView({
-  state,
-  subscriptionMates = NO_MATES,
-}: {
-  readonly state: SpendState;
-  readonly subscriptionMates?: ReadonlyArray<SubscriptionMate>;
-}) {
+/**
+ * The project page's Spend row: the 30-day figure, what it is a day, and a bar a day under it —
+ * each bar's tooltip the day's split. Holds its room while read; not drawn where it is unknown.
+ */
+export function ProjectSpendRowView({ state }: { readonly state: SpendState }) {
   if (state.kind === "unknown") return null;
   if (state.kind === "loading")
     return (
-      <SpendSection busy>
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-7 w-32" />
-          <Skeleton className="h-[116px] w-full" />
-          <Skeleton className="h-[46px] w-full" />
-        </div>
-      </SpendSection>
+      <SetupRow busy label="Spend" surface="project-spend">
+        <Skeleton className="h-7 w-40" />
+        <Skeleton className="h-7 w-full" />
+      </SetupRow>
     );
   const { series } = state;
-  if (series.totalUsd === 0)
-    return (
-      <SpendSection>
+  return (
+    <SetupRow label="Spend" surface="project-spend">
+      {series.totalUsd === 0 ? (
         <p className="text-line text-muted-foreground">No spend in the last 30 days</p>
-      </SpendSection>
-    );
-  const first = series.days[0]?.day ?? "";
-  const last = series.days.at(-1)?.day ?? "";
-  const today = series.todayIndex >= 0 ? last : "";
-  const fine = subscriptionLine(subscriptionMates);
-  return (
-    <SpendSection>
-      <div className="flex flex-col gap-3">
-        <p className="flex h-7 items-baseline gap-2">
-          <Money usd={series.totalUsd} />
-          <span className="text-caption text-muted-foreground">30-day cost</span>
-        </p>
-        <div className="flex flex-col gap-2">
-          <SpendBars series={series} geometry={CARD_BARS} average />
-          <div className="flex justify-between text-caption tabular-nums text-muted-foreground">
-            <span>{dayLabel(first, today)}</span>
-            <span>{averageLine(series.averageUsd)}</span>
-            <span>{dayLabel(last, today)}</span>
-          </div>
-        </div>
-        <div className="flex flex-col gap-1.5 pt-1 text-line">
-          <LegendRow fill={COMPUTE_FILL} label="Compute · Zerops" usd={series.computeUsd} />
-          <LegendRow
-            fill={TOKENS_FILL}
-            label={`Model tokens · ${TOKEN_SOURCE}`}
-            usd={series.tokensUsd}
-          />
-        </div>
-        {fine === null ? null : (
-          <p className="text-caption text-muted-foreground text-pretty">{fine}</p>
-        )}
-      </div>
-    </SpendSection>
+      ) : (
+        <>
+          <p className="flex h-7 min-w-0 flex-wrap items-baseline gap-x-2">
+            <Money usd={series.totalUsd} />
+            <span className="text-caption text-muted-foreground">
+              {spendDaily(series.averageUsd, series.days.length)}
+            </span>
+          </p>
+          <SpendBars geometry={ROW_BARS} series={series} />
+        </>
+      )}
+    </SetupRow>
   );
 }
 
-export function ProjectSpendSection({
-  subscriptionMates,
-  ...input
-}: ProjectSpendInput & { readonly subscriptionMates?: ReadonlyArray<SubscriptionMate> }) {
-  return (
-    <ProjectSpendSectionView
-      state={useProjectSpend(input)}
-      {...(subscriptionMates === undefined ? {} : { subscriptionMates })}
-    />
-  );
+export function ProjectSpendRow(input: ProjectSpendInput) {
+  return <ProjectSpendRowView state={useProjectSpend(input)} />;
 }
-
-/**
- * The project page's Spend, handed from the page, which knows the project's Mates, to its column
- * (`ZeropsGroupPane`); none outside a project page.
- */
-export const ProjectPageSpend = createContext<ReactNode>(null);

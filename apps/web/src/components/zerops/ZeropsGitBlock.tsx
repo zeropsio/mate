@@ -1,83 +1,45 @@
 /**
- * One code repository in the Git tab: where its work stands, what moves it,
- * and what the Mate has actually done to the code.
+ * One code repository's history in the Git tab: what the Mate has actually done to the code.
  *
- * The block used to open on `api · feature/invoices ↑0 ↓0` — the repository's
- * own name spent twice over, a branch named after a project id, and two zeros
- * that say exactly what no arrows at all would have said — and left the one
- * word a person came for in a data attribute nobody reads (the owner,
- * 2026-09-19: "this tab is pretty shit isn't it").
- *
- * So it is the anatomy every other surface opens with: the name, the facts
- * under it in one quiet line, then the answer in a panel whose edge is the
- * answer's colour, carrying the verb that acts on it.
- *
- * Under that: the **commits** this branch has that its base does not, which
- * are the Mate's actual work and the thing a person came to see. And **what is
- * on disk and not committed**, which lives in the
- * container and which nothing outside it can prove — the tab used to keep a
- * count of that and throw the files away.
- *
- * The change's number opens the change's own page, not Gitea: that page is
- * where its conversation, its commits and its *Merge* are, and sending a
- * person to a forge they have to sign into for a change this app can already
- * draw is the long way round to a worse copy (the owner, 2026-09-19).
- *
- * Structural: every word is `gitTab.ts`'s (R5) — including its case.
+ * Where the work stands and where it goes are the tab's rows above (`ZeropsGitPanel`); this is
+ * what sits under them. The **commits** this branch has that its base does not, which are the
+ * Mate's actual work. And **what is on disk and not committed**, which lives in the container and
+ * which nothing outside it can prove — the tab used to keep a count of that and throw the files
+ * away.
  */
 import type { GitBlock } from "@t3tools/client-runtime/zerops";
 import type { ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { VerdictPanel, VerdictPanelWaiting } from "./primitives";
-import { InlineButton } from "~/components/ui/button";
+import { SectionLabel } from "./system";
 
 export interface ZeropsGitBlockProps {
   readonly block: GitBlock;
-  /** The one verb, when the person may press it (`gitActionAllowed`). */
-  readonly action?: ReactNode;
-  /** Opens the change's own page. */
-  readonly onOpenChange?: (() => void) | undefined;
   /**
    * The commits on this branch that the base does not have — the Mate's own
    * work. Filled by the caller, which owns the read; a block stays pure.
    */
   readonly commits?: ReactNode;
+  /** Says which repository it is, where the tab lists several. */
+  readonly named?: boolean;
   readonly className?: string;
 }
 
-/** One fact under the name, keyed by what it is rather than by where it sits. */
-interface Fact {
-  readonly id: string;
-  readonly node: ReactNode;
-}
-
-/**
- * The facts under the name, separated the way the rest of the client separates
- * them. Built from nodes rather than from a joined string because the change's
- * number is the way into its page and has to stay a control.
- */
-function Facts({ facts }: { readonly facts: ReadonlyArray<Fact> }) {
-  return (
-    <span
-      className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground"
-      data-zerops-surface="git-facts"
-    >
-      {facts.map((fact, index) => (
-        <span className="contents" key={fact.id}>
-          {index === 0 ? null : <span aria-hidden="true">·</span>}
-          {fact.node}
-        </span>
-      ))}
-    </span>
-  );
-}
-
-/** A list under the answer: what it is called, and the rows themselves. */
-function Detail({ children, title }: { readonly children: ReactNode; readonly title: string }) {
+/** A list under the rows: what it is called, how many, and the rows themselves. */
+function Detail({
+  children,
+  title,
+  count,
+}: {
+  readonly children: ReactNode;
+  readonly title: string;
+  readonly count: number;
+}) {
   return (
     <section className="flex min-w-0 flex-col gap-1">
-      <h4 className="text-xs font-medium text-muted-foreground">{title}</h4>
+      <SectionLabel count={count} level={3}>
+        {title}
+      </SectionLabel>
       <ul className="flex min-w-0 flex-col">{children}</ul>
     </section>
   );
@@ -104,74 +66,21 @@ function DiffStat({
   );
 }
 
-export function ZeropsGitBlock({
-  block,
-  action,
-  commits,
-  onOpenChange,
-  className,
-}: ZeropsGitBlockProps) {
+export function ZeropsGitBlock({ block, commits, named = false, className }: ZeropsGitBlockProps) {
   const insertions = block.changed.reduce((total, file) => total + file.insertions, 0);
   const deletions = block.changed.reduce((total, file) => total + file.deletions, 0);
+  const hasCommits = commits !== undefined && commits !== null;
+  if (!hasCommits && block.changed.length === 0) return null;
   return (
-    <li
-      className={cn("flex min-w-0 flex-col gap-3", className)}
-      data-zerops-git-block={block.repository}
-      data-zerops-git-state={block.state}
+    <section
+      className={cn("flex min-w-0 flex-col gap-2", className)}
+      data-zerops-surface="git-history"
     >
-      <div className="flex min-w-0 flex-col gap-1.5">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-sm font-medium text-foreground">
-            {block.label ?? block.repository}
-          </span>
-          <Facts
-            facts={[
-              ...(block.pullRequestNumber === undefined
-                ? []
-                : [
-                    {
-                      id: "change",
-                      node:
-                        onOpenChange === undefined ? (
-                          <span>#{block.pullRequestNumber}</span>
-                        ) : (
-                          <InlineButton data-zerops-surface="git-change" onClick={onOpenChange}>
-                            #{block.pullRequestNumber}
-                          </InlineButton>
-                        ),
-                    },
-                  ]),
-              {
-                id: "checkout",
-                node: <span className="min-w-0 truncate">{block.checkoutLine}</span>,
-              },
-              ...(block.destination.length === 0
-                ? []
-                : [
-                    {
-                      id: "destination",
-                      node: <span className="min-w-0 truncate">{block.destination}</span>,
-                    },
-                  ]),
-            ]}
-          />
-        </div>
-        {block.verdict === undefined ? (
-          // The forge has not answered. The place stays open — at the panel's
-          // own height, from the panel's own class — so the commits under it
-          // do not jump when it does.
-          <VerdictPanelWaiting data-zerops-surface="git-verdict-waiting" />
-        ) : (
-          <VerdictPanel text={block.verdict.text} tone={block.verdict.tone}>
-            {action === undefined || action === null ? undefined : action}
-          </VerdictPanel>
-        )}
-      </div>
-
-      {commits === undefined || commits === null ? null : commits}
+      {named ? <SectionLabel level={3}>{block.label ?? block.repository}</SectionLabel> : null}
+      {hasCommits ? commits : null}
 
       {block.changed.length === 0 ? null : (
-        <Detail title={`Not committed · ${String(block.changed.length)}`}>
+        <Detail count={block.changed.length} title="Not committed">
           {block.changed.map((file) => (
             <li
               className="flex min-w-0 items-center justify-between gap-3 py-1 text-xs"
@@ -188,6 +97,6 @@ export function ZeropsGitBlock({
           </li>
         </Detail>
       )}
-    </li>
+    </section>
   );
 }

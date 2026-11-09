@@ -18,7 +18,7 @@
  *
  * ## One block per repository, one answer, one verb
  *
- * A block opens with where the work stands — `Nothing is stopping it.` — and
+ * A block opens with where the work stands — `Ready to merge` — and
  * carries the verb that moves it. Under the answer, quietly, the checkout it
  * was read from: the branch, what is unpushed and what is uncommitted, and
  * which environment the work lands on.
@@ -225,6 +225,12 @@ export interface GitBlock {
   readonly state: GitBlockState;
   /** What is changed on disk and not committed — the container's own fact. */
   readonly changed: ReadonlyArray<GitChangedFile>;
+  /**
+   * Commits on the branch its remote branch lacks — "2 commits not pushed yet" — whatever the
+   * block's state: a Mate whose change merged may already have committed the next one. Absent
+   * where there are none, or where the branch tracks no remote branch to count against.
+   */
+  readonly unpushed?: string | undefined;
   /** The Mate's change in it, by its number, head and address at HQ. */
   readonly pullRequestNumber: number | undefined;
   readonly pullRequestHead: string | undefined;
@@ -349,7 +355,7 @@ export function gitCheckoutLine(
   /**
    * Whether HQ holds a change from this branch. That proves a push the checkout
    * may no longer track (a merge takes the remote branch with it), so the line
-   * cannot say "never pushed" beside "Merged into main.".
+   * cannot say "never pushed" beside "Merged".
    */
   hasChange = false,
 ): string {
@@ -425,20 +431,19 @@ export function gitVerdict(input: {
       // back.
       return undefined;
     case "unreadable":
-      return { tone: "failed", text: "Could not read this repository.", ask: undefined };
+      return { tone: "failed", text: "Could not read this repository", ask: undefined };
     case "no-repository":
-      return { tone: "off", text: "No code here yet.", ask: undefined };
+      return { tone: "off", text: "Nothing committed yet", ask: undefined };
     case "merged":
-      return { tone: "ok", text: `Merged into ${input.baseBranch}.`, ask: undefined };
+      return { tone: "ok", text: "Merged", ask: undefined };
     case "in-review":
       // The same pull request has a page of its own and a row in every list.
       // Two surfaces answering the same question in two colours is how a
       // release came to wear a rebase's amber, so the tones here are the tones
-      // there — held to it by a test that reads them all. Only the words are
-      // shorter: the number and the branch are already on the line above this
-      // panel.
+      // there — held to it by a test that reads them all. The words are the
+      // plain state a change row says after its Mate's name ("Ready to merge").
       return {
-        ...IN_REVIEW[input.mergeability],
+        ...inReview(input.mergeability, input.baseBranch),
         ask:
           input.pullRequestNumber === undefined
             ? undefined
@@ -448,10 +453,10 @@ export function gitVerdict(input: {
               })?.ask,
       };
     case "behind": {
-      const { subject, verb } = commits(input.checkout.behindCount);
+      const { subject } = commits(input.checkout.behindCount);
       return {
         tone: "attention",
-        text: `${subject} on the remote ${verb} not in this checkout yet.`,
+        text: `Behind ${input.baseBranch} by ${subject}`,
         // `Update from main` is right here, and it is the person's to press.
         ask: undefined,
       };
@@ -461,14 +466,14 @@ export function gitVerdict(input: {
       if (!input.checkout.hasUpstream) {
         return {
           tone: "busy",
-          text: "This branch has never been pushed.",
+          text: "Not pushed yet",
           ask: `Your work on ${what} has never been pushed. Push the branch.`,
         };
       }
       const { subject, verb } = commits(input.checkout.aheadCount);
       return {
         tone: "busy",
-        text: `${subject} here ${verb} not pushed yet.`,
+        text: `${subject} not pushed yet`,
         ask: `${subject} on ${what} ${verb} not pushed. Push them.`,
       };
     }
@@ -476,7 +481,7 @@ export function gitVerdict(input: {
       // Grey, not green: a repository nobody has touched is the absence of
       // news, and a wall of green for idle rows would spend the colour that
       // says work has actually landed.
-      return { tone: "off", text: "Nothing new here.", ask: undefined };
+      return { tone: "off", text: `Nothing new since ${input.baseBranch}`, ask: undefined };
   }
 }
 
@@ -486,12 +491,19 @@ export function gitVerdict(input: {
  * for one nothing stops: no signal about it is not a good signal, the same
  * quiet its own page gives it.
  */
-const IN_REVIEW: Record<MergeabilityKind, Omit<GitVerdict, "ask">> = {
-  mergeable: { tone: "off", text: "Nothing is stopping it." },
-  empty: { tone: "off", text: "Main already has all of it." },
-  checking: { tone: "busy", text: "Checking whether it merges cleanly." },
-  conflicting: { tone: "attention", text: "It no longer merges cleanly." },
-};
+function inReview(mergeability: MergeabilityKind, baseBranch: string): Omit<GitVerdict, "ask"> {
+  switch (mergeability) {
+    case "mergeable":
+      return { tone: "off", text: "Ready to merge" };
+    case "empty":
+      return { tone: "off", text: "Nothing to merge" };
+    case "checking":
+      return { tone: "busy", text: "Checking whether it merges" };
+    case "conflicting":
+      // A conflict is with the branch the change goes onto, by its own name.
+      return { tone: "attention", text: `Conflicts with ${baseBranch}` };
+  }
+}
 
 /**
  * What is provably wrong with this Mate's Git setup, in the order a person
@@ -624,6 +636,12 @@ export function gitBlock(input: {
     checkoutLine: gitCheckoutLine(checkout, input.mateName, change !== undefined),
     state,
     changed: checkout.changed,
+    ...(checkout.read !== false &&
+    checkout.failure === undefined &&
+    checkout.hasUpstream &&
+    checkout.aheadCount > 0
+      ? { unpushed: `${commits(checkout.aheadCount).subject} not pushed yet` }
+      : {}),
     pullRequestNumber: change?.number,
     pullRequestHead: change?.headSha,
     pullRequestUrl: change?.url,

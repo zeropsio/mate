@@ -199,7 +199,7 @@ describe("ZeropsStopMenu's Addresses", () => {
       mounted.add(tree);
     });
     const items = tree!.root.findAll(
-      (node) => node.type === "div" && node.children.includes("Addresses"),
+      (node) => node.type === "div" && node.children.includes("Manage addresses"),
     );
     return {
       items,

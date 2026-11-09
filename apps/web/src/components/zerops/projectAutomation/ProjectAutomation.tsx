@@ -60,6 +60,9 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
 import { appName, appReaching } from "../../settings/automationSettings.logic";
 import { MateFace } from "../primitives";
+import { SetupRow } from "../project/SetupCard";
+import { automationSummary } from "../project/projectSetup.logic";
+import { SectionAction } from "../system";
 import { changesInReview, mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
   automationSection,
@@ -176,6 +179,82 @@ export function ProjectAutomation({
       pool={pool}
       repos={repos}
     />
+  );
+}
+
+/**
+ * The Automation row of a project page's side column: one line until the project has automated
+ * Mates — *No automated Mates* and *Add* for an Owner or Admin — then their faces, how many are at
+ * work, and *Manage*, which opens the whole section (`ProjectAutomation`). Not drawn for anyone
+ * else while there is nothing to read, nor where HQ is older than automated Mates.
+ */
+export function ProjectAutomationRow({
+  groupId,
+  onManage,
+}: {
+  readonly groupId: string;
+  readonly onManage: (from: HTMLElement) => void;
+}) {
+  const { activeOrganization } = useZeropsSession();
+  const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
+  const keys = useOrgAiKeys(admin);
+  const held = useAutomatedKey();
+  const key = admin ? automatedKeyState(keys.read.keys) : held;
+  const { pool } = usePool(groupId);
+  const addMate = useAddAutomatedMate(groupId);
+  const openMate = useOpenMate();
+  if (automationSection({ admin, key, pool: pool.length, sources: 0 }) !== "shown") return null;
+  const onOpen = (projectId: string) => {
+    openMate({ projectId });
+  };
+  return (
+    <ProjectAutomationRowView
+      face={(mate) => <PoolFace key={mate.projectId} mate={mate} onOpen={onOpen} />}
+      onAdd={admin ? (addMate ?? onManage) : undefined}
+      onManage={onManage}
+      pool={pool}
+    />
+  );
+}
+
+export function ProjectAutomationRowView({
+  pool,
+  onAdd,
+  onManage,
+  face,
+}: {
+  readonly pool: ReadonlyArray<PoolMate>;
+  /** *Add*, for an Owner or Admin while the project has no automated Mate. */
+  readonly onAdd: ((from: HTMLElement) => void) | undefined;
+  readonly onManage: (from: HTMLElement) => void;
+  /** A pool Mate's face, which opens it (`PoolFace`). */
+  readonly face: (mate: PoolMate) => ReactNode;
+}) {
+  if (pool.length === 0)
+    return (
+      <SetupRow
+        action={
+          onAdd === undefined ? undefined : <SectionAction onClick={onAdd}>Add</SectionAction>
+        }
+        label="Automation"
+        surface="project-automation-row"
+      >
+        <p className="text-line text-muted-foreground">No automated Mates</p>
+      </SetupRow>
+    );
+  return (
+    <SetupRow
+      action={<SectionAction onClick={onManage}>Manage</SectionAction>}
+      label="Automation"
+      surface="project-automation-row"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="flex shrink-0 items-center">{pool.slice(0, 5).map(face)}</span>
+        <span className="min-w-0 truncate text-line text-muted-foreground">
+          {automationSummary(pool)}
+        </span>
+      </div>
+    </SetupRow>
   );
 }
 
@@ -664,8 +743,11 @@ export function ProjectAutomationView({
   readonly workingOf?: ((projectId: string) => boolean) | undefined;
 }) {
   return (
-    <section aria-label="Automation" className="ov-side" data-zerops-surface="project-automation">
-      <h2 className="ov-side-name">Automation</h2>
+    <section
+      aria-label="Automation"
+      className="flex flex-col gap-1"
+      data-zerops-surface="project-automation"
+    >
       {update ? (
         <p className="px-2 text-sm text-muted-foreground">Update HQ to set up automated Mates.</p>
       ) : (

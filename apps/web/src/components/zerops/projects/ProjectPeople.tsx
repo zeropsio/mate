@@ -77,9 +77,14 @@ import {
   everywhereChanges,
   type AccessColumn,
   type AccessRow,
+  type AccessTableView,
   type CellChoice,
 } from "./accessTable.logic";
 import { cellKey, PlaceAccessSummary, ProjectAccessTable } from "./ProjectAccessTable";
+import { Skeleton } from "../../ui/skeleton";
+import { SetupRow } from "../project/SetupCard";
+import { peopleSummary } from "../project/projectSetup.logic";
+import { SectionAction } from "../system";
 
 /** Outside an account nothing is read: every project's grants are still to come. */
 const UNREAD_GRANTS = Atom.make<Readonly<Record<string, ProjectGrantsRead>>>({});
@@ -395,6 +400,56 @@ export function ProjectPeople({ groupId }: { groupId: string }) {
       {...(view.kind === "table" && view.invite ? { personPage: LINKED } : {})}
       {...(writable && clientId !== null ? { onCell, onEverywhere, onWithdraw, onAdd } : {})}
     />
+  );
+}
+
+/**
+ * The People row of a project page's side column: how many people reach the project and how many
+ * its production, and *Manage*, which opens who has access where (`ProjectPeople`).
+ */
+export function ProjectPeopleRow({
+  groupId,
+  onManage,
+}: {
+  readonly groupId: string;
+  readonly onManage: (from: HTMLElement) => void;
+}) {
+  const projects = useGroupProjects(groupId);
+  const { base } = useAccessReads(projects);
+  const view = useMemo(() => accessTable({ ...base, projects }), [base, projects]);
+  return <ProjectPeopleRowView onManage={onManage} view={view} />;
+}
+
+export function ProjectPeopleRowView({
+  view,
+  onManage,
+}: {
+  readonly view: AccessTableView;
+  readonly onManage: (from: HTMLElement) => void;
+}) {
+  const summary = peopleSummary(view);
+  return (
+    <SetupRow
+      action={<SectionAction onClick={onManage}>Manage</SectionAction>}
+      busy={view.kind === "reading"}
+      label="People"
+      surface="project-people"
+    >
+      <p className="flex min-h-5 min-w-0 flex-wrap gap-x-1.5 text-line">
+        {view.kind === "unreadable" ? (
+          <span className="text-muted-foreground">{view.line}</span>
+        ) : summary === null ? (
+          <Skeleton className="h-5 w-48" />
+        ) : (
+          <>
+            <span className="text-foreground">{summary.people}</span>
+            {summary.production === null ? null : (
+              <span className="text-muted-foreground">· {summary.production}</span>
+            )}
+          </>
+        )}
+      </p>
+    </SetupRow>
   );
 }
 

@@ -68,17 +68,6 @@ describe("overview filter history", () => {
                 ),
               )
               .toEqual([...names].sort());
-            const row = await s.page.$eval('[data-zerops-surface="project-cards"]', (row) => ({
-              first: row.firstElementChild?.getAttribute("aria-label"),
-              scroll: row.scrollLeft,
-              width: row.clientWidth,
-              total: row.scrollWidth,
-              forward: row.parentElement?.hasAttribute("data-can-right"),
-            }));
-            expect(row.first).toBe("Ada");
-            expect(row.scroll, "All starts with the first project").toBe(0);
-            expect(row.total).toBeGreaterThan(row.width);
-            expect(row.forward, "Every restored project remains reachable").toBe(true);
           });
         yield* assertAll();
         for (const sequence of [

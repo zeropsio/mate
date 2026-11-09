@@ -44,12 +44,12 @@ describe("a place's head names it, says what runs and links its primary address"
       case: "a running production says its release, when and by whom, and its services",
       input: {
         tier: "production",
-        view: { tone: "good", word: "Deployed", version: version({ taggedBy: "Mira" }) },
+        view: { tone: "good", word: "Deployed", version: version({ taggedBy: "Wren" }) },
         releasedAge: "3h ago",
         source: "release",
         services: 1,
       },
-      text: "Running · v0.1.0 · released 3h ago by Mira · 1 service",
+      text: "Running · v0.1.0 · released 3h ago · 1 service",
     },
     {
       case: "a running production whose release says no maker leaves the name out",

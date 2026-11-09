@@ -33,6 +33,7 @@ export function useReleaseOffer(
       flow?.release.inFlight !== undefined ||
       pending.has(flowVerbKey({ kind: "release", groupId })),
     tag: flow?.release.suggestion,
+    inFlight: flow?.release.inFlight,
     onReview,
   };
 }
@@ -78,6 +79,8 @@ export interface ReleaseOffer {
   readonly releasing: boolean;
   /** The version it would cut, where the flow suggested one. */
   readonly tag: string | undefined;
+  /** The release tag on its way to production (`release.inFlight`); `undefined` while none is. */
+  readonly inFlight?: string | undefined;
   /** Why it is not offered, as the flow's gate says; `undefined` while it is. */
   readonly reason: string | undefined;
   /** Opens the release's review from what was pressed: nothing is tagged from a page (R1). */

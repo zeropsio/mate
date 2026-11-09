@@ -588,7 +588,8 @@ async function mountMenu(
               head: browserDom.document.head,
             }),
       });
-      const FlowPages = flowPage ? await import("../components/zerops/ZeropsGroupDetail") : null;
+      const PlacePages = flowPage ? await import("../components/zerops/PlacePage") : null;
+      const ProjectPages = flowPage ? await import("../components/zerops/ProjectPage") : null;
       Object.assign(window, {
         matchMedia: () => ({
           matches: false,
@@ -822,11 +823,12 @@ async function mountMenu(
                 <inventory.ZeropsInventoryProvider>
                   <sidebarUi.SidebarProvider>
                     {FullSidebar === null ? <Menu /> : <FullSidebar />}
-                    {FlowPages !== null &&
+                    {PlacePages !== null &&
+                      ProjectPages !== null &&
                       (environmentId === null ? (
-                        <FlowPages.ZeropsGroupDetailPage groupId="shop" />
+                        <ProjectPages.ZeropsGroupDetailPage groupId="shop" />
                       ) : (
-                        <FlowPages.ZeropsStopDetailPage
+                        <PlacePages.ZeropsStopDetailPage
                           groupId="shop"
                           environmentId={environmentId}
                         />

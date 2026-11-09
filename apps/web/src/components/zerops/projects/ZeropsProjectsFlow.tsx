@@ -1,5 +1,5 @@
 /**
- * The overview (round 5, "Mate Clean Overview"): a card per project with Mates, side by side —
+ * The overview (round 5, "Mate Clean Overview"): a card per project with Mates, in a grid —
  * its name and address, its Mates, a release ready to go and production's one line
  * (`ProjectCards`); then the projects without a Mate as lines, each its name and production's
  * line; the containers no project holds as one folded group; and the organization's HQ as the
@@ -28,8 +28,8 @@ import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { OverviewCardsStandIn } from "./OverviewStandIn";
 import { OtherContainers, OtherProjects } from "./ProjectList";
-import { ProjectCards, ProjectPage } from "./ProjectCards";
-import type { PlaceLine } from "./projectCard.logic";
+import { ProjectCards } from "./ProjectCards";
+import type { ProjectWait } from "./projectCard.logic";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -83,24 +83,32 @@ export interface ProjectsFlowGroup<T> {
 }
 
 /**
- * A project's own page: its card at the page's width, every Mate unfolded, and the page's own
- * column beside it — the people on it, its environments, its repositories and its history.
+ * A project's own page in place of the overview: drawn by the page from the group the flow reads
+ * and the same slots the cards fill, so a Mate's row, a change and a place say the same on both.
  */
 export interface ProjectPageSlot {
   readonly groupId: string;
-  /** The column beside the card. */
-  readonly aside: ReactNode;
-  /** *Add a Mate*, at the foot of its Mates. */
-  readonly onAddMate?: (() => void) | undefined;
-  /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
+  /** The page's body, once the project is among the drawn ones. */
+  readonly render: <T>(input: {
+    readonly entry: ProjectsFlowGroup<T>;
+    readonly props: ZeropsProjectsFlowProps<T>;
+    /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
+    readonly addMateWhy: string | null;
+  }) => ReactNode;
+  /** Why the project takes no Mate now, known before the press. */
   readonly addMateWhy?: string | null;
-  /** Who can work on it, and how — under its Mates on the card. */
-  readonly people?: ReactNode;
   /**
    * What the page says while the project is not among the drawn ones: `undrawn` where the tree
    * leaves it out for good (`ZeropsProjectsFlowProps.undrawn`), else while it is read.
    */
   readonly unread: (undrawn: boolean) => ReactNode;
+}
+
+/** A wait on a project's card: what waits, its Mate's face, and what its verb does. */
+export interface CardWait {
+  readonly wait: ProjectWait;
+  readonly face: ReactNode;
+  readonly onVerb: (from: HTMLElement) => void;
 }
 
 export interface ZeropsProjectsFlowProps<T> {
@@ -127,6 +135,11 @@ export interface ZeropsProjectsFlowProps<T> {
       readonly layout: "card" | "row";
       readonly parts: ReadonlyArray<MatePart>;
       readonly review?: FlowPullRequest | undefined;
+      /**
+       * On a card whose Waiting on you says what this Mate waits on the viewer for: its row is
+       * never lifted and carries no verb of its own.
+       */
+      readonly quiet?: boolean | undefined;
     },
   ) => ReactNode;
   /** A Mate's face, beside its name in a row. */
@@ -146,7 +159,11 @@ export interface ZeropsProjectsFlowProps<T> {
   /** The ready release's door on a card (*Review release*), while one is offered. */
   readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** The row's ··· menu: the project's quiet verbs, and its Mates' previews (`flow.mates`). */
-  readonly renderGroupMenu: (entry: ProjectsFlowGroup<T>) => ReactNode;
+  readonly renderGroupMenu: (
+    entry: ProjectsFlowGroup<T>,
+    /** On the project's own page: only what has no other place there (`page`). */
+    options?: { readonly page?: boolean },
+  ) => ReactNode;
   /** Re-probes the containers not answering. */
   readonly onRetryContainers: (items: ReadonlyArray<T>) => void;
   /** A creation runs: every add verb is disabled, never hidden. */
@@ -181,17 +198,11 @@ export interface ZeropsProjectsFlowProps<T> {
         readonly releaseSince?: number | undefined;
       })
     | undefined;
-  /** A place's panel: its facts and its actions; without it, its line. */
-  readonly renderPlacePanel?:
-    | ((entry: ProjectsFlowGroup<T>, line: PlaceLine) => ReactNode)
-    | undefined;
   /**
    * A release or *Put it live* run on the project's production (`ProductionRun`): under way, live
    * for a while, or stopped with its one action — the project's, never a Mate's conversation's.
    */
   readonly renderProductionRun?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
-  /** A project's latest changes, open and merged (`cardChanges`); without it, none. */
-  readonly renderChanges?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** A project page's History: its releases, each with what it put live (`historyReleases`). */
   readonly renderHistory?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /**
@@ -201,14 +212,6 @@ export interface ZeropsProjectsFlowProps<T> {
    * set up: the button stays, not to be pressed.
    */
   readonly setUpProduction?:
-    | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
-    | undefined;
-  /**
-   * Adds a stage to a project that has none, where HQ offers it to this person: its card offers it
-   * where the stage would stand (the onboarding run's owner searched 21 s for it in the card's
-   * ··· menu). `"busy"` while another environment is being set up.
-   */
-  readonly setUpStage?:
     | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
     | undefined;
   /**
@@ -233,8 +236,23 @@ export interface ZeropsProjectsFlowProps<T> {
         entry: ProjectsFlowGroup<T>,
       ) => { readonly onAdd: () => void; readonly why: string | null } | undefined)
     | undefined;
-  /** The people on a project, beside its name, where more than one. */
-  readonly renderCardPeople?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
+  /**
+   * What waits on the viewer in a project beside its release (`projectWaits`), each with its
+   * Mate's face and what its one verb does — lifted on its card.
+   */
+  readonly cardWaits?: ((entry: ProjectsFlowGroup<T>) => ReadonlyArray<CardWait>) | undefined;
+  /**
+   * A broken production as what waits on the viewer: who would fix it — their own Mate in the
+   * project (`useAskMateToFix`) — or none, and what its verb does: asks that Mate, or opens the
+   * place's page.
+   */
+  readonly placeFix?:
+    | ((
+        entry: ProjectsFlowGroup<T>,
+      ) =>
+        | { readonly fixer: string | undefined; readonly onVerb: (from: HTMLElement) => void }
+        | undefined)
+    | undefined;
   /** One project's own page in place of the overview (`ProjectPageSlot`). */
   readonly page?: ProjectPageSlot | undefined;
   /** The applications HQ knows that the tree leaves out (`InventoryGroupsView.undrawn`). */
@@ -295,18 +313,9 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         data-zerops-surface="projects-flow"
         role="region"
       >
-        {entry === undefined ? (
-          page.unread(undrawn?.includes(page.groupId) === true)
-        ) : (
-          <ProjectPage
-            aside={page.aside}
-            entry={entry}
-            addMateWhy={page.addMateWhy ?? null}
-            onAddMate={page.onAddMate}
-            people={page.people}
-            props={props}
-          />
-        )}
+        {entry === undefined
+          ? page.unread(undrawn?.includes(page.groupId) === true)
+          : page.render({ entry, props, addMateWhy: page.addMateWhy ?? null })}
       </div>
     );
   }

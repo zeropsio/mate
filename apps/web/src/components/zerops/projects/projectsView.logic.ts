@@ -87,6 +87,34 @@ export function overviewKeeps(input: {
   return true;
 }
 
+/** What a project's card says needs the person, as the overview orders by it. */
+export interface OverviewUrgency {
+  /** Production is down, or its last release failed. */
+  readonly broken: boolean;
+  /** A Mate of the viewer's asks: a question, a plan, a run stopped on an error. */
+  readonly asks: boolean;
+  /** A change waits for the viewer's review, or a release they may make. */
+  readonly reviews: boolean;
+}
+
+/**
+ * The overview's order: what waits on the person first, the most urgent first — a broken
+ * production, then a Mate's question, then reviews and releases — and within each, the order they
+ * came in (the menu's own). A card moves only when what waits in its project changes, never as its
+ * Mates work.
+ */
+export function overviewOrder<G>(
+  groups: ReadonlyArray<G>,
+  urgencyOf: (group: G) => OverviewUrgency,
+): ReadonlyArray<G> {
+  const rank = (urgency: OverviewUrgency) =>
+    urgency.broken ? 0 : urgency.asks ? 1 : urgency.reviews ? 2 : 3;
+  return groups
+    .map((group) => ({ group, urgency: urgencyOf(group) }))
+    .toSorted((left, right) => rank(left.urgency) - rank(right.urgency))
+    .map(({ group }) => group);
+}
+
 /** One of the overview's filters: its words, and how many projects it holds when any. */
 export interface OverviewFilterTab {
   readonly show: OverviewShow | undefined;
