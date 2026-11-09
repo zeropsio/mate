@@ -129,6 +129,22 @@ const notLive = (change: CardChange): boolean =>
   change.where.kind !== "setup" &&
   (change.where.kind !== "released" || !change.where.live);
 
+/**
+ * The merged changes production does not run yet, newest first as the page lists them. While a
+ * release is on its way production's commits answer to no release, so none reads live and every
+ * released change would stand before production: then only the newest release's are on their way,
+ * and what earlier releases took, production runs.
+ */
+function mergedNotLive(changes: ReadonlyArray<CardChange>): ReadonlyArray<CardChange> {
+  const waiting = changes.filter(notLive);
+  if (changes.some((change) => change.where?.kind === "released" && change.where.live)) {
+    return waiting;
+  }
+  const newest = waiting.find((change) => change.where?.kind === "released")?.where;
+  const tag = newest?.kind === "released" ? newest.tag : undefined;
+  return waiting.filter((change) => change.where?.kind !== "released" || change.where.tag === tag);
+}
+
 const SEP: LineWord = { text: " · " };
 const between = (parts: ReadonlyArray<LineWord>): ReadonlyArray<LineWord> =>
   parts.flatMap((part, index) => (index === 0 ? [part] : [SEP, part]));
@@ -195,7 +211,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
 
   // What is between them.
   const open = input.changes.filter((change) => change.open);
-  const merged = input.changes.filter(notLive);
+  const merged = mergedNotLive(input.changes);
   const markOf = (change: CardChange): LineBead["mark"] =>
     input.waiting.has(lineChangeKey(change.pull))
       ? "waits"
