@@ -10,15 +10,8 @@ import { GitDeliveryStatus } from "../GitDeliveryStatus";
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
-import {
-  formatRunClock,
-  releaseFailureOf,
-  stageMarks,
-  stageStandings,
-  type FlowPullRequest,
-  type ZeropsPublicRoute,
-} from "@t3tools/client-runtime/zerops";
-import { deployActivatedAt, type Deployment } from "@t3tools/client-runtime/zerops/flow";
+import { formatRunClock, type FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import type { Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { useNavigate } from "@tanstack/react-router";
 import { EnvironmentId, ThreadId, type ProviderApprovalDecision } from "@t3tools/contracts";
@@ -33,23 +26,16 @@ import { useAskMateToFix } from "~/zerops/fixRequest";
 import { useMateWrite } from "~/zerops/useMateWrite";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useOpenReview } from "~/zerops/review";
-import { mainStageOf } from "../review/reviewReads";
 import { mateDecision } from "../mateDecision.logic";
 import { PersonAvatar } from "../primitives";
 import { SidebarMateAge } from "../SidebarMateAge";
 import type { MateRowSlot } from "../SidebarMateRow.logic";
+import { productionMenu } from "../SidebarProductionChip.logic";
 import {
-  buildingOf,
-  drawnChip,
-  productionChip,
-  productionMenu,
-  rollbacksOf,
-  stageStopChip,
-  stopServing,
-  type ProductionChip,
-  type ReleasesAnswer,
-  type StopServing,
-} from "../SidebarProductionChip.logic";
+  applicationPlaceFacts,
+  applicationStage,
+  type PlaceItem,
+} from "../system/applicationPlaces.logic";
 import { PlacePanel, type PlacePanelModel } from "./PlacePanel";
 import { ActionHeld, CardChanges, CardMateLiftActions } from "./ProjectCards";
 import { ProjectHistory } from "./ProjectHistory";
@@ -61,41 +47,15 @@ import {
   CARD_CHANGES,
   cardChanges,
   cardPeople,
-  productionBuilding,
   releaseLineOpens,
   releaseProductionRuns,
   rollBackTarget,
   type CardMateReading,
-  type CardStage,
   type PlaceLine,
 } from "./projectCard.logic";
 import { CHANGES_UNKNOWN_LINE } from "./projectsView.logic";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
 import { Button } from "~/components/ui/button";
-
-/** What a card's places need of an environment: how its services stand and where they answer. */
-export interface PlaceItem {
-  readonly project: { readonly id: string; readonly status?: string | undefined };
-  readonly routes?: ReadonlyArray<ZeropsPublicRoute> | undefined;
-  /** Public-access evidence of an address publication in progress; absent while unread. */
-  readonly addressPending?: boolean | undefined;
-  /** Ports its public address would open that are not on yet; absent while its services are unread. */
-  readonly routeOffers?: ReadonlyArray<unknown> | undefined;
-  readonly services?:
-    | {
-        readonly hostnames: ReadonlyArray<string>;
-        readonly deployedAt: string | undefined;
-        readonly statuses: ReadonlyArray<{
-          readonly hostname: string;
-          readonly status: string;
-          readonly runtime: boolean;
-        }>;
-      }
-    | undefined;
-}
-
-const UNKNOWN: StopServing = { kind: "unknown" };
-const NO_UNTOLD: ReadonlyArray<string> = [];
 
 /** A Mate the person may ask to fix a place: theirs, in the project. */
 export interface PlaceFixer {
@@ -122,118 +82,15 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
 
   const itemOf = (entry: ProjectsFlowGroup<T>, projectId: string | undefined) =>
     projectId === undefined ? undefined : entry.stops.get(projectId)?.item;
-  const servingOf = (item: T | undefined): StopServing =>
-    item === undefined
-      ? UNKNOWN
-      : stopServing({
-          projectStatus: item.project.status,
-          services: item.services?.statuses,
-          routes: item.routes ?? [],
-        });
-  const downOf = (serving: StopServing) => (serving.kind === "down" ? serving.services : []);
-
   /** Every place of a project as the menu's chips say it. */
-  const placesOf = (entry: ProjectsFlowGroup<T>) => {
-    const read = flows.get(entry.group.groupId);
-    const releases: ReleasesAnswer =
-      read !== undefined && read.releasesKnown
-        ? {
-            kind: "answered",
-            failure: releaseFailureOf({
-              releases: read.releases,
-              environmentInputs: read.environmentInputs,
-              stalled: read.release.stalled,
-            }),
-            rollbacks: rollbacksOf(read.releases),
-          }
-        : { kind: "waiting" };
-    const deploymentsOf = (id: string) => {
-      const row = read?.environments.find((environment) => environment.id === id);
-      const projectId =
-        row === undefined
-          ? entry.stops.get(id)?.item?.project.id
-          : row.target.kind === "zerops"
-            ? row.target.projectId
-            : undefined;
-      return projectId === undefined ? undefined : deployments.get(projectId);
-    };
-    const { production } = entry.flow;
-    const prodStop = "stop" in production ? production.stop : undefined;
-    const prodItem = itemOf(entry, prodStop?.projectId);
-    const prodServing = servingOf(prodItem);
-    const chip = drawnChip(
-      productionChip({
-        production,
-        building: productionBuilding(
-          production.kind,
-          prodStop === undefined ? undefined : buildingOf(deploymentsOf(prodStop.projectId)),
-        ),
-        waiting: entry.flow.main.notLive,
-        waitingAtLeast: entry.flow.main.notLiveAtLeast,
-        changeCount: entry.flow.main.changeCount,
-        untold: read?.release.untold ?? NO_UNTOLD,
-        serving: prodServing,
-        releases,
-      }),
-    );
-    const stageChips = new Map<string, ProductionChip | undefined>();
-    const down = new Map<string, ReadonlyArray<string>>();
-    const addressPending = new Map<string, boolean>();
-    if (prodStop !== undefined) down.set(prodStop.projectId, downOf(prodServing));
-    for (const stop of entry.flow.stages) {
-      const item = itemOf(entry, stop.projectId);
-      const serving = servingOf(item);
-      down.set(stop.projectId, downOf(serving));
-      const pending = item?.addressPending;
-      if (pending !== undefined) addressPending.set(stop.projectId, pending);
-      stageChips.set(stop.projectId, drawnChip(stageStopChip({ stop, serving, releases })));
-    }
-    const since =
-      prodStop === undefined
-        ? undefined
-        : (deployActivatedAt(deploymentsOf(prodStop.projectId)) ?? prodItem?.services?.deployedAt);
-    // The release on its way, where it is a roll back: production's line says what it goes back to.
-    const rollsBackTo = chip?.rollsBackTo;
-    return {
-      read,
-      releases,
-      chip,
-      stageChips,
-      down,
-      addressPending,
-      rollsBackTo,
-      since,
-      prodItem,
-      prodStop,
-    };
-  };
+  const placesOf = (entry: ProjectsFlowGroup<T>) =>
+    applicationPlaceFacts({ entry, read: flows.get(entry.group.groupId), deployments });
 
   /**
    * What the stage that follows `main` runs, as HQ's deploys say it, and whether it runs every
    * change a release would carry — `undefined` while either is unread.
    */
-  const stageOf = (entry: ProjectsFlowGroup<T>) => {
-    const read = flows.get(entry.group.groupId);
-    const environment = read === undefined ? undefined : mainStageOf(read);
-    if (read === undefined || environment === undefined) return undefined;
-    const standings = stageStandings(environment);
-    const mainHeads = new Map(
-      (read.repos ?? []).flatMap(({ name, mainHead }) =>
-        mainHead === null ? [] : [[name, mainHead] as const],
-      ),
-    );
-    const marks = stageMarks({ contents: read.release.contents, stage: standings, mainHeads });
-    const stage: CardStage = {
-      runs: [...standings.runs.values()].filter((sha) => sha !== undefined),
-      deploying: [...standings.deploying.values()],
-      mainHeads,
-    };
-    return {
-      stage,
-      runsRelease:
-        marks.size === 0 ? undefined : [...marks.values()].every((mark) => mark === "on-stage"),
-    };
-  };
+  const stageOf = (entry: ProjectsFlowGroup<T>) => applicationStage(flows.get(entry.group.groupId));
 
   const cardPlaces = (entry: ProjectsFlowGroup<T>) => {
     const { chip, stageChips, down, addressPending, rollsBackTo, since } = placesOf(entry);

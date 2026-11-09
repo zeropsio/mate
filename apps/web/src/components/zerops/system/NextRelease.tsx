@@ -45,21 +45,13 @@ export function NextRelease({
 }) {
   const view = nextReleaseView({ release, ready, onStage });
   if (view.kind === "none") return null;
-  const line = (
-    <div
-      className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-control bg-primary/10 px-3 py-2 text-body"
-      data-zerops-next-release={view.kind}
-    >
-      {view.kind === "failed" ? <Badge tone="danger">{view.pill}</Badge> : null}
-      <span className="min-w-0 font-medium text-foreground">{view.title}</span>
-      {view.kind === "releasing"
-        ? null
-        : view.facts.map((fact) => (
-            <span className="min-w-0 text-muted-foreground" key={fact}>
-              {fact}
-            </span>
-          ))}
-      <span className="ms-auto flex shrink-0">
+  return (
+    <NextBlock
+      facts={view.kind === "releasing" ? [] : view.facts}
+      lead={view.kind === "failed" ? <Badge tone="danger">{view.pill}</Badge> : undefined}
+      title={view.title}
+      variant={density}
+      verb={
         <Button
           data-zerops-primary-action={REVIEW_RELEASE_LABEL}
           onClick={(event) => {
@@ -70,12 +62,64 @@ export function NextRelease({
         >
           {view.verb}
         </Button>
-      </span>
+      }
+      state={view.kind}
+    >
+      {children}
+    </NextBlock>
+  );
+}
+
+/**
+ * What goes to a place next, in the next release's look without its words: one tinted line — a
+ * `lead` (a pill), the title, its facts muted, a verb at its end — and, as a block, the rows it
+ * carries under it. A stage's "3 changes ready to merge to stage" is one, with no verb of its own
+ * where each `ChangeRow` carries its *Review*.
+ *
+ * Props: `title`; `facts` (muted after it); `lead` (before the title: a `Badge`); `verb` (one
+ * `Button size="sm"`); `variant` (`line`, or `block` to draw `children` under the line; default
+ * `block` where children are given); `state` (a data attribute naming the state, for tests and
+ * harnesses); `children` (`ChangeRow`s in a `ChangeList`).
+ */
+export function NextBlock({
+  title,
+  facts = [],
+  lead,
+  verb,
+  variant,
+  state,
+  children,
+}: {
+  readonly title: string;
+  readonly facts?: ReadonlyArray<string>;
+  readonly lead?: ReactNode;
+  readonly verb?: ReactNode;
+  readonly variant?: "line" | "block";
+  readonly state?: string;
+  readonly children?: ReactNode;
+}) {
+  const line = (
+    <div
+      className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-control bg-primary/10 px-3 py-2 text-body"
+      data-zerops-next-release={state ?? ""}
+    >
+      {lead}
+      <span className="min-w-0 font-medium text-foreground">{title}</span>
+      {facts.map((fact) => (
+        <span className="min-w-0 text-muted-foreground" key={fact}>
+          {fact}
+        </span>
+      ))}
+      {verb === undefined || verb === null ? null : (
+        <span className="ms-auto flex shrink-0">{verb}</span>
+      )}
     </div>
   );
-  if (density === "line") return line;
+  const block =
+    variant === undefined ? children !== undefined && children !== null : variant === "block";
+  if (!block) return line;
   return (
-    <div className="flex min-w-0 flex-col gap-1.5" data-zerops-next-release-block="">
+    <div className="flex min-w-0 flex-col gap-1.5" data-zerops-next-block="">
       {line}
       {children}
     </div>
