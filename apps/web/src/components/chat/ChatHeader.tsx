@@ -744,6 +744,9 @@ export const ChatHeader = memo(function ChatHeader({
         <div
           ref={headerActionsRef}
           data-chat-header-actions
+          // Every action here arrives with the conversation at the opening's hand-off, never a
+          // step ahead of it (`[data-opening-waits]`, index.css).
+          data-opening-waits=""
           className={cn(
             "flex shrink-0 items-center justify-end",
             // A Mate's header is a row of borderless buttons, 4 px apart like
@@ -794,12 +797,20 @@ export const ChatHeader = memo(function ChatHeader({
               ) : null}
             </MenuPopup>
           </Menu>
-          <ChatHeaderLinks
-            environmentId={activeThreadEnvironmentId}
-            mateProjectId={mate?.projectId}
-            sites={headerSites}
-            threadId={activeThreadId}
-          />
+          {/* Project and Sites hold their room while the conversation opens and arrive with it,
+              as the project link beside them does: never a step ahead of the conversation. */}
+          <span
+            aria-hidden={conversationLoading ? true : undefined}
+            className={conversationLoading ? "invisible contents" : "contents"}
+            data-opening-waits=""
+          >
+            <ChatHeaderLinks
+              environmentId={activeThreadEnvironmentId}
+              mateProjectId={mate?.projectId}
+              sites={headerSites}
+              threadId={activeThreadId}
+            />
+          </span>
           {mate === undefined ? null : (
             <span
               aria-hidden={conversationLoading ? true : undefined}
