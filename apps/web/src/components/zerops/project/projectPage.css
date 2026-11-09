@@ -204,3 +204,173 @@
 .pp-detail > .ov-sec > .ov-sec-name {
   display: none;
 }
+
+/* A project page's History: a row per release — its version, Live on the one production runs,
+   when — opening, on a lifted ground, to the changes it put live, set in under its version. */
+.pp-hist {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pp-hist-release {
+  display: grid;
+  min-width: 0;
+  border-radius: 10px;
+}
+
+.pp-hist-release[data-open] {
+  padding-bottom: 6px;
+  background: var(--ov-lift);
+}
+
+.pp-hist-head {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: 18px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  text-align: left;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+button.pp-hist-head:hover {
+  background: var(--ov-hover);
+}
+
+.pp-hist-release[data-open] > button.pp-hist-head:hover {
+  background: none;
+}
+
+.pp-hist-head:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.pp-hist-chevron {
+  display: flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+}
+
+.pp-hist-chevron > svg {
+  width: 14px;
+  height: 14px;
+  transition: rotate 150ms var(--ease-out-strong);
+}
+
+.pp-hist-chevron > svg[data-open] {
+  rotate: 90deg;
+}
+
+.pp-hist-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pp-hist-tag {
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.pp-hist-gist,
+.pp-hist-facts {
+  overflow: hidden;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pp-hist-gist {
+  color: color-mix(in oklab, var(--foreground) 85%, var(--muted-foreground));
+}
+
+.pp-hist-facts,
+.pp-hist-quiet {
+  color: var(--muted-foreground);
+}
+
+.pp-hist-facts {
+  font-size: var(--text-line);
+}
+
+.pp-hist-time {
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* An opened release's changes: a hairline over each, set in under its version. */
+.pp-hist-body {
+  display: grid;
+  min-width: 0;
+  padding: 0 14px 0 44px;
+}
+
+.pp-hist-body > .ov-changes {
+  margin: 0;
+}
+
+.pp-hist-body .ov-change-row,
+.pp-hist-failure,
+.pp-hist-outside {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-hist-body .ov-change {
+  align-items: center;
+  padding: 8px 0;
+  border-radius: 0;
+  column-gap: 12px;
+}
+
+.pp-hist-body .ov-change:hover {
+  background: none;
+}
+
+.pp-hist-body .ov-change:hover .ov-change-title {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pp-hist-body .ov-change-time {
+  padding-top: 0;
+  font-size: var(--text-line);
+}
+
+.pp-hist-failure,
+.pp-hist-outside {
+  padding: 9px 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+}
+
+.pp-hist-failure {
+  color: var(--zerops-status-failed-text);
+}
+
+.pp-hist-more {
+  display: flex;
+  padding-top: 2px;
+}
+
+.pp-hist-note {
+  padding: 2px 8px 6px;
+}
