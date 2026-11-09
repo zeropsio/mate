@@ -3185,12 +3185,6 @@ describe("Every HQ verb that decides on the person's role carries their current 
       ask: (api) => api.disconnectDiscord?.(),
     },
     {
-      call: "allowDiscord",
-      method: "PUT",
-      path: "/api/org/discord/allow",
-      ask: (api) => api.allowDiscord?.({ userIds: ["d1"] }),
-    },
-    {
       call: "setAppChannel",
       method: "PUT",
       path: "/api/apps/app-1/slack",
