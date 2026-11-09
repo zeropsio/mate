@@ -1,7 +1,7 @@
 /**
  * A project's Repositories: one row per code repository — its name, where its code goes, the one
  * line that says whether it moves, at most one button (the fix for that state) and a ⋯ for the
- * rest: Open on GitHub, Change repository…, Replace token, Disconnect…, Delete from Mate…. Every
+ * rest: Open on GitHub, Change repository…, Replace token, Disconnect…, Delete repository…. Every
  * press shows its progress on the row until HQ's record shows the outcome.
  */
 import { OperationStopped } from "@t3tools/client-runtime/data";
@@ -331,7 +331,7 @@ function RepoRow({
                     <MenuSeparator />
                   ) : null}
                   <MenuItem onClick={() => open("delete", null)} variant="destructive">
-                    Delete from Mate…
+                    Delete repository…
                   </MenuItem>
                 </>
               ) : null}
@@ -627,10 +627,11 @@ function DeleteFromMate({
   const id = useId();
   return (
     <div className="grid gap-2.5">
-      <p className="text-sm font-medium">Delete {repo} from Mate?</p>
+      <p className="text-sm font-medium">Delete {repo}?</p>
       <p className="text-sm text-muted-foreground">
-        Its code is deleted from Mate.{" "}
-        {destination === null ? "" : `${destination} on GitHub stays as it is.`}
+        Its code and history kept by Mate are deleted: main, its changes, and what releases build
+        from. The files in its Mate's workspace stay.
+        {destination === null ? "" : ` ${destination} on GitHub stays as it is.`}
       </p>
       <div className="grid gap-1.5">
         <Label htmlFor={id}>Type {repo} to confirm</Label>
@@ -654,7 +655,7 @@ function DeleteFromMate({
           size="sm"
           variant="destructive"
         >
-          {busy ? "Deleting…" : "Delete from Mate"}
+          {busy ? "Deleting…" : "Delete repository"}
         </Button>
       </div>
     </div>

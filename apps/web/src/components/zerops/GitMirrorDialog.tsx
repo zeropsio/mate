@@ -2,7 +2,7 @@
  * *Connect <repo> to GitHub*: the picker for one code repository, from its row on the project
  * page, the overview card's ··· or the way back from GitHub's install page. Opened for a project
  * with several code repositories and none named, it asks which one first. Upkeep — Disconnect,
- * Replace token, Delete from Mate — is the row's, never the dialog's.
+ * Replace token, Delete repository — is the row's, never the dialog's.
  */
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useMemo, useState } from "react";
