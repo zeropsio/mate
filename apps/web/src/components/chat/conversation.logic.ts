@@ -684,13 +684,14 @@ function lastOwnEntry(entries: ReadonlyArray<TimelineEntry>): TimelineEntry | un
 }
 
 /**
- * The Mate's own entry: its words, a thought, a step. A plan update, a landing, a message of
+ * The Mate's own entry: its words, a thought, a step. A plan update, a landing, a release ending, a message of
  * nothing, a background task reporting in, the context condensed, or a row that only tells is not.
  */
 function isOwnEntry(entry: TimelineEntry): boolean {
   return (
     entry.kind !== "turn-plan" &&
     entry.kind !== "change-landed" &&
+    entry.kind !== "release-ended" &&
     !(entry.kind === "message" && saysNothing(entry.message)) &&
     !(
       (entry.kind === "work" || entry.kind === "generic-call") &&

@@ -39,6 +39,7 @@ import { AssetImage } from "~/assets/AssetImage";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { releaseEndedWords } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   isActiveSubagentStatus,
@@ -2695,6 +2696,8 @@ export function recordEventWords(
         words: `${event.event.repository} #${event.event.number} landed`,
         detail: event.event.title,
       };
+    case "release":
+      return { words: releaseEndedWords(event.event), detail: null };
     case "compaction":
       return {
         words: "Context condensed",
