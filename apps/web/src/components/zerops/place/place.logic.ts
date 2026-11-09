@@ -225,3 +225,31 @@ export function stopRowSays(
       return { version: undefined, word: view.line, tone: undefined };
   }
 }
+
+/** How many faces a place's access card stacks before "+N". */
+export const ACCESS_FACES = 5;
+
+const ACCESS_WORDS: ReadonlyArray<{
+  readonly level: "owner" | "full" | "basic" | "read";
+  readonly one: string;
+  readonly many: string;
+}> = [
+  { level: "owner", one: "owner", many: "owners" },
+  { level: "full", one: "with full access", many: "with full access" },
+  { level: "basic", one: "can edit", many: "can edit" },
+  { level: "read", one: "can read", many: "can read" },
+];
+
+/**
+ * Who reaches a place, in two lines: "16 people" and how they split — "15 with full access, 1 can
+ * edit". Every level said once, the most access first.
+ */
+export function accessBreakdown(
+  people: ReadonlyArray<{ readonly level: "owner" | "full" | "basic" | "read" }>,
+): { readonly count: string; readonly split: string } {
+  const split = ACCESS_WORDS.flatMap(({ level, one, many }) => {
+    const count = people.filter((person) => person.level === level).length;
+    return count === 0 ? [] : [`${String(count)} ${count === 1 ? one : many}`];
+  }).join(", ");
+  return { count: plural(people.length, "person", "people"), split };
+}

@@ -91,7 +91,7 @@ describe("rightPanelStore", () => {
           "env-1:thread-A": {
             activeSurfaceId: "terminal",
             surfaces: [
-              { id: "diff", kind: "diff" },
+              { id: "git", kind: "git" },
               { id: "terminal", kind: "terminal" },
             ],
           },
@@ -102,7 +102,7 @@ describe("rightPanelStore", () => {
         "env-1:thread-A": {
           isOpen: false,
           activeSurfaceId: null,
-          surfaces: [{ id: "diff", kind: "diff" }],
+          surfaces: [{ id: "git", kind: "git" }],
         },
       },
     });
@@ -144,7 +144,7 @@ describe("rightPanelStore", () => {
             activeSurfaceId: "browser:tab-a",
             surfaces: [
               { id: "browser:tab-a", kind: "preview", resourceId: "tab-a" },
-              { id: "diff", kind: "diff" },
+              { id: "git", kind: "git" },
             ],
           },
         },
@@ -158,8 +158,8 @@ describe("rightPanelStore", () => {
         },
         "env-1:thread-B": {
           isOpen: true,
-          activeSurfaceId: "diff",
-          surfaces: [{ id: "diff", kind: "diff" }],
+          activeSurfaceId: "git",
+          surfaces: [{ id: "git", kind: "git" }],
         },
       },
     });
@@ -239,7 +239,7 @@ describe("rightPanelStore", () => {
             activeSurfaceId: "plan",
             surfaces: [
               { id: "plan", kind: "plan" },
-              { id: "diff", kind: "diff" },
+              { id: "git", kind: "git" },
             ],
           },
         },
@@ -253,8 +253,8 @@ describe("rightPanelStore", () => {
         },
         "env-1:thread-B": {
           isOpen: true,
-          activeSurfaceId: "diff",
-          surfaces: [{ id: "diff", kind: "diff" }],
+          activeSurfaceId: "git",
+          surfaces: [{ id: "git", kind: "git" }],
         },
       },
     });
@@ -275,7 +275,7 @@ describe("rightPanelStore", () => {
                 repository: "pingdotgg/t3code",
                 number: 4909,
               },
-              { id: "diff", kind: "diff" },
+              { id: "git", kind: "git" },
             ],
           },
           "env-1:thread-B": {
@@ -298,8 +298,8 @@ describe("rightPanelStore", () => {
           },
           "env-1:pull-requests-panel": {
             isOpen: true,
-            activeSurfaceId: "diff",
-            surfaces: [{ id: "diff", kind: "diff" }],
+            activeSurfaceId: "git",
+            surfaces: [{ id: "git", kind: "git" }],
           },
         },
       }),
@@ -307,8 +307,8 @@ describe("rightPanelStore", () => {
       byThreadKey: {
         "env-1:thread-A": {
           isOpen: true,
-          activeSurfaceId: "diff",
-          surfaces: [{ id: "diff", kind: "diff" }],
+          activeSurfaceId: "git",
+          surfaces: [{ id: "git", kind: "git" }],
         },
         "env-1:thread-B": {
           isOpen: false,
@@ -349,30 +349,30 @@ describe("rightPanelStore", () => {
   });
 
   it("open sets the active panel for a thread", () => {
-    useRightPanelStore.getState().open(refA, "diff");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
+    useRightPanelStore.getState().open(refA, "git");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("git");
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refB)).toBeNull();
   });
 
   it("opening a different kind keeps both surfaces and activates the new one", () => {
     useRightPanelStore.getState().open(refA, "agents");
-    useRightPanelStore.getState().open(refA, "diff");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
+    useRightPanelStore.getState().open(refA, "git");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("git");
     expect(
       selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA).surfaces,
     ).toHaveLength(2);
   });
 
   it("reopening an inactive singleton activates its existing surface", () => {
-    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "git");
     useRightPanelStore.getState().open(refA, "agents");
-    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "git");
 
     expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
       isOpen: true,
-      activeSurfaceId: "diff",
+      activeSurfaceId: "git",
       surfaces: [
-        { id: "diff", kind: "diff" },
+        { id: "git", kind: "git" },
         { id: "agents", kind: "agents" },
       ],
     });
@@ -648,19 +648,19 @@ describe("rightPanelStore", () => {
   });
 
   it("toggle hides the panel without discarding the active surface", () => {
-    useRightPanelStore.getState().toggle(refA, "diff");
-    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("diff");
-    useRightPanelStore.getState().toggle(refA, "diff");
+    useRightPanelStore.getState().toggle(refA, "git");
+    expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("git");
+    useRightPanelStore.getState().toggle(refA, "git");
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBeNull();
     expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
       isOpen: false,
-      activeSurfaceId: "diff",
-      surfaces: [{ id: "diff", kind: "diff" }],
+      activeSurfaceId: "git",
+      surfaces: [{ id: "git", kind: "git" }],
     });
   });
 
   it("toggle to a different kind switches active", () => {
-    useRightPanelStore.getState().toggle(refA, "diff");
+    useRightPanelStore.getState().toggle(refA, "git");
     useRightPanelStore.getState().toggle(refA, "agents");
     expect(selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, refA)).toBe("agents");
   });
@@ -749,12 +749,12 @@ describe("rightPanelStore", () => {
   });
 
   it("closing the active surface activates a neighboring surface", () => {
-    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "git");
     useRightPanelStore.getState().openTerminal(refA, "term-1");
     useRightPanelStore.getState().closeSurface(refA, "terminal:term-1");
 
     expect(selectActiveRightPanelSurface(useRightPanelStore.getState().byThreadKey, refA)?.id).toBe(
-      "diff",
+      "git",
     );
   });
 
@@ -770,7 +770,7 @@ describe("rightPanelStore", () => {
   });
 
   it("closing other surfaces keeps the selected surface active", () => {
-    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "git");
     useRightPanelStore.getState().openFile(refA, "src/index.ts");
     useRightPanelStore.getState().openTerminal(refA, "term-1");
 
@@ -792,21 +792,21 @@ describe("rightPanelStore", () => {
   });
 
   it("closing surfaces to the right activates the selected surface when active was removed", () => {
-    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "git");
     useRightPanelStore.getState().openFile(refA, "src/index.ts");
     useRightPanelStore.getState().openTerminal(refA, "term-1");
 
-    useRightPanelStore.getState().closeSurfacesToRight(refA, "diff");
+    useRightPanelStore.getState().closeSurfacesToRight(refA, "git");
 
     expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
       isOpen: true,
-      activeSurfaceId: "diff",
-      surfaces: [{ id: "diff", kind: "diff" }],
+      activeSurfaceId: "git",
+      surfaces: [{ id: "git", kind: "git" }],
     });
   });
 
   it("closing all surfaces closes the panel", () => {
-    useRightPanelStore.getState().open(refA, "diff");
+    useRightPanelStore.getState().open(refA, "git");
     useRightPanelStore.getState().openFile(refA, "src/index.ts");
 
     useRightPanelStore.getState().closeAllSurfaces(refA);
@@ -879,12 +879,12 @@ describe("a full localStorage", () => {
     vi.stubGlobal("window", { localStorage: quotaStorage(0) });
     openAccountLifetime("panel-test");
 
-    expect(() => useRightPanelStore.getState().open(refA, "diff")).not.toThrow();
+    expect(() => useRightPanelStore.getState().open(refA, "git")).not.toThrow();
 
     expect(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, refA)).toEqual({
       isOpen: true,
-      activeSurfaceId: "diff",
-      surfaces: [{ id: "diff", kind: "diff" }],
+      activeSurfaceId: "git",
+      surfaces: [{ id: "git", kind: "git" }],
     });
   });
 });

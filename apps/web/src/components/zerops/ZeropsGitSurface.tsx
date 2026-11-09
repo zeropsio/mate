@@ -1,5 +1,5 @@
 /**
- * The Git tab, given everything it needs from the account.
+ * The Code page, given everything it needs from the account.
  *
  * The tab itself joins a checkout with the Mate's change in HQ (`ZeropsGitTab`);
  * this is what tells it *whose*: the group this Mate's project belongs to, and
@@ -22,6 +22,7 @@ import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "../../zerops/useZeropsMateOwners";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { DraftId } from "../../composerDraftStore";
 import { useCallback, useMemo, useState } from "react";
 
 import { useHqAppDetailHold } from "../../zerops/useHqAppDetail";
@@ -42,7 +43,14 @@ import { useMateOnPanel } from "./useMateOnPanel";
 import { useMatePanelProject } from "./useMatePanelProject";
 import { ZeropsGitTab } from "./ZeropsGitTab";
 
-export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThreadRef | null }) {
+export function ZeropsGitSurface({
+  threadRef,
+  composerDraftTarget,
+}: {
+  readonly threadRef: ScopedThreadRef | null;
+  /** Where a comment on a changed line goes: the conversation's composer. */
+  readonly composerDraftTarget: ScopedThreadRef | DraftId;
+}) {
   const session = useZeropsSessionOptional();
   const inventory = useZeropsInventory();
   const { trouble } = useFlowVerbs();
@@ -156,6 +164,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
       <ZeropsGitTab
         appId={groupId}
         changes={projectFlow?.changesKnown === true ? projectFlow : undefined}
+        composerDraftTarget={composerDraftTarget}
         declarations={projectFlow?.declarations ?? []}
         github={github}
         isOwner={isOwner}

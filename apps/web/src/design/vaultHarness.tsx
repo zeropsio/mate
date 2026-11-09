@@ -3,7 +3,8 @@
  * left menu at 435 (`?menu=` for another), the panel at its default 540 beside the conversation.
  *
  * The real `VaultPanelBody` in the real `RightPanelTabs`, over the fixture view
- * (`vaultFixture.ts`). `?state=` — `ready` (the default), `unread`, `failed`, `live` (nothing
+ * (`vaultFixture.ts`). `?state=` — `ready` (the default), `unread` (reading), `failed` (what it
+ * kept, under the failure), `failed-empty` (a read that failed before any answer), `live` (nothing
  * waits). `?actor=environment` draws it without a Mate (restart buttons). Writes answer after
  * 600 ms; `?fail=1` refuses each with `projectEnvDuplicateKey`. `?theme=dark` for dark.
  *
@@ -36,6 +37,7 @@ const VIEWS: Record<string, VaultView> = {
   ready: VAULT_FIXTURE,
   unread: { status: "unread", complete: false, scopes: [], notLive: [] },
   failed: { ...VAULT_FIXTURE, status: "failed" },
+  "failed-empty": { status: "failed", complete: false, scopes: [], notLive: [] },
   live: { ...VAULT_FIXTURE, notLive: [] },
 };
 const VIEW = params.get("data") === "store" ? VAULT_STORE_FIXTURE : (VIEWS[STATE] ?? VAULT_FIXTURE);
@@ -52,7 +54,6 @@ const TEN_TABS: RightPanelSurface[] = [
     activeTerminalId: "1",
   },
   { id: "files", kind: "files" },
-  { id: "diff", kind: "diff" },
   { id: "git", kind: "git" },
   { id: "zerops", kind: "zerops" },
   { id: "data", kind: "data" },
@@ -105,6 +106,7 @@ function Harness() {
             actor={ACTOR}
             impactOf={(scope, write) => vaultFixtureImpact(VIEW, scope, write)}
             onRestart={() => new Promise((resolve) => setTimeout(resolve, 1200))}
+            onRetry={noop}
             onWrite={async () => {
               await new Promise((resolve) => setTimeout(resolve, 600));
               return FAIL

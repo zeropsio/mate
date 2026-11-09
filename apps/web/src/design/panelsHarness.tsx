@@ -1,8 +1,8 @@
 /**
- * A Mate's Zerops and Git panels, in the states they reach, at the panel's two common widths.
+ * A Mate's Zerops and Code pages, in the states they reach, at the panel's two common widths.
  *
- * Served by the dev server at `/design-panels.html` (`?theme=dark`, `?panel=git|zerops|both`,
- * `?w=420|540`). The panels take their reads as props (their surfaces hold the hooks), so this needs
+ * Served by the dev server at `/design-panels.html` (`?theme=dark`, `?panel=code|zerops|both`,
+ * `?w=420|540`, `?s=<scenario>`; `?w=1351` is the panel maximized at 1786 px). The panels take their reads as props (their surfaces hold the hooks), so this needs
  * no session: invented projects, Mates and services only.
  *
  * Fixtures only. Nothing here ships — `design-panels.html` is not `index.html`, and no route
@@ -18,6 +18,7 @@ import type {
   ZeropsServiceRow,
   ZeropsServiceTone,
 } from "@t3tools/client-runtime/zerops/serviceMap";
+import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import {
   createMemoryHistory,
@@ -25,10 +26,29 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { StrictMode, type ReactNode } from "react";
+import { ChevronDownIcon } from "lucide-react";
+import { StrictMode, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
+import {
+  CodeChangesEmpty,
+  CodeChangesToolbar,
+  CodeCompare,
+  CodePage,
+  type CodeFile,
+} from "~/components/CodePage";
+import type { DiffChoice } from "~/components/DiffPanel.logic";
+import { DiffPanelLoadingState } from "~/components/DiffPanelShell";
 import { Button } from "~/components/ui/button";
+import { DraftId } from "~/composerDraftStore";
+import type { DiffRenderMode } from "~/diffPanelStore";
+import {
+  buildFileDiffRenderKey,
+  getDiffLineStat,
+  getRenderablePatch,
+  resolveFileDiffPath,
+} from "~/lib/diffRendering";
+import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import type { RepoState } from "~/components/zerops/gitMirror.logic";
 import type { MatePanelProject } from "~/components/zerops/MatePanelPlaces";
 import { gitWorkRows } from "~/components/zerops/matePanels.logic";
@@ -36,13 +56,15 @@ import { MateFace } from "~/components/zerops/primitives";
 import type { CardReady, PlaceLine } from "~/components/zerops/projects/projectCard.logic";
 import { ZeropsGitPanel, type ZeropsGitRepository } from "~/components/zerops/ZeropsGitPanel";
 import { ZeropsServiceMap } from "~/components/zerops/ZeropsServiceMap";
+import { ZeropsAgentAuthCard } from "~/components/zerops/ZeropsAgentAuthCard";
+import { GitCommitsFold } from "~/components/zerops/ZeropsGitBlockCommits";
 import type { AppRouter } from "~/router";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
 const params = new URLSearchParams(window.location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
-const shownPanel = params.get("panel") ?? "both";
+const shownPanel = params.get("panel") === "git" ? "code" : (params.get("panel") ?? "both");
 const widths = params.get("w") === null ? [420, 540] : [Number(params.get("w"))];
 const only = params.get("s");
 
@@ -312,6 +334,11 @@ interface Scenario {
   readonly title: string;
   readonly project: MatePanelProject;
   readonly repositories: ReadonlyArray<ZeropsGitRepository>;
+  /**
+   * What "What changed" shows: files not committed beside the branch's (`both`), the branch's
+   * alone, one of them opened, or a state with no files.
+   */
+  readonly changes: "both" | "branch" | "open" | "nothing" | "no-code" | "reading";
 }
 
 const TEA = "Tea Shop";
@@ -319,6 +346,7 @@ const TEA = "Tea Shop";
 const SCENARIOS: ReadonlyArray<Scenario> = [
   {
     id: "uncommitted",
+    changes: "both",
     title: "Uncommitted work · no stage · not on GitHub",
     project: project(TEA, [PRODUCTION], 2),
     repositories: [
@@ -330,7 +358,21 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
     ],
   },
   {
+    id: "open",
+    changes: "open",
+    title: "A file opened to its lines",
+    project: project(TEA, [PRODUCTION], 2),
+    repositories: [
+      repository({
+        checkout: checkout({ changed: [{ path: "src/call.ts", insertions: 24, deletions: 3 }] }),
+        change: change({ number: 32, title: "Steer a call while it answers" }),
+        github: NOT_ON_GITHUB,
+      }),
+    ],
+  },
+  {
     id: "ready",
+    changes: "branch",
     title: "Ready to merge · production and stage · in sync",
     project: project(TEA, [PRODUCTION, STAGE]),
     repositories: [
@@ -343,6 +385,7 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
   },
   {
     id: "merged",
+    changes: "nothing",
     title: "Merged, waits for production · two repositories",
     project: project(TEA, [production(["Running", "v0.1.3", "since Nov 1"]), STAGE], 3),
     repositories: [
@@ -370,6 +413,7 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
   },
   {
     id: "live",
+    changes: "branch",
     title: "Live in a release · new commits since · app gone",
     project: project(TEA, [production(["Running", "v0.1.4", "since 10:42"])]),
     repositories: [
@@ -389,6 +433,7 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
   },
   {
     id: "empty",
+    changes: "no-code",
     title: "Empty repository · no production",
     project: project("Acme Notes", [NO_PRODUCTION]),
     repositories: [
@@ -400,6 +445,7 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
   },
   {
     id: "reading",
+    changes: "reading",
     title: "HQ not answered yet",
     project: project(TEA, []),
     repositories: [
@@ -413,7 +459,246 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
 
 // ---------------------------------------------------------------- page
 
+/** A change's commits, folded as the tab folds them, from fixtures. */
+function HarnessCommits() {
+  const [open, setOpen] = useState(false);
+  return (
+    <GitCommitsFold
+      commits={[
+        { sha: "c0ffee1a2b", subject: "Steer a call while it answers", at: ago(50) },
+        { sha: "b4dd00d3c1", subject: "Hold the line while the caller waits", at: ago(140) },
+      ]}
+      onToggle={() => setOpen(!open)}
+      open={open}
+    />
+  );
+}
+
+// ---------------------------------------------------------------- what changed
+
+const NOT_COMMITTED_PATCH = [
+  "diff --git a/src/call.ts b/src/call.ts",
+  "index 1a2b3c4..5d6e7f8 100644",
+  "--- a/src/call.ts",
+  "+++ b/src/call.ts",
+  "@@ -12,7 +12,9 @@ export function answer(call: Call) {",
+  "   const line = call.line();",
+  "-  line.hold();",
+  "+  // Steer while it answers: the caller hears the next step at once.",
+  "+  line.steer(call.next());",
+  "+  line.keep();",
+  "   return line;",
+  " }",
+  "",
+].join("\n");
+
+const COMMITTED_PATCH = [
+  "diff --git a/src/cart.ts b/src/cart.ts",
+  "index 2b3c4d5..6e7f809 100644",
+  "--- a/src/cart.ts",
+  "+++ b/src/cart.ts",
+  '@@ -3,6 +3,10 @@ import { price } from "./price";',
+  " export function total(cart: Cart) {",
+  "-  return cart.items.reduce((sum, item) => sum + price(item), 0);",
+  "+  const items = cart.items.reduce((sum, item) => sum + price(item), 0);",
+  "+  const gift = cart.giftCard?.balance ?? 0;",
+  "+  // A gift card pays what it holds, never more than the cart.",
+  "+  return Math.max(0, items - gift);",
+  " }",
+  "diff --git a/src/menu.ts b/src/menu.ts",
+  "new file mode 100644",
+  "index 0000000..3c4d5e6",
+  "--- /dev/null",
+  "+++ b/src/menu.ts",
+  "@@ -0,0 +1,4 @@",
+  "+export const SEASONAL = [",
+  '+  { name: "Green tea", price: 3.5 },',
+  '+  { name: "Chai", price: 4 },',
+  "+];",
+  "",
+].join("\n");
+
+const SHOP = { name: "shopdev", label: "shopdev", cwd: "/var/www/shopdev" };
+const CHOICES: ReadonlyArray<DiffChoice> = [
+  {
+    repository: SHOP,
+    scope: "unstaged",
+    label: "Not committed",
+    count: 1,
+    nothing: "Everything in shopdev is committed.",
+    baseRef: null,
+  },
+  {
+    repository: SHOP,
+    scope: "branch",
+    label: "Not on main",
+    count: 2,
+    nothing: "Nothing in shopdev is outside main.",
+    baseRef: null,
+  },
+];
+
+const patchFiles = (patch: string, scope: string) => {
+  const parsed = getRenderablePatch(patch, scope, { compactPartialHunkOffsets: true });
+  return parsed?.kind === "files" ? parsed.files : [];
+};
+
+/** The page's "What changed", from fixtures, under the scenario's project and repositories. */
+function HarnessCode({ scenario, top }: { readonly scenario: Scenario; readonly top: ReactNode }) {
+  const theme = appearance;
+  const [mode, setMode] = useState<DiffRenderMode>("stacked");
+  const [wrap, setWrap] = useState(false);
+  const [ignoreWhitespace, setIgnoreWhitespace] = useState(false);
+  const notCommitted = scenario.changes === "both" || scenario.changes === "open";
+  const fileDiffs = [
+    ...(notCommitted
+      ? patchFiles(NOT_COMMITTED_PATCH, `code-not-committed:${theme}`).map((fileDiff) => ({
+          fileDiff,
+          marked: true,
+        }))
+      : []),
+    ...(["both", "branch", "open"].includes(scenario.changes)
+      ? patchFiles(COMMITTED_PATCH, `code-committed:${theme}`).map((fileDiff) => ({
+          fileDiff,
+          marked: false,
+        }))
+      : []),
+  ];
+  const [opened, setOpened] = useState<ReadonlySet<string>>(() =>
+    scenario.changes === "open" && fileDiffs[1] !== undefined
+      ? new Set([buildFileDiffRenderKey(fileDiffs[1].fileDiff)])
+      : new Set(),
+  );
+  const files: ReadonlyArray<CodeFile> = fileDiffs.map(({ fileDiff, marked }) => {
+    const fileKey = buildFileDiffRenderKey(fileDiff);
+    return {
+      fileDiff,
+      fileKey,
+      filePath: resolveFileDiffPath(fileDiff),
+      collapsed: !opened.has(fileKey),
+      notCommitted: marked,
+    };
+  });
+  const allCollapsed = files.every((file) => file.collapsed);
+  const shown =
+    scenario.changes === "no-code" || scenario.changes === "reading" ? null : CHOICES[1]!;
+  const toggle = (fileKey: string) =>
+    setOpened((current) => {
+      const next = new Set(current);
+      if (next.has(fileKey)) next.delete(fileKey);
+      else next.add(fileKey);
+      return next;
+    });
+  return (
+    <CodePage
+      changesAsked={false}
+      commits={
+        scenario.repositories[0]?.block.pullRequestNumber === undefined || shown === null ? null : (
+          <HarnessCommits />
+        )
+      }
+      composerDraftTarget={DraftId.make("harness-code")}
+      files={files}
+      notices={null}
+      onChangesShown={() => {}}
+      onToggleFile={toggle}
+      options={{
+        diffStyle: mode === "split" ? "split" : "unified",
+        lineDiffType: "none",
+        overflow: wrap ? "wrap" : "scroll",
+        theme: resolveDiffThemeName(theme),
+        themeType: theme,
+        stickyHeaders: true,
+      }}
+      sectionId="harness"
+      sectionTitle="Not on main"
+      state={
+        scenario.changes === "reading" ? (
+          <DiffPanelLoadingState label="Reading git..." />
+        ) : scenario.changes === "no-code" ? (
+          <CodeChangesEmpty title="No code here yet." />
+        ) : scenario.changes === "nothing" ? (
+          <CodeChangesEmpty title="Nothing in shopdev is outside main." />
+        ) : null
+      }
+      toolbar={
+        shown === null ? null : (
+          <CodeChangesToolbar
+            choices={CHOICES}
+            collapse={
+              files.length === 0
+                ? null
+                : {
+                    allCollapsed,
+                    onToggle: () =>
+                      setOpened(
+                        allCollapsed ? new Set(files.map((file) => file.fileKey)) : new Set(),
+                      ),
+                  }
+            }
+            compare={
+              <CodeCompare base="origin/main" head="mate/p-dana">
+                <Button size="sm" variant="ghost">
+                  <span className="min-w-0 truncate">origin/main</span>
+                  <ChevronDownIcon className="size-3.5 shrink-0 opacity-70" />
+                </Button>
+              </CodeCompare>
+            }
+            onChoose={() => {}}
+            refresh={{ pending: false, onRefresh: () => {} }}
+            shown={shown}
+            stat={files.length === 0 ? null : getDiffLineStat(files.map((file) => file.fileDiff))}
+            view={{
+              mode,
+              onMode: setMode,
+              wrap,
+              onWrap: setWrap,
+              ignoreWhitespace,
+              onIgnoreWhitespace: setIgnoreWhitespace,
+            }}
+          />
+        )
+      }
+      top={top}
+      viewKey={`harness:${scenario.id}`}
+    />
+  );
+}
+
 const face = <MateFace size={20} state="idle" tint={"rose" satisfies MateTintId} />;
+
+/** Dana's coding agents: Claude Code signed in by the person, Codex not signed in. */
+const AGENTS: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      agentId: "claude-code",
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      state: "authorized",
+      providerAuth: "unknown",
+    },
+    {
+      agentId: "codex",
+      credPresent: false,
+      flagOAuth: false,
+      flagToken: false,
+      state: "not-authorized",
+      providerAuth: "unknown",
+    },
+  ],
+} as ZeropsAgentAuthSnapshot;
+
+const agents = (
+  <ZeropsAgentAuthCard
+    conversationAgentId="claude-code"
+    density="compact"
+    onCancel={() => {}}
+    onSignIn={() => {}}
+    snapshot={AGENTS}
+  />
+);
 
 function Frame({
   width,
@@ -449,38 +734,36 @@ function HarnessPage() {
                 (scenario) => (
                   <div className="flex gap-4" data-harness-scenario={scenario.id} key={scenario.id}>
                     {shownPanel === "zerops" ? null : (
-                      <Frame label={`Git · ${scenario.title}`} width={width}>
-                        <ZeropsGitPanel
-                          mateFace={face}
-                          mateName="Dana"
-                          model={{ repositories: scenario.repositories }}
-                          onConnect={() => {}}
-                          onOpenChange={() => {}}
-                          project={scenario.project}
-                          renderBlockAction={(block) =>
-                            block.state === "unpushed" ? (
-                              <Button size="sm" variant="secondary">
-                                Ask Dana to push
-                              </Button>
-                            ) : null
-                          }
-                          renderBlockCommits={(block) =>
-                            block.pullRequestNumber === undefined ? null : (
-                              <div className="-ms-2.5 flex">
-                                <Button size="sm" variant="ghost">
-                                  History
-                                </Button>
-                              </div>
-                            )
+                      <Frame label={`Code · ${scenario.title}`} width={width}>
+                        <HarnessCode
+                          scenario={scenario}
+                          top={
+                            <ZeropsGitPanel
+                              mateFace={face}
+                              mateName="Dana"
+                              model={{ repositories: scenario.repositories }}
+                              onConnect={() => {}}
+                              onOpenChange={() => {}}
+                              project={scenario.project}
+                              renderBlockAction={(block) =>
+                                block.state === "unpushed" ? (
+                                  <Button size="sm" variant="secondary">
+                                    Ask Dana to push
+                                  </Button>
+                                ) : null
+                              }
+                            />
                           }
                         />
                       </Frame>
                     )}
-                    {shownPanel === "git" ? null : (
+                    {shownPanel === "code" ? null : (
                       <Frame label={`Zerops · ${scenario.title}`} width={width}>
                         <div className="h-full overflow-auto p-4">
                           <ZeropsServiceMap
+                            agents={agents}
                             currentServiceId="svc-zcp"
+                            mateUpdate={<span>Mate 0.16.112 · up to date</span>}
                             liveness="live"
                             mate={{ name: "Dana", tint: "rose", face: "idle" }}
                             project={scenario.project}

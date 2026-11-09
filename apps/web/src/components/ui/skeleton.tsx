@@ -13,18 +13,29 @@ const skeletonVariants = cva(
         card: "rounded-lg",
         pill: "rounded-full",
       },
+      // What it stands on: the page, or a card (in dark the card is the muted tone itself, so a
+      // page skeleton on it reads as nothing; `cn` lets the card's tone win).
+      surface: {
+        page: "",
+        card: "bg-foreground/7",
+      },
     },
-    defaultVariants: { shape: "block" },
+    defaultVariants: { shape: "block", surface: "page" },
   },
 );
 
 function Skeleton({
   className,
   shape,
+  surface,
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof skeletonVariants>) {
   return (
-    <div className={cn(skeletonVariants({ shape }), className)} data-slot="skeleton" {...props} />
+    <div
+      className={cn(skeletonVariants({ shape, surface }), className)}
+      data-slot="skeleton"
+      {...props}
+    />
   );
 }
 

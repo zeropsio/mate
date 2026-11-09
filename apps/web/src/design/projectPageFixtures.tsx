@@ -47,7 +47,7 @@ import {
   ProjectPageBody,
   type ProjectPageFacts,
 } from "~/components/zerops/project/ProjectPageBody";
-import { PAGE_CHANGES } from "~/components/zerops/project/projectPage.logic";
+import { CHANGES_HELD } from "~/components/zerops/project/projectPage.logic";
 import { SetupRow } from "~/components/zerops/project/SetupCard";
 import type {
   CardWait,
@@ -100,6 +100,7 @@ const MATES: Readonly<Record<string, { readonly name: string; readonly tint: Mat
   "ines-s": { name: "Ines", tint: "olive" },
   "odo-s": { name: "Odo", tint: "slate" },
   "tess-s": { name: "Tess", tint: "rose" },
+  "juno-n": { name: "Juno", tint: "sky" },
 };
 
 /** A change a Mate landed `minutes` ago, mirrored to GitHub's pull request `github`. */
@@ -181,7 +182,7 @@ function recordedHistory(
 const DAY = 24 * 60;
 const TEA_INPUT = {
   releases: [
-    shipped("v0.1.3", 6 * DAY, { standing: "live" }),
+    shipped("v0.1.3", 6 * DAY, { standing: "live", by: "dana" }),
     shipped("v0.1.2", 6.5 * DAY),
     shipped("v0.1.1", 7 * DAY),
     shipped("v0.1.0", 8 * DAY),
@@ -203,6 +204,29 @@ const TEA_HISTORY = recordedHistory(
   [[17, 16, 13, 11], [10, 7], [5, 6], [4]],
   [0, 1, 0, 0],
 );
+
+/**
+ * Juno Notes, not live yet: five changes on `main` and the project's setup files, nothing
+ * released.
+ */
+const JUNO_INPUT = {
+  releases: [],
+  merged: [
+    ...[
+      landed(9, "Notes sorted by tag, newest first inside each tag", "juno-n", 25 * DAY),
+      landed(8, "Markdown preview beside the editor, scrolling with it", "juno-n", 25 * DAY + 30),
+      landed(7, "Pin a note to the top of its tag", "juno-n", 25 * DAY + 90),
+      landed(6, "Search across titles and bodies as you type", "juno-n", 25 * DAY + 200),
+      landed(5, "A notes list, an editor and tags to file notes under", "juno-n", 26 * DAY),
+    ].map((change) => ({ ...change, pullRequest: undefined })),
+    {
+      ...landed(2, "Mate: the project's import files", "juno-n", 12 * DAY),
+      repository: "group",
+      kind: "recipe" as const,
+      pullRequest: undefined,
+    },
+  ],
+};
 
 /** Acme Store: seven releases, the newest five shown, one rolled back from. */
 const ACME_INPUT = {
@@ -235,6 +259,9 @@ function mateFace(projectId: string): ReactNode {
   return mate === undefined ? undefined : <MateFace size={20} state="idle" tint={mate.tint} />;
 }
 
+/** Who released the harness's releases. */
+const PEOPLE_NAMES: Readonly<Record<string, string>> = { dana: "Dana" };
+
 /** A project page's History, drawn from its fixtures. */
 function PageHistory({ groupId }: { readonly groupId: string }) {
   return (
@@ -242,6 +269,7 @@ function PageHistory({ groupId }: { readonly groupId: string }) {
       face={mateFace}
       mateName={(projectId) => MATES[projectId]?.name}
       onOpen={nothing}
+      personName={(userId) => PEOPLE_NAMES[userId]}
       releases={groupId === "acme-store" ? ACME_HISTORY : TEA_HISTORY}
       repo={{ appId: groupId, repo: "appdev" }}
     />
@@ -353,6 +381,9 @@ const REPOS = [
   },
 ];
 
+/** A project's code kept in Mate alone: on no GitHub. */
+const KEPT_REPOS = [{ name: "notes", mainHead: null, updatedAt: ago(25 * DAY), remote: null }];
+
 /** Thirty days of spend: compute every day, model tokens on the days the automated Mates worked. */
 const DAYS = Array.from({ length: 30 }, (_, at) =>
   new Date(NOW - (29 - at) * 86_400_000).toISOString().slice(0, 10),
@@ -424,6 +455,29 @@ const PEOPLE_VIEW = {
   })),
 } as unknown as AccessTableView;
 
+/** Who reaches a bigger project: sixteen people. */
+const MANY_PEOPLE_VIEW = {
+  ...PEOPLE_VIEW,
+  rows: [
+    "Nova Dev",
+    "Ines Vale",
+    "Toby Holt",
+    "Theo Lind",
+    "Dana Moss",
+    "Eli Park",
+    "Mira Stone",
+    "Owen Hale",
+    "Lena Fox",
+    "Ravi Kade",
+    "Ada Lark",
+    "Ben Cole",
+    "Cleo Ward",
+    "Finn Ray",
+    "Gail Ross",
+    "Hugo Bell",
+  ].map((name, index) => ({ key: `cu-${String(index)}`, name, avatarUrl: null, cells: [] })),
+} as unknown as AccessTableView;
+
 /** Who reaches a project, as its access chips draw them: the harness's *Manage*. */
 function PageAccess() {
   const people = ["Nova Dev", "Ines Vale", "Toby Holt", "Theo Lind"].map((name, index) => ({
@@ -485,7 +539,15 @@ function PageAutomation({ groupId }: { readonly groupId: string }) {
 
 /** What the page reads beyond the overview's group, from fixtures, for the project it opened. */
 function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
-  const input = groupId === "acme-store" ? ACME_INPUT : groupId === "tea" ? TEA_INPUT : undefined;
+  const input =
+    groupId === "acme-store"
+      ? ACME_INPUT
+      : groupId === "tea"
+        ? TEA_INPUT
+        : groupId === "juno-notes"
+          ? JUNO_INPUT
+          : undefined;
+  const released = groupId === "acme-store" || groupId === "tea";
   const production = "stop" in flow.production ? flow.production.stop : undefined;
   const environments = [
     ...(production === undefined
@@ -504,7 +566,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
   ];
   const slots: ReadonlyArray<EnvironmentSlotRow> = [
     production === undefined
-      ? { kind: "slot", tier: "production", name: "Production", line: "Not live yet", add: true }
+      ? { kind: "slot", tier: "production", name: "Production", line: "Not added", add: true }
       : { kind: "environment", tier: "production", id: production.projectId, note: undefined },
     ...(flow.stages.length === 0
       ? [{ kind: "slot", tier: "stage", name: "Stage", line: "Not added", add: true } as const]
@@ -521,10 +583,10 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
       releases: input?.releases ?? [],
       stage: undefined,
       production: production !== undefined,
-      limit: PAGE_CHANGES,
+      limit: CHANGES_HELD,
     }),
     changesUnknown: undefined,
-    repos: input === undefined ? [] : REPOS,
+    repos: released ? REPOS : [],
     environments,
     slots,
     release:
@@ -536,7 +598,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
     onAdd: nothing,
     onFinish: nothing,
     finishing: false,
-    repo: input === undefined ? undefined : "appdev",
+    repo: released ? "appdev" : undefined,
     // `?undeclared`: HQ has not told which environments exist; the places are the group's lines.
     declared: !new URLSearchParams(location.search).has("undeclared"),
     fixOf: () =>
@@ -620,6 +682,7 @@ export function harnessProjectPage(
   onAddMate: () => void,
 ): ProjectPageSlot["render"] {
   const running = groupId === "acme-store" || groupId === "tea";
+  const repos = running ? REPOS : groupId === "juno-notes" ? KEPT_REPOS : undefined;
   return ({ entry, props, addMateWhy }) => (
     <Standins>
       <ProjectPageBody
@@ -637,8 +700,8 @@ export function harnessProjectPage(
         setup={{
           rows: (open) => (
             <>
-              {running ? (
-                <SetupRow label="Repositories">
+              {repos !== undefined ? (
+                <SetupRow label="Code" rows>
                   <RepoRowsView
                     actions={{}}
                     admin
@@ -652,7 +715,7 @@ export function harnessProjectPage(
                     orgName="Acme"
                     project={groupId}
                     projectName={groupId}
-                    repos={REPOS}
+                    repos={repos}
                   />
                 </SetupRow>
               ) : null}
@@ -669,7 +732,10 @@ export function harnessProjectPage(
                 onManage={open.automation}
                 pool={groupId === "acme-store" ? POOL : []}
               />
-              <ProjectPeopleRowView onManage={open.access} view={PEOPLE_VIEW} />
+              <ProjectPeopleRowView
+                onManage={open.access}
+                view={groupId === "juno-notes" ? MANY_PEOPLE_VIEW : PEOPLE_VIEW}
+              />
               <ProjectSpendRowView state={running ? SPEND : SPEND_TODAY} />
             </>
           ),

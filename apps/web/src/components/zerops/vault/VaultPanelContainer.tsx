@@ -145,7 +145,16 @@ export function ProjectVaultPanel({
   useDetailDemand("process", "history", projectId);
   const shown = useAtomValue(projectId === null ? UNREAD : vaultAtom(projectId));
   const { run, write: writeVault } = useVaultWriter(project, shown);
-  const reveal = useAccountDataOptional()?.reveal;
+  const account = useAccountDataOptional();
+  const reveal = account?.reveal;
+  const retryDetail = account?.retryDetail;
+  // Try again asks each read the vault is made of again; a read that is fine reads once more.
+  const onRetry = useCallback(() => {
+    if (projectId === null || retryDetail === undefined) return;
+    retryDetail({ family: "projectVariables", ownerId: projectId });
+    retryDetail({ family: "serviceVariable", ownerId: projectId });
+    retryDetail({ family: "process", listing: "history", ownerId: projectId });
+  }, [projectId, retryDetail]);
   const onWrite = useCallback(
     async (scope: VaultScopeRef, write: VaultWrite): Promise<VaultWriteOutcome> => {
       const { outcome, change } = await writeVault(scope, write);
@@ -171,6 +180,7 @@ export function ProjectVaultPanel({
       actor={actor}
       impactOf={(scope, write) => vaultImpact(shown, scope, write)}
       onRestart={onRestart}
+      onRetry={onRetry}
       onWrite={onWrite}
       pending={NO_PENDING}
       restarting={NO_RESTARTS}

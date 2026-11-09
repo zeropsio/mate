@@ -658,6 +658,9 @@ const ZeropsMacSurface = lazy(
     })),
   ),
 );
+const CodeChanges = lazy(
+  appChunk(() => import("./CodeChanges").then((module) => ({ default: module.CodeChanges }))),
+);
 const ZeropsGitSurface = lazy(
   appChunk(() =>
     import("./zerops/ZeropsGitSurface").then((module) => ({ default: module.ZeropsGitSurface })),
@@ -712,7 +715,6 @@ const VaultPanelContainer = lazy(
     })),
   ),
 );
-const DiffPanel = lazy(appChunk(() => import("./DiffPanel")));
 const FilePreviewPanel = lazy(appChunk(() => import("./files/FilePreviewPanel")));
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
 type EnvironmentUnavailableState = {
@@ -756,7 +758,6 @@ type ChatViewProps =
   | {
       environmentId: EnvironmentId;
       threadId: ThreadId;
-      onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: ThreadSyncPhase | null;
@@ -766,7 +767,6 @@ type ChatViewProps =
   | {
       environmentId: EnvironmentId;
       threadId: ThreadId;
-      onDiffPanelOpen?: () => void;
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: never;
@@ -1530,7 +1530,6 @@ function ConversationView(props: ChatViewProps) {
     environmentId,
     threadId,
     routeKind,
-    onDiffPanelOpen,
     reserveTitleBarControlInset = true,
     forceExpandedMobileComposer = false,
   } = props;
@@ -2078,11 +2077,11 @@ function ConversationView(props: ChatViewProps) {
   const activeRightPanelKind = useRightPanelStore((state) =>
     selectActiveRightPanel(state.byThreadKey, activeThreadRef),
   );
-  const diffOpen = activeRightPanelKind === "diff";
-  // Every opening of Diff shows what is not on main yet, whatever it showed before.
+  const codeOpen = activeRightPanelKind === "git";
+  // Every opening of Code shows what is not on main yet, whatever it showed before.
   useLayoutEffect(() => {
-    if (activeThreadRef && diffOpen) useDiffPanelStore.getState().clearSelection(activeThreadRef);
-  }, [activeThreadRef, diffOpen]);
+    if (activeThreadRef && codeOpen) useDiffPanelStore.getState().clearSelection(activeThreadRef);
+  }, [activeThreadRef, codeOpen]);
   const rightPanelState = useRightPanelStore((state) =>
     selectThreadRightPanelState(state.byThreadKey, activeThreadRef),
   );
@@ -3545,18 +3544,19 @@ function ConversationView(props: ChatViewProps) {
     () => shortcutLabelForCommand(keybindings, "terminal.close", terminalShortcutLabelOptions),
     [keybindings, terminalShortcutLabelOptions],
   );
+  // The diff shortcut opens Code at "What changed", and closes it from there.
   const onToggleDiff = useCallback(() => {
-    // A Chief's panel offers no diff (`rightPanelKinds.ts`): its shortcut opens none either.
-    if (!isServerThread || chiefConversation) {
+    // A Chief's panel offers no Code (`rightPanelKinds.ts`): its shortcut opens none either.
+    if (!isServerThread || chiefConversation || !activeThreadRef) {
       return;
     }
-    if (!diffOpen) {
-      onDiffPanelOpen?.();
+    if (codeOpen) {
+      useRightPanelStore.getState().toggle(activeThreadRef, "git");
+      return;
     }
-    if (activeThreadRef) {
-      useRightPanelStore.getState().toggle(activeThreadRef, "diff");
-    }
-  }, [activeThreadRef, chiefConversation, diffOpen, isServerThread, onDiffPanelOpen]);
+    useDiffPanelStore.getState().askChanges(activeThreadRef);
+    useRightPanelStore.getState().open(activeThreadRef, "git");
+  }, [activeThreadRef, chiefConversation, codeOpen, isServerThread]);
 
   const envLocked = Boolean(
     activeThread &&
@@ -4215,13 +4215,6 @@ function ConversationView(props: ChatViewProps) {
     },
     [environmentId, navigate],
   );
-  // The launcher's availability decides who may open Diff.
-  const addDiffSurface = useCallback(() => {
-    if (!activeThreadRef || !isServerThread) return;
-    useDiffPanelStore.getState().clearSelection(activeThreadRef);
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
-    onDiffPanelOpen?.();
-  }, [activeThreadRef, isServerThread, onDiffPanelOpen]);
   const addFilesSurface = useCallback(() => {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
@@ -4241,6 +4234,12 @@ function ConversationView(props: ChatViewProps) {
   }, [activeThreadRef]);
   const addGitSurface = useCallback(() => {
     if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "git");
+  }, [activeThreadRef]);
+  /** Code at "What changed" (the launcher's D). */
+  const addCodeChangesSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useDiffPanelStore.getState().askChanges(activeThreadRef);
     useRightPanelStore.getState().open(activeThreadRef, "git");
   }, [activeThreadRef]);
   const addCrewSurface = useCallback(() => {
@@ -4537,11 +4536,8 @@ function ConversationView(props: ChatViewProps) {
       if (surface.kind === "terminal") {
         setTerminalFocusRequestId((value) => value + 1);
       }
-      if (surface.kind === "diff" && !diffOpen) {
-        onDiffPanelOpen?.();
-      }
     },
-    [activeThreadRef, diffOpen, onDiffPanelOpen],
+    [activeThreadRef],
   );
   const toggleRightPanel = useCallback(() => {
     if (!activeThreadRef) return;
@@ -8247,9 +8243,6 @@ function ConversationView(props: ChatViewProps) {
   });
   const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
     switch (kind) {
-      case "diff":
-        addDiffSurface();
-        return;
       case "files":
         addFilesSurface();
         return;
@@ -8319,16 +8312,6 @@ function ConversationView(props: ChatViewProps) {
                   closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
                 />
               );
-            case "diff":
-              return (
-                <Suspense fallback={<Loading label="The changes" shape="room" />}>
-                  <DiffPanel
-                    key={activeThreadKey}
-                    mode="embedded"
-                    composerDraftTarget={composerDraftTarget}
-                  />
-                </Suspense>
-              );
             case "agents":
               return (
                 <AgentsPanel
@@ -8386,7 +8369,16 @@ function ConversationView(props: ChatViewProps) {
                   );
                 });
             case "git":
-              return <ZeropsGitSurface threadRef={zeropsChrome.threadRef} />;
+              // Outside a Zerops project, Code is what changed alone.
+              return rightPanelAvailability.zerops === "unavailable" ? (
+                <CodeChanges composerDraftTarget={composerDraftTarget} key={activeThreadKey} />
+              ) : (
+                <ZeropsGitSurface
+                  composerDraftTarget={composerDraftTarget}
+                  key={activeThreadKey}
+                  threadRef={zeropsChrome.threadRef}
+                />
+              );
             case "crew":
               // One Mate's crew: another Mate's draws afresh, its sheets and drafts closed. A crew
               // closed to this viewer offers the conversation's one way out, its one dialog.
@@ -9169,6 +9161,7 @@ function ConversationView(props: ChatViewProps) {
           onCopyFilePath={copyRightPanelFilePath}
           availability={rightPanelAvailability}
           onAdd={onAddRightPanelSurface}
+          onAddAt={addCodeChangesSurface}
           onAddTerminal={addTerminalSurface}
           liveAgentCount={agentPanelModel.liveCount}
           keybindings={keybindings}
@@ -9206,6 +9199,7 @@ function ConversationView(props: ChatViewProps) {
             onCopyFilePath={copyRightPanelFilePath}
             availability={rightPanelAvailability}
             onAdd={onAddRightPanelSurface}
+            onAddAt={addCodeChangesSurface}
             onAddTerminal={addTerminalSurface}
             liveAgentCount={agentPanelModel.liveCount}
             keybindings={keybindings}

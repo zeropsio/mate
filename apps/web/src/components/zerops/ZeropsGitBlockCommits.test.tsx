@@ -64,7 +64,7 @@ const html = async (
   expect(detail.asked).toEqual([null]);
   const history = container.querySelector("button");
   if (history !== null) {
-    expect(history.textContent).toBe("History");
+    expect(history.textContent).toBe("Commits");
     detail.asked = [];
     await act(async () => history.click());
   }

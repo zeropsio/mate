@@ -85,6 +85,9 @@ import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useDeleteProject } from "~/zerops/deleteProject";
+import { useAccountOrgId } from "~/zerops/accountData";
+import { placeVaults } from "./vault/placeVault.logic";
+import { usePlaceVaultDrawer } from "./vault/StopVault";
 import { useRestartMate } from "~/zerops/mateRestart";
 import {
   birthPresses,
@@ -870,6 +873,8 @@ export function ZeropsProjectsContent({
   readonly painted?: boolean;
 }) {
   const openMate = useOpenMate();
+  // A place's vault, opened from its line on a card or the project page: one drawer over the page.
+  const placeVault = usePlaceVaultDrawer(useAccountOrgId());
   const authGate = useRouteContext({
     from: "__root__",
     select: (context) => context.authGateState,
@@ -2493,6 +2498,8 @@ export function ZeropsProjectsContent({
       mate.previews.map((preview) => ({ mate: mate.name, ...preview })),
     );
     const oneMate = new Set(previews.map((preview) => preview.mate)).size <= 1;
+    const openVault = placeVault.open;
+    const vaults = openVault === undefined ? [] : placeVaults(flow, nowMs);
     const mateWhy = addMateWhy(group.groupId);
     const canonicalGroup = groupTree.groups.find(
       (entry) => entry.group.groupId === group.groupId,
@@ -2508,6 +2515,15 @@ export function ZeropsProjectsContent({
         },
       })),
       ...(previews.length === 0 ? [] : [{ id: "previews-end", separator: true as const }]),
+      // Each place's vault, as its line's Vault icon opens it: for the keyboard, and to be found.
+      ...vaults.map((vault) => ({
+        id: `vault:${vault.projectId}`,
+        label: `${vault.name} vault`,
+        onSelect: () => {
+          openVault?.(vault);
+        },
+      })),
+      ...(vaults.length === 0 ? [] : [{ id: "vaults-end", separator: true as const }]),
       // A project with nothing in it is offered its first Mate, and nothing more.
       ...(groupIsEmpty(group) && addMateOffer(group.groupId).kind === "allowed"
         ? [
@@ -2706,6 +2722,7 @@ export function ZeropsProjectsContent({
           for (const candidate of items) runRowAction(candidate, "retry-probe");
         }}
         renderEnvironment={renderEnvironment}
+        openPlaceVault={placeVault.open}
         renderGroupMenu={renderGroupMenu}
         renderMate={renderMate}
         renderComingBirth={(projectId) => {
@@ -2883,6 +2900,7 @@ export function ZeropsProjectsContent({
           }}
         />
       ) : null}
+      {placeVault.drawer}
       {rowDialog?.kind === "mirror-code" ? (
         <GitMirrorDialog
           appId={rowDialog.group.groupId}

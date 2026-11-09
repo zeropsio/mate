@@ -2,14 +2,12 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { isWindowsAbsolutePath, normalizeProjectPathForComparison } from "@t3tools/shared/path";
 
 import { useRightPanelStore } from "./rightPanelStore";
-import { resolvePathLinkTarget } from "./terminal-links";
 
-interface OpenDiffFilePrimaryActionInput {
-  readonly threadRef: ScopedThreadRef | null;
+interface OpenDiffFileInput {
+  readonly threadRef: ScopedThreadRef;
   readonly filePath: string;
   readonly activeCwd: string | undefined;
   readonly repositoryRoot?: string | undefined;
-  readonly openInEditor: (targetPath: string) => void;
 }
 
 function normalizedRelativePathSegments(filePath: string): ReadonlyArray<string> | null {
@@ -77,24 +75,17 @@ export function resolveDiffPathForWorkspace(input: {
   return relativeSegments.length > 0 ? relativeSegments.join("/") : null;
 }
 
-export function openDiffFilePrimaryAction({
+/** A changed file's name opens the file beside the conversation, where it is in the workspace. */
+export function openDiffFile({
   threadRef,
   filePath,
   activeCwd,
   repositoryRoot,
-  openInEditor,
-}: OpenDiffFilePrimaryActionInput): void {
+}: OpenDiffFileInput): void {
   const workspaceFilePath = resolveDiffPathForWorkspace({
     filePath,
     workspaceRoot: activeCwd,
     repositoryRoot,
   });
-  if (!workspaceFilePath) return;
-
-  if (threadRef) {
-    useRightPanelStore.getState().openFile(threadRef, workspaceFilePath);
-    return;
-  }
-
-  openInEditor(activeCwd ? resolvePathLinkTarget(workspaceFilePath, activeCwd) : workspaceFilePath);
+  if (workspaceFilePath) useRightPanelStore.getState().openFile(threadRef, workspaceFilePath);
 }

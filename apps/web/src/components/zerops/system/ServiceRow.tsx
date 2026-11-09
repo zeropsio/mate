@@ -1,10 +1,12 @@
 /**
- * A service, the one drawing of a service on a place's page and in a Mate's Zerops panel: its name
- * with its repository or ports under it, what it is, its state, its CPU, RAM and disk against what it
- * holds (each with its last day), and its ··· menu.
+ * A service, the one drawing of a service on a place's page and in a Mate's Zerops panel: a card of
+ * its own — its name and what it is on top, one quiet line under them, its ··· at the right — and
+ * its CPU, RAM and disk as three labelled bars, each against what the service holds.
  *
- * - `table` (the place's page): one row of columns, the meters in their own column.
- * - `compact` (a Mate's panel): the name and what is under it on one line, the meters under them.
+ * - `page` (the place's aside): what it is beside its name; under them what it runs (`facts`) or
+ *   its ports.
+ * - `panel` (a Mate's panel): its ports beside what it is, on the name's line; nothing under it but
+ *   what the caller hands in.
  *
  * Read from `placeServiceRows(code, platform)`; a Mate's own services are
  * `placeServiceRows([], zeropsServiceRows)`.
@@ -20,9 +22,9 @@ import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Skeleton } from "~/components/ui/skeleton";
+import { cn } from "~/lib/utils";
 import type { PlaceServiceRow } from "../place/place.logic";
-import { ResourceGraph } from "../ResourceGraph";
-import { serviceRowState } from "./ServiceRow.logic";
+import { meterFill, meterReading, serviceRowState } from "./ServiceRow.logic";
 
 const METERS: ReadonlyArray<{ readonly id: "cores" | "memory" | "disk"; readonly label: string }> =
   [
@@ -33,16 +35,17 @@ const METERS: ReadonlyArray<{ readonly id: "cores" | "memory" | "disk"; readonly
 
 /**
  * Props: `row` (`PlaceServiceRow`); `usageRead` (the platform's use is read: until then the meters
- * hold their room); `density` (default `table`); `state` (drawn in place of the row's own state
- * cell, e.g. a job under way); `actions` (before the ···, in both densities: a service's address
- * buttons, a database's Data); `menuItems` (`MenuItem`s before *Open in Zerops* in its ···);
- * `children` (under the row: what the row has no width for — a job's line, a deploy log).
- * Renders an `<li>`: put it in a `ServiceList`.
+ * hold their room); `density` (default `page`); `facts` (the quiet line under the name, in place of
+ * its ports: what it runs); `state` (drawn in place of the row's own state word, e.g. a job under
+ * way); `actions` (before the ···: a service's address buttons, a database's Data); `menuItems`
+ * (`MenuItem`s before *Open in Zerops* in its ···); `children` (under the meters: what is not calm —
+ * a job's line, a deploy log). Renders an `<li>`: put it in a `ServiceList`.
  */
 export function ServiceRow({
   row,
   usageRead,
-  density = "table",
+  density = "page",
+  facts,
   state,
   actions,
   menuItems,
@@ -50,85 +53,57 @@ export function ServiceRow({
 }: {
   readonly row: PlaceServiceRow;
   readonly usageRead: boolean;
-  readonly density?: "table" | "compact";
+  readonly density?: "page" | "panel";
+  readonly facts?: ReactNode;
   readonly state?: ReactNode;
   readonly actions?: ReactNode;
   readonly menuItems?: ReactNode;
   readonly children?: ReactNode;
 }) {
-  const said = state ?? <ServiceState row={row} />;
-  const meters =
-    row.compute && row.platform !== undefined ? (
-      <ServiceMeters fit={density === "compact"} row={row.platform} usageRead={usageRead} />
-    ) : null;
-  const menu = (
-    <>
-      {actions === undefined || actions === null ? null : (
-        <span className="flex min-w-0 items-center gap-1">{actions}</span>
-      )}
-      <ServiceMenu menuItems={menuItems} row={row} />
-    </>
-  );
-  if (density === "compact")
-    return (
-      <li
-        className="@container flex flex-col gap-1 border-t border-border/60 py-2 first:border-t-0"
-        data-zerops-service-row="compact"
-        data-zerops-place-service={row.hostname}
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate text-body font-medium text-foreground">
-            {row.hostname}
-          </span>
-          {row.under === undefined ? null : (
-            <span className="min-w-0 truncate text-caption text-muted-foreground">{row.under}</span>
-          )}
-          <span className="ms-auto flex shrink-0 items-center gap-2">
-            {said}
-            {menu}
-          </span>
-        </div>
-        {meters}
-        {children}
-      </li>
-    );
+  const said = state === undefined ? <ServiceState row={row} /> : state;
+  const panel = density === "panel";
+  const kind = panel
+    ? [row.type, row.under].filter((part) => part !== undefined && part !== "").join(" · ")
+    : row.type;
+  const under = panel ? facts : (facts ?? row.under);
   return (
     <li
-      className="flex flex-col gap-1.5 border-t border-border/60 py-2.5 first:border-t-0"
-      data-zerops-service-row="table"
+      className={cn(
+        "flex min-w-0 flex-col rounded-xl border border-border/70 bg-card",
+        panel ? "gap-3 px-3.5 pt-3 pb-3.5" : "gap-3.5 px-4 pt-3.5 pb-4",
+      )}
+      data-zerops-service-row={density}
       data-zerops-place-service={row.hostname}
     >
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 @4xl/services:grid-cols-[minmax(7rem,1fr)_minmax(6rem,0.8fr)_minmax(7rem,0.9fr)_minmax(29rem,2.6fr)_auto]">
-        <span className="flex min-w-0 flex-col">
-          <span className="truncate text-body font-medium text-foreground">{row.hostname}</span>
-          {row.under === undefined ? null : (
-            <span className="truncate text-caption text-muted-foreground">{row.under}</span>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="min-w-0 truncate text-sm font-semibold text-foreground">
+              {row.hostname}
+            </span>
+            {kind === undefined || kind === "" ? null : (
+              <span className="min-w-0 truncate text-caption text-muted-foreground">{kind}</span>
+            )}
+            {said}
+          </div>
+          {under === undefined || under === null ? null : (
+            <div className="min-w-0 truncate text-caption text-muted-foreground/80">{under}</div>
           )}
-        </span>
-        <span className="hidden min-w-0 truncate text-body text-muted-foreground @4xl/services:block">
-          {row.type}
-        </span>
-        <span className="hidden min-w-0 @4xl/services:flex">{said}</span>
-        <span className="hidden min-w-0 @4xl/services:flex">{meters}</span>
-        <span className="flex items-center justify-end gap-1">{menu}</span>
-        {/* Narrower than the table: what it is and its state under its name, the meters under them. */}
-        <span className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @4xl/services:hidden">
-          {row.type === undefined ? null : (
-            <span className="text-body text-muted-foreground">{row.type}</span>
-          )}
-          {said}
-          {meters}
+        </div>
+        <span className="-me-1.5 -mt-0.5 flex shrink-0 items-center gap-0.5">
+          {actions}
+          <ServiceMenu menuItems={menuItems} row={row} />
         </span>
       </div>
+      {row.compute && row.platform !== undefined ? (
+        <ServiceMeters row={row.platform} usageRead={usageRead} />
+      ) : null}
       {children}
     </li>
   );
 }
 
-/**
- * A list of `ServiceRow`s. In `table` density it is the container whose width decides whether a
- * row is one line of columns or stacked.
- */
+/** A list of `ServiceRow`s, each its own card with room between them. */
 export function ServiceList({
   children,
   label,
@@ -137,32 +112,20 @@ export function ServiceList({
   readonly label?: string;
 }) {
   return (
-    <div className="@container/services min-w-0">
-      <ul aria-label={label} className="m-0 flex list-none flex-col p-0">
-        {children}
-      </ul>
-    </div>
+    <ul aria-label={label} className="m-0 flex min-w-0 list-none flex-col gap-2.5 p-0">
+      {children}
+    </ul>
   );
 }
 
+/** A state that is not calm, in its words beside the name; a calm one says nothing. */
 function ServiceState({ row }: { readonly row: PlaceServiceRow }) {
   const state = serviceRowState(row);
   if (state === undefined) return null;
   return (
-    <span className="flex min-w-0 flex-wrap items-baseline gap-x-1.5">
-      {state.tone === undefined ? (
-        <span className="min-w-0 text-body text-muted-foreground">{state.word}</span>
-      ) : (
-        <span className="text-body text-foreground">
-          <Badge dot tone={state.tone}>
-            {state.word}
-          </Badge>
-        </span>
-      )}
-      {state.age === undefined ? null : (
-        <span className="text-caption text-muted-foreground">{state.age}</span>
-      )}
-    </span>
+    <Badge tone={state.tone ?? "neutral"}>
+      {state.age === undefined ? state.word : `${state.word} · ${state.age}`}
+    </Badge>
   );
 }
 
@@ -196,80 +159,86 @@ function ServiceMenu({
 }
 
 /**
- * A compute service's CPU, RAM and disk on one line, each against what it holds with its last day
- * beside it. Props: `row` (the platform's `ZeropsServiceRow`); `usageRead`; `fit` (inside an
- * `@container` too narrow for three graphs, a panel at 420 px, the numbers keep their one line and
- * the day graphs give way).
+ * A compute service's CPU, RAM and disk as three labelled bars side by side, each `used / limit
+ * unit` over its bar, filled by use and amber once nearly full. Props: `row` (the platform's
+ * `ZeropsServiceRow`); `usageRead`; `tone` (the bars' ink: `info`, or `ok` on a Mate's home).
  */
 export function ServiceMeters({
   row,
   usageRead,
-  fit = false,
+  tone = "info",
 }: {
   readonly row: ZeropsServiceRow;
   readonly usageRead: boolean;
-  readonly fit?: boolean;
+  readonly tone?: "info" | "ok" | undefined;
 }) {
   return (
-    <span
-      className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1"
+    <div
+      className="grid min-w-0 grid-cols-3 items-end gap-x-4 gap-y-2"
       data-zerops-place-meters=""
+      data-zerops-service-resources=""
     >
       {METERS.map((meter) => (
         <ServiceMeter
-          id={`service-${row.service.serviceId}-${meter.id}`}
           key={meter.id}
           label={meter.label}
           metric={row.metrics.find((metric) => metric.id === meter.id)}
-          fit={fit}
-          trend={row.trends?.[meter.id]}
+          tone={tone}
           usageRead={usageRead}
         />
       ))}
-    </span>
+    </div>
   );
 }
 
-/** One resource against what the service holds, `0.08/2 GB`, and its last day beside it. */
+/** One resource against what the service holds, `0.19 / 2 GB`, over its bar. */
 function ServiceMeter({
   label,
   metric,
-  trend,
-  id,
+  tone,
   usageRead,
-  fit,
 }: {
-  readonly fit: boolean;
   readonly label: string;
   readonly metric: ZeropsServiceMetric | undefined;
-  readonly trend: Parameters<typeof ResourceGraph>[0]["trend"] | undefined;
-  readonly id: string;
+  readonly tone: "info" | "ok";
   readonly usageRead: boolean;
 }) {
+  const reading = meterReading(metric);
+  const fill = usageRead ? meterFill(metric) : undefined;
   return (
-    <span className="flex min-w-0 items-center gap-1.5" data-zerops-place-meter={label}>
-      <span className="text-caption text-muted-foreground">{label}</span>
-      {!usageRead ? (
-        <Skeleton className="h-3 w-10" />
-      ) : (
-        <span className="truncate text-caption font-medium text-foreground tabular-nums">
-          {metric?.value === undefined
-            ? "—"
-            : metric.used === undefined
-              ? metric.value
-              : `${metric.used}/${metric.value}`}
-          {metric?.unit === undefined || metric.value === undefined ? null : (
-            <span className="ml-0.5 font-normal text-muted-foreground">{metric.unit}</span>
-          )}
-        </span>
-      )}
-      {trend === undefined || trend.length === 0 ? null : fit ? (
-        <span className="@max-sm:hidden">
-          <ResourceGraph id={id} trend={trend} />
-        </span>
-      ) : (
-        <ResourceGraph id={id} trend={trend} />
-      )}
-    </span>
+    <div className="flex min-w-0 flex-col gap-1.5" data-zerops-place-meter={label}>
+      {/* Too narrow for both on one line, the figures wrap under the label, never cut. */}
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 text-caption">
+        <span className="shrink-0 text-muted-foreground">{label}</span>
+        {!usageRead ? (
+          <Skeleton className="h-3 w-12" />
+        ) : (
+          <span className="whitespace-nowrap text-foreground tabular-nums">
+            {reading.used}
+            {reading.of === undefined ? null : (
+              <span className="text-muted-foreground">{` / ${reading.of}`}</span>
+            )}
+          </span>
+        )}
+      </div>
+      <div
+        aria-hidden="true"
+        className={cn(
+          "h-1 overflow-hidden rounded-full",
+          tone === "ok" ? "bg-status-ok/15" : "bg-muted-foreground/15",
+        )}
+      >
+        {fill === undefined ? null : (
+          <div
+            className={cn(
+              "h-full w-full origin-left rounded-full transition-transform duration-300 ease-out motion-reduce:transition-none",
+              fill.high ? "bg-status-attention" : tone === "ok" ? "bg-status-ok" : "bg-info",
+            )}
+            data-zerops-meter-high={fill.high || undefined}
+            style={{ transform: `scaleX(${String(fill.fraction)})` }}
+          />
+        )}
+      </div>
+    </div>
   );
 }

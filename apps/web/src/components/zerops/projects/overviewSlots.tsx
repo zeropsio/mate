@@ -123,7 +123,11 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     };
   };
 
-  const openChange = (groupId: string, change: FlowPullRequest, from: HTMLElement) => {
+  const openChange = (
+    groupId: string,
+    change: Pick<FlowPullRequest, "repository" | "number">,
+    from: HTMLElement,
+  ) => {
     openReview(
       { kind: "change", groupId, repository: change.repository, number: change.number },
       { from },

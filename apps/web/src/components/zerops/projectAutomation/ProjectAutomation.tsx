@@ -219,6 +219,10 @@ export function ProjectAutomationRow({
   );
 }
 
+/** What an automated Mate is for, where the project has none. */
+const AUTOMATION_IS_FOR =
+  "A Mate that takes tasks from GitHub issues, Slack, Discord or a schedule.";
+
 export function ProjectAutomationRowView({
   pool,
   onAdd,
@@ -234,14 +238,19 @@ export function ProjectAutomationRowView({
 }) {
   if (pool.length === 0)
     return (
-      <SetupRow
-        action={
-          onAdd === undefined ? undefined : <SectionAction onClick={onAdd}>Add</SectionAction>
-        }
-        label="Automation"
-        surface="project-automation-row"
-      >
-        <p className="text-line text-muted-foreground">No automated Mates</p>
+      <SetupRow empty label="Automation" surface="project-automation-row">
+        <p>{AUTOMATION_IS_FOR}</p>
+        {onAdd === undefined ? null : (
+          <Button
+            onClick={(event) => {
+              onAdd(event.currentTarget);
+            }}
+            size="sm"
+            variant="secondary"
+          >
+            Add one
+          </Button>
+        )}
       </SetupRow>
     );
   return (

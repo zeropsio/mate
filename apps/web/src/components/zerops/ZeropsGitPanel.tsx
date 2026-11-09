@@ -1,11 +1,11 @@
 /**
- * The Git tab — the fourth right-panel surface, beside Diff, Browser and Data.
+ * The top of the Code page: where this Mate's work is, above what changed (`CodePage`).
  *
- * Where this Mate's work stands and where it goes. Per code repository it works in: this Mate's
- * work as a change row in plain words ("1 file not committed yet", "Ready to merge", "Merged ·
- * waits for production"). Then where that work goes — the project's places, as its pages draw
- * them, and what waits for production — then each repository's state on GitHub, and under it all,
- * each repository's history.
+ * First the project, as the Zerops panel opens with it (`MateProjectCard`): its places and what
+ * waits for production. Then per code repository it works in, under its name and its state on
+ * GitHub, this Mate's work as a change row in plain words ("1 file not committed yet", "Ready to
+ * merge", "Merged · waits for production"). The change's commits and its files are the page's
+ * "What changed", below.
  *
  * The project's flow was once left out on purpose: a tab that carried the project's stage,
  * production and releases read as "git for the whole project" in a Mate's own panel (the owner,
@@ -17,20 +17,16 @@
  * Every fact comes from the party that can prove it, and each one arrives on its own schedule: the
  * checkout is a live subscription, and the Mate's change comes down HQ's stream. Nothing here
  * decides anything — `gitTab.ts` and `matePanels.logic.ts` do, and this renders what they produced
- * (R5).
+ * (R5). It draws no scroller of its own: it stands in the page's.
  */
 import { NO_REPOSITORY_LINE, type GitBlock } from "@t3tools/client-runtime/zerops";
 import type { ReactNode } from "react";
 
-import { Card } from "~/components/ui/card";
 import { InlineButton } from "~/components/ui/button";
-import { ScrollArea } from "~/components/ui/scroll-area";
-import { cn } from "~/lib/utils";
 import type { RepoState } from "./gitMirror.logic";
 import { possessive, type GitWorkRow } from "./matePanels.logic";
-import { MatePlaces, ProjectPageLink, type MatePanelProject } from "./MatePanelPlaces";
+import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
 import { ChangeList, ChangeRow, SectionLabel } from "./system";
-import { ZeropsGitBlock } from "./ZeropsGitBlock";
 
 /** One code repository the Mate works in, as the tab draws it. */
 export interface ZeropsGitRepository {
@@ -61,9 +57,6 @@ export interface ZeropsGitPanelProps {
   readonly onOpenChange?: ((block: GitBlock, from: HTMLElement) => void) | undefined;
   /** Opens the dialog that connects a repository to GitHub. */
   readonly onConnect?: ((repository: string) => void) | undefined;
-  /** The commits on a block's branch — read by the caller, drawn by the block. */
-  readonly renderBlockCommits?: (block: GitBlock) => ReactNode;
-  readonly className?: string;
 }
 
 export function ZeropsGitPanel({
@@ -72,43 +65,46 @@ export function ZeropsGitPanel({
   mateName,
   mateFace,
   renderBlockAction,
-  renderBlockCommits,
   onOpenChange,
   onConnect,
-  className,
 }: ZeropsGitPanelProps) {
   const { repositories } = model;
-  const several = repositories.length > 1;
-  const projectLink = project === undefined ? undefined : <ProjectPageLink project={project} />;
   return (
-    <ScrollArea className={cn("min-h-0 flex-1", className)}>
-      <div
-        className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-4"
-        data-zerops-surface="git-panel"
-      >
-        {repositories.length === 0 ? (
-          <section className="flex flex-col gap-2">
-            {project === undefined ? null : (
-              <SectionLabel action={projectLink} level={3}>
-                {project.name}
-              </SectionLabel>
-            )}
-            <span className="text-sm text-muted-foreground">
-              {model.emptyLine ?? NO_REPOSITORY_LINE}
-            </span>
-          </section>
-        ) : (
-          repositories.map((repository, index) => (
+    // Its sections stand in the page's column, spaced as the page spaces its own.
+    <div className="contents" data-zerops-surface="git-panel">
+      {/* The project and where the work goes: the same card the Zerops panel opens with. */}
+      {project === undefined ? null : <MateProjectCard mateName={mateName} project={project} />}
+      {repositories.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground">
+          {model.emptyLine ?? NO_REPOSITORY_LINE}
+        </p>
+      ) : (
+        repositories.map((repository) => {
+          return (
             <section
               className="flex min-w-0 flex-col gap-2"
               data-zerops-git-block={repository.block.repository}
               data-zerops-git-state={repository.block.state}
               key={repository.block.repository}
             >
-              <SectionLabel action={index === 0 ? projectLink : undefined} level={3}>
+              <SectionLabel
+                action={
+                  repository.github === undefined ? undefined : (
+                    <GithubLine
+                      onConnect={
+                        onConnect === undefined
+                          ? undefined
+                          : () => onConnect(repository.block.hqRepository)
+                      }
+                      state={repository.github}
+                    />
+                  )
+                }
+                level={3}
+              >
                 {repository.block.label ?? repository.block.repository}
               </SectionLabel>
-              <Card variant="flat">
+              <div className="flex min-w-0 flex-col rounded-xl border border-border/70 bg-card">
                 <div className="px-3.5 py-1.5">
                   <ChangeList label={possessive(mateName ?? "This Mate", "work")}>
                     {repository.work.map((row, rowIndex) => (
@@ -129,43 +125,12 @@ export function ZeropsGitPanel({
                     ))}
                   </ChangeList>
                 </div>
-              </Card>
-              {/* Its commits and what is not committed sit under the change they belong to. */}
-              <ZeropsGitBlock
-                block={repository.block}
-                commits={renderBlockCommits?.(repository.block)}
-              />
+              </div>
             </section>
-          ))
-        )}
-
-        {project === undefined ? null : (
-          <section className="flex min-w-0 flex-col gap-1" data-zerops-surface="git-where">
-            <SectionLabel level={3}>Where it goes</SectionLabel>
-            <MatePlaces panel="git" project={project} />
-          </section>
-        )}
-
-        {repositories.some((repository) => repository.github !== undefined) ? (
-          <div className="flex min-w-0 flex-col gap-1" data-zerops-surface="git-github">
-            {repositories.map((repository) =>
-              repository.github === undefined ? null : (
-                <GithubLine
-                  key={repository.block.repository}
-                  name={several ? repository.block.repository : undefined}
-                  onConnect={
-                    onConnect === undefined
-                      ? undefined
-                      : () => onConnect(repository.block.hqRepository)
-                  }
-                  state={repository.github}
-                />
-              ),
-            )}
-          </div>
-        ) : null}
-      </div>
-    </ScrollArea>
+          );
+        })
+      )}
+    </div>
   );
 }
 
@@ -219,21 +184,16 @@ function WorkRow({
   );
 }
 
-/** A repository's state on GitHub in one quiet line, with Connect where it is not there yet. */
-/** The line's words: "GitHub: In sync", but "Not on GitHub" alone, never "GitHub: Not on GitHub". */
-function githubWords(line: string, name: string | undefined): string {
-  if (line.includes("GitHub")) return name === undefined ? line : `${name}: ${line}`;
-  return `${name === undefined ? "GitHub" : `${name} on GitHub`}: ${line}`;
-}
-
+/**
+ * A repository's state on GitHub, at its label's end: "Not on GitHub · Connect", "In sync · pushed
+ * 2h ago", or why it stopped with *Reconnect*. The words give way in a narrow panel; the verb that
+ * fixes them never does.
+ */
 function GithubLine({
   state,
-  name,
   onConnect,
 }: {
   readonly state: RepoState;
-  /** Its name, where the tab lists several. */
-  readonly name: string | undefined;
   readonly onConnect: (() => void) | undefined;
 }) {
   const verb =
@@ -245,9 +205,11 @@ function GithubLine({
           ? "Reconnect"
           : undefined;
   return (
-    // The words give way in a narrow panel; the verb that fixes them never does.
-    <p className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground">
-      <span className="min-w-0 truncate">{githubWords(state.line, name)}</span>
+    <span
+      className="flex min-w-0 items-baseline gap-1 text-caption text-muted-foreground"
+      data-zerops-surface="git-github"
+    >
+      <span className="min-w-0 truncate">{state.line}</span>
       {verb === undefined ? null : (
         <span className="flex shrink-0 items-baseline gap-1">
           <span aria-hidden="true">·</span>
@@ -256,6 +218,6 @@ function GithubLine({
           </InlineButton>
         </span>
       )}
-    </p>
+    </span>
   );
 }

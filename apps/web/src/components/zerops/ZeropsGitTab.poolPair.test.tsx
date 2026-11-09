@@ -9,6 +9,20 @@ import { afterEach, expect, it, vi } from "vite-plus/test";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { ZeropsGitTab } from "./ZeropsGitTab";
 
+// The page's "What changed" reads git through hooks of its own: here it is its top and commits.
+vi.mock("../CodeChanges", () => ({
+  CodeChanges: (props: {
+    readonly top?: import("react").ReactNode;
+    readonly commitsFor?: (repository: string) => import("react").ReactNode;
+    readonly className?: string;
+  }) => (
+    <div className={props.className}>
+      {props.top}
+      {props.commitsFor?.("")}
+    </div>
+  ),
+}));
+
 /**
  * A Mate whose `app` part was migrated to a dev pool: the dev service is gone, the pool stands in
  * Infrastructure, and the thread's last envelope keys the pair by the pool, whose snapshot carries
@@ -79,6 +93,7 @@ async function renderTab(read: (host: HTMLElement) => void) {
         <RegistryContext.Provider value={appAtomRegistry}>
           <ZeropsGitTab
             threadRef={scopeThreadRef(environmentId, ThreadId.make("thread-pool"))}
+            composerDraftTarget={scopeThreadRef(environmentId, ThreadId.make("thread-pool"))}
             appId="app"
             declarations={[]}
             changes={{ pullRequests: [], merged: [] }}

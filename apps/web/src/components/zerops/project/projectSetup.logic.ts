@@ -8,23 +8,9 @@ import { formatUsd } from "../projects/projectSpend.logic";
 const plural = (count: number, one: string, many: string) =>
   `${String(count)} ${count === 1 ? one : many}`;
 
-/**
- * Who reaches the project, in a line: everybody on its places, and how many reach its production.
- * `null` while it is read or where Zerops shows none of it.
- */
-export function peopleSummary(view: AccessTableView): {
-  readonly people: string;
-  readonly production: string | null;
-} | null {
-  if (view.kind !== "table") return null;
-  const people = plural(view.rows.length, "person", "people");
-  const column = view.columns.find((entry) => entry.kind === "production");
-  if (column === undefined || column.unread) return { people, production: null };
-  const reaching = view.rows.filter((row) => {
-    const level = row.cells.find((cell) => cell.projectId === column.projectId)?.level;
-    return level !== undefined && level !== "none" && level !== "unknown";
-  }).length;
-  return { people, production: `${String(reaching)} with production access` };
+/** Who reaches the project, in a line: "16 people". `null` while it is read or where Zerops shows none. */
+export function peopleSummary(view: AccessTableView): string | null {
+  return view.kind === "table" ? plural(view.rows.length, "person", "people") : null;
 }
 
 /** The spend line beside the figure: "last 30 days · $1.18 a day". */

@@ -5,6 +5,20 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
 import { ZeropsGitSurface } from "./ZeropsGitSurface";
+
+// The page's "What changed" reads git through hooks of its own: here it is its top and commits.
+vi.mock("../CodeChanges", () => ({
+  CodeChanges: (props: {
+    readonly top?: import("react").ReactNode;
+    readonly commitsFor?: (repository: string) => import("react").ReactNode;
+    readonly className?: string;
+  }) => (
+    <div className={props.className}>
+      {props.top}
+      {props.commitsFor?.("")}
+    </div>
+  ),
+}));
 const effects = vi.hoisted(() => ({ merge: vi.fn(), pull: vi.fn(), review: vi.fn() }));
 vi.mock("../../zerops/useProjectTopology", () => ({
   useProjectTopology: () => ({ view: { services: [{ hostname: "api", group: "runtimes" }] } }),
@@ -105,6 +119,10 @@ it("Git surface Review opens the correct change from the pressed control, and me
       root.render(
         <ZeropsGitSurface
           threadRef={scopeThreadRef(EnvironmentId.make("env-ada"), ThreadId.make("thread-ada"))}
+          composerDraftTarget={scopeThreadRef(
+            EnvironmentId.make("env-ada"),
+            ThreadId.make("thread-ada"),
+          )}
         />,
       ),
     );
