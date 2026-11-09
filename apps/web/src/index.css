@@ -7100,12 +7100,13 @@ a.ov-card-site:hover {
   text-decoration-color: color-mix(in oklab, currentColor 40%, transparent);
 }
 
-.ov-card-note {
-  margin-top: 8px;
-  padding: 0 6px;
+/* Why Put it live stands off, under the line that carries it, in from its dot. */
+.ov-place-note {
+  margin: 0;
+  padding-inline-start: 16px;
   color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
 }
 
 /* A card's places, a line each, under its name: they hug the name, the waits stand apart. */
@@ -7195,15 +7196,6 @@ a.ov-card-site:hover {
 .ov-more:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
-}
-
-/* Put it live, at the card's foot while the project has no production. */
-.ov-card-foot {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 0 6px 4px;
 }
 
 /* A Mate: its face, its name and time, its line; what waits on you lifted onto a white card. */
