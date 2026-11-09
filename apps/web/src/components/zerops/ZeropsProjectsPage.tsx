@@ -2793,15 +2793,6 @@ export function ZeropsProjectsContent({
             ? creationNow(creation.progress, "stage")
             : undefined
         }
-        setUpStage={({ group }) =>
-          !addableTiers(group).includes("stage") || groupIsEmpty(group)
-            ? undefined
-            : creationRunning
-              ? "busy"
-              : () => {
-                  requestEnvironment(group.groupId, "stage");
-                }
-        }
         // As the project's own page offers it: always there, standing off with why where HQ says
         // one — never coming and going with what the platform says of its Mates.
         addMate={({ group }) => ({

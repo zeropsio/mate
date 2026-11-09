@@ -391,7 +391,6 @@ describe("a card's stage", () => {
     const html = section(
       render({
         groups,
-        setUpStage: () => "busy",
         stageSettingUp: () => ({ step: "Starting the stage's services", startedAtMs: 0 }),
       }),
       'data-zerops-place="stage"',

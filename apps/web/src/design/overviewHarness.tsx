@@ -720,7 +720,6 @@ function HarnessPage() {
                 ? () => acted.push(`put-live:${entry.group.groupId}`)
                 : undefined
             }
-            setUpStage={() => () => acted.push("add-stage")}
             addMate={(entry) => ({
               onAdd: () => acted.push(`add-mate:${entry.group.groupId}`),
               why: null,

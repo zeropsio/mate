@@ -215,14 +215,6 @@ export interface ZeropsProjectsFlowProps<T> {
     | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
     | undefined;
   /**
-   * Adds a stage to a project that has none, where HQ offers it to this person: its card offers it
-   * where the stage would stand (the onboarding run's owner searched 21 s for it in the card's
-   * ··· menu). `"busy"` while another environment is being set up.
-   */
-  readonly setUpStage?:
-    | ((entry: ProjectsFlowGroup<T>) => (() => void) | "busy" | undefined)
-    | undefined;
-  /**
    * The line of a Mate that is also the project's stage, where one is (`applicationEnvironments`):
    * its card's Stage says it, as the project's *Environments* does, and offers no second stage.
    */
