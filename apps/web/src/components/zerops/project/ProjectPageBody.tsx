@@ -7,7 +7,7 @@
  * Production's state is its Places card's; *Review release* is its `NextRelease`'s.
  */
 import { useRouterState } from "@tanstack/react-router";
-import { GlobeIcon, PlusIcon } from "lucide-react";
+import { FileIcon, GlobeIcon, PlusIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-runtime/zerops";
@@ -59,6 +59,8 @@ import type { ReleaseOffer } from "../ZeropsReleaseVerb";
 import { StopLine } from "../ZeropsGroupDetail";
 import {
   BROUGHT_SHOWN,
+  changeGroups,
+  PAGE_CHANGES,
   pageAddresses,
   linesProductionFirst,
   productionFirst,
@@ -823,8 +825,11 @@ function ComingMate<T>({
 }
 
 /**
- * The project's recent changes, open first, then merged by where each went — less those Waiting
- * on you lists; *All history* opens its releases in place, each with the changes it put live.
+ * The project's recent changes, less those Waiting on you lists: open ones each with what stops it,
+ * merged ones grouped by where they went — the group's label says it once, and with one group the
+ * section's label is it ("On main, not live yet · 5") — setup files last, quiet. *All history*
+ * opens its releases in place, each with the changes it put live; with no history, *All changes*
+ * lists past the first few.
  */
 function ProjectChanges<T>({
   entry,
@@ -839,8 +844,11 @@ function ProjectChanges<T>({
   readonly waiting: ReadonlySet<string>;
 }) {
   const [history, setHistory] = useState(false);
+  const [all, setAll] = useState(false);
   const openChange = useOpenChange();
-  const changes = facts.changes.filter((change) => !waiting.has(changeKey(change.pull)));
+  const listed = facts.changes.filter((change) => !waiting.has(changeKey(change.pull)));
+  const changes = all ? listed : listed.slice(0, PAGE_CHANGES);
+  const { open, groups, setup } = changeGroups(changes);
   const mateName = (projectId: string) =>
     entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
   const faceOf = (projectId: string) => {
@@ -848,6 +856,46 @@ function ProjectChanges<T>({
     return item === undefined ? undefined : props.renderMateFace(item, 20);
   };
   const historyShown = history && facts.repo !== undefined;
+  // One group alone, and nothing open beside it: its place is the section's label.
+  const only = open.length === 0 && groups.length === 1 ? groups[0] : undefined;
+  const row = (change: CardChange, line: string | undefined) => (
+    <ChangeRow
+      at={change.at}
+      face={
+        change.pull.kind === "recipe" && !change.open ? (
+          <FileIcon aria-hidden="true" className="pp-setup-file" />
+        ) : (
+          faceOf(change.pull.mateProjectId)
+        )
+      }
+      key={`${change.pull.repository}#${String(change.pull.number)}`}
+      line={line}
+      onOpen={(from) => {
+        openChange(entry.group.groupId, change.pull, from);
+      }}
+      open={change.open}
+      pull={change.pull}
+      tone={change.tone}
+    />
+  );
+  const action =
+    facts.repo !== undefined ? (
+      <SectionAction
+        onClick={() => {
+          setHistory((now) => !now);
+        }}
+      >
+        {history ? "Recent changes" : "All history"}
+      </SectionAction>
+    ) : listed.length > PAGE_CHANGES ? (
+      <SectionAction
+        onClick={() => {
+          setAll((now) => !now);
+        }}
+      >
+        {all ? "Fewer changes" : "All changes"}
+      </SectionAction>
+    ) : undefined;
   return (
     <section
       aria-labelledby="pp-changes"
@@ -855,22 +903,13 @@ function ProjectChanges<T>({
       data-zerops-surface="project-changes"
     >
       <SectionLabel
-        action={
-          facts.repo === undefined ? undefined : (
-            <SectionAction
-              onClick={() => {
-                setHistory((now) => !now);
-              }}
-            >
-              {history ? "Recent changes" : "All history"}
-            </SectionAction>
-          )
-        }
+        action={action}
+        count={historyShown || only === undefined ? undefined : only.changes.length}
         id="pp-changes"
       >
-        {historyShown ? "History" : "Changes"}
+        {historyShown ? "History" : (only?.label ?? "Changes")}
       </SectionLabel>
-      <div className="pp-card pp-list">
+      <div className="pp-card pp-list" data-history={historyShown ? "" : undefined}>
         {historyShown ? (
           props.renderHistory?.(entry)
         ) : changes.length === 0 ? (
@@ -884,22 +923,34 @@ function ProjectChanges<T>({
             </p>
           )
         ) : (
-          <ChangeList label="Changes">
-            {changes.map((change) => (
-              <ChangeRow
-                at={change.at}
-                face={faceOf(change.pull.mateProjectId)}
-                key={`${change.pull.repository}#${String(change.pull.number)}`}
-                line={changeRowLine(mateName(change.pull.mateProjectId), change.words)}
-                onOpen={(from) => {
-                  openChange(entry.group.groupId, change.pull, from);
-                }}
-                open={change.open}
-                pull={change.pull}
-                tone={change.tone}
-              />
-            ))}
-          </ChangeList>
+          <>
+            {open.length === 0 ? null : (
+              <ChangeList label="Open changes">
+                {open.map((change) =>
+                  row(change, changeRowLine(mateName(change.pull.mateProjectId), change.words)),
+                )}
+              </ChangeList>
+            )}
+            {only === undefined ? (
+              groups.map((group) => (
+                <div className="pp-change-group" key={group.label}>
+                  <SectionLabel count={group.changes.length} level={3}>
+                    {group.label}
+                  </SectionLabel>
+                  <ChangeList>{group.changes.map((change) => row(change, undefined))}</ChangeList>
+                </div>
+              ))
+            ) : (
+              <ChangeList label={only.label}>
+                {only.changes.map((change) => row(change, undefined))}
+              </ChangeList>
+            )}
+            {setup.length === 0 ? null : (
+              <ChangeList label="Setup files">
+                {setup.map((change) => row(change, change.words))}
+              </ChangeList>
+            )}
+          </>
         )}
       </div>
     </section>

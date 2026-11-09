@@ -291,6 +291,41 @@
   padding: 0 20px 16px;
 }
 
+/* A group of changes inside the Changes card, where they went said once over its rows. */
+.pp-change-group + .pp-change-group {
+  margin-top: 6px;
+}
+
+.pp-change-group > [data-zerops-section-label] {
+  padding-inline: 8px;
+}
+
+.pp-list > .pp-change-group > .ov-changes,
+.pp-list > .ov-changes + .ov-changes {
+  margin: 0;
+}
+
+/* The Changes card's rows, a hairline between each, as History's opened release has them. */
+[data-zerops-surface="project-changes"] > .pp-list:not([data-history]) {
+  padding: 6px 8px;
+}
+
+[data-zerops-surface="project-changes"] .ov-change-row + .ov-change-row {
+  border-top: 1px solid var(--ov-rule);
+}
+
+[data-zerops-surface="project-changes"] .ov-change {
+  padding: 10px;
+}
+
+/* Setup files: no change a release ships, said quietly. */
+.pp-setup-file {
+  width: 16px;
+  height: 16px;
+  margin: 2px;
+  color: var(--muted-foreground);
+}
+
 /* A project page's History: a row per release — its version, Live on the one production runs,
    when — opening, on a lifted ground, to the changes it put live, set in under its version. */
 .pp-hist {

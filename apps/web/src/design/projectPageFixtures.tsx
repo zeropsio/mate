@@ -47,7 +47,7 @@ import {
   ProjectPageBody,
   type ProjectPageFacts,
 } from "~/components/zerops/project/ProjectPageBody";
-import { PAGE_CHANGES } from "~/components/zerops/project/projectPage.logic";
+import { CHANGES_HELD } from "~/components/zerops/project/projectPage.logic";
 import { SetupRow } from "~/components/zerops/project/SetupCard";
 import type {
   CardWait,
@@ -583,7 +583,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
       releases: input?.releases ?? [],
       stage: undefined,
       production: production !== undefined,
-      limit: PAGE_CHANGES,
+      limit: CHANGES_HELD,
     }),
     changesUnknown: undefined,
     repos: released ? REPOS : [],
