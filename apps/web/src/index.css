@@ -8432,21 +8432,6 @@ label.tm-advanced-row:not([data-disabled]) {
   }
 }
 
-.ov-card[data-page] {
-  padding: 20px 14px 12px;
-  scroll-snap-align: none;
-}
-
-.ov-card[data-page] .ov-card-h1 {
-  height: 32px;
-}
-
-.ov-card[data-page] .ov-card-name {
-  font-size: 24px;
-  line-height: 32px;
-  letter-spacing: -0.02em;
-}
-
 .ov-page-aside {
   display: grid;
   min-width: 0;
@@ -8455,39 +8440,8 @@ label.tm-advanced-row:not([data-disabled]) {
 }
 
 /* One part of the page's column: the card's ground, its name, then what it holds. */
-.ov-side {
-  --ov-ground: var(--card);
-  --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
-  --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
-  --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
-  padding: 16px 12px 10px;
-  border-radius: 20px;
-  background: var(--ov-ground);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
-    0 1px 2px color-mix(in srgb, var(--contrast-foreground) 4%, transparent),
-    0 8px 24px -12px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
-}
-
-.dark .ov-side {
-  --ov-ground: color-mix(in oklab, var(--foreground) 4%, var(--background));
-  --ov-lift: color-mix(in oklab, var(--foreground) 8%, var(--background));
-  --ov-rule: color-mix(in oklab, var(--foreground) 9%, transparent);
-}
 
 /* Its name on its rows' own inset: a row's hover runs to the section's padding, its words 8 px in. */
-.ov-side-name {
-  margin-bottom: -2px;
-  padding-inline: 8px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 20px;
-}
 
 /* A release or Put it live run on production: its line, then its address or its cause. */
 .ov-run {

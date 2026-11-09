@@ -548,21 +548,6 @@ export function DetailShell({
   );
 }
 
-export function SideSection({
-  title,
-  children,
-}: {
-  readonly title: string;
-  readonly children: React.ReactNode;
-}) {
-  return (
-    <section aria-label={title} className="ov-side">
-      <h2 className="ov-side-name">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
 function Section({
   title,
   children,

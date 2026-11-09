@@ -26,16 +26,13 @@ function TitleRow() {
 }
 
 /**
- * One project card's box, its words grey; `page` is the card a project's own page draws. A card
- * waiting for its detail stands in with it under the card's own name (`label`, `ref`, `id`).
+ * One project card's box, its words grey. A card waiting for its detail stands in with it under the card's own name (`label`, `ref`, `id`).
  */
 export function ProjectCardStandIn({
-  page = false,
   label,
   id,
   ref,
 }: {
-  readonly page?: boolean;
   readonly label?: string | undefined;
   readonly id?: string | undefined;
   readonly ref?: ((element: HTMLElement | null) => void) | undefined;
@@ -45,10 +42,9 @@ export function ProjectCardStandIn({
       aria-busy={label === undefined ? undefined : "true"}
       aria-label={label}
       className="ov-card gap-3"
-      data-page={page ? "" : undefined}
       id={id}
       ref={ref}
-      role={label === undefined || page ? undefined : "listitem"}
+      role={label === undefined ? undefined : "listitem"}
     >
       <div className="flex items-center gap-2.5 px-1">
         <Skeleton className="size-8 shrink-0" shape="pill" />
