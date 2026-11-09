@@ -39,7 +39,7 @@ it("Change history waits for an explicit opening and publishes commits that arri
   );
   try {
     await act(async () => root.render(render(12)));
-    expect(container.textContent).toBe("History");
+    expect(container.textContent).toBe("Commits");
     expect(commits).not.toHaveBeenCalled();
     expect(review).not.toHaveBeenCalled();
     await act(async () => container.querySelector("button")!.click());
@@ -62,7 +62,7 @@ it("Change history waits for an explicit opening and publishes commits that arri
     expect(container.querySelector("li")!.textContent).toContain("Answer /status");
     expect(review).not.toHaveBeenCalled();
     await act(async () => root.render(render(13)));
-    expect(container.textContent).toBe("History");
+    expect(container.textContent).toBe("Commits");
     expect(commits).toHaveBeenCalledTimes(1);
   } finally {
     await act(async () => root.unmount());

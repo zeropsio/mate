@@ -126,11 +126,6 @@ export function possessive(name: string, thing: string): string {
   return `${name}${/s$/iu.test(name) ? "'" : "'s"} ${thing}`;
 }
 
-/** "<Project>'s page": the panels' way to the project, in the board's words. */
-export function projectPageWords(name: string): string {
-  return possessive(name, "page");
-}
-
 /**
  * The places a panel lists, with a line where a stage would stand when the project has none. The
  * Zerops panel lists production first, as the project's pages do, and says a missing stage is not

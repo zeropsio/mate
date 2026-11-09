@@ -221,11 +221,11 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
     expect(home).toContain("data-zerops-mate-home");
     expect(home).toContain('data-mate-face-tint="coral"');
     expect(home).toContain('data-mate-face-state="working"');
-    expect(home).toMatch(/>Fen<\/span><span[^>]*> lives here<\/span>/u);
+    expect(home).toContain(">Fen lives here</span>");
     // Fen lives in the control plane, not in the app.
     expect(html.match(/data-zerops-mate-home/gu)).toHaveLength(1);
     expect(html.indexOf("data-zerops-mate-home")).toBeGreaterThan(
-      html.indexOf("Zerops Control Plane"),
+      html.indexOf('data-zerops-service-row="control-plane"'),
     );
   });
 
@@ -284,10 +284,10 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
     const mintAt = row.indexOf('data-zerops-primitive="mint-panel"');
     const mintEnd = row.indexOf("</section>", mintAt);
     const trayAt = row.indexOf("data-zerops-agent-auth-tray");
-    expect(trayAt).toBeGreaterThan(mintEnd);
+    expect(trayAt).toBeLessThan(mintEnd);
     expect(row).toContain('data-test-agents="true"');
-    // The Mate line is the last thing in the mint before the card grows out of it.
-    expect(row.indexOf("data-zerops-mate-home")).toBeLessThan(mintEnd);
+    // The agents sit at the home card's foot, under the Mate's head.
+    expect(row.indexOf("data-zerops-mate-home")).toBeLessThan(trayAt);
     expect(html.match(/data-zerops-agent-auth-tray/gu)).toHaveLength(1);
   });
 
@@ -300,9 +300,9 @@ describe("ZeropsServiceMap — the control plane is the Mate's home", () => {
 
     const rowAt = html.indexOf('data-zerops-service-row="control-plane"');
     const row = html.slice(rowAt, html.indexOf("</li>", rowAt));
-    // The hover pop's trigger is the card's text: the first div in the mint.
+    // The hover pop's trigger is the card's head.
     const mintAt = row.indexOf('data-zerops-primitive="mint-panel"');
-    const triggerAt = row.indexOf("<div", mintAt);
+    const triggerAt = row.lastIndexOf("<div", row.indexOf("data-zerops-home-trigger"));
     let depth = 0;
     let triggerEnd = -1;
     for (const match of row.slice(triggerAt).matchAll(/<div\b|<\/div>/gu)) {

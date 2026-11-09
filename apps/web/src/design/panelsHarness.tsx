@@ -18,6 +18,7 @@ import type {
   ZeropsServiceRow,
   ZeropsServiceTone,
 } from "@t3tools/client-runtime/zerops/serviceMap";
+import type { ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import {
   createMemoryHistory,
@@ -25,7 +26,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { Button } from "~/components/ui/button";
@@ -36,6 +37,8 @@ import { MateFace } from "~/components/zerops/primitives";
 import type { CardReady, PlaceLine } from "~/components/zerops/projects/projectCard.logic";
 import { ZeropsGitPanel, type ZeropsGitRepository } from "~/components/zerops/ZeropsGitPanel";
 import { ZeropsServiceMap } from "~/components/zerops/ZeropsServiceMap";
+import { ZeropsAgentAuthCard } from "~/components/zerops/ZeropsAgentAuthCard";
+import { GitCommitsFold } from "~/components/zerops/ZeropsGitBlockCommits";
 import type { AppRouter } from "~/router";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -413,7 +416,55 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
 
 // ---------------------------------------------------------------- page
 
+/** A change's commits, folded as the tab folds them, from fixtures. */
+function HarnessCommits() {
+  const [open, setOpen] = useState(false);
+  return (
+    <GitCommitsFold
+      commits={[
+        { sha: "c0ffee1a2b", subject: "Steer a call while it answers", at: ago(50) },
+        { sha: "b4dd00d3c1", subject: "Hold the line while the caller waits", at: ago(140) },
+      ]}
+      onToggle={() => setOpen(!open)}
+      open={open}
+    />
+  );
+}
+
 const face = <MateFace size={20} state="idle" tint={"rose" satisfies MateTintId} />;
+
+/** Dana's coding agents: Claude Code signed in by the person, Codex not signed in. */
+const AGENTS: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      agentId: "claude-code",
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      state: "authorized",
+      providerAuth: "unknown",
+    },
+    {
+      agentId: "codex",
+      credPresent: false,
+      flagOAuth: false,
+      flagToken: false,
+      state: "not-authorized",
+      providerAuth: "unknown",
+    },
+  ],
+} as ZeropsAgentAuthSnapshot;
+
+const agents = (
+  <ZeropsAgentAuthCard
+    conversationAgentId="claude-code"
+    density="compact"
+    onCancel={() => {}}
+    onSignIn={() => {}}
+    snapshot={AGENTS}
+  />
+);
 
 function Frame({
   width,
@@ -465,13 +516,7 @@ function HarnessPage() {
                             ) : null
                           }
                           renderBlockCommits={(block) =>
-                            block.pullRequestNumber === undefined ? null : (
-                              <div className="-ms-2.5 flex">
-                                <Button size="sm" variant="ghost">
-                                  History
-                                </Button>
-                              </div>
-                            )
+                            block.pullRequestNumber === undefined ? null : <HarnessCommits />
                           }
                         />
                       </Frame>
@@ -480,7 +525,9 @@ function HarnessPage() {
                       <Frame label={`Zerops · ${scenario.title}`} width={width}>
                         <div className="h-full overflow-auto p-4">
                           <ZeropsServiceMap
+                            agents={agents}
                             currentServiceId="svc-zcp"
+                            mateUpdate={<span>Mate 0.16.112 · up to date</span>}
                             liveness="live"
                             mate={{ name: "Dana", tint: "rose", face: "idle" }}
                             project={scenario.project}

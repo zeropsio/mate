@@ -1,5 +1,4 @@
 import { useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
-import { Card } from "../ui/card";
 import { GitStopDetailPage } from "./GitStopDetail";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { unreadEnvironmentsWords } from "@t3tools/client-runtime/zerops/hq";
@@ -59,7 +58,6 @@ import {
 import {
   DEPLOYS_ASIDE,
   earlierReleasesLabel,
-  NONE_YET,
   notInZerops,
   serviceRows,
   rowsRunningAgain,
@@ -93,7 +91,10 @@ import { useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
-import { PlaceAccess } from "./projects/ProjectPeople";
+import { usePlaceAccessPeople } from "./projects/ProjectPeople";
+import type { columnPeople } from "./projects/accessTable.logic";
+import { possessive } from "./matePanels.logic";
+import { Link } from "@tanstack/react-router";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
 import { MateFace, VerdictPanel } from "./primitives";
@@ -112,7 +113,14 @@ import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { unreadFlowWords } from "~/zerops/hqRead.logic";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
-import { PlaceServiceTable, type StopDeployAgain } from "./place/PlaceServices";
+import {
+  PlaceAddressCard,
+  PlaceMissingService,
+  PlaceServiceTable,
+  type StopDeployAgain,
+} from "./place/PlaceServices";
+import { PlaceAccessCard } from "./place/PlaceAccess";
+import { PlaceNextCard, PlaceNextRelease } from "./place/PlaceNext";
 import { usePlaceServiceMap } from "./place/usePlaceServiceMap";
 import {
   placeServiceRows,
@@ -123,12 +131,11 @@ import {
 
 import type { CardReady, PlaceLine as PlaceLineData } from "./projects/projectCard.logic";
 import {
+  changesFrom,
   changesWaitingForRelease,
   changesWaitingForStage,
-  liveNowFact,
   placeFixProblem,
   placeHeaderLine,
-  releaseBrought,
   stageNextTitle,
 } from "./place/placePage.logic";
 import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
@@ -139,9 +146,6 @@ import {
   ChangeList,
   ChangeRow,
   changeRowLine,
-  NextBlock,
-  NextRelease,
-  nextReleaseTitle,
   PlaceLine,
   readyOfFlow,
   SectionLabel,
@@ -393,6 +397,12 @@ function ZeropsProjectStopDetailPage({
   const [fixer] = useFixMates({ projectId, groupId });
   const askMateToFix = useAskMateToFix();
   const publicAccess = usePublicAccess(projectId);
+  // Who reaches the place, for the aside's card; its names are the project page's.
+  const access = usePlaceAccessPeople({
+    projectId,
+    kind: stop?.tier ?? "production",
+    name: stop?.name,
+  });
   const routes = publicAccess.routes;
   const offers = publicAccess.offers;
   const route = useEnableRoute();
@@ -497,15 +507,8 @@ function ZeropsProjectStopDetailPage({
     <>
       <StopPublicAccessStatus access={publicAccess} />
       <ZeropsStopPane
-        access={
-          <PlaceAccess
-            groupId={groupId}
-            groupName={stopGroupName}
-            kind={stop.tier}
-            name={stop.name}
-            projectId={projectId}
-          />
-        }
+        access={access}
+        groupName={stopGroupName}
         platformServices={serviceMap.rows}
         usageRead={serviceMap.usageRead}
         vault={orgId === null ? undefined : { orgId, open: vaultOpen, onOpenChange: setVaultOpen }}
@@ -873,6 +876,7 @@ export function ZeropsStopPane({
   waiting,
   vault,
   access,
+  groupName,
   platformServices,
   usageRead = false,
 }: {
@@ -883,8 +887,15 @@ export function ZeropsStopPane({
   readonly platformServices?: ReadonlyArray<ZeropsServiceRow> | undefined;
   /** Whether the services' use has been read: until then their meters hold their room. */
   readonly usageRead?: boolean;
-  /** Who reaches the environment's project, as people chips, under its card. */
-  readonly access?: React.ReactNode;
+  /**
+   * Who reaches the environment's project (`usePlaceAccessPeople`): its people with their level,
+   * or what stands for them while read; the aside's card links to the project page's section.
+   */
+  readonly access?:
+    | { readonly summary: ReturnType<typeof columnPeople>; readonly line: string | null }
+    | undefined;
+  /** The project's name, for the access card's link: "Manage on Tea Shop's page". */
+  readonly groupName?: string | undefined;
   /** The environment's vault, where the account reads its organization: a drawer over the page. */
   readonly vault?:
     | {
@@ -1056,16 +1067,19 @@ export function ZeropsStopPane({
       (verdict.detail !== undefined || verdict.tone === "busy") &&
       verb?.kind !== "release" &&
       !(production && releasing !== undefined));
-  const brought = live === undefined ? undefined : releaseBrought(live);
   const changeRows = nextChanges.map((pull) => {
     const open = !pull.merged;
-    const words = open ? (changeState(pull)?.word ?? "Open") : "Merged";
+    // A merged change waiting for a release is calm: its row says no word. An open one says
+    // where it stands.
+    const words = open ? (changeState(pull)?.word ?? "Open") : undefined;
     return (
       <ChangeRow
         at={open ? pull.updatedAt : pull.mergedAt}
         face={faces?.(pull.mateProjectId)}
         key={`${pull.repository}#${String(pull.number)}`}
-        line={changeRowLine(mateName?.(pull.mateProjectId), words)}
+        line={
+          words === undefined ? undefined : changeRowLine(mateName?.(pull.mateProjectId), words)
+        }
         onOpen={onOpenPull === undefined ? undefined : (from) => onOpenPull(pull, from)}
         open={open}
         pull={pull}
@@ -1087,13 +1101,16 @@ export function ZeropsStopPane({
           {subjectRows}
         </ChangeList>
         {untold.length === 0 ? null : (
-          <p className="text-body text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
+          <p className="pt-1 pb-2 text-body text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
         )}
       </>
     );
   const nextShown = production
     ? release.offered || release.releasing || nextRows !== undefined
     : nextChanges.length > 0;
+  const from = changesFrom(nextChanges.map((pull) => mateName?.(pull.mateProjectId)));
+  // Where a code service answers to nobody, the Addresses card offers to open it.
+  const offers = services.flatMap((row) => row.offers);
   return (
     <DetailShell
       actions={
@@ -1171,213 +1188,238 @@ export function ZeropsStopPane({
         </div>
       )}
 
-      <Card variant="flat">
-        <div className="flex flex-col gap-7 px-4 py-4" data-zerops-surface="place-sections">
-          {!nextShown ? null : production ? (
-            <PlaceSection label={<SectionLabel>Next release</SectionLabel>}>
-              {release.offered || release.releasing ? (
-                <NextRelease density="block" ready={ready} release={release}>
+      {/* What happens on the left, what is set up on the right: the aside drops under the main
+          column where the page is too narrow for both. */}
+      <div className="@container/place min-w-0" data-zerops-surface="place-sections">
+        <div className="grid min-w-0 grid-cols-1 items-start gap-x-10 gap-y-9 @4xl/place:grid-cols-[minmax(0,1fr)_24.5rem]">
+          <div className="flex min-w-0 flex-col gap-9">
+            {!nextShown ? null : production ? (
+              <PlaceSection label={<SectionLabel>Next release</SectionLabel>}>
+                <PlaceNextRelease from={from} ready={ready} release={release}>
                   {nextRows}
-                </NextRelease>
-              ) : (
-                // Waiting, and not this person's to release: what waits, and why it is not offered.
-                <NextBlock
-                  {...(release.reason === undefined ? {} : { facts: [release.reason] })}
-                  title={nextReleaseTitle(ready)}
-                >
+                </PlaceNextRelease>
+              </PlaceSection>
+            ) : (
+              <PlaceSection label={<SectionLabel>Next on {head.title}</SectionLabel>}>
+                <PlaceNextCard state="stage" title={stageNextTitle(nextChanges, head.title)}>
                   {nextRows}
-                </NextBlock>
-              )}
-            </PlaceSection>
-          ) : (
-            <PlaceSection label={<SectionLabel>Next on {head.title}</SectionLabel>}>
-              <NextBlock state="stage" title={stageNextTitle(nextChanges, head.title)}>
-                {nextRows}
-              </NextBlock>
-            </PlaceSection>
-          )}
-
-          {live === undefined ? null : (
-            <PlaceSection
-              label={
-                <SectionLabel count={liveNowFact({ tag: live.tag, by: liveBy, age: releasedAge })}>
-                  Live now
-                </SectionLabel>
-              }
-            >
-              {brought === undefined ? null : (
-                <p className="text-body text-foreground" data-zerops-surface="live-brought">
-                  {brought.titles.join(" · ")}
-                  {brought.more === 0 ? null : (
-                    <span className="text-muted-foreground"> · + {brought.more}</span>
-                  )}
-                </p>
-              )}
-            </PlaceSection>
-          )}
-
-          <PlaceSection
-            label={
-              <SectionLabel count={readServices === undefined ? undefined : table.length}>
-                Services
-              </SectionLabel>
-            }
-          >
-            {readServices === undefined ? (
-              <p className="text-body text-muted-foreground">Services aren&rsquo;t known yet.</p>
-            ) : table.length === 0 ? (
-              // Its code services and the platform's both: a place with a database alone has one.
-              <p className="text-body text-muted-foreground">{NONE_YET}</p>
-            ) : projectId === undefined ? null : (
-              <PlaceServiceTable
-                answered={answered}
-                deployAgain={deployAgain}
-                enablingServiceId={enablingServiceId ?? null}
-                onEnableRoute={onEnableRoute}
-                projectId={projectId}
-                rows={table}
-                said={verdict.detail}
-                usageRead={usageRead}
-              />
+                </PlaceNextCard>
+              </PlaceSection>
             )}
-            {notInZerops.length === 0 ? null : (
-              <ul className="flex flex-col" data-zerops-surface="stop-not-in-zerops">
-                {notInZerops.map((hostname) => (
-                  <li
-                    className={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")}
-                    key={hostname}
-                  >
-                    <span className="min-w-0 truncate text-body text-muted-foreground">
-                      {hostname} ·{" "}
-                      {answered.get(hostname) === undefined ? (
-                        "in its setup files, not in Zerops"
-                      ) : (
-                        <span data-zerops-job-state={answered.get(hostname)?.state}>
-                          {answered.get(hostname)?.line}
-                        </span>
-                      )}
-                    </span>
-                    {addService === undefined ? (
-                      <span />
-                    ) : (
+
+            {!production || releases.length > 0 || nextShown ? null : (
+              <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
+                <p
+                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  data-zerops-surface="place-releases-empty"
+                >
+                  No releases yet. A release puts what is merged on main live here, and each one is
+                  listed with the way back to it.
+                </p>
+              </PlaceSection>
+            )}
+
+            {!production || releases.length === 0 ? null : (
+              <PlaceSection label={<SectionLabel count={releases.length}>Releases</SectionLabel>}>
+                <div className={cn(PLACE_CARD_CLASS, "@container/releases p-1.5")}>
+                  <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+                    <ZeropsReleaseRows
+                      {...(carried === undefined
+                        ? {}
+                        : {
+                            carried: {
+                              carried,
+                              names,
+                              onOpenChange: onOpenCarriedChange,
+                              onExpandedChange: onReleaseExpanded,
+                            },
+                          })}
+                      groupId={groupId}
+                      liveBy={liveBy}
+                      onRollBack={onRollBack}
+                      pending={pending}
+                      releases={listed}
+                    />
+                  </ul>
+                  {earlier === 0 || allReleases ? null : (
+                    <span className="flex px-2 pt-1 pb-1.5">
                       <Button
-                        disabled={addService.running(hostname)}
-                        onClick={() => addService.onAdd(hostname)}
+                        onClick={() => {
+                          setAllReleases(true);
+                        }}
                         size="sm"
-                        variant="secondary"
+                        variant="ghost"
                       >
-                        {addService.running(hostname)
-                          ? flowVerbLabel("add-service", true)
-                          : `${flowVerbLabel("add-service", false)} ${hostname}`}
+                        {earlierReleasesLabel(earlier)}
                       </Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                    </span>
+                  )}
+                </div>
+              </PlaceSection>
             )}
-            {projectId === undefined || tierStops.length === 0 ? null : (
-              <StopTierStops
-                projectId={projectId}
-                rowClassName={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")}
-                rows={tierStops}
-              />
-            )}
-            {otherDeploys === undefined ? null : (
-              <ZeropsDeployAnswer
-                answer={otherDeploys}
-                showEnvironment={otherDeploys.jobs.some(
-                  ({ environment }) => environment !== stop.name,
-                )}
-              />
-            )}
-            {routeTrouble === null || routeTrouble === undefined ? null : (
-              <p className="text-sm text-status-failed-text">{routeTrouble}</p>
-            )}
-          </PlaceSection>
 
-          {!production || releases.length === 0 ? null : (
-            <PlaceSection label={<SectionLabel count={releases.length}>Releases</SectionLabel>}>
-              <ul className="flex flex-col">
-                <ZeropsReleaseRows
-                  {...(carried === undefined
-                    ? {}
-                    : {
-                        carried: {
-                          carried,
-                          names,
-                          onOpenChange: onOpenCarriedChange,
-                          onExpandedChange: onReleaseExpanded,
-                        },
-                      })}
-                  groupId={groupId}
-                  onRollBack={onRollBack}
-                  pending={pending}
-                  releases={listed}
-                />
-              </ul>
-              {earlier === 0 || allReleases ? null : (
-                <span className="flex">
-                  <Button
-                    onClick={() => {
-                      setAllReleases(true);
-                    }}
-                    size="sm"
-                    variant="ghost"
+            {production ? null : (
+              <PlaceSection
+                label={
+                  <SectionLabel
+                    count={
+                      recordedHistory === undefined
+                        ? repo !== undefined && history.kind === "read"
+                          ? `${String(history.total)} ${DEPLOYS_ASIDE}`
+                          : DEPLOYS_ASIDE
+                        : undefined
+                    }
                   >
-                    {earlierReleasesLabel(earlier)}
-                  </Button>
-                </span>
-              )}
-            </PlaceSection>
-          )}
+                    Deploys
+                  </SectionLabel>
+                }
+              >
+                <div className={cn(PLACE_CARD_CLASS, "px-4 py-3")}>
+                  {recordedHistory !== undefined ? (
+                    <RecordedStageHistory {...recordedHistory} onOpenChange={onOpenChange} />
+                  ) : readServices === undefined ? (
+                    <p className="text-body text-muted-foreground">Repository not known yet.</p>
+                  ) : repo === undefined ? (
+                    <p className="text-body text-muted-foreground">
+                      No repository is declared for this environment&rsquo;s services, so its
+                      history cannot be read.
+                    </p>
+                  ) : history.kind === "read" && history.commits.length === 0 ? (
+                    <p className="text-body text-muted-foreground">
+                      No deploys yet. Each merge to main lands here.
+                    </p>
+                  ) : (
+                    <ZeropsHistoryView
+                      here={stop.name}
+                      history={history}
+                      names={names}
+                      onOpenChange={onOpenChange}
+                      request={{ appId: groupId, repo, deployed }}
+                      tags={tags}
+                    />
+                  )}
+                </div>
+              </PlaceSection>
+            )}
+          </div>
 
-          {production ? null : (
+          <aside className="flex min-w-0 flex-col gap-8" aria-label={`${head.title} setup`}>
             <PlaceSection
               label={
-                <SectionLabel
-                  count={
-                    recordedHistory === undefined
-                      ? repo !== undefined && history.kind === "read"
-                        ? `${String(history.total)} ${DEPLOYS_ASIDE}`
-                        : DEPLOYS_ASIDE
-                      : undefined
-                  }
-                >
-                  Deploys
+                <SectionLabel count={readServices === undefined ? undefined : table.length}>
+                  Services
                 </SectionLabel>
               }
             >
-              {recordedHistory !== undefined ? (
-                <RecordedStageHistory {...recordedHistory} onOpenChange={onOpenChange} />
-              ) : readServices === undefined ? (
-                <p className="text-body text-muted-foreground">Repository not known yet.</p>
-              ) : repo === undefined ? (
-                <p className="text-body text-muted-foreground">
-                  No repository is declared for this environment&rsquo;s services, so its history
-                  cannot be read.
+              {readServices === undefined ? (
+                <p className={cn(PLACE_CARD_CLASS, "px-4 py-3.5 text-body text-muted-foreground")}>
+                  Services aren&rsquo;t known yet.
                 </p>
-              ) : history.kind === "read" && history.commits.length === 0 ? (
-                <p className="text-body text-muted-foreground">{NONE_YET}</p>
-              ) : (
-                <ZeropsHistoryView
-                  here={stop.name}
-                  history={history}
-                  names={names}
-                  onOpenChange={onOpenChange}
-                  request={{ appId: groupId, repo, deployed }}
-                  tags={tags}
+              ) : projectId === undefined ? null : (
+                <PlaceServiceTable
+                  answered={answered}
+                  deployAgain={deployAgain}
+                  projectId={projectId}
+                  rows={table}
+                  said={verdict.detail}
+                  usageRead={usageRead}
+                >
+                  {notInZerops.map((hostname) => (
+                    <PlaceMissingService
+                      answer={answered.get(hostname)}
+                      hostname={hostname}
+                      key={hostname}
+                      verb={
+                        addService === undefined ? null : (
+                          <Button
+                            disabled={addService.running(hostname)}
+                            onClick={() => addService.onAdd(hostname)}
+                            size="sm"
+                            variant="secondary"
+                          >
+                            {addService.running(hostname)
+                              ? flowVerbLabel("add-service", true)
+                              : `${flowVerbLabel("add-service", false)} ${hostname}`}
+                          </Button>
+                        )
+                      }
+                    />
+                  ))}
+                </PlaceServiceTable>
+              )}
+              {readServices === undefined || table.length > 0 || notInZerops.length > 0 ? null : (
+                // Its code services and the platform's both: a place with a database alone has one.
+                <p
+                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  data-zerops-surface="place-services-empty"
+                >
+                  Nothing runs here yet. Its services appear as its first deploy lands.
+                </p>
+              )}
+              {projectId === undefined || tierStops.length === 0 ? null : (
+                <StopTierStops
+                  projectId={projectId}
+                  rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
+                  rows={tierStops}
+                />
+              )}
+              {otherDeploys === undefined ? null : (
+                <ZeropsDeployAnswer
+                  answer={otherDeploys}
+                  showEnvironment={otherDeploys.jobs.some(
+                    ({ environment }) => environment !== stop.name,
+                  )}
                 />
               )}
             </PlaceSection>
-          )}
 
-          {access === undefined ? null : (
-            <PlaceSection label={<SectionLabel>Project access</SectionLabel>}>
-              {access}
-            </PlaceSection>
-          )}
+            {projectId === undefined ? null : (
+              <PlaceSection label={<SectionLabel>Addresses</SectionLabel>}>
+                <PlaceAddressCard
+                  enablingServiceId={enablingServiceId ?? null}
+                  offers={offers}
+                  onEnableRoute={onEnableRoute}
+                  projectId={projectId}
+                  routes={routes}
+                />
+                {routeTrouble === null || routeTrouble === undefined ? null : (
+                  <p className="text-sm text-status-failed-text">{routeTrouble}</p>
+                )}
+              </PlaceSection>
+            )}
+
+            {access === undefined || projectId === undefined ? null : (
+              <PlaceSection
+                label={
+                  <SectionLabel
+                    action={
+                      <Button
+                        render={
+                          <Link
+                            hash={`access-${projectId}`}
+                            params={{ groupId }}
+                            to="/group/$groupId/flow"
+                          />
+                        }
+                        size="sm"
+                        variant="link"
+                      >
+                        {groupName === undefined
+                          ? "Manage on the project’s page"
+                          : `Manage on ${possessive(groupName, "page")}`}
+                      </Button>
+                    }
+                  >
+                    Who has access
+                  </SectionLabel>
+                }
+              >
+                <PlaceAccessCard line={access.line} summary={access.summary} />
+              </PlaceSection>
+            )}
+          </aside>
         </div>
-      </Card>
+      </div>
       {/* A verb that refused says so under the card it was pressed in. */}
       {trouble === null ? null : <p className="mt-2 text-sm text-status-failed-text">{trouble}</p>}
       {vault === undefined || projectId === undefined ? null : (
@@ -1394,11 +1436,11 @@ export function ZeropsStopPane({
   );
 }
 
-/** One row of a section's list: the hairline over it, and the height every row keeps. */
-const CARD_ROW_CLASS = "grid min-h-11 items-center gap-x-4 border-t border-border/60 py-2";
+/** A card of the place's page: a hairline and the card ground. */
+const PLACE_CARD_CLASS = "min-w-0 rounded-xl border border-border/70 bg-card";
 
 /**
- * One section of the place's card: its label hugging its rows (6px), every section 28px from the
+ * One section of the place's page: its label hugging its card, every section well apart from the
  * next — spacing is grouping.
  */
 function PlaceSection({
@@ -1409,7 +1451,7 @@ function PlaceSection({
   readonly children: React.ReactNode;
 }) {
   return (
-    <section className="flex min-w-0 flex-col gap-1.5">
+    <section className="flex min-w-0 flex-col gap-2">
       {label}
       {children}
     </section>

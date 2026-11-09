@@ -1816,30 +1816,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "Literal",
-    "fingerprint": "<PopoverTrigger> focus-visible:ring-2 in \"block w-full cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "Literal",
-    "fingerprint": "<PopoverTrigger> focus-visible:ring-ring in \"block w-full cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "Literal",
-    "fingerprint": "<PopoverTrigger> outline-none in \"block w-full cursor-default text-left outline-none focus-visible:ring-2 focus-visible:ring-ring\"",
-    "owner": "web-intake",
-    "reason": "Zerops surface restyles a components/ui export; its look is the owner's and moves to a variant in its own surface round",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/zerops/landing/ZeropsAccountControl.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> data-popup-open:bg-accent in \"min-w-0 gap-2 ps-1 pe-2 data-popup-open:bg-accent\"",

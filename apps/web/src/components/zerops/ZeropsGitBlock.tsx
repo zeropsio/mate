@@ -1,11 +1,7 @@
 /**
- * One code repository's history in the Git tab: what the Mate has actually done to the code.
- *
- * Where the work stands and where it goes are the tab's rows above (`ZeropsGitPanel`); this is
- * what sits under them. The **commits** this branch has that its base does not, which are the
- * Mate's actual work. And **what is on disk and not committed**, which lives in the container and
- * which nothing outside it can prove — the tab used to keep a count of that and throw the files
- * away.
+ * What is on disk and not committed in one code repository, as a section of its card in the Git
+ * tab: it lives in the container and nothing outside it can prove it — the tab used to keep a count
+ * of that and throw the files away. The commits are the card's own fold (`GitCommitsFold`).
  */
 import type { GitBlock } from "@t3tools/client-runtime/zerops";
 import type { ReactNode } from "react";
@@ -15,11 +11,6 @@ import { SectionLabel } from "./system";
 
 export interface ZeropsGitBlockProps {
   readonly block: GitBlock;
-  /**
-   * The commits on this branch that the base does not have — the Mate's own
-   * work. Filled by the caller, which owns the read; a block stays pure.
-   */
-  readonly commits?: ReactNode;
   readonly className?: string;
 }
 
@@ -64,18 +55,15 @@ function DiffStat({
   );
 }
 
-export function ZeropsGitBlock({ block, commits, className }: ZeropsGitBlockProps) {
+export function ZeropsGitBlock({ block, className }: ZeropsGitBlockProps) {
   const insertions = block.changed.reduce((total, file) => total + file.insertions, 0);
   const deletions = block.changed.reduce((total, file) => total + file.deletions, 0);
-  const hasCommits = commits !== undefined && commits !== null;
-  if (!hasCommits && block.changed.length === 0) return null;
+  if (block.changed.length === 0) return null;
   return (
     <section
       className={cn("flex min-w-0 flex-col gap-2", className)}
       data-zerops-surface="git-history"
     >
-      {hasCommits ? commits : null}
-
       {block.changed.length === 0 ? null : (
         <Detail count={block.changed.length} title="Not committed">
           {block.changed.map((file) => (

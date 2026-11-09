@@ -488,7 +488,7 @@ function Harness() {
 
       <Part title="ServiceRow">
         <div className="flex flex-wrap items-start gap-6">
-          <Surface label="table (place page)" width={1000}>
+          <Surface label="page (place page)" width={1000}>
             <ServiceList label="Services">
               {SERVICE_ROWS.map((row) => (
                 <ServiceRow key={row.hostname} row={row} usageRead />
@@ -496,7 +496,7 @@ function Harness() {
               <ServiceRow row={{ ...SERVICE_ROWS[0]!, hostname: "api" }} usageRead={false} />
             </ServiceList>
           </Surface>
-          <Surface label="compact (Mate panel), with actions" width={420}>
+          <Surface label="panel (Mate panel), with actions" width={420}>
             <ServiceList label="Juno's services">
               {SERVICE_ROWS.slice(0, 2).map((row) => (
                 <ServiceRow
@@ -505,7 +505,7 @@ function Harness() {
                       :3000 ↗
                     </Button>
                   }
-                  density="compact"
+                  density="panel"
                   key={row.hostname}
                   menuItems={<MenuItem onClick={() => acted.push("restart")}>Restart</MenuItem>}
                   row={row}
