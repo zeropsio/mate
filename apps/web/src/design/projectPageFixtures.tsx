@@ -26,7 +26,7 @@ import { ProjectSpendSectionView } from "~/components/zerops/projects/ProjectSpe
 import type { ProjectPerson } from "~/components/zerops/projects/projectPeople.logic";
 import { joinSpend } from "~/components/zerops/projects/projectSpend.logic";
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
-import { ZeropsGroupPane } from "~/components/zerops/ZeropsGroupDetail";
+import { ZeropsGroupPane } from "~/components/zerops/ProjectPage";
 import { RepoRowsView } from "~/components/zerops/github/GithubRepoRows";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
