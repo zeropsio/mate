@@ -435,7 +435,7 @@ function CardMates<T>({
   ).shown.slice(0, CARD_MATES);
   const more = mates.length - shown.length;
   return (
-    <section aria-label="Mates" className="ov-sec ov-mates" data-zerops-step="mates">
+    <section aria-label="Project Mates" className="ov-sec ov-mates" data-zerops-step="mates">
       <SectionLabel
         action={
           onAdd === undefined || addWhy !== null ? undefined : (
@@ -687,18 +687,30 @@ function ProjectCard<T>({
           ? null
           : lines
               .filter((line) => line.kind === "stage")
-              .map((line) => (
-                <PlaceLine
-                  density="compact"
-                  groupId={group.groupId}
-                  key={`stage:${line.projectId ?? line.name}`}
-                  line={line}
-                />
-              ))}
+              .map((line) =>
+                settingUp === undefined ? (
+                  <PlaceLine
+                    density="compact"
+                    groupId={group.groupId}
+                    key={`stage:${line.projectId ?? line.name}`}
+                    line={line}
+                  />
+                ) : (
+                  <div
+                    data-zerops-place="stage"
+                    data-zerops-setting-up="true"
+                    key={`stage:${line.projectId ?? line.name}`}
+                  >
+                    <PlaceLine density="compact" groupId={group.groupId} line={line} />
+                  </div>
+                ),
+              )}
         {notLive ? null : devstage !== undefined ? (
           <PlaceLine density="compact" line={{ ...NEW_STAGE, words: [devstage] }} />
         ) : stageComing ? (
-          <PlaceLine density="compact" line={settingUpLine(NEW_STAGE, settingUp)} />
+          <div data-zerops-place="stage" data-zerops-setting-up="true">
+            <PlaceLine density="compact" line={settingUpLine(NEW_STAGE, settingUp)} />
+          </div>
         ) : flow.stages.length === 0 && (flow.unreadStages ?? []).length === 0 ? (
           <QuietPlace>No stage</QuietPlace>
         ) : null}
