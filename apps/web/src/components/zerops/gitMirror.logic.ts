@@ -109,25 +109,22 @@ export function remoteDestination(url: string): { readonly label: string; readon
 }
 
 /**
- * The org app a remote goes through, by its GitHub app id; `null` for a token, or where HQ does
- * not say (an HQ before several apps).
+ * The org app a remote goes through, by its GitHub app id; `null` for a token, an app HQ no longer
+ * holds, or where HQ does not say (an HQ before several apps).
  */
-export function remoteGithubAppId(remote: NonNullable<RepoListEntry["remote"]>): number | null {
-  return "githubAppId" in remote && typeof remote.githubAppId === "number"
-    ? remote.githubAppId
-    : null;
-}
+export const remoteGithubAppId = (remote: NonNullable<RepoListEntry["remote"]>): number | null =>
+  remote.githubAppId ?? null;
 
 /**
  * When HQ last pushed the repository's main to its remote: `null` before it ever has, `undefined`
  * where HQ does not say (an HQ before it told it).
  */
-export function remoteSyncedAt(repo: RepoListEntry): string | null | undefined {
-  if (!("mirror" in repo)) return undefined;
-  const mirror: unknown = repo.mirror;
-  if (mirror === null || typeof mirror !== "object" || !("syncedAt" in mirror)) return undefined;
-  return typeof mirror.syncedAt === "string" ? mirror.syncedAt : null;
-}
+export const remoteSyncedAt = (repo: Pick<RepoListEntry, "mirror">): string | null | undefined =>
+  repo.mirror == null ? undefined : repo.mirror.syncedAt;
+
+/** Since when GitHub's main and Mate's split, as the remote or the mirror's record says it. */
+const divergedSince = (repo: Pick<RepoListEntry, "remote" | "mirror">): string | undefined =>
+  repo.remote?.divergedSince ?? repo.mirror?.divergedSince ?? undefined;
 
 /** "Nov 3", in the reader's own calendar. */
 export const shortDay = (iso: string) =>
@@ -184,7 +181,7 @@ export interface RepoStateApps {
  * stop is said without naming why.
  */
 export function repoState(
-  repo: Pick<RepoListEntry, "remote" | "follows"> & Partial<RepoListEntry>,
+  repo: Pick<RepoListEntry, "remote" | "follows" | "mirror">,
   context: {
     readonly apps: RepoStateApps | null;
     readonly orgName: string | undefined;
@@ -210,10 +207,11 @@ export function repoState(
   const destination = remoteDestination(remote.url);
   if (press === "disconnecting")
     return { destination, line: "Disconnecting…", tone: "busy", fix: null };
-  if (remote.divergedSince !== undefined)
+  const diverged = divergedSince(repo);
+  if (diverged !== undefined)
     return {
       destination,
-      line: `Paused since ${shortDay(remote.divergedSince)} · GitHub's main has commits Mate's main doesn't`,
+      line: `Paused since ${shortDay(diverged)} · GitHub's main has commits Mate's main doesn't`,
       tone: "warn",
       fix: "how-to-fix",
     };
@@ -233,14 +231,16 @@ export function repoState(
         tone: "warn",
         fix: "set-up-github",
       };
-    const id = remoteGithubAppId(remote);
-    // An HQ that does not say the app: the organization's only one is it.
+    // `null`: an app HQ no longer holds; absent from an HQ before several apps, whose only app it is.
+    const id = remote.githubAppId;
     const app =
-      id === null
+      id === undefined
         ? apps.apps.length === 1
           ? apps.apps[0]
           : undefined
-        : apps.apps.find((each) => each.appId === id);
+        : id === null
+          ? undefined
+          : apps.apps.find((each) => each.appId === id);
     if (app === undefined)
       return {
         destination,
@@ -279,7 +279,7 @@ export function repoState(
       tone: "bad",
       fix: "replace-token",
     };
-  const synced = remoteSyncedAt(repo as RepoListEntry);
+  const synced = remoteSyncedAt(repo);
   if (synced === null) return { destination, line: "Pushing main…", tone: "busy", fix: null };
   if (remote.expiresAt != null && Date.parse(remote.expiresAt) - now <= TWO_WEEKS)
     return {
@@ -294,36 +294,6 @@ export function repoState(
     tone: "ok",
     fix: null,
   };
-}
-
-const day = (iso: string) => iso.slice(0, 10);
-
-/**
- * A repository's line under its name: why nothing moves, where it mirrors to and how, the GitHub
- * repository it follows while Mate keeps its code, or that it does none.
- */
-export function mirrorStateLine(
-  { remote, follows }: Pick<RepoListEntry, "remote" | "follows">,
-  app: GitMirrorApp,
-  now: number,
-): string {
-  if (remote == null)
-    return follows === undefined
-      ? "Not mirrored"
-      : `Follows ${remoteLabel(follows)} · Mate keeps the code`;
-  if (remote.divergedSince !== undefined)
-    return `GitHub's main and Mate's main differ since ${day(remote.divergedSince)} — nothing moves until they match`;
-  const label = remoteLabel(remote.url);
-  if (remote.via === "app") {
-    if (remote.invalidSince !== null || app.kind === "none")
-      return "The app is gone — connect GitHub again or use a token";
-    return `Mirrors to ${label} · through ${app.kind === "connected" ? app.name : "the organization's GitHub app"}`;
-  }
-  if (remote.invalidSince !== null)
-    return `${label} refused Mate's token on ${day(remote.invalidSince)} — replace the token`;
-  if (remote.expiresAt == null) return `Mirrors to ${label} · with a token`;
-  const expired = Date.parse(remote.expiresAt) <= now;
-  return `Mirrors to ${label} · with a token that ${expired ? "expired" : "expires"} ${day(remote.expiresAt)}`;
 }
 
 /** The app a repository goes through, as the gate's line names it. */
@@ -375,13 +345,6 @@ export function mirrorGateLine(
 /** What connecting does, under the dialog's title. */
 export const connectLeadLine = (repo: string) =>
   `Mate pushes ${repo}'s main to the repository you pick, and its changes open there for review.`;
-
-/** What mirroring does, above repositories none of which mirrors yet. */
-export function mirrorLeadLine(app: GitMirrorApp): string {
-  return app.kind === "connected"
-    ? "Mirror a repository to GitHub, and Mate's changes to it open there for review."
-    : "Mirror a repository to GitHub or GitLab: Mate pushes what lands on its main there.";
-}
 
 /**
  * What stands where the way to connect would, for a person HQ does not let change remotes

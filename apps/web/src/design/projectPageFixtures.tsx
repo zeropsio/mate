@@ -440,7 +440,6 @@ export function ProjectPageAside({ groupId }: { readonly groupId: string }) {
         name={groupId}
         onAdd={nothing}
         onFinish={nothing}
-        onMirror={nothing}
         onSetUp={nothing}
         release={running ? RELEASE_WAITING : RELEASE_NONE}
         repo={running ? "appdev" : undefined}
