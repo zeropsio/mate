@@ -309,17 +309,17 @@ export function useZeropsConversationReleases(
   // not a message of it links the change.
   const mateProjectId = mate?.project.id;
   const merged = flow?.merged;
-  const mine = useMemo(
-    () =>
-      new Set(
-        (merged ?? []).flatMap((change) =>
-          change.mateProjectId === mateProjectId
-            ? [`${change.repository}#${String(change.number)}`]
-            : [],
-        ),
-      ),
-    [mateProjectId, merged],
-  );
+  const mine = useMemo(() => {
+    const made = new Set<string>();
+    // Until the flow is read nothing is known to be the Mate's, and no release is placed for it.
+    if (merged === undefined) return made;
+    for (const change of merged) {
+      if (change.mateProjectId === mateProjectId) {
+        made.add(`${change.repository}#${String(change.number)}`);
+      }
+    }
+    return made;
+  }, [mateProjectId, merged]);
   return useMemo(
     () =>
       releases === undefined

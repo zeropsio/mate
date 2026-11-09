@@ -113,12 +113,11 @@ export function ZeropsGitPanel({
           data-zerops-surface="panel-line"
         >
           <div className="flex min-w-0 items-center justify-between gap-3">
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <h2 className="m-0 truncate text-base font-semibold text-foreground">Code</h2>
-              <span className="truncate text-caption text-muted-foreground">
-                Where {possessive(mateName ?? "this Mate", "work")} is, and what changed.
-              </span>
-            </span>
+            {/* The page's own title stands above (the panel's shell draws it): this row names
+                whose line it is. */}
+            <h2 className="m-0 truncate text-line font-medium text-muted-foreground">
+              {project.name}
+            </h2>
             <SectionAction onClick={project.onOpenProject}>
               Open project
               <ChevronRightIcon aria-hidden="true" />
