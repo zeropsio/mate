@@ -100,7 +100,7 @@ import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./Zero
 import { MateFace, VerdictPanel } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
-import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
+import { ReleaseList, ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { RecordedStageHistory, type RecordedStageHistoryProps } from "./RecordedStageHistory";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
@@ -1221,7 +1221,7 @@ export function ZeropsStopPane({
             {!production || releases.length === 0 ? null : (
               <PlaceSection label={<SectionLabel count={releases.length}>Releases</SectionLabel>}>
                 <div className={cn(PLACE_CARD_CLASS, "@container/releases p-1.5")}>
-                  <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+                  <ReleaseList>
                     <ZeropsReleaseRows
                       {...(carried === undefined
                         ? {}
@@ -1239,7 +1239,7 @@ export function ZeropsStopPane({
                       pending={pending}
                       releases={listed}
                     />
-                  </ul>
+                  </ReleaseList>
                   {earlier === 0 || allReleases ? null : (
                     <span className="flex px-2 pt-1 pb-1.5">
                       <Button
