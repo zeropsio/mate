@@ -1232,7 +1232,7 @@ export function ZeropsStopPane({
       {readFailures}
       {/* A place the header already calls failed will say why: its statement's room is held
           until the statement is read, so it arrives without moving the page. */}
-      {verdictShown || headerLine.pill?.tone !== "danger" ? null : <VerdictPanelWaiting />}
+      {verdictShown || !headerLine.trouble ? null : <VerdictPanelWaiting />}
       {!verdictShown ? null : (
         <div>
           <VerdictPanel detail={panel.detail} text={panel.text} tone={panel.tone}>

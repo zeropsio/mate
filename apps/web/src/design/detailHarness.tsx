@@ -1535,7 +1535,11 @@ function Harness() {
               },
             ],
             creationFailures: [
-              { tag: "v0.1.15", reason: "Zerops did not create db: its type is not offered." },
+              {
+                tag: "v0.1.15",
+                reason: "Zerops did not create db: its type is not offered.",
+                services: ["db"],
+              },
             ],
             notInZerops: ["db"],
             platformServices: ACME_SERVICES.filter((row) => row.service.hostname !== "db"),
