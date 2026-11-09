@@ -6854,112 +6854,44 @@ code {
 /* ==== end of the menu's chrome ==== */
 
 /* ==== Pass 41 · the overview's cards ==== */
-/* The row: cards side by side, one width; past the window's edge it scrolls sideways under a fade,
-   a round back and forward button on the side where there is more. */
-@property --ov-fade-left {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --ov-fade-right {
-  syntax: "<length>";
-  inherits: true;
-  initial-value: 0px;
-}
-
-.ov-rail {
-  position: relative;
-  margin-inline: -20px;
-  transition:
-    --ov-fade-left 200ms var(--ease-out-strong),
-    --ov-fade-right 200ms var(--ease-out-strong);
-}
-
-.ov-rail[data-can-left] {
-  --ov-fade-left: 56px;
-}
-
-.ov-rail[data-can-right] {
-  --ov-fade-right: 96px;
-}
-
-.ov-row {
+/* The cards: a grid that wraps, each card as tall as what it holds (the owner, 2026-10-12: "why the
+   gap at bottom"). Columns follow the page's own width, not the window's: one in a conversation's
+   panel, three at 1280 and four at 1786 with the 435 px menu open (P1). */
+.ov-grid {
   display: grid;
-  grid-auto-columns: min(380px, 100%);
-  grid-auto-flow: column;
-  column-gap: 16px;
-  /* Each card as tall as what it holds (the owner, 2026-10-12: "why the gap at bottom"). */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
   align-items: start;
-  justify-content: start;
-  padding: 0 20px 6px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  scroll-padding-inline: 20px;
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
-  mask-image: linear-gradient(
-    to right,
-    transparent,
-    var(--color-black) var(--ov-fade-left),
-    var(--color-black) calc(100% - var(--ov-fade-right)),
-    transparent
-  );
 }
 
-@media (min-width: 40rem) {
-  .ov-rail {
-    margin-inline: -24px;
-  }
-
-  .ov-row {
-    padding-inline: 24px;
-    scroll-padding-inline: 24px;
+@container flow (min-width: 32rem) {
+  .ov-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
-.ov-row::-webkit-scrollbar {
-  display: none;
+@container flow (min-width: 47rem) {
+  .ov-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
-.ov-nav {
-  position: absolute;
-  top: 10px;
-  z-index: 2;
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--card);
-  color: var(--foreground);
-  box-shadow:
-    0 0 0 1px var(--border),
-    0 2px 8px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 150ms var(--ease-out-strong),
-    scale 160ms var(--ease-out-strong);
+@container flow (min-width: 65rem) {
+  .ov-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
-.ov-nav-left {
-  left: 12px;
+@container flow (min-width: 90rem) {
+  .ov-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 
-.ov-nav-right {
-  right: 12px;
-}
-
-.ov-rail[data-can-left] .ov-nav-left,
-.ov-rail[data-can-right] .ov-nav-right {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.ov-nav:active {
-  scale: 0.94;
+@container flow (min-width: 108rem) {
+  .ov-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 }
 
 /* A card: the project, its places, its Mates, its changes — one light surface on the page (the
@@ -6991,7 +6923,6 @@ code {
     0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
     0 1px 2px color-mix(in srgb, var(--contrast-foreground) 4%, transparent),
     0 8px 24px -12px color-mix(in srgb, var(--contrast-foreground) 8%, transparent);
-  scroll-snap-align: start;
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -9347,15 +9278,9 @@ div.ov-change:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .ov-mate,
-  .ov-nav,
-  .ov-rail,
   .ov-fold,
   .ov-change {
     transition: opacity 150ms linear;
-  }
-
-  .ov-nav:active {
-    scale: none;
   }
 }
 /* ==== end of the overview's cards ==== */

@@ -1,5 +1,5 @@
 /**
- * The overview (round 5, "Mate Clean Overview"): a card per project with Mates, side by side —
+ * The overview (round 5, "Mate Clean Overview"): a card per project with Mates, in a grid —
  * its name and address, its Mates, a release ready to go and production's one line
  * (`ProjectCards`); then the projects without a Mate as lines, each its name and production's
  * line; the containers no project holds as one folded group; and the organization's HQ as the

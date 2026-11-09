@@ -232,7 +232,9 @@ import {
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
 import {
+  lastActivityAt,
   overviewKeeps,
+  overviewOrder,
   parseProjectsSearch,
   shownUngrouped,
   type OverviewShow,
@@ -2161,11 +2163,38 @@ export function ZeropsProjectsContent({
       (candidate) => !hasMate(candidate) || personFacts[candidate.project.id] !== undefined,
     ) &&
     flowGroups.every((entry) => addMateOffer(entry.group.groupId).kind !== "unknown");
-  const keptGroups = flowGroups.filter((entry) =>
-    overviewKeeps({
-      show: search.show,
-      waits: filterFacts.waits.has(entry.group.groupId),
-      mine: filterFacts.mine.has(entry.group.groupId),
+  // What waits on the viewer in each project, by kind: a Mate that asks, or a review or release.
+  const waitKinds = useMemo(() => {
+    const groupOf = new Map(
+      candidates.map(
+        (candidate) =>
+          [candidate.project.id, readZeropsMembership(candidate.project).groupId] as const,
+      ),
+    );
+    const asks = new Set<string>();
+    const reviews = new Set<string>();
+    for (const item of waiting.items) {
+      const groupId =
+        item.kind === "release" ? item.release.groupId : groupOf.get(item.mate.projectId);
+      if (groupId === undefined) continue;
+      (item.kind === "release" || item.kind === "change" ? reviews : asks).add(groupId);
+    }
+    return { asks, reviews };
+  }, [candidates, waiting.items]);
+  // The overview's order (`overviewOrder`): what waits on the viewer first, most urgent first.
+  const keptGroups = overviewOrder(
+    flowGroups.filter((entry) =>
+      overviewKeeps({
+        show: search.show,
+        waits: filterFacts.waits.has(entry.group.groupId),
+        mine: filterFacts.mine.has(entry.group.groupId),
+      }),
+    ),
+    (entry) => ({
+      broken: overview.productionBroken(entry),
+      asks: waitKinds.asks.has(entry.group.groupId),
+      reviews: waitKinds.reviews.has(entry.group.groupId),
+      lastAt: lastActivityAt(entry),
     }),
   );
 

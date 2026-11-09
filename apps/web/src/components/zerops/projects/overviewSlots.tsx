@@ -57,6 +57,7 @@ import {
   broughtBy,
   historyHeld,
   historyOffered,
+  placeLines,
   placeServices,
   CARD_CHANGES,
   cardChanges,
@@ -246,6 +247,14 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       since,
       releaseOnStage: stageOf(entry)?.runsRelease,
     };
+  };
+
+  /** Production is down, or its last release failed, as its card's line says it. */
+  const productionBroken = (entry: ProjectsFlowGroup<T>): boolean => {
+    const line = placeLines({ flow: entry.flow, ...cardPlaces(entry), nowMs }).find(
+      (place) => place.kind === "production",
+    );
+    return line?.dot === "failed" || line?.dot === "down";
   };
 
   const renderPlacePanel = (entry: ProjectsFlowGroup<T>, line: PlaceLine): ReactNode => {
@@ -529,7 +538,14 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     );
   };
 
-  return { cardPlaces, renderPlacePanel, renderChanges, renderHistory, renderCardPeople };
+  return {
+    cardPlaces,
+    productionBroken,
+    renderPlacePanel,
+    renderChanges,
+    renderHistory,
+    renderCardPeople,
+  };
 }
 
 /** A working Mate's clock, a step a second (R6). */

@@ -87,6 +87,51 @@ export function overviewKeeps(input: {
   return true;
 }
 
+/** What a project's card says needs the person, as the overview orders by it. */
+export interface OverviewUrgency {
+  /** Production is down, or its last release failed. */
+  readonly broken: boolean;
+  /** A Mate of the viewer's asks: a question, a plan, a run stopped on an error. */
+  readonly asks: boolean;
+  /** A change waits for the viewer's review, or a release they may make. */
+  readonly reviews: boolean;
+  /** When anything in it last moved (wall ms); `undefined` before anything did. */
+  readonly lastAt: number | undefined;
+}
+
+/**
+ * The overview's order: what waits on the person first, the most urgent first — a broken
+ * production, then a Mate's question, then reviews and releases — then the most recently active.
+ * Ties keep the order they came in.
+ */
+export function overviewOrder<G>(
+  groups: ReadonlyArray<G>,
+  urgencyOf: (group: G) => OverviewUrgency,
+): ReadonlyArray<G> {
+  const rank = (urgency: OverviewUrgency) =>
+    urgency.broken ? 0 : urgency.asks ? 1 : urgency.reviews ? 2 : 3;
+  return groups
+    .map((group) => ({ group, urgency: urgencyOf(group) }))
+    .toSorted(
+      (left, right) =>
+        rank(left.urgency) - rank(right.urgency) ||
+        (right.urgency.lastAt ?? -Infinity) - (left.urgency.lastAt ?? -Infinity) ||
+        0,
+    )
+    .map(({ group }) => group);
+}
+
+/** When a project last moved: its Mates' latest activity, or its newest merged change. */
+export function lastActivityAt(input: {
+  readonly activities: ReadonlyArray<Pick<RowMateActivity, "at">>;
+  readonly lastMerged: { readonly mergedAt?: string | undefined } | undefined;
+}): number | undefined {
+  const times = [...input.activities.map((activity) => activity.at), input.lastMerged?.mergedAt]
+    .map((at) => (at === undefined ? Number.NaN : Date.parse(at)))
+    .filter((at) => !Number.isNaN(at));
+  return times.length === 0 ? undefined : Math.max(...times);
+}
+
 /** One of the overview's filters: its words, and how many projects it holds when any. */
 export interface OverviewFilterTab {
   readonly show: OverviewShow | undefined;

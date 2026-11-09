@@ -1,5 +1,5 @@
 /**
- * The overview's cards: a card per project with Mates, side by side in a strip that scrolls.
+ * The overview's cards: a card per project with Mates, in a grid that wraps.
  *
  * A card reads top to bottom, what stands now first and what happened last: the project's name,
  * its people and its menu; production and each stage in full (`PlacePanel`); a release ready to
@@ -10,17 +10,8 @@
  * a place's panel are the page's slots (`ZeropsProjectsFlowProps`).
  */
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
-import { ArrowUpRightIcon, ChevronLeftIcon, ChevronRightIcon, PlusIcon } from "lucide-react";
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { ArrowUpRightIcon, PlusIcon } from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
   recipeReach,
@@ -72,82 +63,21 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
-/** One card's width and the gap between cards: a step of the back and forward buttons. */
-const CARD_STEP = 380 + 16;
+/**
+ * How far past the window's edge a card's detail is read ahead: about one card's height, so the
+ * next row down is read before it scrolls into sight.
+ */
+const READ_AHEAD_PX = 400;
 
 /**
- * The row of cards: one width each, side by side; past the window's edge the row scrolls sideways
- * under a fade, with a round back and forward button on the side there is more.
+ * The cards: a grid of one width each that wraps — four across at the owner's 1786 px with the menu
+ * open, three at 1280, one in a conversation's panel — each as tall as what it holds. The page
+ * scrolls down, never sideways (P1: a sideways row showed 3½ of 25 projects).
  */
-function CardRow({
-  children,
-  contentsKey,
-}: {
-  readonly children: ReactNode;
-  readonly contentsKey: string;
-}) {
-  const row = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState({ left: false, right: false });
-  const measure = useCallback(() => {
-    const element = row.current;
-    if (element === null) return;
-    const max = element.scrollWidth - element.clientWidth;
-    const next = { left: element.scrollLeft > 2, right: element.scrollLeft < max - 2 };
-    setEdges((current) =>
-      current.left === next.left && current.right === next.right ? current : next,
-    );
-  }, []);
-  useLayoutEffect(() => {
-    const element = row.current;
-    // A different set starts at its first card; scroll snap must not retain a filtered card.
-    if (element === null) return;
-    element.scrollLeft = 0;
-    measure();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
-    observer?.observe(element);
-    element.addEventListener("scroll", measure, { passive: true });
-    return () => {
-      observer?.disconnect();
-      element.removeEventListener("scroll", measure);
-    };
-  }, [measure, contentsKey]);
-  const step = (direction: -1 | 1) => {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    row.current?.scrollBy({ left: direction * CARD_STEP, behavior: reduced ? "auto" : "smooth" });
-  };
+function CardGrid({ children }: { readonly children: ReactNode }) {
   return (
-    <div
-      className="ov-rail"
-      data-can-left={edges.left ? "true" : undefined}
-      data-can-right={edges.right ? "true" : undefined}
-    >
-      <div
-        aria-label="Projects"
-        className="ov-row"
-        data-zerops-surface="project-cards"
-        ref={row}
-        role="list"
-      >
-        {children}
-      </div>
-      <button
-        aria-label="Back"
-        className="ov-nav ov-nav-left"
-        onClick={() => step(-1)}
-        tabIndex={-1}
-        type="button"
-      >
-        <ChevronLeftIcon aria-hidden="true" className="size-4" />
-      </button>
-      <button
-        aria-label="More projects"
-        className="ov-nav ov-nav-right"
-        onClick={() => step(1)}
-        tabIndex={-1}
-        type="button"
-      >
-        <ChevronRightIcon aria-hidden="true" className="size-4" />
-      </button>
+    <div aria-label="Projects" className="ov-grid" data-zerops-surface="project-cards" role="list">
+      {children}
     </div>
   );
 }
@@ -259,7 +189,7 @@ function useDetailWhileSeen(groupId: string) {
       (records) => {
         setSeen(records.at(-1)?.isIntersecting === true);
       },
-      { rootMargin: `0px ${String(CARD_STEP)}px` },
+      { rootMargin: `${String(READ_AHEAD_PX)}px 0px` },
     );
     observer.observe(element);
     return () => {
@@ -928,9 +858,7 @@ export function ProjectCards<T>({
       scrolledTo.current = focusGroup;
       setPulsed(focusGroup);
     } else if (!following.current) return;
-    document
-      .getElementById(cardId(focusGroup))
-      ?.scrollIntoView({ block: "nearest", inline: "start" });
+    document.getElementById(cardId(focusGroup))?.scrollIntoView({ block: "nearest" });
   }, [focusGroup, shown, orderKey]);
   // What the next load's stand-in draws (`OverviewCardsStandIn`).
   useEffect(() => {
@@ -938,7 +866,7 @@ export function ProjectCards<T>({
   }, [groups.length]);
   if (groups.length === 0) return null;
   return (
-    <CardRow contentsKey={orderKey}>
+    <CardGrid>
       {groups.map((entry) => (
         <ProjectCard
           entry={entry}
@@ -947,7 +875,7 @@ export function ProjectCards<T>({
           props={props}
         />
       ))}
-    </CardRow>
+    </CardGrid>
   );
 }
 
