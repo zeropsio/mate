@@ -15,7 +15,6 @@ import {
   changeAsksForReview,
   changeInMateReview,
   changeState,
-  changesCountWords,
   ENVIRONMENT_NOT_ADDED,
   placeAddresses,
   PRODUCTION_DEPLOYING,
@@ -131,10 +130,7 @@ export function projectWaitWords(wait: ProjectWait): {
         verb: "Answer",
       };
     case "plan":
-      return {
-        text: text === undefined ? `${name} has a plan for you` : `${name}'s plan: ${text}`,
-        verb: "See plan",
-      };
+      return { text: `${name} has a plan for you to approve`, verb: "See plan" };
     case "failed":
       return { text: `${name} stopped on an error`, verb: "Ask to fix it" };
   }
@@ -180,16 +176,19 @@ const CLOCK = new Intl.DateTimeFormat(undefined, {
 });
 
 /** "since 10:42" today, "since Tue" this week, "since Sep 18" before; nothing for a bad date. */
+/** How a place's since-when fact starts ("since Tue"): a compact place line leaves it out. */
+export const SINCE_WORD = "since";
+
 export function sinceWords(at: string | undefined, nowMs: number): string | undefined {
   if (at === undefined) return undefined;
   const then = Date.parse(at);
   if (Number.isNaN(then)) return undefined;
   const day = new Date(then);
   const today = new Date(nowMs);
-  if (day.toDateString() === today.toDateString()) return `since ${CLOCK.format(day)}`;
+  if (day.toDateString() === today.toDateString()) return `${SINCE_WORD} ${CLOCK.format(day)}`;
   const days = (nowMs - then) / 86_400_000;
-  if (days >= 0 && days < 6) return `since ${WEEKDAY.format(day)}`;
-  return `since ${DAY.format(day)}`;
+  if (days >= 0 && days < 6) return `${SINCE_WORD} ${WEEKDAY.format(day)}`;
+  return `${SINCE_WORD} ${DAY.format(day)}`;
 }
 
 const joined = (names: ReadonlyArray<string>): string =>
@@ -658,41 +657,6 @@ export function releaseProductionRuns(
   inFlight: string | undefined,
 ): string | undefined {
   return releases.find((release) => release.standing === "live" && release.tag !== inFlight)?.tag;
-}
-
-/** "3 changes ready to release", "1 change ready to release". */
-export function readyTitle(ready: CardReady): string {
-  if (ready.changeCount !== undefined)
-    return `${changesCountWords(ready.count, ready.atLeast, ready.changeCount)} ready to release`;
-  const count = `${ready.atLeast ? "At least " : ""}${String(ready.count)}`;
-  return `${count} change${ready.count === 1 ? "" : "s"} ready to release`;
-}
-
-/**
- * "On stage. Production runs v2.3.1." — where the changes are as the stage's deploys say, never
- * that anyone tried them there: nothing a release offers says a test ran on the stage.
- */
-export function readyLine(
-  ready: CardReady,
-  /** The stage runs every change the release carries; `undefined` while that is unread. */
-  onStage: boolean | undefined,
-): string | undefined {
-  const where =
-    ready.stage === undefined || onStage === undefined
-      ? "Merged."
-      : onStage
-        ? `On ${ready.stage}.`
-        : `Not on ${ready.stage} yet.`;
-  // Nothing released is production's own line ("Not released yet"), and merged is the title's:
-  // with no stage there is nothing more to say (a stage's line keeps its place while it is read).
-  if (!ready.failed && ready.from === undefined)
-    return ready.stage === undefined ? undefined : where;
-  const runs = ready.failed
-    ? ready.from === undefined
-      ? "Production's last release failed."
-      : `Production's last release failed; it still runs ${ready.from}.`
-    : `Production runs ${ready.from}.`;
-  return `${where} ${runs}`;
 }
 
 /** What a Mate waiting on the viewer is lifted onto a card with, and its buttons. */

@@ -14,7 +14,7 @@ import { Button } from "../../ui/button";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { heldLine } from "./emptyApps.logic";
 import { GroupName } from "./flowSteps";
-import { PlaceDot, PlaceWords } from "./ProjectCards";
+import { PlaceLine } from "../system/PlaceLine";
 import { placeLines } from "./projectCard.logic";
 import { containersSummary } from "./projectsView.logic";
 import type { ProjectsFlowGroup, ZeropsProjectsFlowProps } from "./ZeropsProjectsFlow";
@@ -41,10 +41,7 @@ function OtherProject<T>({
       </span>
       {held === undefined ? (
         line === undefined ? null : (
-          <>
-            <PlaceDot dot={line.dot} />
-            <PlaceWords line={line} />
-          </>
+          <PlaceLine density="compact" groupId={entry.group.groupId} line={line} />
         )
       ) : (
         <span className="ov-place-words">{held}</span>

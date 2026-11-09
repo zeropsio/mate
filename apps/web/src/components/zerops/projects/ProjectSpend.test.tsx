@@ -30,7 +30,7 @@ describe("a project's spend card on its page", () => {
           state={loaded(18.2, 46.1)}
           subscriptionMates={[
             { name: "Raya", provider: "Claude" },
-            { name: "Vera", provider: "Claude" },
+            { name: "Vale", provider: "Claude" },
           ]}
         />,
       ),
@@ -40,7 +40,7 @@ describe("a project's spend card on its page", () => {
     expect(shown).toContain("Compute · Zerops $18.20");
     expect(shown).toContain("Model tokens · Nebius $46.10");
     expect(shown).toContain(
-      "Raya and Vera run on a Claude subscription; it is not in this figure.",
+      "Raya and Vale run on a Claude subscription; it is not in this figure.",
     );
   });
 
