@@ -44,8 +44,8 @@ import { groupRepository } from "./projects/projectHistory.logic";
 import { ProjectAutomation } from "./projectAutomation/ProjectAutomation";
 import { ReleaseAction, useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
+import { Crumbs, usePageTrail } from "./system";
 import {
-  Crumbs,
   NO_ROUTE_ENVIRONMENTS,
   NO_ROUTE_NAVIGATION,
   Note,
@@ -53,7 +53,6 @@ import {
   SideSection,
   StopLine,
   UnreadDetail,
-  useCrumbs,
   useGroupName,
   useRuntimeStops,
   useStageFirstDeploys,
@@ -88,7 +87,7 @@ export function ZeropsGroupDetailPage({
 }) {
   const groupName = useGroupName(groupId);
   const [mirroring, setMirroring] = useState(connectReturned !== null);
-  const crumbs = useCrumbs({ groupId, name: groupName });
+  const trail = usePageTrail({ project: { groupId, name: groupName } });
   // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
   const addMate = useAddMate();
   const project = useMemo(
@@ -115,7 +114,7 @@ export function ZeropsGroupDetailPage({
     [addMate, groupId],
   );
   return (
-    <ZeropsHostedFrame breadcrumb={<Crumbs crumbs={crumbs.slice(0, -1)} />} width="full">
+    <ZeropsHostedFrame breadcrumb={<Crumbs trail={trail} />} width="full">
       <ZeropsProjectsContent project={project} search={NO_SEARCH} />
       {mirroring && groupName !== undefined ? (
         <GitMirrorDialog

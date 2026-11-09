@@ -58,7 +58,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
-import { detailTrail, ZeropsRuntimeStops, runtimeStopsOf } from "./ZeropsGroupDetail";
+import { ZeropsRuntimeStops, runtimeStopsOf } from "./ZeropsGroupDetail";
 import { ZeropsStopDetailPage, ZeropsStopPane, stopRepository } from "./PlacePage";
 import { ZeropsGroupPane } from "./ProjectPage";
 import { markupDom } from "../../../test/markupDom";
@@ -655,11 +655,11 @@ interface StopCase {
   readonly carried?: ReadonlyMap<string, MovedCommits> | undefined;
   /** Production's services whose commit cannot be told. */
   readonly untold?: ReadonlyArray<string>;
-  /** The environment's vault beside its page. */
+  /** The environment's vault, a drawer over its page. */
   readonly vault?: {
     readonly orgId: string;
     readonly open: boolean;
-    readonly onToggle: () => void;
+    readonly onOpenChange: (open: boolean) => void;
   };
   /** Who reaches the environment's project, as the page draws it. */
   readonly access?: React.ReactNode;
@@ -745,7 +745,7 @@ function renderStop(input: StopCase): string {
           : undefined
       }
       carried={input.carried}
-      crumbs={[{ label: "Projects", onClick: () => {} }]}
+      trail={[{ label: "Overview", onClick: () => {} }]}
       deployAgain={
         input.mayDeployAgain === true
           ? { running: () => false, onDeployAgain: () => {} }
@@ -1160,15 +1160,6 @@ describe("ZeropsStopPane — the environment's vault", () => {
       (entry) => entry.textContent === "Vault",
     );
   };
-  it("offers its vault beside the page, pressed while it shows", () => {
-    expect(
-      vaultToggle({
-        tier: "production",
-        services: [],
-        vault: { orgId: "org", open: false, onToggle: () => {} },
-      })?.getAttribute("aria-pressed"),
-    ).toBe("false");
-  });
   it("offers no vault where the account's organization is not read", () => {
     expect(vaultToggle({ tier: "stage", services: [] })).toBeUndefined();
   });
@@ -1722,17 +1713,6 @@ describe("ZeropsStopPane", () => {
       "Deploys",
     );
     expect(renderStop({ tier: "stage", services: [] })).not.toContain("Releases");
-  });
-});
-
-describe("detailTrail: where a detail page sits", () => {
-  it.each([
-    ["the projects page", undefined, ["Projects"]],
-    ["a project whose name is known", { groupId: "grp7Kq2", name: "Shop" }, ["Projects", "Shop"]],
-    // Before the listing is read the project's crumb waits: its id is never a name.
-    ["a project whose name is not read yet", { groupId: "grp7Kq2", name: undefined }, ["Projects"]],
-  ] as const)("%s", (_case, inside, labels) => {
-    expect(detailTrail(inside).map((crumb) => crumb.label)).toEqual(labels);
   });
 });
 

@@ -14,7 +14,7 @@ import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
  * `index.html`, and no route imports this module.
  */
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode, useState, type ReactNode } from "react";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -32,6 +32,7 @@ import {
   releaseRow,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type EnvironmentServiceState,
+  type FlowPullRequest,
   type FlowRelease,
   type MovedCommits,
   type ReleaseDeployFailure,
@@ -60,6 +61,12 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { ZeropsGroupPane } from "~/components/zerops/ProjectPage";
 import { ZeropsStopPane } from "~/components/zerops/PlacePage";
+import { GitStopDetail } from "~/components/zerops/GitStopDetail";
+import { DetailShell } from "~/components/zerops/ZeropsGroupDetail";
+import { PlaceLine } from "~/components/zerops/system";
+import { MateFace } from "~/components/zerops/primitives";
+import type { CardReady } from "~/components/zerops/projects/projectCard.logic";
+import type { MateTintId } from "@t3tools/shared/brand";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import { PlaceAccessSummary } from "~/components/zerops/projects/ProjectAccessTable";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
@@ -89,9 +96,10 @@ const ROUTES = [
 
 const NAMES = { mateNames: new Map([["p-theo", "Theo"]]) };
 
-const crumbs = (group: string) => [
-  { label: "Projects", onClick: () => {} },
+const trail = (group: string, here: string) => [
+  { label: "Overview", onClick: () => {} },
   { label: group, onClick: () => {} },
+  { label: here },
 ];
 
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
@@ -114,7 +122,7 @@ const HISTORY: ZeropsHistoryState = {
   commits: [
     commit("Key the preview cache on locale", "b21d904c", 1),
     commit("Cache the link previews", "5c3ea18b", 3),
-    commit("Fix the VAT rate table for Ireland", "3f9c1b2e", 20, "ales"),
+    commit("Fix the VAT rate table for Ireland", "3f9c1b2e", 20, "wren"),
     commit("Add an index on orders.created_at", "9a7d2f10", 30),
     commit("Stop logging the full card token", "c41b8e55", 48, "Wren"),
   ],
@@ -186,6 +194,66 @@ const RELEASE_NONE: ReleaseOffer = {
 /** Opening a commit is what grew the row and dragged the node down the rail. */
 const NOW = Date.now();
 
+/** The Mates whose changes a place's page lists, by their projects, as the menu draws them. */
+const MATES: Readonly<Record<string, { readonly name: string; readonly tint: MateTintId }>> = {
+  "p-juno": { name: "Juno", tint: "sky" },
+  "p-raya": { name: "Raya", tint: "olive" },
+};
+
+const mateFace = (mateProjectId: string) => {
+  const mate = MATES[mateProjectId];
+  return mate === undefined ? undefined : <MateFace size={20} state="idle" tint={mate.tint} />;
+};
+
+/** A Mate's change `hoursAgo` old: merged, or still open and ready to merge. */
+function change(
+  number: number,
+  title: string,
+  mateProjectId: string,
+  hoursAgo: number,
+  merged: boolean,
+): FlowPullRequest {
+  const at = new Date(NOW - hoursAgo * 3_600_000).toISOString();
+  return {
+    repository: "appdev",
+    number,
+    title,
+    kind: "code",
+    mateProjectId,
+    url: undefined,
+    mergeability: "mergeable",
+    behind: false,
+    merged,
+    mergedAt: merged ? at : undefined,
+    headSha: sha(String(number)),
+    baseBranch: "main",
+    line: `appdev #${String(number)}`,
+    updatedAt: at,
+  };
+}
+
+/** Two changes merged since production's release, waiting for the next one. */
+const MERGED_WAITING = [
+  change(27, "Connect calendars, notes and boards in one step", "p-juno", 22, true),
+  change(26, "A hidden browser for web work", "p-raya", 26, true),
+];
+
+/** What production's next release carries, as `readyOfFlow` reads it. */
+const READY_TWO: CardReady = {
+  count: 2,
+  changeCount: 2,
+  atLeast: false,
+  stage: undefined,
+  from: undefined,
+  failed: false,
+};
+
+/** Two open changes on their way to a stage: one ready to merge. */
+const STAGE_OPEN = [
+  change(31, "Steer a bot while it answers", "p-juno", 13, false),
+  { ...change(32, "Settings as a centred window", "p-raya", 17, false), ready: false },
+];
+
 /** One service of a stop: what it runs, and how HQ records its deploy of that commit went. */
 function service(
   hostname: string,
@@ -198,7 +266,7 @@ function service(
     hostname,
     repository,
     appVersionName:
-      seed === undefined ? undefined : name === undefined ? sha(seed) : `${sha(seed)} ${name} ales`,
+      seed === undefined ? undefined : name === undefined ? sha(seed) : `${sha(seed)} ${name} wren`,
     ...(seed === undefined
       ? {}
       : { deploy: { latest: deployRecord(sha(seed), state), live: null } }),
@@ -239,7 +307,7 @@ function known<T>(value: T): Shown<T> {
 const NOTHING_RUNS: Deployment = { kind: "none" };
 
 /**
- * Beviro's production as it was read on 2026-09-25: medusa has run one commit since v0.1.9, and
+ * Tea Shop's production as it was read on 2026-09-25: medusa has run one commit since v0.1.9, and
  * every release after it moved only nextstore — so its first service names v0.1.9, and the
  * newest release both services run is v0.1.13.
  */
@@ -253,7 +321,7 @@ const NEXTSTORE = [
   "0c1d2e3a",
   "9f8e7d6b",
 ] as const;
-const BEVIRO_RELEASES: ReadonlyArray<FlowRelease> = NEXTSTORE.map((nextstore, index) => {
+const TEASHOP_RELEASES: ReadonlyArray<FlowRelease> = NEXTSTORE.map((nextstore, index) => {
   const medusa = index < 5 ? MEDUSA : "1a2b3c4d";
   return {
     tag: `v0.1.${String(13 - index)}`,
@@ -276,10 +344,10 @@ const BEVIRO_RELEASES: ReadonlyArray<FlowRelease> = NEXTSTORE.map((nextstore, in
 const managed = (hostname: string): EnvironmentServiceState => ({ hostname });
 
 /**
- * What Beviro's production runs: medusa from v0.1.9, nextstore from v0.1.13 — and db, redis and
+ * What Tea Shop's production runs: medusa from v0.1.9, nextstore from v0.1.13 — and db, redis and
  * storage, which the platform lists and nothing deploys.
  */
-const BEVIRO_LIVE = [
+const TEASHOP_LIVE = [
   managed("db"),
   service("medusa", MEDUSA, "v0.1.9", "live", "medusadev"),
   service("nextstore", NEXTSTORE[0], "v0.1.13", "live", "nextstoredev"),
@@ -287,7 +355,7 @@ const BEVIRO_LIVE = [
   managed("storage"),
 ];
 
-const BEVIRO_ROUTES = [
+const TEASHOP_ROUTES = [
   {
     service: "medusa",
     port: 9000,
@@ -431,9 +499,29 @@ const ACME_SERVICES = [
   }),
 ];
 
-/** Beviro's releases under Acme's names: medusa is the shop, nextstore the storefront. */
-const ACME_RELEASES: ReadonlyArray<FlowRelease> = BEVIRO_RELEASES.map((release) => ({
+/** Tea Shop's releases under Acme's names: medusa is the shop, nextstore the storefront. */
+/** What Acme's releases put live, as HQ records each release's changes. */
+const ACME_BROUGHT = [
+  "Every person gets a Mate of their own",
+  "Connect calendars, notes, boards and whiteboards from the chat",
+  "Behaviour settings for every bot",
+  "Hand tasks to your other bots",
+  "Retry the desktop setup at start",
+  "Two columns, live chat and a chosen model",
+];
+
+const ACME_RELEASES: ReadonlyArray<FlowRelease> = TEASHOP_RELEASES.map((release, index) => ({
   ...release,
+  history: {
+    ranges: [],
+    changes: ACME_BROUGHT.slice(index % 3, (index % 3) + 6 - (index % 3)).map((title, at) => ({
+      repo: "appdev",
+      number: 20 - index * 6 - at,
+      title,
+    })),
+    commitCount: 6,
+    outsideCommitCount: 0,
+  },
   line: release.line.replace("medusa", "shop").replace("nextstore", "storefront"),
   entries: release.entries.map((entry) => ({
     ...entry,
@@ -448,7 +536,7 @@ const ACME_PEOPLE: ReturnType<typeof columnPeople> = {
     "Juno Park",
     "Raya Stone",
     "Ines Vale",
-    "Mira Holt",
+    "Vale Holt",
     "Theo Lind",
     "Ada Brook",
     "Noa Reed",
@@ -482,12 +570,12 @@ const ACME_PEOPLE: ReturnType<typeof columnPeople> = {
 const SIX_SERVICES = [
   {
     label: "Six services in production",
-    note: "A 1786 window: the vault beside the page; one row per service, meters under each compute one, none under the bucket. The storefront answers on its own domains, so nothing calls it closed.",
+    note: "A 1786 window, a release ready: Next release over the two merged changes, Live now with what it brought, one row per service with its meters. Vault opens the drawer.",
     width: 1351,
   },
   {
     label: "Six services in production at 1280",
-    note: "A 1280 window: no room beside the page, so the vault goes under it and the table keeps one row per service.",
+    note: "A 1280 window: the same sections; a service's meters stack in their column.",
     width: 845,
   },
   {
@@ -509,8 +597,8 @@ const ACME_ROUTES = [
   { service: "storefront", port: 8000, host: "www.acme.example", url: "https://www.acme.example" },
 ];
 
-/** The three changes merged to main that Beviro's production does not run. */
-const BEVIRO_WAITING = [
+/** The three changes merged to main that Tea Shop's production does not run. */
+const TEASHOP_WAITING = [
   {
     commits: [
       { sha: sha("5e6f7a8b"), subject: "Show the delivery estimate on the product page" },
@@ -520,7 +608,7 @@ const BEVIRO_WAITING = [
   },
 ];
 
-const BEVIRO_BEHIND: ReleaseOffer = {
+const TEASHOP_BEHIND: ReleaseOffer = {
   offered: true,
   releasing: false,
   tag: "v0.1.14",
@@ -528,20 +616,20 @@ const BEVIRO_BEHIND: ReleaseOffer = {
   onReview: () => {},
 };
 
-const BEVIRO_RELEASING: ReleaseOffer = { ...BEVIRO_BEHIND, releasing: true };
+const TEASHOP_RELEASING: ReleaseOffer = { ...TEASHOP_BEHIND, releasing: true };
 
-/** Beviro's production as the platform lists it: every service running what its deploy named. */
-const BEVIRO_RUNNING: Deployment = {
+/** Tea Shop's production as the platform lists it: every service running what its deploy named. */
+const TEASHOP_RUNNING: Deployment = {
   kind: "running",
   activatedAt: new Date(NOW - 7_200_000).toISOString(),
-  version: deployedVersion(`${sha(NEXTSTORE[0])} v0.1.13 ales`),
+  version: deployedVersion(`${sha(NEXTSTORE[0])} v0.1.13 wren`),
 };
 
 /** The nextstore commit v0.1.14 listed, whose production deploy failed. */
 const NEXTSTORE_FAILED = "9c41d2e0";
 
-/** v0.1.14 tagged on top of Beviro's releases: only the newest tag's time is read. */
-const BEVIRO_FAILED_RELEASES: ReadonlyArray<FlowRelease> = [
+/** v0.1.14 tagged on top of Tea Shop's releases: only the newest tag's time is read. */
+const TEASHOP_FAILED_RELEASES: ReadonlyArray<FlowRelease> = [
   {
     tag: "v0.1.14",
     verdict: "approved",
@@ -553,44 +641,44 @@ const BEVIRO_FAILED_RELEASES: ReadonlyArray<FlowRelease> = [
     ],
     taggedAt: new Date(NOW - 600_000).toISOString(),
   },
-  ...BEVIRO_RELEASES,
+  ...TEASHOP_RELEASES,
 ];
 
 /**
- * Beviro's two repositories as their default branches read, newest first: every commit a release
+ * Tea Shop's two repositories as their default branches read, newest first: every commit a release
  * names, and the ones merged between them. v0.1.14 and every release down to v0.1.10 moved
  * nextstore alone; v0.1.9 moved both, medusa for the last time.
  */
 const NEXTSTORE_BRANCH = [
   commit("Move the checkout to the new payment API", NEXTSTORE_FAILED, 0.5, "mate-p-theo"),
-  commit("Show the size guide on every product page", "8b3a1c07", 3, "ales"),
-  commit("Fix the basket badge on mobile", NEXTSTORE[0], 5, "ales"),
+  commit("Show the size guide on every product page", "8b3a1c07", 3, "wren"),
+  commit("Fix the basket badge on mobile", NEXTSTORE[0], 5, "wren"),
   commit("Translate the footer into Czech", "2d4e6f80", 8, "mate-p-theo"),
   commit("Lazy-load the product gallery", NEXTSTORE[1], 20, "mate-p-theo"),
-  commit("Add Apple Pay to the checkout", NEXTSTORE[2], 30, "ales"),
-  commit("Round prices to whole crowns", "3c5e7a91", 34, "ales"),
+  commit("Add Apple Pay to the checkout", NEXTSTORE[2], 30, "wren"),
+  commit("Round prices to whole crowns", "3c5e7a91", 34, "wren"),
   commit("Filter the catalogue by size", NEXTSTORE[3], 50, "mate-p-theo"),
-  commit("Cache the category pages", NEXTSTORE[4], 70, "ales"),
+  commit("Cache the category pages", NEXTSTORE[4], 70, "wren"),
   commit("Show delivery times at checkout", "5a6b7c8d", 80, "mate-p-theo"),
-  commit("Wire the storefront to the Medusa store API", NEXTSTORE[5], 100, "ales"),
-  commit("Start the storefront", NEXTSTORE[6], 120, "ales"),
-  commit("Initial commit", "1f2e3d4c", 130, "ales"),
+  commit("Wire the storefront to the Medusa store API", NEXTSTORE[5], 100, "wren"),
+  commit("Start the storefront", NEXTSTORE[6], 120, "wren"),
+  commit("Initial commit", "1f2e3d4c", 130, "wren"),
 ];
 
 const MEDUSA_BRANCH = [
   commit("Add the Czech VAT rates to the tax provider", MEDUSA, 60, "mate-p-theo"),
-  commit("Send the order confirmation from the new template", "6d7e8f90", 64, "ales"),
-  commit("Seed the Beviro product catalogue", "7e8f9a0b", 90, "ales"),
-  commit("Configure the Medusa backend for Beviro", "1a2b3c4d", 110, "ales"),
-  commit("Initial commit", "0a1b2c3d", 130, "ales"),
+  commit("Send the order confirmation from the new template", "6d7e8f90", 64, "wren"),
+  commit("Seed the Tea Shop product catalogue", "7e8f9a0b", 90, "wren"),
+  commit("Configure the Medusa backend for Tea Shop", "1a2b3c4d", 110, "wren"),
+  commit("Initial commit", "0a1b2c3d", 130, "wren"),
 ];
 
-/** Beviro's repositories, newest first, as HQ holds them. */
-const BEVIRO_BRANCHES: ReadonlyMap<string, ReadonlyArray<CompareCommit>> = new Map([
+/** Tea Shop's repositories, newest first, as HQ holds them. */
+const TEASHOP_BRANCHES: ReadonlyMap<string, ReadonlyArray<CompareCommit>> = new Map([
   ["medusadev", MEDUSA_BRANCH],
   ["nextstoredev", NEXTSTORE_BRANCH],
 ]);
-const BEVIRO_REPOSITORY_OF = new Map([
+const TEASHOP_REPOSITORY_OF = new Map([
   ["medusa", "medusadev"],
   ["nextstore", "nextstoredev"],
 ]);
@@ -601,9 +689,9 @@ const BEVIRO_REPOSITORY_OF = new Map([
  */
 function carriedOf(releases: ReadonlyArray<FlowRelease>): ReadonlyMap<string, MovedCommits> {
   return new Map(
-    [...carriedReads({ releases, repositoryOf: BEVIRO_REPOSITORY_OF })].map(([tag, reads]) => {
+    [...carriedReads({ releases, repositoryOf: TEASHOP_REPOSITORY_OF })].map(([tag, reads]) => {
       const moved = reads.map((read) => {
-        const branch = BEVIRO_BRANCHES.get(read.repository) ?? [];
+        const branch = TEASHOP_BRANCHES.get(read.repository) ?? [];
         const head = branch.findIndex((entry) => entry.sha === read.query.head);
         const base = branch.findIndex((entry) => entry.sha === read.query.base);
         const commits = branch.slice(head, base === -1 ? branch.length : base);
@@ -637,7 +725,7 @@ interface StopFixture {
   readonly deployAnswer?: HqDeployAnswer;
   readonly notInZerops?: ReadonlyArray<string>;
   readonly tier: EnvironmentRow["tier"];
-  /** The project's name; Shop unless the fixture is Beviro's. */
+  /** The project's name; Shop unless the fixture is Tea Shop's. */
   readonly group?: string;
   readonly services: ReadonlyArray<EnvironmentServiceState>;
   /**
@@ -677,15 +765,19 @@ interface StopFixture {
   readonly platformServices?: ReadonlyArray<ZeropsServiceRow>;
   /** Who reaches the place, as its page draws them. */
   readonly access?: ReactNode;
-  /** Whether the place's vault is open beside (or under) its page. */
-  readonly vault?: boolean;
+  /** Whether the place offers its vault drawer; `"open"` draws it open. */
+  readonly vault?: boolean | "open";
+  /** The changes that go next: merged ones waiting for a release, or a stage's open ones. */
+  readonly next?: ReadonlyArray<FlowPullRequest>;
+  /** What waits for production's next release. */
+  readonly ready?: CardReady;
+  /** Who made the live release. */
+  readonly liveBy?: string;
 }
 
 /** Acme production's vault, its values the vault fixture's. */
 const HARNESS_VAULT = {
   orgId: "harness",
-  open: true,
-  onToggle: () => {},
   body: (
     <VaultPanelBody
       actor="environment"
@@ -767,6 +859,7 @@ function platformService(id: string): StopService["service"] {
  * derive them, so a fixture differs only in what it reads.
  */
 function StopState({ fixture }: { readonly fixture: StopFixture }) {
+  const [vaultOpen, setVaultOpen] = useState(fixture.vault === "open");
   const production = fixture.tier === "production";
   const name = production ? "production" : "stage";
   const group = fixture.group ?? "Shop";
@@ -824,7 +917,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       addService={{ running: () => false, onAdd: () => {} }}
       deployAgain={{ running: () => false, onDeployAgain: () => {} }}
       carried={production ? fixture.carried : undefined}
-      crumbs={crumbs(group)}
+      trail={trail(group, production ? "Production" : "Stage")}
       deployed={new Map(stop.version.sha === undefined ? [] : [[name, stop.version.sha]])}
       enablingServiceId={null}
       groupId={group.toLowerCase()}
@@ -872,7 +965,19 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       platformServices={fixture.platformServices}
       usageRead
       access={fixture.access}
-      vault={fixture.vault === true ? HARNESS_VAULT : undefined}
+      vault={
+        fixture.vault === undefined || fixture.vault === false
+          ? undefined
+          : { ...HARNESS_VAULT, open: vaultOpen, onOpenChange: setVaultOpen }
+      }
+      releasing={fixture.releasing}
+      deployFailed={failedDeploys.length > 0}
+      ready={fixture.ready}
+      nextChanges={fixture.next}
+      faces={mateFace}
+      mateName={(mateProjectId) => MATES[mateProjectId]?.name}
+      onOpenPull={() => {}}
+      liveBy={fixture.liveBy}
     />
   );
 }
@@ -919,7 +1024,7 @@ const PRODUCTION_ROW = environment({
     label: "v1.4.0",
     commit: "3f9c1b2e",
     sha: sha("3f9c1b2e"),
-    taggedBy: "ales",
+    taggedBy: "wren",
   },
 });
 
@@ -971,6 +1076,48 @@ function EnvironmentsFrame({
     />
   );
 }
+
+/** A production that is a Git branch: Mate pushes each release to it. */
+const GIT_PRODUCTION = {
+  id: HqEnvironmentId.make("git-prod"),
+  name: "Production",
+  tier: "production" as const,
+  target: { kind: "git" as const, branch: "live", delivery: "direct" as const },
+  sources: ["release"],
+  order: 1,
+  keyHeld: false,
+  keyInvalid: false,
+  jobs: [],
+  birth: null,
+  release: null,
+};
+
+const GIT_REPOS = [
+  {
+    name: "web",
+    mainHead: null,
+    updatedAt: "2026-10-14T10:00:00Z",
+    remote: {
+      url: "https://github.com/acme/tea-shop.git",
+      repositoryId: "123",
+      keptAt: "2026-10-14T10:00:00Z",
+      keptBy: "wren",
+      expiresAt: null,
+      invalidSince: null,
+    },
+  },
+];
+
+const GIT_RELEASES = ["v0.2.1", "v0.2.0", "v0.1.9"].map((tag, index) => ({
+  tag,
+  sha: sha(`a${String(index)}c4e`),
+  entries: [{ service: "web", sha: sha(`b${String(index)}d5f`) }],
+  by: "u-1",
+  at: new Date(NOW - (index + 1) * 86_400_000).toISOString(),
+  state: "approved" as const,
+  reason: null,
+  rollbackOf: null,
+}));
 
 function Harness() {
   return (
@@ -1055,7 +1202,7 @@ function Harness() {
                 label: "v1.4.0",
                 commit: "3f9c1b2e",
                 sha: sha("3f9c1b2e"),
-                taggedBy: "ales",
+                taggedBy: "wren",
               },
             }),
           ]}
@@ -1173,7 +1320,7 @@ function Harness() {
       >
         <EnvironmentsFrame
           environments={[]}
-          facts={{ devstages: [{ id: "vera-dev", name: "Vera" }] }}
+          facts={{ devstages: [{ id: "toby-dev", name: "Toby" }] }}
         />
       </State>
       <State
@@ -1238,13 +1385,13 @@ function Harness() {
         <StopState
           fixture={{
             tier: "production",
-            group: "Beviro",
+            group: "Tea Shop",
             services: [
               service("medusa", undefined, undefined, "live", "medusadev"),
               service("nextstore", undefined, undefined, "live", "nextstoredev"),
             ],
-            releases: BEVIRO_RELEASES,
-            carried: carriedOf(BEVIRO_RELEASES),
+            releases: TEASHOP_RELEASES,
+            carried: carriedOf(TEASHOP_RELEASES),
           }}
         />
       </State>
@@ -1316,14 +1463,14 @@ function Harness() {
         <StopState
           fixture={{
             tier: "production",
-            group: "Beviro",
-            services: BEVIRO_LIVE,
-            routes: BEVIRO_ROUTES,
-            release: BEVIRO_RELEASING,
-            waiting: BEVIRO_WAITING,
+            group: "Tea Shop",
+            services: TEASHOP_LIVE,
+            routes: TEASHOP_ROUTES,
+            release: TEASHOP_RELEASING,
+            waiting: TEASHOP_WAITING,
             releasing: "v0.1.14",
-            releases: BEVIRO_RELEASES,
-            carried: carriedOf(BEVIRO_RELEASES),
+            releases: TEASHOP_RELEASES,
+            carried: carriedOf(TEASHOP_RELEASES),
           }}
         />
       </State>
@@ -1428,7 +1575,7 @@ function Harness() {
                 tier: "production",
                 group: "Acme",
                 services: ACME_LIVE,
-                deployment: BEVIRO_RUNNING,
+                deployment: TEASHOP_RUNNING,
                 routes: ACME_ROUTES,
                 releases: ACME_RELEASES,
                 platformServices: ACME_SERVICES,
@@ -1444,6 +1591,10 @@ function Harness() {
                   />
                 ),
                 vault: true,
+                release: RELEASE_WAITING,
+                ready: READY_TWO,
+                next: MERGED_WAITING,
+                liveBy: "Dana K.",
               }}
             />
           </div>
@@ -1452,17 +1603,17 @@ function Harness() {
 
       <State
         label="A production whose release failed to deploy"
-        note="Beviro: v0.1.14's nextstore deploy failed and nextstore runs on v0.1.13 — the verdict says so, and the release row reads Deploy failed."
+        note="Tea Shop: v0.1.14's nextstore deploy failed and nextstore runs on v0.1.13 — the verdict says so, and the release row reads Deploy failed."
       >
         <StopState
           fixture={{
             tier: "production",
-            group: "Beviro",
-            services: BEVIRO_LIVE,
-            deployment: BEVIRO_RUNNING,
-            routes: BEVIRO_ROUTES,
-            releases: BEVIRO_FAILED_RELEASES,
-            carried: carriedOf(BEVIRO_FAILED_RELEASES),
+            group: "Tea Shop",
+            services: TEASHOP_LIVE,
+            deployment: TEASHOP_RUNNING,
+            routes: TEASHOP_ROUTES,
+            releases: TEASHOP_FAILED_RELEASES,
+            carried: carriedOf(TEASHOP_FAILED_RELEASES),
             failedDeploys: [{ tag: "v0.1.14", service: "nextstore", sha: sha(NEXTSTORE_FAILED) }],
           }}
         />
@@ -1475,31 +1626,31 @@ function Harness() {
         <StopState
           fixture={{
             tier: "production",
-            group: "Beviro",
-            services: BEVIRO_LIVE,
-            routes: BEVIRO_ROUTES,
-            release: BEVIRO_BEHIND,
-            waiting: BEVIRO_WAITING,
-            releases: BEVIRO_RELEASES,
-            carried: carriedOf(BEVIRO_RELEASES),
+            group: "Tea Shop",
+            services: TEASHOP_LIVE,
+            routes: TEASHOP_ROUTES,
+            release: TEASHOP_BEHIND,
+            waiting: TEASHOP_WAITING,
+            releases: TEASHOP_RELEASES,
+            carried: carriedOf(TEASHOP_RELEASES),
           }}
         />
       </State>
 
       <State
         label="A production, live"
-        note="Beviro: medusa runs v0.1.9's commit, nextstore v0.1.13 — the stop is v0.1.13, the release both run. Two releases wait behind the quiet verb."
+        note="Tea Shop: medusa runs v0.1.9's commit, nextstore v0.1.13 — the stop is v0.1.13, the release both run. Two releases wait behind the quiet verb."
       >
         <StopState
           fixture={{
             tier: "production",
-            group: "Beviro",
-            services: BEVIRO_LIVE,
-            routes: BEVIRO_ROUTES,
-            deployment: BEVIRO_RUNNING,
-            releases: BEVIRO_RELEASES,
+            group: "Tea Shop",
+            services: TEASHOP_LIVE,
+            routes: TEASHOP_ROUTES,
+            deployment: TEASHOP_RUNNING,
+            releases: TEASHOP_RELEASES,
             releasedAge: "1h ago",
-            carried: carriedOf(BEVIRO_RELEASES),
+            carried: carriedOf(TEASHOP_RELEASES),
           }}
         />
       </State>
@@ -1511,13 +1662,13 @@ function Harness() {
         <StopState
           fixture={{
             tier: "production",
-            group: "Beviro",
-            services: BEVIRO_LIVE,
-            routes: BEVIRO_ROUTES,
-            deployment: BEVIRO_RUNNING,
-            releases: BEVIRO_RELEASES,
+            group: "Tea Shop",
+            services: TEASHOP_LIVE,
+            routes: TEASHOP_ROUTES,
+            deployment: TEASHOP_RUNNING,
+            releases: TEASHOP_RELEASES,
             releasedAge: "1h ago",
-            carried: carriedAs(BEVIRO_RELEASES, { state: "reading" }),
+            carried: carriedAs(TEASHOP_RELEASES, { state: "reading" }),
           }}
         />
       </State>
@@ -1529,13 +1680,13 @@ function Harness() {
         <StopState
           fixture={{
             tier: "production",
-            group: "Beviro",
-            services: BEVIRO_LIVE,
-            routes: BEVIRO_ROUTES,
-            deployment: BEVIRO_RUNNING,
-            releases: BEVIRO_RELEASES,
+            group: "Tea Shop",
+            services: TEASHOP_LIVE,
+            routes: TEASHOP_ROUTES,
+            deployment: TEASHOP_RUNNING,
+            releases: TEASHOP_RELEASES,
             releasedAge: "1h ago",
-            carried: carriedAs(BEVIRO_RELEASES, {
+            carried: carriedAs(TEASHOP_RELEASES, {
               state: "failed",
               reason: "HQ is not answering right now.",
             }),
@@ -1544,8 +1695,34 @@ function Harness() {
       </State>
 
       <State
+        label="A Git production"
+        note="A production that is a branch of the project's repository: the same header and sections, its delivery first, then the releases Mate pushed."
+      >
+        <DetailShell
+          summary={
+            <PlaceLine
+              density="header"
+              line={{
+                projectId: undefined,
+                kind: "production",
+                name: "prod",
+                dot: "running",
+                words: ["Running", "v0.2.1", "released 1d ago"],
+                trouble: false,
+                addresses: [],
+              }}
+            />
+          }
+          title="Production"
+          trail={trail("Tea Shop", "Production")}
+        >
+          <GitStopDetail environment={GIT_PRODUCTION} releases={GIT_RELEASES} repos={GIT_REPOS} />
+        </DetailShell>
+      </State>
+
+      <State
         label="A stage at the head of main"
-        note="It runs main's newest commit, which no release names: the verdict says the commit and for how long, each row says head of main under it, and the database beside it has no row."
+        note="It runs main's newest commit: the header says the commit and for how long. Two open changes wait to be merged to it, one ready."
       >
         <StopState
           fixture={{
@@ -1557,6 +1734,8 @@ function Harness() {
             ],
             deployment: STAGE_RUNNING,
             routes: ROUTES,
+            next: STAGE_OPEN,
+            vault: true,
           }}
         />
       </State>

@@ -325,27 +325,6 @@ export function stopMetaLine(input: {
   return input.services > 0 ? `${from} · ${plural(input.services, "service", "services")}` : from;
 }
 
-const CARD_GROUPS = {
-  waiting: "Waiting for release",
-  services: "Services",
-  releases: "Releases",
-  deploys: "Deploys",
-} as const;
-
-/**
- * A group of the stop's card, under its label: `Services · 2`; the label alone while uncounted, and
- * `+` where the count is only how many at least.
- */
-export function stopCardTitle(
-  group: keyof typeof CARD_GROUPS,
-  count: number | undefined,
-  atLeast?: boolean,
-): string {
-  return count === undefined
-    ? CARD_GROUPS[group]
-    : `${CARD_GROUPS[group]} · ${String(count)}${atLeast === true ? "+" : ""}`;
-}
-
 /** Said, muted, beside a stage's Deploys: what they are read from. */
 export const DEPLOYS_ASIDE = "on main";
 

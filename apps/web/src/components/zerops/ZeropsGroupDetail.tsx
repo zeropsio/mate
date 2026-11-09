@@ -44,7 +44,7 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronRightIcon } from "lucide-react";
-import { Fragment, useCallback, useContext, useId, useMemo } from "react";
+import { useCallback, useContext, useId, useMemo } from "react";
 
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import {
@@ -55,12 +55,8 @@ import {
 } from "~/zerops/projectFlows";
 import { useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
-import {
-  WorkspaceBreadcrumb,
-  WorkspaceBreadcrumbItem,
-  WorkspaceBreadcrumbSeparator,
-} from "../WorkspaceBreadcrumb";
-import { ZeropsHostedFrame, type SidePlacement } from "./landing/ZeropsHostedFrame";
+import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { Crumbs, PageHeader, SectionLabel, usePageTrail, type Crumb } from "./system";
 import { STATUS_BADGE_TONE, VerdictPanelWaiting } from "./primitives";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { HeldInventoryContext, withheldProjectNotice } from "~/zerops/inventoryContext";
@@ -71,7 +67,7 @@ import { Badge } from "~/components/ui/badge";
 import { environmentTitle, stopRowSays } from "./place/place.logic";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
-export const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
+const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
   good: "ok",
   pending: "busy",
   bad: "failed",
@@ -330,10 +326,10 @@ export function ZeropsChangeDetailPage({
   readonly number: number;
 }) {
   const groupName = useGroupName(groupId);
-  const crumbs = useCrumbs({ groupId, name: groupName });
+  const trail = usePageTrail({ project: { groupId, name: groupName }, here: `#${String(number)}` });
   const titleId = useId();
   return (
-    <ZeropsHostedFrame breadcrumb={<Crumbs crumbs={crumbs} />} width="column">
+    <ZeropsHostedFrame breadcrumb={<Crumbs trail={trail} />} width="column">
       <ZeropsChangeReview
         frame="page"
         onClose={STAYS}
@@ -352,55 +348,6 @@ const EMPTY_STOPS: ReadonlyArray<EnvironmentRow> = [];
 
 /** A stop whose project the flow has no listing for: not read, never "nothing". */
 export const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null };
-
-/**
- * Where a detail page sits, outermost first — a containment trail, not a way
- * back to wherever you came from.
- *
- * The first crumb said *Conversation* and went to `/`, which resolves to
- * whichever thread the router settles on: "this `conversation` link never
- * makes sense, it will just redirect to some random convo" (the owner,
- * 2026-09-19). A trail whose root is a guess is worse than no trail, because
- * it looks like it knows.
- *
- * So it is the hierarchy these pages actually sit in — every project, then the
- * project, then this page's own name in the title. Each step is the page of
- * the thing that contains this one, which is a claim the route can keep. The
- * conversations are not above these pages anyway: they hang off the Mates, and
- * a Mate's row on the project's page is the way into its own.
- */
-export function useCrumbs(
-  inside?: { readonly groupId: string; readonly name: string | undefined } | undefined,
-): ReadonlyArray<Crumb> {
-  const navigate = useNavigate();
-  const groupId = inside?.groupId;
-  const name = inside?.name;
-  return useMemo(
-    () =>
-      detailTrail(groupId === undefined ? undefined : { groupId, name }).map(({ label, to }) => ({
-        label,
-        onClick: () => {
-          void (to.kind === "projects"
-            ? navigate({ to: "/zerops" })
-            : navigate({ to: "/group/$groupId/flow", params: { groupId: to.groupId } }));
-        },
-      })),
-    [groupId, name, navigate],
-  );
-}
-
-/** A detail page's trail as data: each crumb's words and the page it opens. */
-export function detailTrail(
-  inside: { readonly groupId: string; readonly name: string | undefined } | undefined,
-): ReadonlyArray<{
-  readonly label: string;
-  readonly to: { readonly kind: "projects" } | { readonly kind: "group"; readonly groupId: string };
-}> {
-  const projects = { label: "Projects", to: { kind: "projects" } } as const;
-  // A project's name not read yet: its crumb waits — its id is never a name.
-  if (inside?.name === undefined) return [projects];
-  return [projects, { label: inside.name, to: { kind: "group", groupId: inside.groupId } }];
-}
 
 /** A section with nothing in it yet, and the way to put something there. */
 /** A stop's version column shares its page's runtime answer, including a failure or wait. */
@@ -534,13 +481,6 @@ function ZeropsStopLine({
   );
 }
 
-/** One step of the trail above a page's name. */
-export interface Crumb {
-  readonly label: string;
-  /** Opens the page it names; none on the page itself, the trail's last step. */
-  readonly onClick?: () => void;
-}
-
 /**
  * A detail page whose flow is not read yet: `standIn`, in the box of what the page opens with, while
  * the app reads it, and its own words where nothing will (`unreadFlowWords`) — HQ is unavailable,
@@ -574,90 +514,37 @@ export function StopVerdictStandIn() {
   );
 }
 
+/**
+ * A place's page: its header (`PageHeader`: the trail above, the title with its state line beside
+ * it, the page's verbs at the line's end), then its sections. The trail sits in the page, above the
+ * title, so the frame draws no bar of its own.
+ */
 export function DetailShell({
+  trail,
   title,
   titleTag,
-  subtitle,
+  summary,
   actions,
-  crumbs,
-  side,
   children,
 }: {
+  /** Where this page sits, outermost first (`usePageTrail`). */
+  readonly trail: ReadonlyArray<Crumb>;
   /** Undefined while the name is not read: its line is held, with no placeholder in it. */
   readonly title: string | undefined;
   /** What kind of thing the page is about, as a pill trailing its name. */
   readonly titleTag?: React.ReactNode;
-  readonly subtitle?: React.ReactNode;
-  /** The verbs this page carries, beside its name rather than under it. */
+  /** Beside the title: the place's state line. */
+  readonly summary?: React.ReactNode;
+  /** The verbs this page carries, at the title line's end. */
   readonly actions?: React.ReactNode;
-  /**
-   * Where this page sits, outermost first. A stop used to offer only "back to
-   * the conversation", so reaching its project meant leaving through the chat
-   * and coming in again.
-   */
-  readonly crumbs: ReadonlyArray<Crumb>;
-  /** A column beside the page, or under it where the frame is narrow: an environment's vault. */
-  readonly side?: ((placement: SidePlacement) => React.ReactNode) | undefined;
   readonly children: React.ReactNode;
 }) {
   return (
-    <ZeropsHostedFrame
-      side={side}
-      // The trail is a way out, not the page's business: it sits in the bar,
-      // where /zerops keeps its own, rather than competing with the verbs
-      // beside the name.
-      breadcrumb={crumbs.length === 0 ? undefined : <Crumbs crumbs={crumbs} />}
-      width="expanded"
-    >
+    <ZeropsHostedFrame bar={false} width="expanded">
       {/* The frame's page gap spaces the header and every block after it, as on /zerops. */}
-      <header>
-        <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <h1 className="min-w-0 text-2xl leading-8 font-semibold tracking-tight wrap-anywhere">
-                {title ?? <span aria-hidden="true">{"\u00a0"}</span>}
-              </h1>
-              {titleTag}
-            </div>
-            {subtitle === undefined ? null : (
-              <div className="mt-1 text-sm text-muted-foreground">{subtitle}</div>
-            )}
-          </div>
-          {actions === undefined ? null : (
-            <div className="flex shrink-0 items-center gap-2">{actions}</div>
-          )}
-        </div>
-      </header>
+      <PageHeader actions={actions} summary={summary} tag={titleTag} title={title} trail={trail} />
       {children}
     </ZeropsHostedFrame>
-  );
-}
-
-/** Where a page sits, outermost first, each step the page of what contains it. */
-export function Crumbs({ crumbs }: { readonly crumbs: ReadonlyArray<Crumb> }) {
-  return (
-    <WorkspaceBreadcrumb ariaLabel="Zerops breadcrumb" className="min-w-0">
-      {crumbs.map((crumb, index) => (
-        <Fragment key={crumb.label}>
-          {index === 0 ? null : <WorkspaceBreadcrumbSeparator />}
-          <WorkspaceBreadcrumbItem className="min-w-0 shrink">
-            {crumb.onClick === undefined ? (
-              <span aria-current="page" className="min-w-0 truncate text-foreground">
-                {crumb.label}
-              </span>
-            ) : (
-              <button
-                className="min-w-0 cursor-pointer truncate hover:text-foreground"
-                onClick={crumb.onClick}
-                type="button"
-              >
-                {crumb.label}
-              </button>
-            )}
-          </WorkspaceBreadcrumbItem>
-        </Fragment>
-      ))}
-    </WorkspaceBreadcrumb>
   );
 }
 
@@ -684,12 +571,8 @@ function Section({
   readonly children: React.ReactNode;
 }) {
   return (
-    <section>
-      {/* A hairline under the heading: without one the page was four blocks of
-          identical weight and a reader had to parse it to find the seams. */}
-      <h2 className="mb-3 border-b border-border pb-1.5 text-sm font-semibold tracking-tight text-foreground">
-        {title}
-      </h2>
+    <section className="flex min-w-0 flex-col gap-1.5">
+      <SectionLabel>{title}</SectionLabel>
       {children}
     </section>
   );

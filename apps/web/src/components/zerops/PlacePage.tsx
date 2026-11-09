@@ -12,9 +12,9 @@ import { Atom } from "effect/reactivity";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
 import { useAccountDataOptional, useProjection } from "~/zerops/accountData";
-import { ReleaseAction, useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
+import { useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
-import { StopVaultSide, StopVaultToggle, useStopVaultOpen } from "./vault/StopVault";
+import { StopVaultDrawer, StopVaultToggle, useStopVaultOpen } from "./vault/StopVault";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 /**
@@ -38,6 +38,8 @@ import { StopReadAgain } from "./StopReadAgain";
 import { StopTierStops } from "./StopTierStops";
 import {
   cannotTellWhatRuns,
+  changeState,
+  type FlowPullRequest,
   flowVerbKey,
   flowVerbLabel,
   carriedReads,
@@ -45,7 +47,6 @@ import {
   movedCount,
   releaseTagsByCommit,
   type MovedCommits,
-  shortCommit,
   type ZeropsPublicRoute,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type CompareRead,
@@ -61,7 +62,6 @@ import {
   NONE_YET,
   notInZerops,
   serviceRows,
-  stopCardTitle,
   rowsRunningAgain,
   stopFailedDeploys,
   stopKeyGap,
@@ -74,7 +74,6 @@ import {
   type StopVerdict,
   type StopView,
 } from "@t3tools/client-runtime/zerops/flow";
-import { ExternalLinkIcon } from "lucide-react";
 import { useCallback, useContext, useMemo, useState } from "react";
 
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
@@ -97,7 +96,7 @@ import { Button } from "../ui/button";
 import { PlaceAccess } from "./projects/ProjectPeople";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
-import { MicroLabel, STATUS_BADGE_TONE, VerdictPanel } from "./primitives";
+import { MateFace, VerdictPanel } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -112,34 +111,52 @@ import {
 import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { unreadFlowWords } from "~/zerops/hqRead.logic";
-import { Badge } from "~/components/ui/badge";
-import { MiddleTruncate } from "../ui/middle-truncate";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import { PlaceServiceTable, type StopDeployAgain } from "./place/PlaceServices";
 import { usePlaceServiceMap } from "./place/usePlaceServiceMap";
 import {
-  placeAddress,
   placeServiceRows,
-  placeStatus,
   placeTitle,
   environmentTitle,
   rollBackTarget,
 } from "./place/place.logic";
 
+import type { CardReady, PlaceLine as PlaceLineData } from "./projects/projectCard.logic";
 import {
+  changesWaitingForRelease,
+  changesWaitingForStage,
+  liveNowFact,
+  placeHeaderLine,
+  releaseBrought,
+  stageNextTitle,
+} from "./place/placePage.logic";
+import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
+import { usePersonNames } from "~/zerops/useZeropsMateOwners";
+import {
+  ChangeList,
+  ChangeRow,
+  changeRowLine,
+  NextBlock,
+  NextRelease,
+  nextReleaseTitle,
+  PlaceLine,
+  readyOfFlow,
+  SectionLabel,
+  useApplicationPlaces,
+  usePageTrail,
   type Crumb,
+} from "./system";
+import {
   DetailShell,
   NO_ROUTE_ENVIRONMENTS,
   NO_ROUTE_NAVIGATION,
   Note,
   ProjectReadFailures,
-  STOP_DOT_TONE,
   StopVerdictStandIn,
   UNREAD_DEPLOYMENT,
   UnreadDetail,
   ZeropsRuntimeStops,
   runtimeStopsOf,
-  useCrumbs,
   useGroupName,
   useRuntimeStops,
   useStageFirstDeploys,
@@ -193,10 +210,13 @@ export function ZeropsStopDetailPage({
     groupKnown: status.knownGroups.has(groupId),
     orgRole,
   });
-  const crumbs = useCrumbs({
-    groupId,
-    name: navigation?.structure?.apps.find((app) => app.id === groupId)?.name,
+  const trail = usePageTrail({
+    project: { groupId, name: navigation?.structure?.apps.find((app) => app.id === groupId)?.name },
+    here:
+      environment === undefined ? undefined : environmentTitle(environment.tier, environment.name),
   });
+  // A Git place's line, as every surface says it: production's one, or the stage of its name.
+  const places = useApplicationPlaces(groupId).places;
   if (environment?.target.kind === "zerops") {
     const notice = withheldProjectNotice(
       inventory,
@@ -205,7 +225,7 @@ export function ZeropsStopDetailPage({
     );
     if (notice !== null) {
       return (
-        <DetailShell crumbs={crumbs} title={environmentTitle(environment.tier, environment.name)}>
+        <DetailShell title={environmentTitle(environment.tier, environment.name)} trail={trail}>
           <Note>{notice}</Note>
         </DetailShell>
       );
@@ -215,18 +235,33 @@ export function ZeropsStopDetailPage({
     );
   }
   const note = unreadEnvironmentsWords(read.unread) ?? unread;
+  const gitPlaceLine =
+    environment === undefined
+      ? undefined
+      : places.find(
+          (line) =>
+            line.git !== undefined &&
+            line.kind === environment.tier &&
+            (environment.tier === "production" || line.name === environment.name),
+        );
   if (environment === undefined) {
     return (
       <ZeropsUnresolvedStopDetailPage
         groupId={groupId}
         environmentId={environmentId}
-        crumbs={crumbs}
+        groupName={navigation?.structure?.apps.find((app) => app.id === groupId)?.name}
         note={note}
       />
     );
   }
   return (
-    <DetailShell crumbs={crumbs} title={environmentTitle(environment.tier, environment.name)}>
+    <DetailShell
+      summary={
+        gitPlaceLine === undefined ? undefined : <PlaceLine density="header" line={gitPlaceLine} />
+      }
+      title={environmentTitle(environment.tier, environment.name)}
+      trail={trail}
+    >
       <GitStopDetailPage
         appId={groupId}
         environment={{ ...environment, target: environment.target }}
@@ -241,12 +276,12 @@ export function ZeropsStopDetailPage({
 function ZeropsUnresolvedStopDetailPage({
   groupId,
   environmentId,
-  crumbs,
+  groupName,
   note,
 }: {
   readonly groupId: string;
   readonly environmentId: string;
-  readonly crumbs: ReadonlyArray<Crumb>;
+  readonly groupName: string | undefined;
   readonly note: string | null;
 }) {
   const inventory = useZeropsInventory();
@@ -255,8 +290,9 @@ function ZeropsUnresolvedStopDetailPage({
     (stop) => stop.projectId === environmentId,
   );
   const deployments = useStopDeploymentsShown(stops.map((stop) => stop.projectId));
+  const trail = usePageTrail({ project: { groupId, name: groupName }, here: stops[0]?.name });
   return (
-    <DetailShell crumbs={crumbs} title={stops[0]?.name}>
+    <DetailShell title={stops[0]?.name} trail={trail}>
       {note !== null ? <Note>{note}</Note> : <StopVerdictStandIn />}
       <ZeropsRuntimeStops stops={stops} deployments={deployments} />
     </DetailShell>
@@ -284,7 +320,7 @@ function ZeropsProjectStopDetailPage({
   const recipeFailure = useHqAppFailure(groupId);
   // The environment's vault beside its page, where the account reads its organization.
   const orgId = useAccountOrgId();
-  const [vaultOpen, toggleVault] = useStopVaultOpen();
+  const [vaultOpen, setVaultOpen] = useStopVaultOpen();
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
   const deployments = useStopDeploymentsShown();
@@ -332,8 +368,16 @@ function ZeropsProjectStopDetailPage({
   const release = useReleaseOffer(groupId, flow);
   const openReview = useOpenReview();
   const stopGroupName = useGroupName(groupId);
-  const crumbs = useCrumbs({ groupId, name: stopGroupName });
+  const pageTitle =
+    stop === undefined ? runtimeStops[0]?.name : placeTitle(stop.name, stop.tier).title;
+  const trail = usePageTrail({ project: { groupId, name: stopGroupName }, here: pageTitle });
   const names = useHistoryNames();
+  // The place's line as the overview, the project page and the menu say it.
+  const places = useApplicationPlaces(groupId).places;
+  const placeLine = places.find((entry) => entry.projectId === projectId);
+  // Who the next changes are from: each Mate's name and face, as the left menu draws them.
+  const mates = useZeropsReviewMates(groupId);
+  const personName = usePersonNames(orgId ?? undefined);
   const publicAccess = usePublicAccess(projectId);
   const routes = publicAccess.routes;
   const offers = publicAccess.offers;
@@ -388,7 +432,7 @@ function ZeropsProjectStopDetailPage({
 
   if (flow === undefined || stop === undefined) {
     return (
-      <DetailShell crumbs={crumbs} title={runtimeStops?.[0]?.name}>
+      <DetailShell title={pageTitle} trail={trail}>
         <UnreadDetail groupId={groupId} standIn={<StopVerdictStandIn />} />
         <ZeropsRuntimeStops stops={runtimeStops} deployments={deployments} />
       </DetailShell>
@@ -396,7 +440,7 @@ function ZeropsProjectStopDetailPage({
   }
   if (withheld !== null) {
     return (
-      <DetailShell crumbs={crumbs} title={environmentTitle(stop.tier, stop.tier)}>
+      <DetailShell title={environmentTitle(stop.tier, stop.tier)} trail={trail}>
         <Note>{withheld}</Note>
       </DetailShell>
     );
@@ -405,6 +449,7 @@ function ZeropsProjectStopDetailPage({
   const deployment = deployments.get(projectId) ?? UNREAD_DEPLOYMENT;
   const view = stopView({ deployment, row: stop, nowMs });
   const live = flow.releases.find((entry) => entry.standing === "live");
+  const releasingTag = flow.release.inFlight ?? (release.releasing ? release.tag : undefined);
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
   // One failed part is asked again from the verdict; several, each from its own row.
   const redeploy = failedDeploys.length === 1 ? failedDeploys[0]?.redeploy : undefined;
@@ -416,7 +461,7 @@ function ZeropsProjectStopDetailPage({
   const verdict = stopVerdict({
     tier: stop.tier,
     view,
-    releasing: flow.release.inFlight ?? (release.releasing ? release.tag : undefined),
+    releasing: releasingTag,
     failed: failedDeploys.map((entry) => ({ ...entry, mayRunAgain })),
     waiting: notLive.count,
     waitingAtLeast: notLive.atLeast,
@@ -449,7 +494,7 @@ function ZeropsProjectStopDetailPage({
         }
         platformServices={serviceMap.rows}
         usageRead={serviceMap.usageRead}
-        vault={orgId === null ? undefined : { orgId, open: vaultOpen, onToggle: toggleVault }}
+        vault={orgId === null ? undefined : { orgId, open: vaultOpen, onOpenChange: setVaultOpen }}
         readAgain={<StopReadAgain projectId={projectId} />}
         readFailures={
           <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
@@ -467,7 +512,34 @@ function ZeropsProjectStopDetailPage({
               }
             : undefined
         }
-        crumbs={crumbs}
+        trail={trail}
+        line={placeLine}
+        releasing={production ? releasingTag : undefined}
+        deployFailed={failedDeploys.length > 0}
+        ready={production ? readyOfFlow(flow) : undefined}
+        nextChanges={
+          !flow.changesKnown
+            ? NO_CHANGES
+            : production
+              ? changesWaitingForRelease(flow.merged, flow.releases)
+              : stop.source === "main"
+                ? changesWaitingForStage(flow.pullRequests)
+                : NO_CHANGES
+        }
+        faces={(mateProjectId) => {
+          const mate = mates.get(mateProjectId);
+          return mate === undefined ? undefined : (
+            <MateFace shape={mate.shape} size={20} state="idle" tint={mate.tint} />
+          );
+        }}
+        mateName={(mateProjectId) => mates.get(mateProjectId)?.name}
+        onOpenPull={(pull, from) => {
+          openReview(
+            { kind: "change", groupId, repository: pull.repository, number: pull.number },
+            { from },
+          );
+        }}
+        liveBy={live?.by === undefined ? undefined : personName(live.by)}
         deployed={deployed}
         enablingServiceId={route.enablingServiceId}
         history={history}
@@ -732,7 +804,16 @@ export function ZeropsStopPane({
   carried,
   onReleaseExpanded,
   recordedHistory,
-  crumbs,
+  trail,
+  line,
+  releasing,
+  deployFailed = false,
+  ready,
+  nextChanges = NO_CHANGES,
+  faces,
+  mateName,
+  onOpenPull,
+  liveBy,
   deployed,
   enablingServiceId,
   groupId,
@@ -776,26 +857,50 @@ export function ZeropsStopPane({
   readonly usageRead?: boolean;
   /** Who reaches the environment's project, as people chips, under its card. */
   readonly access?: React.ReactNode;
-  /** The environment's vault, where the account reads its organization: shown beside the page. */
+  /** The environment's vault, where the account reads its organization: a drawer over the page. */
   readonly vault?:
     | {
         readonly orgId: string;
         readonly open: boolean;
-        readonly onToggle: () => void;
-        /** What the vault column holds; the project's vault unless given (a harness's fixture). */
+        readonly onOpenChange: (open: boolean) => void;
+        /** What the drawer holds; the project's vault unless given (a harness's fixture). */
         readonly body?: React.ReactNode;
       }
     | undefined;
   readonly readFailures?: React.ReactNode;
   /** Runtime read recovery belongs beside the verdict that reports it. */
   readonly readAgain?: React.ReactNode;
-  readonly crumbs: ReadonlyArray<Crumb>;
+  /** Where the page sits, outermost first, ending at this place (`usePageTrail`). */
+  readonly trail: ReadonlyArray<Crumb>;
+  /**
+   * The place's line as every surface says it (`useApplicationPlaces`); undefined while unread,
+   * when the page says it from its own reads (`placeHeaderLine`).
+   */
+  readonly line?: PlaceLineData | undefined;
+  /** The release on its way to production; production only. */
+  readonly releasing?: string | undefined;
+  /** A deploy of the place failed: production's release, or a stage's deploy. */
+  readonly deployFailed?: boolean;
+  /** What waits for production's next release (`readyOfFlow`); production only. */
+  readonly ready?: CardReady | undefined;
+  /**
+   * The changes that go next: on production, the Mates' merged changes no release put live yet;
+   * on a stage, the open changes that merge to it.
+   */
+  readonly nextChanges?: ReadonlyArray<FlowPullRequest> | undefined;
+  /** A change's Mate's face, by the Mate's project. */
+  readonly faces?: ((mateProjectId: string) => React.ReactNode) | undefined;
+  /** A change's Mate's name, by the Mate's project. */
+  readonly mateName?: ((mateProjectId: string) => string | undefined) | undefined;
+  /** Opens a change's review from the row pressed. */
+  readonly onOpenPull?: ((pull: FlowPullRequest, from: HTMLElement) => void) | undefined;
+  /** Who made the live release, by name; undefined where the person is not known. */
+  readonly liveBy?: string | undefined;
   readonly groupId: string;
   readonly stop: EnvironmentRow;
   /** What the stop runs, as the left menu reads it — its menu is that menu. */
   readonly view: StopView;
   readonly verdict: StopVerdict;
-  /** One row per service, as `serviceRows` says it. */
   /** Undefined until the recipe and complete platform service listing have been read. */
   readonly services: ReadonlyArray<StopServiceRow> | undefined;
   /** Offered on a production that is behind — the one stop a release moves. */
@@ -853,7 +958,6 @@ export function ZeropsStopPane({
 }) {
   const [allReleases, setAllReleases] = useState(false);
   const services = readServices ?? NO_SERVICE_ROWS;
-  const title = stop.name;
   const production = stop.tier === "production";
   const earlier = Math.max(0, releases.length - RELEASES_SHOWN);
   const listed = allReleases ? releases : releases.slice(0, RELEASES_SHOWN);
@@ -881,29 +985,82 @@ export function ZeropsStopPane({
   const table = placeServiceRows(services, platformServices);
   const head = placeTitle(stop.name, stop.tier);
   const live = releases.find((entry) => entry.standing === "live");
-  const status = placeStatus({
-    tier: stop.tier,
-    view,
-    releasedAge: live === undefined ? undefined : formatRelativeTimeLabel(live.taggedAt),
-    since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
-    source: stop.source,
-    services: readServices === undefined ? 0 : table.length,
-  });
-  const address = placeAddress(stop.tier, routes);
+  const releasedAge = live === undefined ? undefined : formatRelativeTimeLabel(live.taggedAt);
+  const headerLine =
+    line ??
+    placeHeaderLine({
+      tier: stop.tier,
+      name: stop.name,
+      projectId,
+      view,
+      releasing,
+      failed: deployFailed,
+      releasedAge,
+      since: view.activatedAt === null ? undefined : formatRelativeTimeLabel(view.activatedAt),
+      source: stop.source,
+      routes,
+    });
   const rollBackTo = production ? rollBackTarget(releases) : undefined;
-  const statusDot = STOP_DOT_TONE[status.tone];
+  // The verdict speaks only where no section says it: a failure, or a place that runs nothing
+  // and has more to say than the header's "Not released yet" — what deploys it, or its first
+  // deploy under way. What waits for a release is Next release's, a release on its way is the
+  // header's, calm is the header's dot.
+  const verdictShown =
+    verdict.tone === "failed" ||
+    (view.version === undefined &&
+      (verdict.detail !== undefined || verdict.tone === "busy") &&
+      verb?.kind !== "release" &&
+      !(production && releasing !== undefined));
+  const brought = live === undefined ? undefined : releaseBrought(live);
+  const changeRows = nextChanges.map((pull) => {
+    const open = !pull.merged;
+    const words = open ? (changeState(pull)?.word ?? "Open") : "Merged";
+    return (
+      <ChangeRow
+        at={open ? pull.updatedAt : pull.mergedAt}
+        face={faces?.(pull.mateProjectId)}
+        key={`${pull.repository}#${String(pull.number)}`}
+        line={changeRowLine(mateName?.(pull.mateProjectId), words)}
+        onOpen={onOpenPull === undefined ? undefined : (from) => onOpenPull(pull, from)}
+        open={open}
+        pull={pull}
+      />
+    );
+  });
+  // Where HQ listed only the subjects (commits outside a Mate's change), they stand as rows.
+  const subjectRows =
+    changeRows.length > 0
+      ? []
+      : waiting.commits.map((commit, index) => (
+          <ChangeRow key={commit.sha ?? index} title={commit.subject} />
+        ));
+  const nextRows =
+    changeRows.length + subjectRows.length === 0 && untold.length === 0 ? undefined : (
+      <>
+        <ChangeList label={production ? "Changes in the next release" : "Changes to approve"}>
+          {changeRows}
+          {subjectRows}
+        </ChangeList>
+        {untold.length === 0 ? null : (
+          <p className="text-body text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
+        )}
+      </>
+    );
+  const nextShown = production
+    ? release.offered || release.releasing || nextRows !== undefined
+    : nextChanges.length > 0;
   return (
     <DetailShell
       actions={
         <>
           {vault === undefined ? null : (
-            <StopVaultToggle onToggle={vault.onToggle} open={vault.open} />
+            <StopVaultToggle onOpenChange={vault.onOpenChange} open={vault.open} />
           )}
-          {stop.target.kind === "zerops" ? (
+          {projectId === undefined ? null : (
             <ZeropsStopMenu
               groupId={groupId}
-              name={title}
-              projectId={projectId!}
+              name={head.title}
+              projectId={projectId}
               onOpenStop={undefined}
               routes={routes}
               stop={view}
@@ -917,138 +1074,102 @@ export function ZeropsStopPane({
                   })}
               triggerClassName="inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
             />
-          ) : null}
+          )}
         </>
       }
-      crumbs={[...crumbs, { label: head.title }]}
-      side={
-        vault?.open === true && stop.target.kind === "zerops"
-          ? (placement) => (
-              <StopVaultSide
-                body={vault.body}
-                name={head.title}
-                orgId={vault.orgId}
-                placement={placement}
-                projectId={projectId!}
-              />
-            )
-          : undefined
-      }
-      subtitle={
-        <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
-          <span data-zerops-place-status="">
-            {statusDot === undefined ? (
-              status.text
-            ) : (
-              <Badge dot tone={STATUS_BADGE_TONE[statusDot]}>
-                <span className="text-foreground">{status.text}</span>
-              </Badge>
-            )}
-          </span>
-          {address === undefined ? null : (
-            <a
-              className="flex max-w-full min-w-0 items-center gap-1 text-foreground underline-offset-2 hover:underline"
-              data-zerops-place-address=""
-              href={address.url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <MiddleTruncate value={address.host} />
-              <ExternalLinkIcon
-                aria-hidden="true"
-                className="size-3.5 shrink-0 text-muted-foreground"
-              />
-            </a>
-          )}
-        </span>
-      }
+      summary={<PlaceLine density="header" line={headerLine} />}
       title={head.title}
       titleTag={head.tag === undefined ? undefined : <ZeropsRoleTag label={ROLE_TAG[stop.tier]} />}
+      trail={trail}
     >
       {readFailures}
-      <div>
-        <VerdictPanel detail={verdict.detail} text={verdict.text} tone={verdict.tone}>
-          {verb?.kind === "release" ? (
-            <ReleaseAction release={release} size="sm" variant="secondary" />
-          ) : verb?.kind === "run-again" && runAgain !== undefined ? (
-            <Button
-              data-zerops-primary-action="Run again"
-              disabled={runAgain.running}
-              onClick={runAgain.onRunAgain}
-              size="sm"
-              variant="secondary"
-            >
-              {flowVerbLabel("redeploy", runAgain.running)}
-            </Button>
-          ) : (
-            readAgain
+      {!verdictShown ? null : (
+        <div>
+          <VerdictPanel detail={verdict.detail} text={verdict.text} tone={verdict.tone}>
+            {verb?.kind === "run-again" && runAgain !== undefined ? (
+              <Button
+                data-zerops-primary-action="Run again"
+                disabled={runAgain.running}
+                onClick={runAgain.onRunAgain}
+                size="sm"
+                variant="secondary"
+              >
+                {flowVerbLabel("redeploy", runAgain.running)}
+              </Button>
+            ) : (
+              readAgain
+            )}
+          </VerdictPanel>
+          {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
+            <p className="mt-1.5 px-3 text-sm text-status-failed-text">{runAgain.refused}</p>
           )}
-        </VerdictPanel>
-        {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
-          <p className="mt-1.5 px-3 text-sm text-[var(--zerops-status-failed-text)]">
-            {runAgain.refused}
-          </p>
-        )}
-      </div>
+        </div>
+      )}
 
       <Card variant="flat">
-        <div className="flex flex-col divide-y divide-border px-4">
-          {waiting.total === 0 && waiting.commits.length === 0 ? null : (
-            <CardGroup
-              title={stopCardTitle(
-                "waiting",
-                waiting.changeCount === undefined ? waiting.total : undefined,
-                waiting.atLeast,
+        <div className="flex flex-col gap-7 px-4 py-4" data-zerops-surface="place-sections">
+          {!nextShown ? null : production ? (
+            <PlaceSection label={<SectionLabel>Next release</SectionLabel>}>
+              {release.offered || release.releasing ? (
+                <NextRelease density="block" ready={ready} release={release}>
+                  {nextRows}
+                </NextRelease>
+              ) : (
+                // Waiting, and not this person's to release: what waits, and why it is not offered.
+                <NextBlock
+                  {...(release.reason === undefined ? {} : { facts: [release.reason] })}
+                  title={nextReleaseTitle(ready)}
+                >
+                  {nextRows}
+                </NextBlock>
               )}
-            >
-              {waiting.changeCount === undefined ? null : (
-                <p className="py-2 text-sm text-muted-foreground">
-                  {waiting.changeCount} {waiting.changeCount === 1 ? "change" : "changes"} ·{" "}
-                  {waiting.total}
-                  {waiting.atLeast ? "+" : ""} {waiting.total === 1 ? "commit" : "commits"}
-                </p>
-              )}
-              <ul className="flex flex-col">
-                {waiting.commits.map((commit, index) => (
-                  <li
-                    className={cn(
-                      CARD_ROW_CLASS,
-                      commit.sha === undefined ? "grid-cols-1" : "grid-cols-[4.5rem_minmax(0,1fr)]",
-                    )}
-                    key={commit.sha ?? index}
-                  >
-                    {commit.sha === undefined ? null : (
-                      <span className="font-mono text-xs text-muted-foreground tabular-nums">
-                        {shortCommit(commit.sha)}
-                      </span>
-                    )}
-                    <span className="min-w-0 truncate text-sm text-foreground">
-                      {commit.subject}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              {untold.length === 0 ? null : (
-                <p className="py-2 text-sm text-muted-foreground">{cannotTellWhatRuns(untold)}.</p>
-              )}
-            </CardGroup>
+            </PlaceSection>
+          ) : (
+            <PlaceSection label={<SectionLabel>Next on {head.title}</SectionLabel>}>
+              <NextBlock state="stage" title={stageNextTitle(nextChanges, head.title)}>
+                {nextRows}
+              </NextBlock>
+            </PlaceSection>
           )}
 
-          <CardGroup
-            title={stopCardTitle("services", readServices === undefined ? undefined : table.length)}
+          {live === undefined ? null : (
+            <PlaceSection
+              label={
+                <SectionLabel count={liveNowFact({ tag: live.tag, by: liveBy, age: releasedAge })}>
+                  Live now
+                </SectionLabel>
+              }
+            >
+              {brought === undefined ? null : (
+                <p className="text-body text-foreground" data-zerops-surface="live-brought">
+                  {brought.titles.join(" · ")}
+                  {brought.more === 0 ? null : (
+                    <span className="text-muted-foreground"> · + {brought.more}</span>
+                  )}
+                </p>
+              )}
+            </PlaceSection>
+          )}
+
+          <PlaceSection
+            label={
+              <SectionLabel count={readServices === undefined ? undefined : table.length}>
+                Services
+              </SectionLabel>
+            }
           >
             {readServices === undefined ? (
-              <p className="py-2 text-sm text-muted-foreground">Services aren&rsquo;t known yet.</p>
+              <p className="text-body text-muted-foreground">Services aren&rsquo;t known yet.</p>
             ) : table.length === 0 ? (
               // Its code services and the platform's both: a place with a database alone has one.
-              <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
-            ) : stop.target.kind !== "zerops" ? null : (
+              <p className="text-body text-muted-foreground">{NONE_YET}</p>
+            ) : projectId === undefined ? null : (
               <PlaceServiceTable
                 answered={answered}
                 deployAgain={deployAgain}
                 enablingServiceId={enablingServiceId ?? null}
                 onEnableRoute={onEnableRoute}
-                projectId={stop.target.projectId}
+                projectId={projectId}
                 rows={table}
                 said={verdict.detail}
                 usageRead={usageRead}
@@ -1061,7 +1182,7 @@ export function ZeropsStopPane({
                     className={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")}
                     key={hostname}
                   >
-                    <span className="min-w-0 truncate text-sm text-muted-foreground">
+                    <span className="min-w-0 truncate text-body text-muted-foreground">
                       {hostname} ·{" "}
                       {answered.get(hostname) === undefined ? (
                         "in its setup files, not in Zerops"
@@ -1089,9 +1210,9 @@ export function ZeropsStopPane({
                 ))}
               </ul>
             )}
-            {stop.target.kind !== "zerops" || tierStops.length === 0 ? null : (
+            {projectId === undefined || tierStops.length === 0 ? null : (
               <StopTierStops
-                projectId={stop.target.projectId}
+                projectId={projectId}
                 rowClassName={cn(CARD_ROW_CLASS, "grid-cols-[minmax(0,1fr)_auto]")}
                 rows={tierStops}
               />
@@ -1105,12 +1226,12 @@ export function ZeropsStopPane({
               />
             )}
             {routeTrouble === null || routeTrouble === undefined ? null : (
-              <p className="py-2 text-sm text-[var(--zerops-status-failed-text)]">{routeTrouble}</p>
+              <p className="text-sm text-status-failed-text">{routeTrouble}</p>
             )}
-          </CardGroup>
+          </PlaceSection>
 
           {!production || releases.length === 0 ? null : (
-            <CardGroup title={stopCardTitle("releases", releases.length)}>
+            <PlaceSection label={<SectionLabel count={releases.length}>Releases</SectionLabel>}>
               <ul className="flex flex-col">
                 <ZeropsReleaseRows
                   {...(carried === undefined
@@ -1130,43 +1251,48 @@ export function ZeropsStopPane({
                 />
               </ul>
               {earlier === 0 || allReleases ? null : (
-                <Button
-                  className="my-1"
-                  onClick={() => {
-                    setAllReleases(true);
-                  }}
-                  size="sm"
-                  variant="ghost"
-                >
-                  {earlierReleasesLabel(earlier)}
-                </Button>
+                <span className="flex">
+                  <Button
+                    onClick={() => {
+                      setAllReleases(true);
+                    }}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    {earlierReleasesLabel(earlier)}
+                  </Button>
+                </span>
               )}
-            </CardGroup>
+            </PlaceSection>
           )}
 
           {production ? null : (
-            <CardGroup
-              {...(recordedHistory === undefined ? { aside: DEPLOYS_ASIDE } : {})}
-              title={
-                recordedHistory !== undefined
-                  ? "History"
-                  : stopCardTitle(
-                      "deploys",
-                      repo !== undefined && history.kind === "read" ? history.total : undefined,
-                    )
+            <PlaceSection
+              label={
+                <SectionLabel
+                  count={
+                    recordedHistory === undefined
+                      ? repo !== undefined && history.kind === "read"
+                        ? `${String(history.total)} ${DEPLOYS_ASIDE}`
+                        : DEPLOYS_ASIDE
+                      : undefined
+                  }
+                >
+                  Deploys
+                </SectionLabel>
               }
             >
               {recordedHistory !== undefined ? (
                 <RecordedStageHistory {...recordedHistory} onOpenChange={onOpenChange} />
               ) : readServices === undefined ? (
-                <p className="py-2 text-sm text-muted-foreground">Repository not known yet.</p>
+                <p className="text-body text-muted-foreground">Repository not known yet.</p>
               ) : repo === undefined ? (
-                <p className="py-2 text-sm text-muted-foreground">
+                <p className="text-body text-muted-foreground">
                   No repository is declared for this environment&rsquo;s services, so its history
                   cannot be read.
                 </p>
               ) : history.kind === "read" && history.commits.length === 0 ? (
-                <p className="py-2 text-sm text-muted-foreground">{NONE_YET}</p>
+                <p className="text-body text-muted-foreground">{NONE_YET}</p>
               ) : (
                 <ZeropsHistoryView
                   here={stop.name}
@@ -1177,49 +1303,55 @@ export function ZeropsStopPane({
                   tags={tags}
                 />
               )}
-            </CardGroup>
+            </PlaceSection>
           )}
 
-          {access === undefined ? null : <CardGroup title="Project access">{access}</CardGroup>}
+          {access === undefined ? null : (
+            <PlaceSection label={<SectionLabel>Project access</SectionLabel>}>
+              {access}
+            </PlaceSection>
+          )}
         </div>
       </Card>
       {/* A verb that refused says so under the card it was pressed in. */}
-      {trouble === null ? null : (
-        <p className="mt-2 text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
+      {trouble === null ? null : <p className="mt-2 text-sm text-status-failed-text">{trouble}</p>}
+      {vault === undefined || projectId === undefined ? null : (
+        <StopVaultDrawer
+          body={vault.body}
+          name={head.title}
+          onOpenChange={vault.onOpenChange}
+          open={vault.open}
+          orgId={vault.orgId}
+          projectId={projectId}
+        />
       )}
     </DetailShell>
   );
 }
 
-/** One row of the stop's card: the hairline over it, and the height every row keeps. */
+/** One row of a section's list: the hairline over it, and the height every row keeps. */
 const CARD_ROW_CLASS = "grid min-h-11 items-center gap-x-4 border-t border-border/60 py-2";
 
 /**
- * One group of the stop's card, under its label: the first 12px under the
- * card's edge, each later one 24px under the hairline between them.
+ * One section of the place's card: its label hugging its rows (6px), every section 28px from the
+ * next — spacing is grouping.
  */
-function CardGroup({
-  title,
-  aside,
+function PlaceSection({
+  label,
   children,
 }: {
-  readonly title: string;
-  /** Said beside the label, muted: what the group is read from. */
-  readonly aside?: string;
+  readonly label: React.ReactNode;
   readonly children: React.ReactNode;
 }) {
   return (
-    <section className="pt-6 pb-2 first:pt-3">
-      <h2 className="flex items-baseline gap-2 pb-1.5">
-        <MicroLabel>{title}</MicroLabel>
-        {aside === undefined ? null : (
-          <span className="text-xs text-muted-foreground">{aside}</span>
-        )}
-      </h2>
+    <section className="flex min-w-0 flex-col gap-1.5">
+      {label}
       {children}
     </section>
   );
 }
+
+const NO_CHANGES: ReadonlyArray<FlowPullRequest> = [];
 
 /** A stop's parts before its flow has been read — the page says it is unread in their place. */
 const NO_SERVICE_ROWS: ReadonlyArray<StopServiceRow> = [];

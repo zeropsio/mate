@@ -450,6 +450,7 @@ export function flowReleaseOf(release: Release): FlowRelease {
     line: entries.map((entry) => `${entry.service} ${shortCommit(entry.commit)}`).join(" · "),
     entries,
     taggedAt: release.at,
+    by: release.by,
     ...(release.history === undefined ? {} : { history: release.history }),
     ...(release.rollbackOf === null ? {} : { rollbackOf: release.rollbackOf }),
   };
@@ -469,6 +470,8 @@ export interface FlowRelease {
   readonly entries: ReadonlyArray<ReleaseEntry>;
   /** When HQ made it. */
   readonly taggedAt: string;
+  /** Who asked for it: their Zerops user id, as HQ records it; absent on a release not from HQ. */
+  readonly by?: string | undefined;
   /** The release it rolls production back to, where it is a roll back. */
   readonly rollbackOf?: string | undefined;
 }
