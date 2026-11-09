@@ -106,7 +106,8 @@ export type ChangeRowProps = ChangeRowSubject & {
 
 /**
  * One row of a change, or of work that is no change yet. Renders an `<li>`: put it in a
- * `ChangeList`.
+ * `ChangeList`, whose columns its trailing facts stand in — its pull request, then when it last
+ * moved, then its verb — so they run down the list whichever rows have them.
  */
 export function ChangeRow(props: ChangeRowProps) {
   const { pull, open = false, line, tone, at, by, face, onOpen, verb } = props;
@@ -119,7 +120,7 @@ export function ChangeRow(props: ChangeRowProps) {
     <>
       {face === undefined || face === null ? (
         pull === undefined ? (
-          <span aria-hidden="true" />
+          <span aria-hidden="true" className="ov-change-face" />
         ) : (
           <Icon aria-hidden="true" className="ov-change-icon" />
         )
@@ -138,7 +139,8 @@ export function ChangeRow(props: ChangeRowProps) {
       </span>
       {/* Review on a change still open, as the menu has it (the owner, 2026-10-12: "more
           limited in functionality than the left menu"); the row opens it too. */}
-      <span className="ov-change-end">
+      {/* When it last moved: the list's last column of facts, after its pull request's. */}
+      <span className="ov-change-when">
         {by === undefined ? (
           <ChangeAge at={at} />
         ) : (
@@ -148,12 +150,14 @@ export function ChangeRow(props: ChangeRowProps) {
             <ChangeAge at={at} />
           </span>
         )}
-        {review ? (
+      </span>
+      {review ? (
+        <span className="ov-change-act">
           <span className="ov-review" data-zerops-surface="card-change-review">
             Review
           </span>
-        ) : null}
-      </span>
+        </span>
+      ) : null}
     </>
   );
   return (

@@ -8689,31 +8689,49 @@ label.tm-advanced-row:not([data-disabled]) {
   padding: 0 6px;
 }
 
-/* A project's latest changes: open ones with what stops them, merged ones with where they went. */
+/* A project's latest changes: open ones with what stops them, merged ones with where they went.
+   One grid for the list: a row's face and words, then its trailing facts in columns of their own —
+   its pull request, when it last moved, its verb — each as wide as the widest in the list, so the
+   ages and the pull requests run down it whichever rows have them. */
 .ov-changes {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   margin: -6px -8px 0;
   padding: 0;
   list-style: none;
 }
 
-/* A change's row: the row that opens it, then its pull request on GitHub where it has one. */
+.ov-changes > li {
+  grid-column: 1 / -1;
+}
+
+/* A change's row: the row that opens it across every column, and over it, in its own column, its
+   pull request on GitHub where it has one. Its padding and its gap are the row's to set
+   (`--ov-change-pad-y`, `--ov-change-pad-x`, `--ov-change-gap`). */
 .ov-change-row {
-  display: flex;
+  --ov-change-pad-y: 6px;
+  --ov-change-pad-x: 8px;
+  --ov-change-gap: 10px;
+  display: grid;
   min-width: 0;
+  grid-template-columns: subgrid;
   align-items: center;
 }
 
 .ov-change {
   display: grid;
-  width: 100%;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  column-gap: 10px;
+  grid-row: 1;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: start;
-  padding: 6px 8px;
+  padding: var(--ov-change-pad-y) var(--ov-change-pad-x);
   border-radius: 10px;
   text-align: left;
   transition: background-color 150ms var(--ease-out-strong);
+}
+
+.ov-change > * {
+  grid-row: 1;
 }
 
 .ov-change:hover {
@@ -8733,8 +8751,9 @@ label.tm-advanced-row:not([data-disabled]) {
 /* A row's own verb, beside its press: Update from main, Read again. */
 .ov-change-verb {
   display: flex;
-  flex: none;
-  margin-inline: 4px 8px;
+  grid-row: 1;
+  grid-column: 5;
+  margin-inline: 8px var(--ov-change-pad-x);
 }
 
 .ov-change-icon {
@@ -8744,14 +8763,33 @@ label.tm-advanced-row:not([data-disabled]) {
   color: var(--muted-foreground);
 }
 
-/* The row's end: when it last moved, and Review on a change still open. */
-.ov-change-end {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* A change with no face of its own: its git mark in the face's column. */
+.ov-change > .ov-change-icon {
+  grid-column: 1;
+  margin-inline-end: calc(2px + var(--ov-change-gap));
 }
 
-.ov-change[data-open] .ov-change-end {
+/* When it last moved: the last column of facts, its figures ending on one edge. */
+.ov-change-when {
+  display: flex;
+  grid-column: 4;
+  justify-content: flex-end;
+  margin-inline-start: var(--ov-change-gap);
+}
+
+.ov-change-when:empty {
+  display: none;
+}
+
+/* Review on a change still open, at the row's end. */
+.ov-change-act {
+  display: flex;
+  grid-column: 5;
+  margin-inline-start: 8px;
+}
+
+.ov-change[data-open] .ov-change-when,
+.ov-change[data-open] .ov-change-act {
   align-self: center;
 }
 
@@ -8765,6 +8803,7 @@ label.tm-advanced-row:not([data-disabled]) {
 
 .ov-change-text {
   display: grid;
+  grid-column: 2;
   min-width: 0;
 }
 
@@ -8794,12 +8833,18 @@ label.tm-advanced-row:not([data-disabled]) {
   white-space: nowrap;
 }
 
+/* Its pull request on GitHub, in the column before when it last moved, on the title's line. */
 .ov-change-pr {
+  z-index: 1;
   display: inline-flex;
-  flex: none;
+  grid-row: 1;
+  grid-column: 3;
   align-items: center;
+  align-self: start;
+  justify-self: end;
   gap: 2px;
-  margin-inline: 2px 8px;
+  margin-block-start: calc(var(--ov-change-pad-y) + 2px);
+  margin-inline-start: var(--ov-change-gap);
   border-radius: var(--radius-control);
   color: var(--muted-foreground);
   font-size: 12px;
@@ -8815,6 +8860,11 @@ label.tm-advanced-row:not([data-disabled]) {
 .ov-change-pr:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+.ov-change-row:has(> .ov-change[data-open]) > .ov-change-pr {
+  align-self: center;
+  margin-block-start: 0;
 }
 
 .ov-change-line[data-tone="attention"] {
@@ -8857,9 +8907,11 @@ label.tm-advanced-row:not([data-disabled]) {
 /* A change's Mate: its face where the git mark stood, the face a bit smaller than a Mate row's. */
 .ov-change-face {
   display: flex;
+  grid-column: 1;
   width: 20px;
   height: 20px;
   margin-top: 0;
+  margin-inline-end: var(--ov-change-gap);
 }
 
 /* A release in the changes: where it was cut, its tag, and production's mark on the one it runs. */
