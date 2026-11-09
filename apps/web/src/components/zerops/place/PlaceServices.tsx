@@ -11,10 +11,6 @@
 import type { DeployAnswerJob } from "@t3tools/client-runtime/zerops/hq";
 import { flowVerbLabel, shortCommit, type GroupRowTone } from "@t3tools/client-runtime/zerops";
 import { NOT_PUBLIC_YET, type RunAgain } from "@t3tools/client-runtime/zerops/flow";
-import type {
-  ZeropsServiceMetric,
-  ZeropsServiceRow,
-} from "@t3tools/client-runtime/zerops/serviceMap";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 import { ExternalLinkIcon, MoreHorizontalIcon } from "lucide-react";
 import { useState } from "react";
@@ -24,11 +20,10 @@ import { Badge } from "../../ui/badge";
 import { Button } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { MiddleTruncate } from "../../ui/middle-truncate";
-import { Skeleton } from "../../ui/skeleton";
 import { MicroLabel, STATUS_BADGE_TONE } from "../primitives";
 import { StopPublicAccessStatus } from "../StopPublicAccess";
 import { DeployLogDetails, useDeployLogUnavailable } from "../ZeropsDeployLog";
-import { ResourceGraph } from "../ZeropsServiceMap";
+import { ServiceMeters } from "../system/ServiceRow";
 import type { PlaceServiceRow } from "./place.logic";
 
 /** A row's dot, by the tone its state reads in. */
@@ -66,13 +61,6 @@ const AT = {
     "col-span-2 col-start-3 row-start-2 min-w-0 @2xl/place:col-span-1 @2xl/place:col-start-5 @2xl/place:row-start-1",
   actions: "col-start-4 row-start-1 @2xl/place:col-start-6",
 } as const;
-
-const METERS: ReadonlyArray<{ readonly id: "cores" | "memory" | "disk"; readonly label: string }> =
-  [
-    { id: "cores", label: "CPU" },
-    { id: "memory", label: "RAM" },
-    { id: "disk", label: "Disk" },
-  ];
 
 export function PlaceServiceTable({
   projectId,
@@ -238,7 +226,7 @@ function PlaceServiceLine({
         </span>
       </div>
       {row.compute && row.platform !== undefined ? (
-        <PlaceMeters row={row.platform} usageRead={usageRead} />
+        <ServiceMeters row={row.platform} usageRead={usageRead} />
       ) : null}
       {code === undefined ? null : answer !== undefined ? (
         <span className="text-caption text-muted-foreground" data-zerops-job-state={answer.state}>
@@ -453,68 +441,5 @@ function ViewDeploy({
     >
       {open ? "Hide deploy" : unavailable ? "Check deploy history" : "View deploy"}
     </Button>
-  );
-}
-
-/** One resource against what the service holds, `0.08/2`, and its last day beside it. */
-function PlaceMeter({
-  label,
-  metric,
-  trend,
-  id,
-  usageRead,
-}: {
-  readonly label: string;
-  readonly metric: ZeropsServiceMetric | undefined;
-  readonly trend: Parameters<typeof ResourceGraph>[0]["trend"] | undefined;
-  readonly id: string;
-  readonly usageRead: boolean;
-}) {
-  return (
-    <span className="flex min-w-0 items-center gap-1.5" data-zerops-place-meter={label}>
-      <MicroLabel>{label}</MicroLabel>
-      {!usageRead ? (
-        <Skeleton className="h-3 w-10" />
-      ) : (
-        <span className="truncate text-caption text-foreground tabular-nums">
-          {metric?.value === undefined
-            ? "—"
-            : metric.used === undefined
-              ? metric.value
-              : `${metric.used}/${metric.value}`}
-          {metric?.unit === undefined || metric.value === undefined ? null : (
-            <span className="ml-0.5 text-muted-foreground">{metric.unit}</span>
-          )}
-        </span>
-      )}
-      {trend === undefined || trend.length === 0 ? null : <ResourceGraph id={id} trend={trend} />}
-    </span>
-  );
-}
-
-/** A compute service's CPU, RAM and disk on one compact line, under its row. */
-function PlaceMeters({
-  row,
-  usageRead,
-}: {
-  readonly row: ZeropsServiceRow;
-  readonly usageRead: boolean;
-}) {
-  return (
-    <span
-      className="flex flex-wrap items-center gap-x-4 gap-y-1 @2xl/place:grid @2xl/place:grid-cols-[repeat(auto-fill,10.5rem)]"
-      data-zerops-place-meters=""
-    >
-      {METERS.map((meter) => (
-        <PlaceMeter
-          id={`place-${row.service.serviceId}-${meter.id}`}
-          key={meter.id}
-          label={meter.label}
-          metric={row.metrics.find((metric) => metric.id === meter.id)}
-          trend={row.trends?.[meter.id]}
-          usageRead={usageRead}
-        />
-      ))}
-    </span>
   );
 }

@@ -445,7 +445,7 @@ function CardsAndRows() {
           uses: 2,
           files: 1,
         }}
-        label="<ProjectCards> (an overview project card with its <CardMate> rows)"
+        label="<ProjectCards> (an overview project card with its <MateRow> rows)"
       >
         <div className="w-[56rem] max-w-full">
           <ProjectCards

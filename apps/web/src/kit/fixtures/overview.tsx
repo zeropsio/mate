@@ -4,7 +4,7 @@ import {
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
 
-import { CardMate } from "~/components/zerops/projects/ProjectCards";
+import { MateRow } from "~/components/zerops/system/MateRow";
 import { cardMateReading } from "~/components/zerops/projects/projectCard.logic";
 import type {
   ProjectsFlowGroup,
@@ -99,7 +99,7 @@ export const KIT_OVERVIEW_PROPS: ZeropsProjectsFlowProps<KitItem> = {
   renderEnvironment: () => null,
   renderGroupMenu: () => null,
   renderMate: (value) => (
-    <CardMate
+    <MateRow
       face={<MateFace size={24} state="working" tint="olive" />}
       name={value.project.name}
       onOpen={() => {}}

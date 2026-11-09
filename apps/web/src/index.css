@@ -8939,6 +8939,18 @@ button.ov-panel-state:focus-visible {
   outline-offset: -2px;
 }
 
+/* Work that is no change yet has nothing to open: the row stays still under the pointer. */
+.ov-change[data-plain]:hover {
+  background: none;
+}
+
+/* A row's own verb, beside its press: Update from main, Read again. */
+.ov-change-verb {
+  display: flex;
+  flex: none;
+  margin-inline: 4px 8px;
+}
+
 .ov-change-icon {
   width: 16px;
   height: 16px;
