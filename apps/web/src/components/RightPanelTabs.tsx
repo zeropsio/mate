@@ -112,17 +112,23 @@ const SURFACE_DISABLED_REASONS = {
   overview: "The overview opens from a Chief's conversation.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
 
-/** Overlays that must win over the launcher's letter shortcuts. */
+/**
+ * Overlays that must win over the launcher's letter shortcuts, while they are open: a popup kept
+ * mounted closed (the conversation header's actions menu is) carries `data-closed` and blocks
+ * nothing, or no letter would ever open a page beside a conversation.
+ */
 const LAUNCHER_SHORTCUT_BLOCKING_LAYERS = [
-  '[data-slot="dialog-popup"]',
-  '[data-slot="alert-dialog-popup"]',
-  '[data-slot="command-dialog-popup"]',
-  '[data-slot="menu-popup"]',
-  '[data-slot="select-popup"]',
-  '[data-slot="popover-popup"]',
-  '[data-slot="combobox-popup"]',
-  '[data-slot="autocomplete-popup"]',
-].join(",");
+  "dialog-popup",
+  "alert-dialog-popup",
+  "command-dialog-popup",
+  "menu-popup",
+  "select-popup",
+  "popover-popup",
+  "combobox-popup",
+  "autocomplete-popup",
+]
+  .map((slot) => `[data-slot="${slot}"]:not([data-closed])`)
+  .join(",");
 
 type TabContextMenuAction = "copy-path" | "close" | "close-others" | "close-to-right" | "close-all";
 
