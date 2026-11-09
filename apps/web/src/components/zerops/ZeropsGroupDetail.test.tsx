@@ -1,5 +1,9 @@
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
-import { inventoryContents, readsOfState } from "@t3tools/client-runtime/data";
+import {
+  canonicalProjectFlow,
+  inventoryContents,
+  readsOfState,
+} from "@t3tools/client-runtime/data";
 import {
   makeZeropsApiOrigin,
   ZeropsAccountId,
@@ -53,7 +57,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
-import { ZeropsRuntimeStops, runtimeStopsOf } from "./ZeropsGroupDetail";
+import { StopLine, ZeropsRuntimeStops, runtimeStopsOf } from "./ZeropsGroupDetail";
 import { ZeropsStopDetailPage, ZeropsStopPane, stopRepository } from "./PlacePage";
 import { markupDom } from "../../../test/markupDom";
 import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
@@ -1570,6 +1574,93 @@ describe("environment route target dispatch", () => {
       mountedRegistries.delete(registry);
     },
   );
+});
+
+it("Environment navigation keeps its identity when the target's project name changes.", () => {
+  const id = HqEnvironmentId.make("stable-environment");
+  const target = {
+    kind: "zerops" as const,
+    projectId: ProjectId.make("different-project-address"),
+  };
+  const open = (name: string) => {
+    const registry = AtomRegistry.make();
+    mountedRegistries.add(registry);
+    const store = mountRoster(registry, "org", [
+      { id: target.projectId, name: `Shop - ${name}`, status: "ACTIVE" },
+    ]);
+    mountHqNavigation(
+      registry,
+      "org",
+      {
+        structure: {
+          ungrouped: [],
+          apps: [
+            {
+              id: "shop",
+              name: "Shop",
+              projects: [],
+              environments: [
+                {
+                  id,
+                  target,
+                  name: "Stage",
+                  tier: "stage",
+                  sources: ["main"],
+                  order: 1,
+                  keyHeld: false,
+                  keyInvalid: false,
+                  jobs: [],
+                },
+              ],
+            },
+          ],
+        },
+      },
+      store,
+    );
+    const answer = registry.get(
+      store.data.project(canonicalProjectFlow, {
+        orgId: "org",
+        appId: "shop",
+        hqAddress: undefined,
+        viewer: { id: "org", name: "Org", membershipId: "owner", roleCode: "OWNER" },
+      }),
+    );
+    const row = answer!.environments[0]!;
+    expect(row.name).toBe(name);
+    expect(row.id).toBe("stable-environment");
+    let mounted!: ReactTestRenderer;
+    act(() => {
+      mounted = create(
+        <RegistryContext.Provider value={registry}>
+          <StopLine environment={row} groupId="shop" notice={null} />
+        </RegistryContext.Provider>,
+      );
+      mountedTrees.add(mounted);
+    });
+    const button = mounted.root
+      .findAllByType("button")
+      .find((node) => node.findAllByType("span").some((span) => span.children.includes(name)));
+    expect(button).toBeDefined();
+    act(() => button!.props.onClick());
+    act(() => mounted.unmount());
+    mountedTrees.delete(mounted);
+    registry.dispose();
+    mountedRegistries.delete(registry);
+  };
+  platform.navigation = [];
+  open("Original project name");
+  open("Renamed project name");
+  expect(platform.navigation).toEqual([
+    {
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "stable-environment" },
+    },
+    {
+      to: "/group/$groupId/$projectId",
+      params: { groupId: "shop", projectId: "stable-environment" },
+    },
+  ]);
 });
 
 const EMPTY_ROUTE_INVENTORY: Inventory = {

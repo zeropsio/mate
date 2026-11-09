@@ -7,11 +7,8 @@ import {
   releaseFailureOf,
   type GroupFlow,
 } from "@t3tools/client-runtime/zerops";
-import {
-  notInZerops,
-  releaseNotCreated,
-  releaseNotCreatedWords,
-} from "@t3tools/client-runtime/zerops/flow";
+import { useAskMateToFix } from "~/zerops/fixRequest";
+import { useFixMates } from "~/zerops/fixMates";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -29,11 +26,6 @@ import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { useAddEnvironment, useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { useOpenPutLive } from "~/zerops/putLive";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
-import { useStopServices } from "~/zerops/accountForge";
-import { findInventoryProjectRef } from "~/zerops/inventoryContext";
-import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
-import { useNowMs } from "~/zerops/useNowMs";
-import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
 import { Loading } from "../ui/loading";
 import { Skeleton } from "../ui/skeleton";
@@ -47,7 +39,7 @@ import {
   type ProjectPageSetup,
 } from "./project/ProjectPageBody";
 import { SetupRow } from "./project/SetupCard";
-import { lineCopies, pageChanges } from "./project/projectPage.logic";
+import { liveBrought, pageChanges } from "./project/projectPage.logic";
 import type {
   ProjectPageSlot,
   ProjectsFlowGroup,
@@ -58,7 +50,8 @@ import { spendProjectIds } from "./projects/projectSpend.logic";
 import { groupRepository } from "./projects/projectHistory.logic";
 import { ProjectAutomation, ProjectAutomationRow } from "./projectAutomation/ProjectAutomation";
 import { useReleaseOffer } from "./ZeropsReleaseVerb";
-import { failedHow } from "./SidebarProductionChip.logic";
+import { fixProblemOf, type ProductionChip } from "./SidebarProductionChip.logic";
+import { placeLabel } from "./projects/projectCard.logic";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { PageHeader, usePageTrail } from "./system";
 import {
@@ -69,6 +62,7 @@ import {
   UnreadDetail,
   useGroupName,
   useRuntimeStops,
+  useStageFirstDeploys,
   useWithheldStops,
   ZeropsRuntimeStops,
 } from "./ZeropsGroupDetail";
@@ -148,7 +142,10 @@ function ProjectPage<T>({
   const recipeFailure = useHqAppFailure(groupId);
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
-  const facts = useProjectPageFacts(groupId, flow, recipeFailure, entry.flow);
+  const facts = {
+    ...useProjectPageFacts(groupId, flow, recipeFailure, entry.flow),
+    fixOf: usePlaceFix(groupId, flow, props.cardPlaces?.(entry)),
+  };
   const groupName = useGroupName(groupId);
   const spendIds = useMemo(() => spendProjectIds(entry.flow), [entry.flow]);
   const repos = flow?.codeRepos ?? flow?.repos;
@@ -187,6 +184,56 @@ function ProjectPage<T>({
 }
 
 /**
+ * "Ask <Mate> to fix it" on a place that is not well: the person's own Mate in the project they
+ * last talked to (`useFixMates`), its composer written with the problem as the menu's chip words it
+ * (`fixProblemOf`) — none where the person has no Mate here.
+ */
+function usePlaceFix(
+  groupId: string,
+  flow: ZeropsProjectFlow | undefined,
+  places:
+    | {
+        readonly chip?: ProductionChip | undefined;
+        readonly stageChips?: ReadonlyMap<string, ProductionChip | undefined> | undefined;
+        readonly down?: ReadonlyMap<string, ReadonlyArray<string>> | undefined;
+      }
+    | undefined,
+): ProjectPageFacts["fixOf"] {
+  const fixer = useFixMates({ projectId: groupId, groupId })[0];
+  const askToFix = useAskMateToFix();
+  if (fixer === undefined) return undefined;
+  const failure =
+    flow === undefined || !flow.releasesKnown
+      ? undefined
+      : releaseFailureOf({
+          releases: flow.releases,
+          environmentInputs: flow.environmentInputs,
+          stalled: flow.release.stalled,
+        });
+  return (line) => {
+    const projectId = line.projectId ?? "";
+    const chip = line.kind === "production" ? places?.chip : places?.stageChips?.get(projectId);
+    const problem = (chip === undefined
+      ? undefined
+      : fixProblemOf({
+          chip,
+          failure,
+          down: places?.down?.get(projectId) ?? [],
+          ...(line.kind === "stage" ? { name: line.name } : {}),
+        })) ?? {
+      what: `${placeLabel(line)}: ${line.words.join(", ")}`,
+      ask: "Find out why and fix it.",
+    };
+    return {
+      name: fixer.name,
+      onAsk: () => {
+        askToFix(fixer.mateProjectId, problem);
+      },
+    };
+  };
+}
+
+/**
  * What the page reads of the project beyond the overview's group: its environments as places, a
  * slot for each tier it lacks (drawn once HQ has told them: before that, or where HQ refuses them,
  * nothing is known to be absent), its release offer, and the verbs on its places.
@@ -201,40 +248,7 @@ function useProjectPageFacts(
   const environments = flow?.environments ?? NO_ENVIRONMENTS;
   const release = useReleaseOffer(groupId, flow);
   const { withheldNotice } = useWithheldStops(environments);
-  const orgName = useZeropsSessionOptional()?.activeOrganization?.name;
-  const nowMs = useNowMs();
-  // How the last release did not go live, as production's own page says it: a release that could
-  // not create a service it needs names the service, which Zerops' listing of production tells.
-  // That listing is asked only while a release stands failed.
-  const failure =
-    flow === undefined || !flow.releasesKnown
-      ? undefined
-      : releaseFailureOf({
-          releases: flow.releases,
-          environmentInputs: flow.environmentInputs,
-          stalled: flow.release.stalled,
-        });
-  const productionInput = flow?.environmentInputs.find(
-    (entry) => entry.tier === "production" && entry.target.kind === "zerops",
-  );
-  const productionId =
-    productionInput?.target.kind === "zerops" ? productionInput.target.projectId : undefined;
-  const failedThere =
-    failure !== undefined && productionId !== undefined && withheldNotice(productionId) === null;
-  const inventory = useZeropsInventory();
-  const platform = useStopServices(
-    failedThere ? findInventoryProjectRef(inventory, productionId) : null,
-  );
-  const notCreated =
-    flow === undefined || productionInput === undefined || !failedThere
-      ? undefined
-      : releaseNotCreated({
-          tier: "production",
-          releases: flow.releases,
-          services: productionInput.services,
-          creationFailures: productionInput.creationFailures,
-          missing: notInZerops({ recipeServices: productionInput.recipeServices, platform }),
-        });
+  const firstDeployOf = useStageFirstDeploys(flow);
   const environmentFacts = useApplicationEnvironmentFacts();
   const addEnvironment = useAddEnvironment();
   const openPutLive = useOpenPutLive();
@@ -279,19 +293,13 @@ function useProjectPageFacts(
           releasing: flow.release.inFlight,
         });
   return {
+    brought: liveBrought(flow),
     changes: pageChanges({ flow: groupFlow, read: flow }),
     changesUnknown:
       flow === undefined || !flow.changesKnown
         ? (flow?.changesFailure ?? "Reading its changes…")
         : undefined,
-    repos: flow?.codeRepos ?? flow?.repos,
-    copies: lineCopies(flow?.codeRepos ?? flow?.repos, { orgName, now: nowMs }),
-    releaseCause:
-      notCreated !== undefined
-        ? releaseNotCreatedWords(notCreated)
-        : failure === undefined
-          ? undefined
-          : `${failure.tag} ${failedHow(failure)}`,
+    repos: flow?.repos,
     environments,
     slots,
     release,
@@ -305,6 +313,7 @@ function useProjectPageFacts(
     },
     finishing: finishing.finishing.has(groupId),
     withheldNotice,
+    firstDeployOf,
     repo: groupRepository(environments),
     declared: flow?.declarationsRead === true,
     readFailures:

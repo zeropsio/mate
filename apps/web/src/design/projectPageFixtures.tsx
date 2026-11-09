@@ -14,7 +14,6 @@ import type {
   FlowReleaseRow,
   GroupFlow,
 } from "@t3tools/client-runtime/zerops";
-import { releaseNotCreatedWords } from "@t3tools/client-runtime/zerops/flow";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
@@ -33,6 +32,7 @@ import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessCh
 import { ProjectHistoryView } from "~/components/zerops/projects/ProjectHistory";
 import { historyReleases } from "~/components/zerops/projects/projectHistory.logic";
 import {
+  broughtBy,
   cardChanges,
   cardReady,
   mateChangesForReview,
@@ -50,7 +50,7 @@ import {
   ProjectPageBody,
   type ProjectPageFacts,
 } from "~/components/zerops/project/ProjectPageBody";
-import { CHANGES_HELD, lineCopies } from "~/components/zerops/project/projectPage.logic";
+import { CHANGES_HELD } from "~/components/zerops/project/projectPage.logic";
 import {
   lineChangeKey,
   nextReleaseView,
@@ -299,8 +299,6 @@ interface LineInput {
   /** What the stage `main` feeds runs and is taking. */
   readonly stage?: CardStage;
   readonly repos: ReadonlyArray<ReturnType<typeof lineRepo>>;
-  /** Why its last release did not go live, as production's page says it. */
-  readonly cause?: string;
 }
 
 const HEAD = sha("head");
@@ -343,7 +341,6 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
       onMain(24, "Everyone gets the bot, which guides their sign-in", "pia-r", 8 * DAY + 60),
     ],
     repos: [lineRepo("bot", "acme/relay-bot", IN_SYNC)],
-    cause: releaseNotCreatedWords({ tag: "v0.1.5", missing: ["db"] }),
   },
   "line-busy": {
     releases: [
@@ -716,6 +713,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
         )),
   ];
   return {
+    brought: input === undefined ? [] : broughtBy(input.merged, input.releases),
     changes: cardChanges({
       open: flow.pullRequests.map((change) => change.pull),
       merged: input?.merged ?? [],
@@ -727,8 +725,6 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
     // `?reading`: its changes are not read yet; the line holds their room.
     changesUnknown: PAGE_PARAMS.has("reading") ? "Reading its changes…" : undefined,
     repos: line?.repos ?? (released ? REPOS : []),
-    copies: lineCopies(line?.repos, { orgName: "Acme", now: NOW }),
-    releaseCause: line?.cause,
     environments,
     slots,
     release:
@@ -743,6 +739,8 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
     repo: released ? "appdev" : undefined,
     // `?undeclared`: HQ has not told which environments exist; the places are the group's lines.
     declared: !PAGE_PARAMS.has("undeclared"),
+    fixOf: () =>
+      flow.mates[0] === undefined ? undefined : { name: flow.mates[0].name, onAsk: nothing },
   };
 }
 
@@ -817,7 +815,7 @@ function harnessReleaseVerb<T>(entry: ProjectsFlowGroup<T>): ReactNode {
 }
 
 /**
- * The line as a Mate's Code page holds it (`?page=line-mine`): at a panel's width, compact, with
+ * The picture as a Mate's Code page holds it (`?page=line-mine`): at a panel's width, compact, with
  * that Mate's changes as beads and everybody else's as a count.
  */
 export function HarnessLineMine<T>({
@@ -835,15 +833,12 @@ export function HarnessLineMine<T>({
   return (
     <div className="grid gap-3 p-6" style={{ width: 540 }}>
       <ProjectLine
-        groupId={groupId}
         onOpenChange={nothing}
-        onReviewRelease={nothing}
+        surface="panel"
         view={projectLine({
           flow: entry.flow,
           places: placeLines({ flow: entry.flow, nowMs: NOW }),
           tintOf,
-          repos: facts.repos?.map((repo) => repo.name) ?? [],
-          copies: [],
           changes: facts.changes,
           changesKnown: true,
           waiting: new Set(
@@ -854,14 +849,13 @@ export function HarnessLineMine<T>({
               key: "tree",
               mateProjectId: mine,
               title: "Wishlist on tea cards",
-              words: "2 files not committed",
+              words: "Not a change yet",
             },
           ],
           release: {
             view: nextReleaseView({ release: facts.release, ready }),
             ready,
           },
-          putLive: undefined,
           mine,
         })}
       />
