@@ -14,8 +14,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { NOTHING_DEPLOYED, type StopView } from "@t3tools/client-runtime/zerops/flow";
 
+import type { FixProblem } from "~/zerops/fixRequest";
 import type { PlaceDot, PlaceLine } from "../projects/projectCard.logic";
-import { releaseOfLanding } from "../projects/projectHistory.logic";
 import { placeStatus } from "./place.logic";
 
 /** How many of a live release's changes its line names before "+ N". */
@@ -52,19 +52,34 @@ export function releaseBrought(
 }
 
 /**
- * The Mates' merged changes no release has put live yet, newest first: what production's next
- * release carries. A change to the setup repository goes to no release, so it is not one of them.
+ * The Mates' merged changes production does not run yet, newest first: what its next release
+ * carries. Production runs what its live release names — a roll back's, what it went back to — so
+ * every change merged after that is waiting, a release that didn't go live or was rolled back past
+ * included; where what runs is not told, the newest release HQ made stands for it. Before any
+ * release, every merged change waits. A change to the setup
+ * repository goes to no release, so it is not one of them.
  */
 export function changesWaitingForRelease(
   merged: ReadonlyArray<FlowPullRequest>,
-  releases: ReadonlyArray<Pick<FlowReleaseRow, "tag" | "taggedAt" | "verdict" | "rollbackOf">>,
+  releases: ReadonlyArray<
+    Pick<FlowReleaseRow, "tag" | "taggedAt" | "standing" | "rollbackOf" | "verdict">
+  >,
 ): ReadonlyArray<FlowPullRequest> {
+  // What production runs is not told: the newest release HQ made stands for it.
+  const live =
+    releases.find((release) => release.standing === "live") ??
+    releases.find((release) => release.verdict !== "refused");
+  const runs =
+    live?.rollbackOf === undefined
+      ? live
+      : (releases.find((release) => release.tag === live.rollbackOf) ?? live);
+  const since = runs === undefined ? undefined : Date.parse(runs.taggedAt);
   return merged
     .filter(
       (pull) =>
         pull.kind !== "recipe" &&
         pull.mergedAt !== undefined &&
-        releaseOfLanding(pull.mergedAt, releases) === undefined,
+        (since === undefined || Number.isNaN(since) || Date.parse(pull.mergedAt) > since),
     )
     .toSorted((left, right) => newestFirst(left.mergedAt, right.mergedAt));
 }
@@ -156,3 +171,32 @@ export function placeHeaderLine(input: {
 
 const stillRuns = (label: string | undefined): ReadonlyArray<string> =>
   label === undefined ? [] : [`${label} still runs`];
+
+/**
+ * What "Ask <your Mate> to fix it" writes into the Mate's composer from a place's failure panel,
+ * in the words the menu's production chip writes it in (`fixProblemOf`): what failed, HQ's words
+ * for why, and the ask. Nothing where the panel says no failure.
+ */
+export function placeFixProblem(input: {
+  readonly tier: GroupEnvironmentTier;
+  /** The place as its page names it: "Production", "Stage", "Client demo". */
+  readonly title: string;
+  /** The panel's sentence and HQ's words under it. */
+  readonly text: string;
+  readonly detail: string | undefined;
+  readonly down: boolean;
+  /** What still serves there, where it is told. */
+  readonly serving: string | undefined;
+}): FixProblem {
+  const what = input.text.replace(/[.]$/u, "");
+  if (input.down) return { what, error: input.detail, ask: "Find out why and bring it back." };
+  const serving = input.serving === undefined ? "" : `${input.serving} is still serving. `;
+  return {
+    what: input.tier === "production" ? what : `${input.title}: ${what}`,
+    error: input.detail,
+    ask:
+      input.tier === "production"
+        ? `${serving}Find out why, fix it, and release again.`
+        : "Find out why and fix it.",
+  };
+}

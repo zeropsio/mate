@@ -225,6 +225,12 @@ export interface GitBlock {
   readonly state: GitBlockState;
   /** What is changed on disk and not committed — the container's own fact. */
   readonly changed: ReadonlyArray<GitChangedFile>;
+  /**
+   * Commits on the branch its remote branch lacks — "2 commits not pushed yet" — whatever the
+   * block's state: a Mate whose change merged may already have committed the next one. Absent
+   * where there are none, or where the branch tracks no remote branch to count against.
+   */
+  readonly unpushed?: string | undefined;
   /** The Mate's change in it, by its number, head and address at HQ. */
   readonly pullRequestNumber: number | undefined;
   readonly pullRequestHead: string | undefined;
@@ -437,7 +443,7 @@ export function gitVerdict(input: {
       // there — held to it by a test that reads them all. The words are the
       // plain state a change row says after its Mate's name ("Ready to merge").
       return {
-        ...IN_REVIEW[input.mergeability],
+        ...inReview(input.mergeability, input.baseBranch),
         ask:
           input.pullRequestNumber === undefined
             ? undefined
@@ -485,12 +491,19 @@ export function gitVerdict(input: {
  * for one nothing stops: no signal about it is not a good signal, the same
  * quiet its own page gives it.
  */
-const IN_REVIEW: Record<MergeabilityKind, Omit<GitVerdict, "ask">> = {
-  mergeable: { tone: "off", text: "Ready to merge" },
-  empty: { tone: "off", text: "Nothing to merge" },
-  checking: { tone: "busy", text: "Checking whether it merges" },
-  conflicting: { tone: "attention", text: "Conflicts with main" },
-};
+function inReview(mergeability: MergeabilityKind, baseBranch: string): Omit<GitVerdict, "ask"> {
+  switch (mergeability) {
+    case "mergeable":
+      return { tone: "off", text: "Ready to merge" };
+    case "empty":
+      return { tone: "off", text: "Nothing to merge" };
+    case "checking":
+      return { tone: "busy", text: "Checking whether it merges" };
+    case "conflicting":
+      // A conflict is with the branch the change goes onto, by its own name.
+      return { tone: "attention", text: `Conflicts with ${baseBranch}` };
+  }
+}
 
 /**
  * What is provably wrong with this Mate's Git setup, in the order a person
@@ -623,6 +636,12 @@ export function gitBlock(input: {
     checkoutLine: gitCheckoutLine(checkout, input.mateName, change !== undefined),
     state,
     changed: checkout.changed,
+    ...(checkout.read !== false &&
+    checkout.failure === undefined &&
+    checkout.hasUpstream &&
+    checkout.aheadCount > 0
+      ? { unpushed: `${commits(checkout.aheadCount).subject} not pushed yet` }
+      : {}),
     pullRequestNumber: change?.number,
     pullRequestHead: change?.headSha,
     pullRequestUrl: change?.url,

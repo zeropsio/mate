@@ -49,16 +49,29 @@ export function mergedChangeWords(where: MergedChangeWhere): string {
 }
 
 /**
- * Whether the release that took a change runs on production now, or a newer release over it does:
- * the change is live. Releases are newest first, as the flow lists them; unknown standing is not live.
+ * Whether a change taken by release `tag` is live: what production runs holds it. A roll back is a
+ * release of its own, the newest, that runs an older release's content: what is live is the release
+ * it goes back to (and that one's, where it was a roll back too). The change is live where that
+ * release is the one that took it or newer. Releases are newest first, as the flow lists them;
+ * unknown standing is not live.
  */
 export function releaseIsLive(
   tag: string,
-  releases: ReadonlyArray<{ readonly tag: string; readonly standing?: string | undefined }>,
+  releases: ReadonlyArray<{
+    readonly tag: string;
+    readonly standing?: string | undefined;
+    readonly rollbackOf?: string | null | undefined;
+  }>,
 ): boolean {
-  const live = releases.findIndex((release) => release.standing === "live");
   const took = releases.findIndex((release) => release.tag === tag);
-  return live !== -1 && took !== -1 && live <= took;
+  let runs = releases.findIndex((release) => release.standing === "live");
+  // Each roll back hands its content on to the release it goes back to; a loop of them is no answer.
+  for (let hops = 0; runs !== -1 && hops < releases.length; hops += 1) {
+    const back = releases[runs]?.rollbackOf;
+    if (back === undefined || back === null) break;
+    runs = releases.findIndex((release) => release.tag === back);
+  }
+  return runs !== -1 && took !== -1 && runs <= took && releases[runs]?.rollbackOf == null;
 }
 
 /** A change's row line: whose, then its state — "Juno · Ready to merge"; its state alone unnamed. */

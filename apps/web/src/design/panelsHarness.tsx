@@ -186,6 +186,12 @@ const IN_SYNC: RepoState = {
   tone: "ok",
   fix: null,
 };
+const APP_GONE: RepoState = {
+  destination: { label: "acme/teashop", href: "https://github.com/acme/teashop" },
+  line: "Stopped Nov 7 · the GitHub app it went through is no longer in Acme",
+  tone: "warn",
+  fix: "reconnect",
+};
 const STOPPED: RepoState = {
   destination: { label: "acme/teashop", href: "https://github.com/acme/teashop" },
   line: "Stopped Nov 7 · github.com refused the token",
@@ -364,11 +370,11 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
   },
   {
     id: "live",
-    title: "Live in a release",
+    title: "Live in a release · new commits since · app gone",
     project: project(TEA, [production(["Running", "v0.1.4", "since 10:42"])]),
     repositories: [
       repository({
-        checkout: checkout(),
+        checkout: checkout({ aheadCount: 2 }),
         change: change({
           number: 30,
           title: "Opening hours in the footer",
@@ -377,7 +383,7 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
           mergedAt: ago(60 * 26),
         }),
         landedWords: "Live in v0.1.4",
-        github: IN_SYNC,
+        github: APP_GONE,
       }),
     ],
   },

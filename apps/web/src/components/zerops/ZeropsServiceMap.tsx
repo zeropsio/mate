@@ -602,6 +602,20 @@ function StageLine({
   );
 }
 
+/**
+ * The stage folded into a dev service, as a row of its own for its meters: its service, its use
+ * and its own last day — never the dev service's, which a spread of the dev row would carry.
+ */
+function stageRow(row: ZeropsServiceRow, stage: ZeropsTopologyService): ZeropsServiceRow {
+  const { trends: _devTrends, ...shared } = row;
+  return {
+    ...shared,
+    service: stage,
+    metrics: row.stageMetrics ?? [],
+    ...(row.stageTrends === undefined ? {} : { trends: row.stageTrends }),
+  };
+}
+
 /** Who lives here: the Mate's face in its colour, wearing the conversation's state, and the sentence. */
 function MateHome({ mate }: { mate: ZeropsMateOnMap }) {
   return (
@@ -658,12 +672,7 @@ function ServiceCardBody({
         <StageLine
           label={row.stageStatusLabel}
           needsWord={row.stageStatusNeedsWord ?? true}
-          meters={{
-            ...row,
-            service: row.stage,
-            metrics: row.stageMetrics ?? [],
-            ...(row.stageTrends === undefined ? {} : { trends: row.stageTrends }),
-          }}
+          meters={stageRow(row, row.stage)}
           portLabel={row.stagePortLabel}
           folded={row.stageRoutesFolded ?? false}
           routes={row.stageRoutes ?? []}
@@ -815,12 +824,7 @@ function ServiceExtras({ row, usageRead }: { row: ZeropsServiceRow; usageRead: b
         <StageLine
           folded={row.stageRoutesFolded ?? false}
           label={row.stageStatusLabel}
-          meters={{
-            ...row,
-            service: stage,
-            metrics: row.stageMetrics ?? [],
-            ...(row.stageTrends === undefined ? {} : { trends: row.stageTrends }),
-          }}
+          meters={stageRow(row, stage)}
           needsWord={row.stageStatusNeedsWord ?? true}
           portLabel={row.stagePortLabel}
           routes={row.stageRoutes ?? []}

@@ -21,6 +21,7 @@ import { useOpenReview } from "~/zerops/review";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 
 import { Button } from "../../ui/button";
+import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
@@ -91,6 +92,19 @@ export interface ProjectPageFacts {
   readonly repo: string | undefined;
   /** Reads that failed, each with its one retry. */
   readonly readFailures?: ReactNode;
+  /**
+   * HQ has told which environments the project has (`slots`); until then, or where it refuses to,
+   * the places are the group's own lines, and nothing is offered as missing.
+   */
+  readonly declared: boolean;
+  /** "Ask <Mate> to fix it" on a place that is not well, where the person has a Mate to ask. */
+  readonly fixOf?: ((line: PlaceLineData) => PlaceFix | undefined) | undefined;
+}
+
+/** The one verb on a place that is not well: the person's Mate, asked with the problem written. */
+export interface PlaceFix {
+  readonly name: string;
+  readonly onAsk: () => void;
 }
 
 /** The side column's rows past Addresses, and the sections their *Manage* opens. */
@@ -154,7 +168,8 @@ export function ProjectPageBody<T>({
             </a>
           )
         }
-        title={entry.placeholder ? undefined : group.name}
+        placeholder={entry.placeholder}
+        title={group.name}
         trail={trail}
       />
       <div className="pp-cols">
@@ -296,8 +311,13 @@ function ProjectWaits<T>({
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const openChange = useOpenChange();
   if (waits.length === 0) return null;
+  // As many as the rows list: each Mate's changes waiting for review, one where none is read yet.
   const count = waits.reduce(
-    (total, { wait }) => total + (wait.kind === "review" ? wait.count : 1),
+    (total, { wait }) =>
+      total +
+      (wait.kind === "review"
+        ? Math.max(1, waitingChanges(entry.flow, wait.mate.projectId).length)
+        : 1),
     0,
   );
   return (
@@ -395,9 +415,13 @@ const ASK_VERB: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], string> = {
 };
 
 /**
- * One card per place, production first: its line (which opens it), what its live release brought,
- * and what goes to it next — the page's one *Review release*. A missing stage says what a stage is
- * for beside *Add stage*; a missing production offers *Put it live*; a half-made one *Finish setup*.
+ * One card per place, production first: its line (which opens it), and on a place that is not well
+ * the person's Mate to ask; on production what its live release brought, then what goes to it
+ * next — the page's one *Review release*, ready, on its way or refused, whoever started it — or,
+ * where nothing goes next, its own note and a Put it live run. A missing stage says what a stage is
+ * for beside *Add stage*; a missing production offers *Put it live*; a half-made one *Finish
+ * setup*. Until HQ has told which environments exist, the places are the group's own lines, their
+ * room held while none is read, so Mates and Changes never move down.
  */
 function ProjectPlaces<T>({
   entry,
@@ -412,136 +436,190 @@ function ProjectPlaces<T>({
 }) {
   const groupId = entry.group.groupId;
   const { slots, environments } = facts;
-  if (slots.length === 0) return null;
   const lineOf = (projectId: string) => lines.find((line) => line.projectId === projectId);
-  // The page's door decides whether a release is offered at all: Put it live releases the
-  // production it makes, so nothing asks for a release while it runs.
-  const releaseShown =
-    props.renderReleaseVerb === undefined || drawn(props.renderReleaseVerb(entry));
-  // What goes to production next, said once: its release, ready, on its way or refused; a Put it
-  // live run on production says its own steps only while no release is said.
   const nextInput = {
     release: facts.release,
     ready: cardReady(entry.flow),
     onStage: props.cardPlaces?.(entry).releaseOnStage,
   };
-  const next = releaseShown && nextReleaseView(nextInput).kind !== "none" ? nextInput : null;
+  const view = nextReleaseView(nextInput);
+  // A release ready to go is offered only where the page's door offers it: a Put it live run
+  // releases the production it makes. One on its way, or refused, is said from the flow, whoever
+  // started it.
+  const next =
+    view.kind === "none" ||
+    (view.kind === "ready" &&
+      props.renderReleaseVerb !== undefined &&
+      !drawn(props.renderReleaseVerb(entry)))
+      ? null
+      : nextInput;
+  /** Production's own lines below its place line: what it brought, then what goes next. */
+  const productionTail = (line: PlaceLineData | undefined, note: string | undefined) => (
+    <>
+      {line === undefined || line.trouble ? null : (
+        <Brought brought={facts.brought} version={liveVersion(entry)} />
+      )}
+      {next === null ? (
+        <>
+          {note === undefined ? null : <p className="pp-place-note">{note}</p>}
+          {props.renderProductionRun?.(entry)}
+        </>
+      ) : (
+        <NextRelease {...next} />
+      )}
+    </>
+  );
+  const fixVerb = (line: PlaceLineData) => {
+    const fix = line.trouble ? facts.fixOf?.(line) : undefined;
+    return fix === undefined ? undefined : (
+      <Button onClick={fix.onAsk} size="sm" variant="secondary">
+        Ask {fix.name} to fix it
+      </Button>
+    );
+  };
   return (
     <section aria-labelledby="pp-places" className="pp-group" data-zerops-surface="project-places">
       <SectionLabel id="pp-places">Places</SectionLabel>
-      {productionFirst(slots).map((slot) => {
-        if (slot.kind === "slot")
-          return (
-            <div className="pp-card pp-place" data-zerops-place={slot.tier} key={slot.tier}>
-              <PlaceLine
-                density="row"
-                line={{
-                  projectId: undefined,
-                  kind: slot.tier,
-                  name: slot.name,
-                  dot: "none",
-                  words: [slot.tier === "stage" ? STAGE_IS_FOR : slot.line],
-                  trouble: false,
-                  addresses: [],
-                }}
-                trailing={
-                  slot.add ? (
-                    <Button
-                      onClick={() => {
-                        facts.onAdd(slot.tier);
-                      }}
-                      size="sm"
-                      variant="secondary"
-                    >
-                      {environmentDoorLabel(slot.tier, slot.name)}
-                    </Button>
-                  ) : undefined
-                }
-              />
+      {!facts.declared ? (
+        lines.length === 0 ? (
+          <div aria-busy="true" className="pp-card pp-place" data-zerops-places-held="">
+            <PlaceHeld />
+          </div>
+        ) : (
+          lines.map((line) => (
+            <div
+              className="pp-card pp-place"
+              data-zerops-place={line.kind}
+              key={`${line.kind}:${line.projectId ?? line.name}`}
+            >
+              <PlaceLine density="row" groupId={groupId} line={line} trailing={fixVerb(line)} />
+              {line.kind === "production" ? productionTail(line, undefined) : null}
             </div>
-          );
-        if (slot.kind === "devstage" || slot.kind === "creating" || slot.kind === "half-made") {
-          const tier = slot.kind === "devstage" ? "stage" : slot.tier;
-          return (
-            <div className="pp-card pp-place" data-zerops-place={tier} key={slot.id}>
-              <PlaceLine
-                density="row"
-                line={{
-                  projectId: undefined,
-                  kind: tier,
-                  name: tier,
-                  dot: slot.kind === "creating" ? "releasing" : "none",
-                  words: [slot.line],
-                  trouble: false,
-                  addresses: [],
-                }}
-                trailing={
-                  slot.kind === "half-made" && slot.finish ? (
-                    <Button
-                      disabled={facts.finishing}
-                      onClick={() => {
-                        facts.onFinish(slot.id);
-                      }}
-                      size="sm"
-                      variant="secondary"
-                    >
-                      Finish setup
-                    </Button>
-                  ) : undefined
-                }
-              />
-            </div>
-          );
-        }
-        const environment = environments.find((row) => row.id === slot.id);
-        if (environment === undefined) return null;
-        if (environment.target.kind === "git")
+          ))
+        )
+      ) : (
+        productionFirst(slots).map((slot) => {
+          if (slot.kind === "slot")
+            return (
+              <div className="pp-card pp-place" data-zerops-place={slot.tier} key={slot.tier}>
+                <PlaceLine
+                  density="row"
+                  line={{
+                    projectId: undefined,
+                    kind: slot.tier,
+                    name: slot.name,
+                    dot: "none",
+                    words: [slot.tier === "stage" ? STAGE_IS_FOR : slot.line],
+                    trouble: false,
+                    addresses: [],
+                  }}
+                  trailing={
+                    slot.add ? (
+                      <Button
+                        onClick={() => {
+                          facts.onAdd(slot.tier);
+                        }}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        {environmentDoorLabel(slot.tier, slot.name)}
+                      </Button>
+                    ) : undefined
+                  }
+                />
+                {slot.tier === "production" ? props.renderProductionRun?.(entry) : null}
+              </div>
+            );
+          if (slot.kind === "devstage" || slot.kind === "creating" || slot.kind === "half-made") {
+            const tier = slot.kind === "devstage" ? "stage" : slot.tier;
+            return (
+              <div className="pp-card pp-place" data-zerops-place={tier} key={slot.id}>
+                <PlaceLine
+                  density="row"
+                  line={{
+                    projectId: undefined,
+                    kind: tier,
+                    name: tier,
+                    dot: slot.kind === "creating" ? "releasing" : "none",
+                    words: [slot.line],
+                    trouble: false,
+                    addresses: [],
+                  }}
+                  trailing={
+                    slot.kind === "half-made" && slot.finish ? (
+                      <Button
+                        disabled={facts.finishing}
+                        onClick={() => {
+                          facts.onFinish(slot.id);
+                        }}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        Finish setup
+                      </Button>
+                    ) : undefined
+                  }
+                />
+                {/* A Put it live run stands under the production it is making, its failure and
+                    its one fixing verb included. */}
+                {tier === "production" ? props.renderProductionRun?.(entry) : null}
+              </div>
+            );
+          }
+          const environment = environments.find((row) => row.id === slot.id);
+          if (environment === undefined) return null;
+          if (environment.target.kind === "git")
+            return (
+              <div className="pp-card pp-place" data-zerops-place={environment.tier} key={slot.id}>
+                <StopLine environment={environment} groupId={groupId} notice={null} />
+                <GitDeliveryStatus
+                  delivery={environment.git}
+                  environment={{ target: environment.target, tier: environment.tier }}
+                  repos={facts.repos}
+                  showExpiry={false}
+                />
+              </div>
+            );
+          const { projectId } = environment.target;
+          const line = lineOf(projectId);
+          const notice = facts.withheldNotice?.(projectId) ?? null;
           return (
             <div className="pp-card pp-place" data-zerops-place={environment.tier} key={slot.id}>
-              <StopLine environment={environment} groupId={groupId} notice={null} />
-              <GitDeliveryStatus
-                delivery={environment.git}
-                environment={{ target: environment.target, tier: environment.tier }}
-                repos={facts.repos}
-                showExpiry={false}
-              />
+              {line === undefined || notice !== null ? (
+                <StopLine
+                  environment={environment}
+                  firstDeploy={facts.firstDeployOf?.(projectId)}
+                  groupId={groupId}
+                  notice={notice}
+                />
+              ) : (
+                // Opened by its environment, as a bookmark names it: the same through a rename.
+                <PlaceLine
+                  density="row"
+                  groupId={groupId}
+                  line={{ ...line, projectId: environment.id }}
+                  trailing={fixVerb(line)}
+                />
+              )}
+              {notice !== null ? null : environment.tier === "production" ? (
+                productionTail(line, slot.note?.text)
+              ) : slot.note === undefined ? null : (
+                <p className="pp-place-note">{slot.note.text}</p>
+              )}
             </div>
           );
-        const { projectId } = environment.target;
-        const line = lineOf(projectId);
-        const notice = facts.withheldNotice?.(projectId) ?? null;
-        const isProduction = environment.tier === "production";
-        return (
-          <div className="pp-card pp-place" data-zerops-place={environment.tier} key={slot.id}>
-            {line === undefined || notice !== null ? (
-              <StopLine
-                environment={environment}
-                firstDeploy={facts.firstDeployOf?.(projectId)}
-                groupId={groupId}
-                notice={notice}
-              />
-            ) : (
-              // Opened by its environment, as a bookmark names it: the same through a rename.
-              <PlaceLine
-                density="row"
-                groupId={groupId}
-                line={{ ...line, projectId: environment.id }}
-              />
-            )}
-            {isProduction && notice === null ? (
-              <>
-                {line?.trouble === true ? null : (
-                  <Brought brought={facts.brought} version={liveVersion(entry)} />
-                )}
-                {next === null ? props.renderProductionRun?.(entry) : <NextRelease {...next} />}
-              </>
-            ) : slot.note === undefined || slot.note.review ? null : (
-              <p className="pp-place-note">{slot.note.text}</p>
-            )}
-          </div>
-        );
-      })}
+        })
+      )}
     </section>
+  );
+}
+
+/** A place's line held while none is read: its room, and nothing that will be taken back. */
+function PlaceHeld() {
+  return (
+    <div aria-hidden="true" className="flex min-h-8 items-center gap-2">
+      <Skeleton className="h-4 w-48" />
+    </div>
   );
 }
 

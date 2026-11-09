@@ -14,7 +14,7 @@ import * as Option from "effect/Option";
 import { useAccountDataOptional, useProjection } from "~/zerops/accountData";
 import { useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
-import { StopVaultDrawer, StopVaultToggle, useStopVaultOpen } from "./vault/StopVault";
+import { StopVaultDrawer, StopVaultToggle } from "./vault/StopVault";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 /**
@@ -126,12 +126,15 @@ import {
   changesWaitingForRelease,
   changesWaitingForStage,
   liveNowFact,
+  placeFixProblem,
   placeHeaderLine,
   releaseBrought,
   stageNextTitle,
 } from "./place/placePage.logic";
 import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
+import { useFixMates } from "~/zerops/fixMates";
+import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import {
   ChangeList,
   ChangeRow,
@@ -231,7 +234,11 @@ export function ZeropsStopDetailPage({
       );
     }
     return (
-      <ZeropsProjectStopDetailPage groupId={groupId} projectId={environment.target.projectId} />
+      <ZeropsProjectStopDetailPage
+        groupId={groupId}
+        key={environment.target.projectId}
+        projectId={environment.target.projectId}
+      />
     );
   }
   const note = unreadEnvironmentsWords(read.unread) ?? unread;
@@ -240,9 +247,10 @@ export function ZeropsStopDetailPage({
       ? undefined
       : places.find(
           (line) =>
-            line.git !== undefined &&
-            line.kind === environment.tier &&
-            (environment.tier === "production" || line.name === environment.name),
+            line.projectId === environment.id ||
+            (line.git !== undefined &&
+              line.kind === environment.tier &&
+              (environment.tier === "production" || line.name === environment.name)),
         );
   if (environment === undefined) {
     return (
@@ -320,7 +328,8 @@ function ZeropsProjectStopDetailPage({
   const recipeFailure = useHqAppFailure(groupId);
   // The environment's vault beside its page, where the account reads its organization.
   const orgId = useAccountOrgId();
-  const [vaultOpen, setVaultOpen] = useStopVaultOpen();
+  // Closed on every place's page as it opens: the drawer is this page's, never carried across.
+  const [vaultOpen, setVaultOpen] = useState(false);
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
   const deployments = useStopDeploymentsShown();
@@ -374,10 +383,15 @@ function ZeropsProjectStopDetailPage({
   const names = useHistoryNames();
   // The place's line as the overview, the project page and the menu say it.
   const places = useApplicationPlaces(groupId).places;
-  const placeLine = places.find((entry) => entry.projectId === projectId);
+  // Lines carry the HQ environment, as the place's route does: never its Zerops project.
+  const placeLine =
+    stop === undefined ? undefined : places.find((entry) => entry.projectId === stop.id);
   // Who the next changes are from: each Mate's name and face, as the left menu draws them.
   const mates = useZeropsReviewMates(groupId);
   const personName = usePersonNames(orgId ?? undefined);
+  // Who a failure here is offered to: the person's own Mate in the project, used last first.
+  const [fixer] = useFixMates({ projectId, groupId });
+  const askMateToFix = useAskMateToFix();
   const publicAccess = usePublicAccess(projectId);
   const routes = publicAccess.routes;
   const offers = publicAccess.offers;
@@ -521,7 +535,10 @@ function ZeropsProjectStopDetailPage({
           !flow.changesKnown
             ? NO_CHANGES
             : production
-              ? changesWaitingForRelease(flow.merged, flow.releases)
+              ? // Until HQ answers the releases, every merged change would read as waiting.
+                flow.releasesKnown
+                ? changesWaitingForRelease(flow.merged, flow.releases)
+                : NO_CHANGES
               : stop.source === "main"
                 ? changesWaitingForStage(flow.pullRequests)
                 : NO_CHANGES
@@ -540,6 +557,16 @@ function ZeropsProjectStopDetailPage({
           );
         }}
         liveBy={live?.by === undefined ? undefined : personName(live.by)}
+        askToFix={
+          fixer === undefined
+            ? undefined
+            : {
+                mateName: fixer.name,
+                onAsk: (problem) => {
+                  askMateToFix(fixer.mateProjectId, problem);
+                },
+              }
+        }
         deployed={deployed}
         enablingServiceId={route.enablingServiceId}
         history={history}
@@ -814,6 +841,7 @@ export function ZeropsStopPane({
   mateName,
   onOpenPull,
   liveBy,
+  askToFix,
   deployed,
   enablingServiceId,
   groupId,
@@ -896,6 +924,13 @@ export function ZeropsStopPane({
   readonly onOpenPull?: ((pull: FlowPullRequest, from: HTMLElement) => void) | undefined;
   /** Who made the live release, by name; undefined where the person is not known. */
   readonly liveBy?: string | undefined;
+  /**
+   * "Ask <Mate> to fix it" on a failure: the person's own Mate in the project (`useFixMates`);
+   * undefined where they have none.
+   */
+  readonly askToFix?:
+    | { readonly mateName: string; readonly onAsk: (problem: FixProblem) => void }
+    | undefined;
   readonly groupId: string;
   readonly stop: EnvironmentRow;
   /** What the stop runs, as the left menu reads it — its menu is that menu. */
@@ -1005,7 +1040,17 @@ export function ZeropsStopPane({
   // and has more to say than the header's "Not released yet" — what deploys it, or its first
   // deploy under way. What waits for a release is Next release's, a release on its way is the
   // header's, calm is the header's dot.
+  // A place the platform says is down, where no deploy failed: the header's Down, said as a failure.
+  const down = headerLine.dot === "down" && verdict.tone !== "failed";
+  const panel = down
+    ? {
+        tone: "failed" as const,
+        text: `${head.title} is down.`,
+        detail: headerLine.words.slice(1).join(" · ") || undefined,
+      }
+    : verdict;
   const verdictShown =
+    down ||
     verdict.tone === "failed" ||
     (view.version === undefined &&
       (verdict.detail !== undefined || verdict.tone === "busy") &&
@@ -1085,8 +1130,28 @@ export function ZeropsStopPane({
       {readFailures}
       {!verdictShown ? null : (
         <div>
-          <VerdictPanel detail={verdict.detail} text={verdict.text} tone={verdict.tone}>
-            {verb?.kind === "run-again" && runAgain !== undefined ? (
+          <VerdictPanel detail={panel.detail} text={panel.text} tone={panel.tone}>
+            {askToFix === undefined || panel.tone !== "failed" ? null : (
+              <Button
+                onClick={() => {
+                  askToFix.onAsk(
+                    placeFixProblem({
+                      tier: stop.tier,
+                      title: head.title,
+                      text: panel.text,
+                      detail: panel.detail,
+                      down,
+                      serving: production ? live?.tag : undefined,
+                    }),
+                  );
+                }}
+                size="sm"
+                variant="secondary"
+              >
+                {`Ask ${askToFix.mateName} to fix it`}
+              </Button>
+            )}
+            {!down && verb?.kind === "run-again" && runAgain !== undefined ? (
               <Button
                 data-zerops-primary-action="Run again"
                 disabled={runAgain.running}

@@ -463,24 +463,25 @@ function KnownGitTab({
         onConnect={props.onConnect}
         project={props.project}
         renderBlockAction={renderBlockVerbs}
-        renderBlockCommits={(block) => (
-          <ZeropsGitBlockCommits
-            appId={props.appId}
-            change={
-              block.pullRequestNumber === undefined || block.pullRequestHead === undefined
-                ? undefined
-                : { number: block.pullRequestNumber, head: block.pullRequestHead }
-            }
-            // Each repository has its own main, independent of the application's other merges.
-            main={mergedMain(block.hqRepository, props.changes?.merged)}
-            onOpenCommit={
-              threadRef === null
-                ? undefined
-                : (commit) => setOpenCommit({ repository: block.hqRepository, ...commit })
-            }
-            repository={block.hqRepository}
-          />
-        )}
+        renderBlockCommits={(block) =>
+          // No change, no history to read: the block draws nothing for it, not an empty heading.
+          props.appId === undefined ||
+          block.pullRequestNumber === undefined ||
+          block.pullRequestHead === undefined ? null : (
+            <ZeropsGitBlockCommits
+              appId={props.appId}
+              change={{ number: block.pullRequestNumber, head: block.pullRequestHead }}
+              // Each repository has its own main, independent of the application's other merges.
+              main={mergedMain(block.hqRepository, props.changes?.merged)}
+              onOpenCommit={
+                threadRef === null
+                  ? undefined
+                  : (commit) => setOpenCommit({ repository: block.hqRepository, ...commit })
+              }
+              repository={block.hqRepository}
+            />
+          )
+        }
         onOpenChange={props.onOpenChange}
       />
       <ZeropsAskDialog
