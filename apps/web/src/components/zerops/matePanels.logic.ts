@@ -7,6 +7,7 @@
  */
 import {
   ENVIRONMENT_NOT_ADDED,
+  GIT_UNREADABLE_LINE,
   type FlowPullRequest,
   type GitBlock,
 } from "@t3tools/client-runtime/zerops";
@@ -29,13 +30,16 @@ export type GitWorkRow =
       readonly open: boolean;
       readonly at: string | undefined;
     }
-  /** Work that is no change yet, or a repository that could not be read: one plain sentence. */
+  /** Work that is no change yet, or a checkout that could not be read: one plain sentence. */
   | { readonly kind: "plain"; readonly title: string; readonly tone: ServiceStatusToneId };
 
 /** "1 file not committed yet" — the container's own fact, which outranks a calm state. */
 export function uncommittedWords(count: number): string {
   return `${String(count)} ${count === 1 ? "file" : "files"} not committed yet`;
 }
+
+/** What a repository's work says in its rows' place while its remote does not answer. */
+export const WORK_AWAITS_REPOSITORY = "Changes appear here once the repository answers.";
 
 /** Block states that say nothing a person must act on: work on disk is the fresher news. */
 const CALM = new Set<GitBlock["state"]>(["untouched", "unpushed", "in-review"]);
@@ -45,8 +49,13 @@ const CALM = new Set<GitBlock["state"]>(["untouched", "unpushed", "in-review"]);
  * where its state is calm, what waits on disk. An open change under review says where it stands,
  * or what of its work is not committed or pushed yet. A landed change says where it went in the
  * project's own words (`landedWords`, "Merged · waits for production"), under a row for each kind
- * of new work since — files on disk, commits not pushed — or for what was proved wrong. A change
- * whose checkout no longer reads as a repository is drawn as it stands, never as one under review.
+ * of new work since — files on disk, commits not pushed. A change whose checkout no longer reads
+ * as a repository is drawn as it stands, never as one under review.
+ *
+ * A remote that does not answer is the repository's trouble, said once on the repository's own
+ * line (`ZeropsGitPanel`): no row is made of it, and nothing is counted against a remote that
+ * was not reached. The rows are then the changes HQ tells, as HQ tells them — none where it
+ * tells none.
  */
 export function gitWorkRows(
   block: GitBlock,
@@ -59,15 +68,35 @@ export function gitWorkRows(
     | undefined,
 ): ReadonlyArray<GitWorkRow> {
   const verdict = block.verdict;
-  if (verdict === undefined) return [{ kind: "held" }];
+  // Trouble is proved before HQ answers; the changes still are not told.
+  if (verdict === undefined || block.state === "unread") return [{ kind: "held" }];
+  if (block.state === "unreadable")
+    return [{ kind: "plain", title: GIT_UNREADABLE_LINE, tone: "failed" }];
   const troubled = block.trouble.length > 0;
+  if (troubled) {
+    if (change === undefined) return [];
+    const { pull } = change;
+    if (pull.merged)
+      return [
+        {
+          kind: "change",
+          pull,
+          state: change.landedWords ?? "Merged",
+          tone: "off",
+          open: false,
+          at: pull.mergedAt ?? pull.updatedAt,
+        },
+      ];
+    const open = openChangeWords(pull);
+    return [
+      { kind: "change", pull, state: open.words, tone: open.tone, open: true, at: pull.updatedAt },
+    ];
+  }
   const uncommitted = block.changed.length;
   const onDisk =
-    uncommitted > 0 && !troubled && verdict.tone !== "attention"
-      ? uncommittedWords(uncommitted)
-      : undefined;
-  const unpushed = troubled ? undefined : block.unpushed;
-  if (change === undefined || block.state === "unreadable")
+    uncommitted > 0 && verdict.tone !== "attention" ? uncommittedWords(uncommitted) : undefined;
+  const unpushed = block.unpushed;
+  if (change === undefined)
     return [
       {
         kind: "plain",
@@ -90,16 +119,14 @@ export function gitWorkRows(
       },
     ];
   }
-  const since: ReadonlyArray<GitWorkRow> = troubled
-    ? [{ kind: "plain", title: verdict.text, tone: verdict.tone }]
-    : [
-        ...(onDisk === undefined
-          ? []
-          : [{ kind: "plain" as const, title: onDisk, tone: "busy" as const }]),
-        ...(unpushed === undefined
-          ? []
-          : [{ kind: "plain" as const, title: unpushed, tone: "busy" as const }]),
-      ];
+  const since: ReadonlyArray<GitWorkRow> = [
+    ...(onDisk === undefined
+      ? []
+      : [{ kind: "plain" as const, title: onDisk, tone: "busy" as const }]),
+    ...(unpushed === undefined
+      ? []
+      : [{ kind: "plain" as const, title: unpushed, tone: "busy" as const }]),
+  ];
   if (pull.merged)
     return [
       ...since,
@@ -113,10 +140,9 @@ export function gitWorkRows(
       },
     ];
   // Still open, but the checkout says nothing of a review (it is no repository now): the change as
-  // HQ tells it — its review is still the way to it — under what was proved wrong, if anything.
+  // HQ tells it — its review is still the way to it.
   const open = openChangeWords(pull);
   return [
-    ...(troubled ? since : []),
     { kind: "change", pull, state: open.words, tone: open.tone, open: true, at: pull.updatedAt },
   ];
 }

@@ -356,6 +356,7 @@ function KnownGitTab({
                 },
           ),
           github: github?.(block.hqRepository),
+          checking: remotes.get(repository)?.checking,
         };
       }),
     [
@@ -492,6 +493,8 @@ function KnownGitTab({
             mateFace={props.mateFace}
             mateName={props.mateName}
             model={{ repositories: rows, emptyLine }}
+            // Every remote is asked again: one round, as after a verb.
+            onCheckAgain={() => setGeneration((current) => current + 1)}
             onConnect={props.onConnect}
             onOpenChange={props.onOpenChange}
             project={props.project}

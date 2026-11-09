@@ -176,12 +176,17 @@ function repository(input: {
   readonly change?: FlowPullRequest | undefined;
   readonly landedWords?: string;
   readonly github?: RepoState | undefined;
+  /** What git said when its remote did not answer; the remote answers where absent. */
+  readonly unreachable?: string;
 }): ZeropsGitRepository {
   const block = gitBlock({
     checkout: input.checkout,
     changes: { read: true, change: input.change },
     declarations: STAGE_DECLARED,
-    evidence: { remoteReachable: true },
+    evidence:
+      input.unreachable === undefined
+        ? { remoteReachable: true }
+        : { remoteReachable: false, remoteDetail: input.unreachable },
     mateName: "Dana",
   });
   return {
@@ -428,6 +433,32 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
         }),
         landedWords: "Live in v0.1.4",
         github: APP_GONE,
+      }),
+    ],
+  },
+  {
+    id: "unreachable",
+    changes: "nothing",
+    title: "The repository does not answer · a merged change · none yet",
+    project: project(TEA, [PRODUCTION, STAGE], 1),
+    repositories: [
+      repository({
+        checkout: checkout({ aheadCount: 2 }),
+        change: change({
+          number: 31,
+          title: "Seasonal menu on the front page",
+          merged: true,
+          state: "merged",
+          mergedAt: ago(60 * 20),
+        }),
+        landedWords: "Merged · waits for production",
+        github: IN_SYNC,
+        unreachable: "fatal: remote helper for 'tea' aborted: 1: tea: not found",
+      }),
+      repository({
+        checkout: checkout({ repository: "api", headRef: "mate/p-dana" }),
+        github: IN_SYNC,
+        unreachable: "fatal: unable to access 'https://hq.example/acme/api.git/': timed out",
       }),
     ],
   },
@@ -742,6 +773,7 @@ function HarnessPage() {
                               mateFace={face}
                               mateName="Dana"
                               model={{ repositories: scenario.repositories }}
+                              onCheckAgain={() => {}}
                               onConnect={() => {}}
                               onOpenChange={() => {}}
                               project={scenario.project}

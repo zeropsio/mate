@@ -7,14 +7,23 @@ import { StatusPage } from "./status-page";
 
 /**
  * The source's own words for a failure, folded under "Details": never the first thing read, always
- * there for whoever reports it.
+ * there for whoever reports it, to select and copy.
  */
-function FailureDetails({ children }: { readonly children: React.ReactNode }) {
+function FailureDetails({
+  children,
+  align = "start",
+}: {
+  readonly children: React.ReactNode;
+  /** Where "Details" stands: under a sentence at a line's end, `end`. The words read from the start. */
+  readonly align?: "start" | "end";
+}) {
   return (
     <Collapsible data-slot="failure-details">
-      <CollapsibleTrigger className="text-muted-foreground text-xs underline-offset-4 hover:underline">
-        Details
-      </CollapsibleTrigger>
+      <div className={align === "end" ? "flex justify-end" : "flex"}>
+        <CollapsibleTrigger className="text-muted-foreground text-xs underline-offset-4 hover:underline">
+          Details
+        </CollapsibleTrigger>
+      </div>
       <CollapsiblePanel>
         <p className="m-0 mt-1.5 whitespace-pre-wrap break-words text-left font-mono text-muted-foreground text-xs">
           {children}
