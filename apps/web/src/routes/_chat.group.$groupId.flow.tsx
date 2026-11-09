@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
-import { ZeropsGroupDetailPage } from "../components/zerops/ZeropsGroupDetail";
+import { ZeropsGroupDetailPage } from "../components/zerops/ProjectPage";
 import { parseMirrorSearch } from "../components/zerops/gitMirror.logic";
 import { rememberSeen } from "../components/zerops/github/githubConnect.logic";
 

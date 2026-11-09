@@ -28,7 +28,7 @@ import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { OverviewCardsStandIn } from "./OverviewStandIn";
 import { OtherContainers, OtherProjects } from "./ProjectList";
-import { ProjectCards, ProjectPage } from "./ProjectCards";
+import { ProjectCards } from "./ProjectCards";
 import type { PlaceLine } from "./projectCard.logic";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
@@ -83,19 +83,20 @@ export interface ProjectsFlowGroup<T> {
 }
 
 /**
- * A project's own page: its card at the page's width, every Mate unfolded, and the page's own
- * column beside it — the people on it, its environments, its repositories and its history.
+ * A project's own page in place of the overview: drawn by the page from the group the flow reads
+ * and the same slots the cards fill, so a Mate's row, a change and a place say the same on both.
  */
 export interface ProjectPageSlot {
   readonly groupId: string;
-  /** The column beside the card. */
-  readonly aside: ReactNode;
-  /** *Add a Mate*, at the foot of its Mates. */
-  readonly onAddMate?: (() => void) | undefined;
-  /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
+  /** The page's body, once the project is among the drawn ones. */
+  readonly render: <T>(input: {
+    readonly entry: ProjectsFlowGroup<T>;
+    readonly props: ZeropsProjectsFlowProps<T>;
+    /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
+    readonly addMateWhy: string | null;
+  }) => ReactNode;
+  /** Why the project takes no Mate now, known before the press. */
   readonly addMateWhy?: string | null;
-  /** Who can work on it, and how — under its Mates on the card. */
-  readonly people?: ReactNode;
   /**
    * What the page says while the project is not among the drawn ones: `undrawn` where the tree
    * leaves it out for good (`ZeropsProjectsFlowProps.undrawn`), else while it is read.
@@ -295,18 +296,9 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
         data-zerops-surface="projects-flow"
         role="region"
       >
-        {entry === undefined ? (
-          page.unread(undrawn?.includes(page.groupId) === true)
-        ) : (
-          <ProjectPage
-            aside={page.aside}
-            entry={entry}
-            addMateWhy={page.addMateWhy ?? null}
-            onAddMate={page.onAddMate}
-            people={page.people}
-            props={props}
-          />
-        )}
+        {entry === undefined
+          ? page.unread(undrawn?.includes(page.groupId) === true)
+          : page.render({ entry, props, addMateWhy: page.addMateWhy ?? null })}
       </div>
     );
   }

@@ -17,7 +17,7 @@ it.effect(
       const filenames = [
         "apps/web/src/routes/_chat.group.$groupId.$projectId.tsx",
         "apps/web/src/routes/_chat.mate.$projectId.tsx",
-        "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+        "apps/web/src/components/zerops/PlacePage.tsx",
       ];
       const sources = new Map(
         yield* Effect.all(
@@ -50,8 +50,8 @@ it.effect(
           kind: undefined,
         },
         {
-          filename: "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
-          source: source("apps/web/src/components/zerops/ZeropsGroupDetail.tsx"),
+          filename: "apps/web/src/components/zerops/PlacePage.tsx",
+          source: source("apps/web/src/components/zerops/PlacePage.tsx"),
           kind: undefined,
         },
         {
