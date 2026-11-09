@@ -61,6 +61,7 @@ import { streamOf, type DeliveryScope, type RemovalInput, type Row } from "../re
 import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
+import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 
 /** One open segment: HQ's messages, and the requests sent on it. */
 export interface HqSegment {
@@ -756,7 +757,7 @@ export function hqNavigationLink(options: {
                 fault: {
                   outcome: "definitive-refusal",
                   code: "usage-update-required",
-                  message: "Update HQ to read recorded Mate usage.",
+                  message: hqNeedsUpdate("read recorded Mate usage"),
                 },
               });
             }

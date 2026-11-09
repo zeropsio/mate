@@ -446,7 +446,7 @@ function Harness() {
               title="Could not read this repository"
               verb={
                 <Button size="sm" variant="secondary">
-                  Read again
+                  Try again
                 </Button>
               }
             />

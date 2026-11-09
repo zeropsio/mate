@@ -10,6 +10,7 @@ import {
 } from "../families/hqObserveCredential.ts";
 import { readsOfState, type AccountStore } from "../store.ts";
 import { makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
+import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 export function makeObserveCredential(options: {
   readonly store: AccountStore;
   readonly api: Pick<HqApi, "observeCredential">;
@@ -23,7 +24,7 @@ export function makeObserveCredential(options: {
     scope: observeCredentialScope(key),
     link: `hq:observe-credential-${encodeURIComponent(observeCredentialId(key))}`,
     read: () => api.observeCredential?.(key.projectId),
-    unsupported: "Update HQ to manage observe authorization.",
+    unsupported: hqNeedsUpdate("manage observe authorization"),
   });
   const following = new Map<string, { count: number; readonly stop: () => void }>();
   return {

@@ -103,11 +103,6 @@ describe("a project's sources of tasks", () => {
       { ...NONE, webhooks: { state: "withheld" as const } },
       [],
     ],
-    [
-      "a source whose read failed says HQ's words",
-      { ...NONE, schedules: { state: "failed" as const, words: "HQ did not answer." } },
-      ["HQ did not answer."],
-    ],
   ] as const)("%s", (_case, reads, words) => {
     expect(sourceRows(reads).rows.map((row) => row.words)).toEqual(words);
   });

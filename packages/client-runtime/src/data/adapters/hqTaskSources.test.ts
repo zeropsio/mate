@@ -835,7 +835,7 @@ describe("a task's stop and the board's reads", () => {
         status: 404,
         message: "HQ refused this (http_404).",
       }),
-      "Update HQ to stop tasks from Mate.",
+      "HQ needs an update to stop tasks from Mate.",
     ],
     [
       "says only an Owner or Admin stops a task where HQ refuses the person",

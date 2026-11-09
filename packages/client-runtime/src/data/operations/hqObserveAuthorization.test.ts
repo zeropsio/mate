@@ -81,7 +81,7 @@ describe("authorizing a Mate's observation", () => {
       yield* operations.submit(INTENT);
       expect(progress(store)).toMatchObject({
         stage: "refused",
-        reason: "Update HQ to manage observe authorization.",
+        reason: "HQ needs an update to manage observe authorization.",
       });
     }),
   );

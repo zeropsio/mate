@@ -206,7 +206,7 @@ export function GithubAppView({
       action={
         section.kind === "failed" ? (
           <Button onClick={controls.again} size="sm" variant="secondary">
-            Read again
+            Try again
           </Button>
         ) : undefined
       }

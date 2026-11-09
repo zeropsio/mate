@@ -40,6 +40,7 @@ import type { AccountStore } from "../store.ts";
 import { streamOf } from "../reducer.ts";
 import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
 import { appTasksSignature, orgTasksSignature } from "./hqTaskBoardRefresh.ts";
+import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 
 export type TaskSourceApi = TaskSourceWrites &
   Pick<
@@ -57,10 +58,11 @@ export type TaskSourceApi = TaskSourceWrites &
   >;
 
 /** What an HQ that predates these settings is asked. */
-export const TASK_SOURCES_UNSUPPORTED =
-  "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
+export const TASK_SOURCES_UNSUPPORTED = hqNeedsUpdate(
+  "take tasks from Slack, Discord, webhooks and schedules",
+);
 /** What an HQ that predates the organization's GitHub app is asked. */
-export const GITHUB_UNSUPPORTED = "Update HQ to connect GitHub.";
+export const GITHUB_UNSUPPORTED = hqNeedsUpdate("connect GitHub");
 
 /** A webhook's answer as a list holds it: never its secret. */
 const withoutSecret = ({ secret: _secret, ...view }: HqWebhookView): HqWebhookView => view;

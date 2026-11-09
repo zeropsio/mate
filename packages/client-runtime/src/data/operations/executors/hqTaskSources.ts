@@ -9,6 +9,7 @@ import type { HqGithubManifestView } from "@t3tools/shared/hqGithub";
 import type { HqWebhookView } from "@t3tools/shared/hqIntake";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import type { OperationExecutor } from "../coordinator.ts";
+import { hqNeedsUpdate } from "../../../zerops/hq/refusals.ts";
 
 export type TaskSourceWrites = Pick<
   HqApi,
@@ -35,10 +36,10 @@ export type TaskSourceWrites = Pick<
 /** The secrets typed for one connection, by their field's name. */
 export type TypedSecrets = Readonly<Record<string, string>>;
 
-const UPDATE_HQ = "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
-const UPDATE_HQ_GITHUB = "Update HQ to connect GitHub.";
+const UPDATE_HQ = hqNeedsUpdate("take tasks from Slack, Discord, webhooks and schedules");
+const UPDATE_HQ_GITHUB = hqNeedsUpdate("connect GitHub");
 /** What an HQ that predates a task's stop from Mate is asked. */
-export const UPDATE_HQ_TASK_STOP = "Update HQ to stop tasks from Mate.";
+export const UPDATE_HQ_TASK_STOP = hqNeedsUpdate("stop tasks from Mate");
 
 /**
  * HQ's refusal of an install link, an Accept or a Suspend in words: an HQ without the

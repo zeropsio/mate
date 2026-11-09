@@ -163,7 +163,7 @@ describe("a reveal recorded at HQ", () => {
     {
       case: "to update HQ, where its HQ has no address to record them at",
       status: 404,
-      reason: "Update HQ to record reveals.",
+      reason: "HQ needs an update to record reveals.",
     },
     {
       case: "honestly, where HQ refuses the person",
@@ -196,7 +196,7 @@ describe("a reveal recorded at HQ", () => {
       });
       expect(progress(store)).toMatchObject({
         stage: "refused",
-        reason: "Update HQ to record reveals.",
+        reason: "HQ needs an update to record reveals.",
       });
     }),
   );

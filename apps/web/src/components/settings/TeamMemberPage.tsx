@@ -77,6 +77,7 @@ export function TeamMemberView({
   viewerRole,
   grants,
   grantsUnread,
+  onGrantsAgain,
   projects,
   organizationName,
   actions,
@@ -88,6 +89,8 @@ export function TeamMemberView({
   readonly grants: AccessDraft | null;
   /** Why their grants could not be read, when the read failed or was refused with none held. */
   readonly grantsUnread?: string;
+  /** The person's *Try again* where that read failed; absent where Zerops refused it. */
+  readonly onGrantsAgain?: () => void;
   readonly projects: ReadonlyArray<AccessProject>;
   readonly organizationName: string;
   /** Absent: nothing is changed from here. */
@@ -185,7 +188,16 @@ export function TeamMemberView({
           grantsUnread === undefined ? (
             <Loading count={2} label="Their projects" shape="rows" />
           ) : (
-            <Failure cause={grantsUnread} />
+            <Failure
+              action={
+                onGrantsAgain === undefined ? undefined : (
+                  <Button onClick={onGrantsAgain} size="sm" variant="secondary">
+                    Try again
+                  </Button>
+                )
+              }
+              cause={grantsUnread}
+            />
           )
         ) : (
           <MemberProjectAccess
@@ -357,6 +369,9 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
           {...(actions === undefined ? {} : { actions })}
           grants={grants}
           {...(grantsUnread === undefined ? {} : { grantsUnread })}
+          {...(grantsUnread === undefined || read?.refused === true
+            ? {}
+            : { onGrantsAgain: () => team.retryGrants(clientUserId) })}
           onRemoved={() => void navigate({ to: "/settings/team" })}
           organizationName={team.organizationName}
           person={person}

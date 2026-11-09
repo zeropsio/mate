@@ -189,7 +189,7 @@ export function ZeropsDataStartupFailure({
           </Button>
         </>
       }
-      cause="Mate couldn't start reading your Zerops account."
+      cause="Couldn't read your Zerops account."
       details={message}
       size="page"
     />

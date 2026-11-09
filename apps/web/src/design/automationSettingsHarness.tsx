@@ -9,7 +9,7 @@
  * nobody sealed), `private`, `manage` (Discord connected, its Manage open), `slack-refused`
  * (Slack's signatures refused, its Replace open), `older` (an HQ older than the apps), `member`,
  * `many-member`, `dialog` (the mirror dialog's repositories, each state), `model` (the automated
- * Mates' model picker open).
+ * Mates' model picker open), `failed` (every read failed, each with its Try again).
  *
  * Fixtures only. Nothing here ships — `design-automation.html` is not `index.html`, and no route
  * imports this module.
@@ -262,7 +262,14 @@ function Automation({
   readonly open?: boolean;
   readonly checking?: boolean;
 }) {
-  const at = (value: unknown) => controls(checking ? { state: "reading" } : known(value));
+  const at = (value: unknown) =>
+    controls(
+      checking
+        ? { state: "reading" }
+        : view === "failed"
+          ? { state: "failed", words: "HQ is taking long to answer." }
+          : known(value),
+    );
   const app = (
     <GithubAppView
       admin={admin}
@@ -299,7 +306,16 @@ function Automation({
                 onRemove={nothing}
                 onSet={nothing}
                 provider={NEBIUS}
-                read={checking ? { keys: { state: "reading" }, action: { kind: "idle" } } : KEY_SET}
+                read={
+                  checking
+                    ? { keys: { state: "reading" }, action: { kind: "idle" } }
+                    : view === "failed"
+                      ? {
+                          keys: { state: "failed", words: "HQ is not answering right now." },
+                          action: { kind: "idle" },
+                        }
+                      : KEY_SET
+                }
               />
               {app}
               <SlackSettingsView
@@ -331,9 +347,12 @@ function Automation({
                 defaultOpen={open || view === "manage"}
               />
             </IntegrationList>
-            {checking ? (
+            {checking || view === "failed" ? (
               <LimitsList>
                 <TaskLimitsView controls={at({ minutes: 60, costUsd: 5 })} />
+                {view === "failed" ? (
+                  <MonthlyBudgetView controls={at({ minutes: 60, costUsd: 5 })} />
+                ) : null}
               </LimitsList>
             ) : (
               <LimitsRows />
@@ -362,7 +381,7 @@ if (host) {
           view === "none" || view === "open"
             ? known({ apps: [] })
             : view === "failed"
-              ? { state: "failed", words: "HQ isn't answering right now." }
+              ? { state: "failed", words: "HQ is not answering right now." }
               : view === "requested"
                 ? known({ apps: [{ ...ACME, installations: [] }] })
                 : view === "older"

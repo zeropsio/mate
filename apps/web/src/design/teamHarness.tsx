@@ -6,7 +6,7 @@
  * owner's 435 px; open it at 1786 × 1000. `?page=member` shows a developer's page with two
  * project grants (`&who=` another key: `cu-karel` an admin, `cu-iva` an invitation, `cu-me`
  * your own; `&viewer=ADMIN` as an admin sees it; `&advanced=1` a custom role with Advanced open;
- * `&picker=1` the project picker open). `?page=invite` the invitation, empty (`&from=g-snap` as
+ * `&picker=1` the project picker open; `&grants=failed` their access unread, with Try again). `?page=invite` the invitation, empty (`&from=g-snap` as
  * opened from Snap's ···); `&step=details` an address typed and Snap picked, a guest
  * (`&role=developer` a Developer); Invite answers after a moment, as Zerops would. The team's invitation is named as its inviter typed it.
  * `?resend=1` the team after two Send agains: Iva's sent again, the long address's withdrawn and
@@ -149,10 +149,18 @@ function Page() {
     return (
       <TeamMemberView
         actions={{ updateMembership: never, saveAccess: never, remove: never }}
+        {...(params.get("grants") === "failed"
+          ? {
+              grantsUnread: "Couldn't read their project access from Zerops.",
+              onGrantsAgain: () => {},
+            }
+          : {})}
         grants={
-          who === "cu-karel"
-            ? { "shop-prod": "READ_ONLY" }
-            : { "snap-prod": "ADMIN", "beviro-prod": "READ_ONLY", "snap-fen": "OWNER" }
+          params.get("grants") === "failed"
+            ? null
+            : who === "cu-karel"
+              ? { "shop-prod": "READ_ONLY" }
+              : { "snap-prod": "ADMIN", "beviro-prod": "READ_ONLY", "snap-fen": "OWNER" }
         }
         organizationName="Acme"
         person={person}

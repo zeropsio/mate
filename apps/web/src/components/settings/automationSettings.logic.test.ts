@@ -105,7 +105,7 @@ describe("Settings › Automation's GitHub section", () => {
       case: "an HQ older than the app",
       setting: { state: "unsupported" },
       admin: true,
-      says: "Update HQ to connect GitHub",
+      says: "HQ needs an update to connect GitHub",
     },
     {
       case: "a person HQ shows nothing of it",

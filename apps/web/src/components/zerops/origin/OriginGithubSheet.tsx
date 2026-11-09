@@ -124,7 +124,7 @@ export function OriginGithubSheet({
             <div className="flex flex-wrap items-center gap-2">
               <p className="rv-note">HQ didn't say whether your organization has a GitHub app.</p>
               <Button onClick={onCheckAgain} size="sm" variant="secondary">
-                Check again
+                Try again
               </Button>
             </div>
           ) : step.kind === "waiting" ? (

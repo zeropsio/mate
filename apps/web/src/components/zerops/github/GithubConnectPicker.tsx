@@ -119,7 +119,7 @@ export function GithubConnectPicker({
     rememberSeen(here.get(SEEN_PARAM), here.get("github"));
     return seenBefore(project, repo);
   });
-  // Back from GitHub, HQ is asked once for what GitHub now says; after that, only on Look again.
+  // Back from GitHub, HQ is asked once for what GitHub now says; after that, only on Check again or Try again.
   const again = mirror.again;
   useEffect(() => {
     if (seenBefore(project, repo)?.fresh !== true) return;
@@ -635,9 +635,15 @@ function pickStep(
   );
   const waiting = waitingAccounts(apps);
   const unanswered = unansweredCount(apps);
-  const lookAgain = (
+  // GitHub's silence is a read to run again; what the person changes on GitHub is checked again.
+  const tryAgain = (
     <InlineButton onClick={actions.again} tone="muted">
-      Look again
+      Try again
+    </InlineButton>
+  );
+  const checkAgain = (
+    <InlineButton onClick={actions.again} tone="muted">
+      Check again
     </InlineButton>
   );
   const returnedNote =
@@ -655,7 +661,7 @@ function pickStep(
           GitHub didn't answer about{" "}
           {unanswered === 1 ? "one account" : `${String(unanswered)} accounts`} the organization's
           apps are installed on, so {unanswered === 1 ? "its" : "their"} repositories aren't listed.{" "}
-          {lookAgain}
+          {tryAgain}
         </p>
       )}
       {waiting.length === 0 ? null : (
@@ -667,7 +673,7 @@ function pickStep(
     </>
   );
   if (!pickable) {
-    // GitHub not answering about an account is not the account missing: look again first.
+    // GitHub not answering about an account is not the account missing: try again first.
     const silent = unanswered > 0;
     return {
       body: (
@@ -683,7 +689,7 @@ function pickStep(
             <div className="flex flex-wrap gap-2">
               {silent ? (
                 <Button onClick={actions.again} size="sm">
-                  Look again
+                  Try again
                 </Button>
               ) : null}
               <Button
@@ -819,7 +825,7 @@ function pickStep(
                   New repository on GitHub
                 </OutLink>
               </span>{" "}
-              · {lookAgain}
+              · {checkAgain}
             </p>
           </>
         )}
@@ -1107,7 +1113,7 @@ function explainStep(
                     {" "}
                     Back from GitHub?{" "}
                     <InlineButton onClick={actions.again} tone="muted">
-                      Look again
+                      Check again
                     </InlineButton>
                   </>
                 ) : null}

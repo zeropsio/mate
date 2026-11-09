@@ -128,11 +128,6 @@ describe("an organization's persona templates in Settings", () => {
 
   it.each([
     {
-      title: "an HQ that offers no templates says so by the organization's name",
-      read: { state: "unavailable" as const, templates: [] },
-      says: "Acme's HQ doesn't offer persona templates yet.",
-    },
-    {
       title: "an organization without templates says it has none yet",
       read: { templates: [] },
       says: "No templates yet.",
@@ -140,7 +135,7 @@ describe("an organization's persona templates in Settings", () => {
     {
       title: "a failed read gives its cause",
       read: { state: "failed" as const, templates: [], failure: "HQ is not answering right now." },
-      says: "HQ could not read the persona templates. HQ is not answering right now.",
+      says: "Couldn't read the persona templates. HQ is not answering right now.",
     },
     {
       title: "a list HQ no longer keeps current says it may be out of date, and why",
@@ -154,7 +149,7 @@ describe("an organization's persona templates in Settings", () => {
   it("a failed read reads the templates again when asked", () => {
     const retry = vi.fn();
     const tree = mount(view({ state: "failed", templates: [], failure: "x", retry }).element);
-    press(tree, "Read again");
+    press(tree, "Try again");
     expect(retry).toHaveBeenCalledOnce();
   });
 

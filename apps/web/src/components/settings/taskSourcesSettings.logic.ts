@@ -14,8 +14,8 @@ import type {
 
 /**
  * What a section shows of its setting: `reading` in its final shape, `hidden` where this HQ
- * predates it (the one "Update HQ" line says so), `withheld` from a viewer HQ refuses, `failed`
- * with HQ's words and *Read again*, or what is `known`.
+ * predates it (the one "HQ needs an update" line says so), `withheld` from a viewer HQ refuses, `failed`
+ * with HQ's words and *Try again*, or what is `known`.
  */
 export type SectionState = "reading" | "hidden" | "withheld" | "failed" | "known";
 

@@ -92,7 +92,12 @@ import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation, type ZeropsAccess } from "../api.ts";
 import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
-import { hqRefusalWords, ZEROPS_NO_CREDENTIAL, ZEROPS_UNANSWERED } from "./refusals.ts";
+import {
+  hqDisagreesOn,
+  hqRefusalWords,
+  ZEROPS_NO_CREDENTIAL,
+  ZEROPS_UNANSWERED,
+} from "./refusals.ts";
 import { hqStructureOf } from "./structure.ts";
 import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
 
@@ -727,8 +732,10 @@ export type OpenHqSocket = (
 /** HQ closed a scope socket because its session ended (`hqStreamCloseFailure`). */
 const HQ_SESSION_ENDED_CLOSE = 4401;
 
-/** How long a read waits for HQ's answer. */
+/** How long a read waits for HQ's answer: the bound on every screen's *Reading…*. */
 const CALL_TIMEOUT_MS = 20_000;
+/** A read HQ left unanswered past {@link CALL_TIMEOUT_MS}. */
+const HQ_TAKING_LONG = "HQ is taking long to answer.";
 /**
  * How long the door and every write wait for HQ's answer. HQ reads the org from Zerops for each,
  * which took tens of seconds on a slow Zerops (measured 2026-10-03): a door given up at 20 s threw
@@ -855,12 +862,15 @@ async function send(
   let response: Response;
   try {
     response = await fetch(url, { ...init, signal, headers });
-  } catch {
+  } catch (cause) {
     if (write) throw uncertain();
+    // A read past its deadline is HQ taking long, not HQ gone: a screen still reading says so
+    // with its Try again, while the data layer's retry keeps asking.
+    const late = cause instanceof DOMException && cause.name === "TimeoutError";
     throw new HqError({
       kind: "unavailable",
       code: "network",
-      message: "HQ could not be reached.",
+      message: late ? HQ_TAKING_LONG : "HQ could not be reached.",
     });
   }
   return answered(response, write, new URL(url).pathname.startsWith("/api/git-targets/"));
@@ -873,15 +883,18 @@ const json = async <T>(response: Response): Promise<T> => (await response.json()
  * Mate cannot read is refused, never drawn in part.
  */
 const decoded =
-  <S extends Schema.Decoder<unknown>>(schema: S) =>
+  <S extends Schema.Decoder<unknown>>(schema: S, what: string) =>
   async (response: Response): Promise<S["Type"]> =>
-    Option.getOrThrowWith(Schema.decodeUnknownOption(schema)(await bodyOf(response)), unreadable);
+    Option.getOrThrowWith(
+      Schema.decodeUnknownOption(schema)(await bodyOf(response, what)),
+      unreadable(what),
+    );
 
-const bodyOf = async (response: Response): Promise<unknown> => {
+const bodyOf = async (response: Response, what: string): Promise<unknown> => {
   try {
     return (await response.json()) as unknown;
   } catch {
-    throw unreadable();
+    throw unreadable(what)();
   }
 };
 
@@ -892,53 +905,59 @@ const bodyOf = async (response: Response): Promise<unknown> => {
 const readDeploysBeside = Schema.decodeUnknownOption(WithDeploys);
 
 const decodedAsked =
-  <S extends Schema.Decoder<unknown>>(schema: S) =>
+  <S extends Schema.Decoder<unknown>>(schema: S, what: string) =>
   async (response: Response): Promise<Asked<S["Type"]>> => {
-    const body = await bodyOf(response);
+    const body = await bodyOf(response, what);
     return {
-      made: Option.getOrThrowWith(Schema.decodeUnknownOption(schema)(body), unreadable),
+      made: Option.getOrThrowWith(Schema.decodeUnknownOption(schema)(body), unreadable(what)),
       deploys: Option.getOrUndefined(readDeploysBeside(body))?.deploys,
     };
   };
 
-const unreadable = () =>
-  new HqError({
-    kind: "refused",
-    code: "unreadable",
-    message: "HQ answered in a form this version of Mate does not read.",
-  });
+/** What the organization's structure is called where HQ's answer to it does not decode. */
+const STRUCTURE = "the organization's projects";
 
-const readChangeMetadata = decoded(ChangeMetadataResponse);
-const readChangeCommits = decoded(ChangeCommitsResponse);
-const readChangeVerdict = decoded(ChangeDetailResponse);
-const readIntakeView = decoded(HqIntakeView);
-const readAiKeys = decoded(Schema.Array(HqAiKeyView));
-const readAiKey = decoded(HqAiKeyView);
-const readSlack = decoded(HqSlackView);
-const readSlackChannels = decoded(HqSlackChannels);
-const readDiscord = decoded(HqDiscordView);
-const readChannel = decoded(HqChannelView);
-const readAppChannel = decoded(Schema.NullOr(HqChannelView));
-const readWebhook = decoded(HqWebhookView);
+/** An answer HQ gave about `what` in a shape this Mate does not decode: a version mismatch. */
+const unreadable = (what: string) => () =>
+  new HqError({ kind: "refused", code: "unreadable", message: hqDisagreesOn(what) });
+
+const readChangeMetadata = decoded(ChangeMetadataResponse, "a change's record");
+const readChangeCommits = decoded(ChangeCommitsResponse, "a change's commits");
+const readChangeVerdict = decoded(ChangeDetailResponse, "a change's review");
+const readIntakeView = decoded(HqIntakeView, "GitHub issues as tasks");
+const readAiKeys = decoded(Schema.Array(HqAiKeyView), "the organization's AI keys");
+const readAiKey = decoded(HqAiKeyView, "an AI key");
+const readSlack = decoded(HqSlackView, "the Slack app");
+const readSlackChannels = decoded(HqSlackChannels, "the Slack app's channels");
+const readDiscord = decoded(HqDiscordView, "the Discord application");
+const readChannel = decoded(HqChannelView, "a project's channel");
+const readAppChannel = decoded(Schema.NullOr(HqChannelView), "a project's channel");
+const readWebhook = decoded(HqWebhookView, "a webhook");
 /** HQ answers an application's lists wrapped: `{ webhooks }`, `{ schedules }`. */
-const readWebhooks = decoded(Schema.Struct({ webhooks: Schema.Array(HqWebhookView) }));
-const readSchedule = decoded(HqScheduleView);
-const readSchedules = decoded(Schema.Struct({ schedules: Schema.Array(HqScheduleView) }));
-const readAppTasks = decoded(HqAppTasksView);
-const readTaskLimits = decoded(HqTaskLimitsView);
-const readGithub = decoded(HqGithubView);
-const readGithubManifest = decoded(HqGithubManifestView);
-const readGithubInstall = decoded(HqGithubInstallView);
-const readComment = decoded(HqChangeComment);
-const readChange = decoded(HqChange);
-const readMerged = decodedAsked(HqChange);
+const readWebhooks = decoded(
+  Schema.Struct({ webhooks: Schema.Array(HqWebhookView) }),
+  "a project's webhooks",
+);
+const readSchedule = decoded(HqScheduleView, "a schedule");
+const readSchedules = decoded(
+  Schema.Struct({ schedules: Schema.Array(HqScheduleView) }),
+  "a project's schedules",
+);
+const readAppTasks = decoded(HqAppTasksView, "a project's tasks");
+const readTaskLimits = decoded(HqTaskLimitsView, "the limits per task");
+const readGithub = decoded(HqGithubView, "the organization's GitHub apps");
+const readGithubManifest = decoded(HqGithubManifestView, "a GitHub app's manifest");
+const readGithubInstall = decoded(HqGithubInstallView, "a GitHub app's install link");
+const readComment = decoded(HqChangeComment, "a change's comment");
+const readChange = decoded(HqChange, "a change");
+const readMerged = decodedAsked(HqChange, "a merged change");
 
-const readGitCredential = decoded(GitCredential);
-const readGitCredentialList = decoded(GitCredentialList);
-const readRecipeTier = decoded(RecipeTierResponse);
-const readReleases = decoded(ReleaseListResponse);
-const readRelease = decodedAsked(Release);
-const readDeploys = decoded(WithDeploys);
+const readGitCredential = decoded(GitCredential, "a Git password");
+const readGitCredentialList = decoded(GitCredentialList, "Git passwords");
+const readRecipeTier = decoded(RecipeTierResponse, "a recipe's tier");
+const readReleases = decoded(ReleaseListResponse, "an application's releases");
+const readRelease = decodedAsked(Release, "a release");
+const readDeploys = decoded(WithDeploys, "deploys");
 
 /** A write HQ holds made, read back for its lost answer: its deploys are the stream's to say. */
 const heldAsked = <T>(made: T | undefined): Asked<T> | undefined =>
@@ -1348,10 +1367,13 @@ export function makeHqApi(input: {
     Option.getOrThrowWith(
       Option.fromUndefinedOr(
         hqStructureOf(
-          await bodyOf(await authorized("/api/structure", signal === undefined ? {} : { signal })),
+          await bodyOf(
+            await authorized("/api/structure", signal === undefined ? {} : { signal }),
+            STRUCTURE,
+          ),
         ),
       ),
-      unreadable,
+      unreadable(STRUCTURE),
     );
   const appOf = async (appId: string) => (await structureOf()).apps.find((app) => app.id === appId);
   // Only a lost release/rollback write answer needs this direct confirmation, never a load.
@@ -1425,7 +1447,10 @@ export function makeHqApi(input: {
       );
     },
     registerBirthChief: async (birthId) =>
-      decoded(Schema.Struct({ projectId: Schema.String }))(
+      decoded(
+        Schema.Struct({ projectId: Schema.String }),
+        "a new Mate's Chief",
+      )(
         await authorized(
           `/api/births/${encodeURIComponent(birthId)}/chief`,
           { method: "PUT", body: JSON.stringify(await withAccess({})) },
@@ -1447,6 +1472,7 @@ export function makeHqApi(input: {
             by: Schema.String,
             at: Schema.String,
           }),
+          "a new Mate's attempt",
         )(
           await authorized(
             `/api/births/${encodeURIComponent(birthId)}/attempt`,
@@ -1531,12 +1557,16 @@ export function makeHqApi(input: {
         )
       ).deploys,
     autoUpdatePolicy: async (signal) =>
-      decoded(HqAutoUpdatePolicy)(
-        await authorized("/api/auto-update", signal === undefined ? {} : { signal }),
-      ),
+      decoded(
+        HqAutoUpdatePolicy,
+        "automatic Mate updates",
+      )(await authorized("/api/auto-update", signal === undefined ? {} : { signal })),
     savePersonaTemplate: async (id, template) => {
       try {
-        return await decoded(PersonaTemplate)(
+        return await decoded(
+          PersonaTemplate,
+          "a persona template",
+        )(
           await authorized(
             `/api/persona-templates/${encodeURIComponent(id)}`,
             { method: "PUT", body: JSON.stringify(await withAccess(template)) },
@@ -1559,7 +1589,10 @@ export function makeHqApi(input: {
     setAutoUpdatePolicy: async (enabled) => {
       // Neither a matching boolean nor a later revision identifies a lost PUT as ours.
       try {
-        return await decoded(HqAutoUpdatePolicy)(
+        return await decoded(
+          HqAutoUpdatePolicy,
+          "automatic Mate updates",
+        )(
           await authorized(
             "/api/auto-update",
             { method: "PUT", body: JSON.stringify(await withAccess({ enabled })) },
@@ -1572,7 +1605,10 @@ export function makeHqApi(input: {
       }
     },
     gitTargetWrite: async (requestId, intent, candidate) =>
-      decoded(HqGitOperationReceipt)(
+      decoded(
+        HqGitOperationReceipt,
+        "a Git operation",
+      )(
         await authorized(
           `/api/git-targets/${encodeURIComponent(requestId)}`,
           {
@@ -1586,7 +1622,10 @@ export function makeHqApi(input: {
       ),
     gitTargetReceipt: async (requestId, intent) =>
       (
-        await decoded(Schema.Struct({ receipt: Schema.NullOr(HqGitOperationReceipt) }))(
+        await decoded(
+          Schema.Struct({ receipt: Schema.NullOr(HqGitOperationReceipt) }),
+          "a Git operation",
+        )(
           await authorized(`/api/git-targets/${encodeURIComponent(requestId)}/receipt`, {
             method: "POST",
             body: JSON.stringify(await withAccess({ intent })),
@@ -1594,7 +1633,10 @@ export function makeHqApi(input: {
         )
       ).receipt,
     lifecycleWrite: async (requestId, intent) =>
-      decoded(HqLifecycleRecord)(
+      decoded(
+        HqLifecycleRecord,
+        "a lifecycle operation",
+      )(
         await authorized(
           `/api/lifecycle/${encodeURIComponent(requestId)}`,
           { method: "POST", body: JSON.stringify(await withAccess(intent)) },
@@ -1603,9 +1645,10 @@ export function makeHqApi(input: {
       ),
     lifecycleReceipt: async (requestId) =>
       (
-        await decoded(Schema.Struct({ record: Schema.NullOr(HqLifecycleRecord) }))(
-          await authorized(`/api/lifecycle/${encodeURIComponent(requestId)}`),
-        )
+        await decoded(
+          Schema.Struct({ record: Schema.NullOr(HqLifecycleRecord) }),
+          "a lifecycle operation",
+        )(await authorized(`/api/lifecycle/${encodeURIComponent(requestId)}`))
       ).record,
     updateMate: async (projectId, change) => {
       await authorized(
@@ -1784,7 +1827,8 @@ export function makeHqApi(input: {
       );
     },
     slack: async () => readSlack(await authorized("/api/org/slack")),
-    slackManifest: async () => bodyOf(await authorized("/api/org/slack/manifest")),
+    slackManifest: async () =>
+      bodyOf(await authorized("/api/org/slack/manifest"), "the Slack app's manifest"),
     connectSlack: async (request) =>
       readSlack(
         await authorized(
@@ -2002,17 +2046,21 @@ export function makeHqApi(input: {
       );
       // HQ took it: an answer this build cannot read leaves where the cap stands unknown.
       try {
-        return await decoded(HqRepoStorage)(response);
+        return await decoded(HqRepoStorage, "a repository's storage")(response);
       } catch {
         throw uncertain();
       }
     },
     observeCredential: async (projectId) =>
-      decoded(ObserveCredential)(
-        await authorized(`/api/mates/${encodeURIComponent(projectId)}/observe-credential`),
-      ),
+      decoded(
+        ObserveCredential,
+        "observe authorization",
+      )(await authorized(`/api/mates/${encodeURIComponent(projectId)}/observe-credential`)),
     establishZcpAuthorization: async (projectId, context) =>
-      decoded(ObserveCredential)(
+      decoded(
+        ObserveCredential,
+        "observe authorization",
+      )(
         await authorized(
           `/api/mates/${encodeURIComponent(projectId)}/zcp-authorization`,
           {
@@ -2052,7 +2100,10 @@ export function makeHqApi(input: {
       params: GitBrowseParams<R>,
       signal?: AbortSignal,
     ) =>
-      decoded(GIT_BROWSE_READS[read].value as Schema.Decoder<GitBrowseValue<R>>)(
+      decoded(
+        GIT_BROWSE_READS[read].value as Schema.Decoder<GitBrowseValue<R>>,
+        "a repository's code",
+      )(
         await authorized(
           browsePathOrRefuse(read, appId, repo, params),
           signal === undefined ? {} : { signal },
@@ -2114,7 +2165,10 @@ export function makeHqApi(input: {
     // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
     // this one where it tags the same `main` with the same commits.
     reviewRelease: async (appId, request, signal) =>
-      decoded(ReleaseServicePlan)(
+      decoded(
+        ReleaseServicePlan,
+        "a release's plan",
+      )(
         await authorized(`${releasesPath(appId)}/review`, {
           ...(signal === undefined ? {} : { signal }),
           method: "POST",

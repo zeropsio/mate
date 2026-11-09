@@ -9,7 +9,13 @@
  * Each part paints in its final shape while it is read (`IntakeRoom`): nothing it reads moves what
  * the person is about to press.
  */
-import type { AppSetting, OrgSetting, SettingValue } from "@t3tools/client-runtime/data";
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
+import {
+  TASK_SOURCES_UNSUPPORTED,
+  type AppSetting,
+  type OrgSetting,
+  type SettingValue,
+} from "@t3tools/client-runtime/data";
 import type { HqDiscordView, HqSlackView, HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import {
   automatedModelOf,
@@ -20,6 +26,7 @@ import { CpuIcon, TimerIcon, WalletIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { WaitLine } from "../zerops/WaitLine";
 import { useOrgTaskSource, type TaskSourceControls } from "~/zerops/useTaskSourceSettings";
 
 import { Badge } from "../ui/badge";
@@ -135,7 +142,7 @@ export function TaskSourcesUnsupported() {
       className="text-sm text-muted-foreground"
       data-zerops-surface="settings-task-sources-unsupported"
     >
-      Update HQ to take tasks from Slack, Discord, webhooks and schedules.
+      {TASK_SOURCES_UNSUPPORTED}
     </p>
   );
 }
@@ -147,24 +154,29 @@ function ConnectedBy({ line }: { readonly line: string | null }) {
   return line === null ? null : <p className="text-xs text-muted-foreground">{line}</p>;
 }
 
-const TASK_SOURCES_UPDATE = "Update HQ to take tasks from Slack, Discord, webhooks and schedules.";
-
 /**
  * What a section's status line says of its setting: its own line once known, else that it is
  * read, refused or failed — there from the first frame, so the line never appears under it.
  */
-function statusOf<T>(setting: SettingValue<T>, line: (value: T) => string): string {
+function statusOf<T>(
+  setting: SettingValue<T>,
+  line: (value: T) => string | null,
+  what: string,
+): ReactNode {
   switch (setting.state) {
     case "known":
       return line(setting.held);
     case "failed":
-      return setting.words;
+      return couldntRead(what, setting.words);
     case "withheld":
       return WITHHELD;
     default:
-      return "Reading…";
+      return READING;
   }
 }
+
+/** A setting still read, in a row's status line: bounded by HQ's own deadline on each read. */
+const READING = <WaitLine inline text="Reading…" />;
 
 /**
  * A connection's row opened by its press, folded again once it disconnects — and once it connects,
@@ -205,6 +217,7 @@ function sourceLine<T>(
   setting: SettingValue<T>,
   purpose: string,
   connected: (held: T) => string,
+  what: string,
 ): ReactNode {
   const problem = taskSourceProblem(read.action);
   if (problem !== null)
@@ -217,15 +230,15 @@ function sourceLine<T>(
     const said = connected(setting.held);
     return said === "Not connected" ? purpose : said;
   }
-  if (setting.state === "failed") return setting.words;
+  if (setting.state === "failed") return couldntRead(what, setting.words);
   if (setting.state === "withheld") return WITHHELD;
-  if (setting.state === "unsupported") return TASK_SOURCES_UPDATE;
+  if (setting.state === "unsupported") return TASK_SOURCES_UNSUPPORTED;
   return purpose;
 }
 
 /**
  * A connection's one press: *Connect* while it is not — a quiet one, as these sources are optional,
- * its steps carrying their own Cancel — *Manage* once it is, *Read again* where HQ failed; and
+ * its steps carrying their own Cancel — *Manage* once it is, *Try again* where HQ failed; and
  * while it is read, *Connect*'s room, held unseen so nothing moves as it lands.
  */
 function SourceAction({
@@ -247,7 +260,7 @@ function SourceAction({
   if (setting.state === "failed")
     return (
       <Button onClick={again} size="sm" variant="secondary">
-        Read again
+        Try again
       </Button>
     );
   if (connected === null)
@@ -286,7 +299,7 @@ function AppRows({
     <ul className="grid gap-3">
       {apps === null ? (
         <li className="grid gap-2">
-          <p className="text-sm font-medium text-muted-foreground">Reading…</p>
+          <WaitLine text="Reading…" />
           <IntakeRoom>{null}</IntakeRoom>
         </li>
       ) : (
@@ -351,6 +364,7 @@ export function SlackSettingsView({
             setting,
             "Mention Mate in a project's channel: the thread becomes the task, and Mate answers there.",
             slackLine,
+            "the Slack app",
           )
         )
       }
@@ -415,17 +429,18 @@ function SlackChannelsField({ channels }: { readonly channels: Controls<"hqSlack
         {setting.state === "known"
           ? slackChannelsLine(setting.held)
           : setting.state === "failed"
-            ? setting.words
-            : "Reading…"}
+            ? couldntRead("the bot's channels", setting.words)
+            : READING}
         {setting.state === "known" || setting.state === "failed" ? (
           <>
             {" "}
+            {/* Known: the bot may have joined a channel in Slack since; failed: the read again. */}
             <InlineButton
               onClick={() => {
                 channels.again();
               }}
             >
-              Look again
+              {setting.state === "known" ? "Check again" : "Try again"}
             </InlineButton>
           </>
         ) : null}
@@ -677,6 +692,7 @@ export function DiscordSettingsView({
           held.connected
             ? "People who linked their Discord start tasks with /mate task"
             : "Not connected",
+        "the Discord application",
       )}
       mark={<DiscordMark />}
       name="Discord"
@@ -940,7 +956,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
         held === null ? (
           setting.state === "failed" ? (
             <Button onClick={again} size="sm" variant="secondary">
-              Read again
+              Try again
             </Button>
           ) : (
             <HeldRoom template={<LimitsFields cost="" minutes="" />}>{null}</HeldRoom>
@@ -980,7 +996,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
         )
       }
       id={searchableSetting("automation-limits").id}
-      line={statusOf(setting, limitsLine)}
+      line={statusOf(setting, limitsLine, "the limits per task")}
       mark={<TimerIcon className="size-5" />}
       name="Limits per task"
       surface="settings-task-limits"
@@ -1018,53 +1034,59 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
   return (
     <IntegrationSetting
       control={
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (held === null) return;
-            const budget = readBudget(shown);
-            if ("error" in budget) {
-              setRefusal(budget.error);
-              return;
-            }
-            setRefusal(null);
-            save.send();
-            write({
-              kind: "task-limits",
-              limits: {
-                minutes: held.minutes,
-                costUsd: held.costUsd,
-                monthlyBudgetUsd: budget.budgetUsd,
-              },
-            });
-          }}
-        >
-          <Label htmlFor={fieldId}>USD a month</Label>
-          <div className="w-24">
-            <Input
-              disabled={held === null}
-              id={fieldId}
-              inputMode="decimal"
-              onChange={(event) => {
-                setTyped(event.target.value);
-              }}
-              placeholder="No budget"
-              size="sm"
-              value={shown}
-            />
-          </div>
-          <Button
-            disabled={held === null || sent || working(read.action) || typed === null}
-            size="sm"
-            type="submit"
-            variant="secondary"
-          >
-            <SaveWords sent={sent} />
+        setting.state === "failed" ? (
+          <Button onClick={controls.again} size="sm" variant="secondary">
+            Try again
           </Button>
-        </form>
+        ) : (
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (held === null) return;
+              const budget = readBudget(shown);
+              if ("error" in budget) {
+                setRefusal(budget.error);
+                return;
+              }
+              setRefusal(null);
+              save.send();
+              write({
+                kind: "task-limits",
+                limits: {
+                  minutes: held.minutes,
+                  costUsd: held.costUsd,
+                  monthlyBudgetUsd: budget.budgetUsd,
+                },
+              });
+            }}
+          >
+            <Label htmlFor={fieldId}>USD a month</Label>
+            <div className="w-24">
+              <Input
+                disabled={held === null}
+                id={fieldId}
+                inputMode="decimal"
+                onChange={(event) => {
+                  setTyped(event.target.value);
+                }}
+                placeholder="No budget"
+                size="sm"
+                value={shown}
+              />
+            </div>
+            <Button
+              disabled={held === null || sent || working(read.action) || typed === null}
+              size="sm"
+              type="submit"
+              variant="secondary"
+            >
+              <SaveWords sent={sent} />
+            </Button>
+          </form>
+        )
       }
-      line={held === null ? "Reading…" : budgetLine(held)}
+      line={statusOf(setting, budgetLine, "the monthly budget")}
       mark={<WalletIcon className="size-5" />}
       name="Monthly budget"
       surface="settings-monthly-budget"
@@ -1123,7 +1145,7 @@ export function AutomatedModelView({
     ) : save.sent ? (
       "Saving…"
     ) : currentOffer === undefined ? (
-      statusOf(setting, () => "")
+      statusOf(setting, () => "", "the model automated Mates run")
     ) : (
       `${currentOffer.name} · ${modelPriceWords(currentOffer)}`
     );

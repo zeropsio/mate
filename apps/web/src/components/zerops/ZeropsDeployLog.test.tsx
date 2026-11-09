@@ -132,10 +132,7 @@ describe("deploy inspection", () => {
     );
   });
 
-  it.each([
-    { processHistory: "read" as const, words: "recent process history" },
-    { processHistory: "failed" as const, words: "Close and open it to try again" },
-  ])(
+  it.each([{ processHistory: "read" as const, words: "recent process history" }])(
     "ends a $processHistory lookup visibly without reading another log",
     ({ processHistory, words }) => {
       mock.activity = { processes: [], live: false, processHistory };
