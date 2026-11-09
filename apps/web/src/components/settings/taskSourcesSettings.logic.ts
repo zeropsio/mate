@@ -138,8 +138,6 @@ export function workingWords(verb: TaskSourceWrite["kind"]): string {
       return "Disconnecting…";
     case "github-forget":
       return "Removing…";
-    case "github-confirm":
-      return "Confirming…";
     case "github-manifest":
     case "github-install":
       return "Opening GitHub…";

@@ -587,11 +587,6 @@ export interface HqApi {
     githubAppId: number,
     request: HqGithubInstallRequest,
   ) => Promise<HqGithubInstallView>;
-  /**
-   * An Owner or Admin vouches for an app nobody sealed, once HQ proved its key still answers
-   * GitHub (`POST /api/org/github/apps/:appId/confirm`).
-   */
-  readonly githubConfirm?: (githubAppId: number) => Promise<void>;
   /** HQ acts on a waiting installation's repositories (`POST …/installations/:id/accept`). */
   readonly githubAcceptInstallation?: (installationId: number) => Promise<void>;
   /** GitHub suspends an installation of the app (`POST …/installations/:id/suspend`). */
@@ -1941,13 +1936,6 @@ export function makeHqApi(input: {
       await authorized(
         `/api/org/github/apps/${String(githubAppId)}`,
         { method: "DELETE", body: JSON.stringify(await withAccess({})) },
-        true,
-      );
-    },
-    githubConfirm: async (githubAppId) => {
-      await authorized(
-        `/api/org/github/apps/${String(githubAppId)}/confirm`,
-        { method: "POST", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },

@@ -269,9 +269,9 @@ export function openingApp(
   );
 }
 
-/** Said where Connect would act through an app that waits for an Owner or Admin's Confirm. */
+/** Said where Connect would act through an app nobody is recorded to have set up. */
 export const unsealedWords = (app: GitMirrorAppEntry) =>
-  `${app.name} waits for an Owner or Admin to confirm it in Settings › GitHub before Mate uses it.`;
+  `${app.name} isn't in use: nobody is recorded to have set it up. An Owner or Admin makes it again in Settings › GitHub.`;
 
 /** The steps a connect shows, each as HQ's record tells it. */
 export type ConnectStep = "connect" | "push" | "rules";
