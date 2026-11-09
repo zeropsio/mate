@@ -57,6 +57,8 @@ import type { CardReady, PlaceLine } from "~/components/zerops/projects/projectC
 import { ZeropsGitPanel, type ZeropsGitRepository } from "~/components/zerops/ZeropsGitPanel";
 import { ZeropsServiceMap } from "~/components/zerops/ZeropsServiceMap";
 import { ZeropsAgentAuthCard } from "~/components/zerops/ZeropsAgentAuthCard";
+import { MateUpdateLine } from "~/components/zerops/MateUpdateLine";
+import { ZeropsMateVerb } from "~/components/zerops/ZeropsMateCard";
 import { GitCommitsFold } from "~/components/zerops/ZeropsGitBlockCommits";
 import type { AppRouter } from "~/router";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
@@ -344,6 +346,8 @@ interface Scenario {
    * alone, one of them opened, or a state with no files.
    */
   readonly changes: "both" | "branch" | "open" | "nothing" | "no-code" | "reading";
+  /** The Mate's home needs the person: an agent signed in by someone else, an update that waits. */
+  readonly homeNeedsYou?: boolean;
 }
 
 const TEA = "Tea Shop";
@@ -377,8 +381,9 @@ const SCENARIOS: ReadonlyArray<Scenario> = [
   },
   {
     id: "ready",
+    homeNeedsYou: true,
     changes: "branch",
-    title: "Ready to merge · production and stage · in sync",
+    title: "Ready to merge · production and stage · in sync · home needs you",
     project: project(TEA, [PRODUCTION, STAGE]),
     repositories: [
       repository({
@@ -731,6 +736,50 @@ const agents = (
   />
 );
 
+/** Claude Code signed in by a crewmate, which needs this person; Codex signed in by them. */
+const AGENTS_ATTENTION: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      agentId: "claude-code",
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      state: "authorized",
+      providerAuth: "unknown",
+      authorizedBy: { subject: "u-juno" },
+    },
+    {
+      agentId: "codex",
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      state: "authorized",
+      providerAuth: "unknown",
+      authorizedBy: { subject: "u-me" },
+    },
+  ],
+} as ZeropsAgentAuthSnapshot;
+
+const agentsAttention = (
+  <ZeropsAgentAuthCard
+    conversationAgentId="claude-code"
+    density="compact"
+    onCancel={() => {}}
+    onSignIn={() => {}}
+    snapshot={AGENTS_ATTENTION}
+    viewerSubject="u-me"
+  />
+);
+
+/** The Mate's update line where its update waits on the person, with its verb. */
+const updateWaits = (
+  <MateUpdateLine
+    line={{ text: "Update available — needs your confirmation", tone: "default" }}
+    verb={<ZeropsMateVerb label="Update" onClick={() => {}} />}
+  />
+);
+
 function Frame({
   width,
   label,
@@ -793,9 +842,15 @@ function HarnessPage() {
                       <Frame label={`Zerops · ${scenario.title}`} width={width}>
                         <div className="h-full overflow-auto p-4">
                           <ZeropsServiceMap
-                            agents={agents}
+                            agents={scenario.homeNeedsYou === true ? agentsAttention : agents}
                             currentServiceId="svc-zcp"
-                            mateUpdate={<span>Mate 0.16.112 · up to date</span>}
+                            mateUpdate={
+                              scenario.homeNeedsYou === true ? (
+                                updateWaits
+                              ) : (
+                                <span>Mate 0.16.112 · up to date</span>
+                              )
+                            }
                             liveness="live"
                             mate={{ name: "Dana", tint: "rose", face: "idle" }}
                             project={scenario.project}

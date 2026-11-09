@@ -80,7 +80,7 @@ export function OpenCodeAgentLine({
           <OpenCodeIcon className="size-3.5" />
         </span>
         <span className="shrink-0 text-body font-medium text-foreground">OpenCode</span>
-        <span className="min-w-0 truncate text-caption text-muted-foreground">
+        <span className="min-w-0 truncate text-body text-muted-foreground">
           {keyed ? "a model key is set" : "needs a model key"}
         </span>
       </span>
