@@ -54,6 +54,7 @@ import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { useMateOnPanel } from "./useMateOnPanel";
 import { useMatePanelProject } from "./useMatePanelProject";
 import { ZeropsServiceMap } from "./ZeropsServiceMap";
+import { MatePanelColumn } from "./MatePanelPlaces";
 import { MicroLabel } from "./primitives";
 import { automatedAgentsLine } from "~/zerops/automatedMate.logic";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
@@ -259,21 +260,24 @@ export function ZeropsPanel({
   return (
     <>
       <ScrollArea className="h-full">
-        <div className="mx-auto w-full max-w-3xl space-y-5 p-4" data-zerops-project-panel>
-          {body}
-          {topology.error === undefined ? null : (
-            <div>
-              <Button variant="secondary" size="sm" onClick={topology.again}>
-                Try again
-              </Button>
-            </div>
-          )}
-          {agents === null || hasCurrentControlPlane ? null : (
-            <section className="space-y-2" data-zerops-agent-auth-tray>
-              <MicroLabel>Coding agents</MicroLabel>
-              {agents}
-            </section>
-          )}
+        <div className="pb-4">
+          {/* The Code page's own column: the project's card stands where it does there. */}
+          <MatePanelColumn data-zerops-project-panel>
+            {body}
+            {topology.error === undefined ? null : (
+              <div>
+                <Button variant="secondary" size="sm" onClick={topology.again}>
+                  Try again
+                </Button>
+              </div>
+            )}
+            {agents === null || hasCurrentControlPlane ? null : (
+              <section className="space-y-2" data-zerops-agent-auth-tray>
+                <MicroLabel>Coding agents</MicroLabel>
+                {agents}
+              </section>
+            )}
+          </MatePanelColumn>
         </div>
       </ScrollArea>
       {authorizationAgent === undefined ? null : (

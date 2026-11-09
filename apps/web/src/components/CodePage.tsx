@@ -44,6 +44,7 @@ import {
 } from "./ui/menu";
 import { Toggle, ToggleGroup } from "./ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { MatePanelColumn } from "./zerops/MatePanelPlaces";
 import { SectionLabel } from "./zerops/system";
 
 /** One file of "What changed", folded unless opened. */
@@ -415,19 +416,22 @@ export function CodePage({
         sectionTitle={sectionTitle}
         composerDraftTarget={composerDraftTarget}
         renderCodeViewHeader={() => (
-          <div className="flex min-w-0 flex-col gap-7 px-4 pt-4 pb-2.5">
-            {top}
-            <section
-              className="flex min-w-0 scroll-mt-0 flex-col gap-2.5"
-              data-code-section="changes"
-              ref={setChanges}
-            >
-              <SectionLabel>What changed</SectionLabel>
-              {toolbar}
-              {notices}
-              {commits}
-              {state}
-            </section>
+          <div className="pb-2.5">
+            {/* The Zerops page's own column: the project's card stands where it does there. */}
+            <MatePanelColumn>
+              {top}
+              <section
+                className="flex min-w-0 scroll-mt-0 flex-col gap-2.5"
+                data-code-section="changes"
+                ref={setChanges}
+              >
+                <SectionLabel>What changed</SectionLabel>
+                {toolbar}
+                {notices}
+                {commits}
+                {state}
+              </section>
+            </MatePanelColumn>
           </div>
         )}
         renderHeaderPrefix={(fileDiff, fileKey, collapsed) => {
