@@ -243,8 +243,8 @@ function ServiceHeader({
 function Meters({ row, usageRead }: { row: ZeropsServiceRow; usageRead: boolean }) {
   if (usageRead && row.metrics.every((metric) => metric.value === undefined)) return null;
   return (
-    <div className="mt-2 min-w-0" data-zerops-service-resources>
-      <ServiceMeters row={row} usageRead={usageRead} />
+    <div className="@container mt-2 min-w-0" data-zerops-service-resources>
+      <ServiceMeters fit row={row} usageRead={usageRead} />
     </div>
   );
 }

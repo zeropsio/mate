@@ -59,7 +59,7 @@ export function ServiceRow({
   const said = state ?? <ServiceState row={row} />;
   const meters =
     row.compute && row.platform !== undefined ? (
-      <ServiceMeters row={row.platform} usageRead={usageRead} />
+      <ServiceMeters fit={density === "compact"} row={row.platform} usageRead={usageRead} />
     ) : null;
   const menu = (
     <>
@@ -72,7 +72,7 @@ export function ServiceRow({
   if (density === "compact")
     return (
       <li
-        className="flex flex-col gap-1 border-t border-border/60 py-2 first:border-t-0"
+        className="@container flex flex-col gap-1 border-t border-border/60 py-2 first:border-t-0"
         data-zerops-service-row="compact"
         data-zerops-place-service={row.hostname}
       >
@@ -197,14 +197,18 @@ function ServiceMenu({
 
 /**
  * A compute service's CPU, RAM and disk on one line, each against what it holds with its last day
- * beside it. Props: `row` (the platform's `ZeropsServiceRow`); `usageRead`.
+ * beside it. Props: `row` (the platform's `ZeropsServiceRow`); `usageRead`; `fit` (inside an
+ * `@container` too narrow for three graphs, a panel at 420 px, the numbers keep their one line and
+ * the day graphs give way).
  */
 export function ServiceMeters({
   row,
   usageRead,
+  fit = false,
 }: {
   readonly row: ZeropsServiceRow;
   readonly usageRead: boolean;
+  readonly fit?: boolean;
 }) {
   return (
     <span
@@ -217,6 +221,7 @@ export function ServiceMeters({
           key={meter.id}
           label={meter.label}
           metric={row.metrics.find((metric) => metric.id === meter.id)}
+          fit={fit}
           trend={row.trends?.[meter.id]}
           usageRead={usageRead}
         />
@@ -232,7 +237,9 @@ function ServiceMeter({
   trend,
   id,
   usageRead,
+  fit,
 }: {
+  readonly fit: boolean;
   readonly label: string;
   readonly metric: ZeropsServiceMetric | undefined;
   readonly trend: Parameters<typeof ResourceGraph>[0]["trend"] | undefined;
@@ -256,7 +263,13 @@ function ServiceMeter({
           )}
         </span>
       )}
-      {trend === undefined || trend.length === 0 ? null : <ResourceGraph id={id} trend={trend} />}
+      {trend === undefined || trend.length === 0 ? null : fit ? (
+        <span className="@max-sm:hidden">
+          <ResourceGraph id={id} trend={trend} />
+        </span>
+      ) : (
+        <ResourceGraph id={id} trend={trend} />
+      )}
     </span>
   );
 }
