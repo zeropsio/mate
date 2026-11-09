@@ -55,6 +55,17 @@ export interface GroupEnvironmentService {
 }
 
 /**
+ * HQ's words for a creation that failed, where they say something: a reason that only points at
+ * what HQ did not keep ("the import of db failed: See metadata") tells a person nothing, and the
+ * page's own sentence already names the service.
+ */
+function creationReason(reason: string | null | undefined): string | undefined {
+  const said = reason?.trim();
+  if (said === undefined || said.length === 0) return undefined;
+  return /see metadata\.?$/iu.test(said) ? undefined : said;
+}
+
+/**
  * A release that had to create a service in a production before deploying to it, and did not: the
  * release's `delta` job there ended without going live. HQ then refuses every deploy of that
  * release (`mate-hq apps/hq/src/deploys.ts` `moveOn`), so nothing of it runs.
@@ -289,7 +300,7 @@ export function canonicalEnvironmentRowInputsOf(input: {
               job.cause === "release" &&
               job.ref !== null &&
               (jobFailed(job) || job.state === "unresolved")
-                ? [{ tag: job.ref, reason: job.reason?.trim() || undefined }]
+                ? [{ tag: job.ref, reason: creationReason(job.reason) }]
                 : [],
             );
       return {
