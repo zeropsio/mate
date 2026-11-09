@@ -7,9 +7,15 @@
  * Read from the release the flow offers (`useReleaseOffer`) and the card's reading of it
  * (`cardReady`). Pure: no React.
  */
-import { flowVerbLabel, REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
+import {
+  flowVerbLabel,
+  releaseFailureOf,
+  REVIEW_RELEASE_LABEL,
+} from "@t3tools/client-runtime/zerops";
+import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 
 import type { CardReady } from "../projects/projectCard.logic";
+import { mainStageOf } from "../review/reviewReads";
 
 export type NextReleaseView =
   | { readonly kind: "none" }
@@ -93,5 +99,30 @@ export function nextReleaseView(input: {
     title: nextReleaseTitle(ready),
     facts: readyFacts(ready, input.onStage),
     verb: REVIEW_RELEASE_LABEL,
+  };
+}
+
+/**
+ * The release waiting for production as an application's flow reads it (`flow.release.summary`),
+ * in the card's shape (`CardReady`), so a page holding a `ZeropsProjectFlow` builds `NextRelease`
+ * as a page holding a `GroupFlow` does (`cardReady`). `undefined` while HQ has not read what a
+ * release would carry, and where it carries nothing.
+ */
+export function readyOfFlow(flow: ZeropsProjectFlow): CardReady | undefined {
+  const { summary, summaryRead } = flow.release;
+  if (summary === undefined || summaryRead === "pending") return undefined;
+  if (summary.total === 0 && (summary.changeCount ?? 0) === 0) return undefined;
+  return {
+    count: summary.total,
+    ...(summary.changeCount === undefined ? {} : { changeCount: summary.changeCount }),
+    atLeast: summary.atLeast,
+    stage: mainStageOf(flow)?.name,
+    from: flow.releases.find((release) => release.standing === "live")?.tag,
+    failed:
+      releaseFailureOf({
+        releases: flow.releases,
+        environmentInputs: flow.environmentInputs,
+        stalled: flow.release.stalled,
+      }) !== undefined,
   };
 }

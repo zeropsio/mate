@@ -34,7 +34,8 @@ const METERS: ReadonlyArray<{ readonly id: "cores" | "memory" | "disk"; readonly
 /**
  * Props: `row` (`PlaceServiceRow`); `usageRead` (the platform's use is read: until then the meters
  * hold their room); `density` (default `table`); `state` (drawn in place of the row's own state
- * cell, e.g. a job under way); `menuItems` (`MenuItem`s before *Open in Zerops* in its ···);
+ * cell, e.g. a job under way); `actions` (before the ···, in both densities: a service's address
+ * buttons, a database's Data); `menuItems` (`MenuItem`s before *Open in Zerops* in its ···);
  * `children` (under the row: what the row has no width for — a job's line, a deploy log).
  * Renders an `<li>`: put it in a `ServiceList`.
  */
@@ -43,6 +44,7 @@ export function ServiceRow({
   usageRead,
   density = "table",
   state,
+  actions,
   menuItems,
   children,
 }: {
@@ -50,6 +52,7 @@ export function ServiceRow({
   readonly usageRead: boolean;
   readonly density?: "table" | "compact";
   readonly state?: ReactNode;
+  readonly actions?: ReactNode;
   readonly menuItems?: ReactNode;
   readonly children?: ReactNode;
 }) {
@@ -58,7 +61,14 @@ export function ServiceRow({
     row.compute && row.platform !== undefined ? (
       <ServiceMeters row={row.platform} usageRead={usageRead} />
     ) : null;
-  const menu = <ServiceMenu menuItems={menuItems} row={row} />;
+  const menu = (
+    <>
+      {actions === undefined || actions === null ? null : (
+        <span className="flex min-w-0 items-center gap-1">{actions}</span>
+      )}
+      <ServiceMenu menuItems={menuItems} row={row} />
+    </>
+  );
   if (density === "compact")
     return (
       <li
@@ -100,7 +110,7 @@ export function ServiceRow({
         </span>
         <span className="hidden min-w-0 @2xl/services:flex">{said}</span>
         <span className="hidden min-w-0 @2xl/services:flex">{meters}</span>
-        <span className="flex items-center justify-end">{menu}</span>
+        <span className="flex items-center justify-end gap-1">{menu}</span>
         {/* Narrower than the table: what it is and its state under its name, the meters under them. */}
         <span className="col-span-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 @2xl/services:hidden">
           {row.type === undefined ? null : (
