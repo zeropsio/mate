@@ -1,8 +1,10 @@
 /**
  * A proposal: what a Zerops tool asks the person to approve. The Chief's organization tools
  * (`zerops_org_*`) propose changes to the organization; a project's Mate proposes asking the
- * person's Chief (`zerops_propose_ask_chief`), or connecting an MCP server for its agents
- * (`zerops_propose_mcp`). Those tools never act. Each returns one document
+ * person's Chief (`zerops_propose_ask_chief`), connecting an MCP server for its agents
+ * (`zerops_propose_mcp`), creating the services its application's production lacks
+ * (`zerops_propose_create_service`), or releasing what waits for production
+ * (`zerops_propose_release`). Those tools never act. Each returns one document
  * with a top-level `proposal`; the person approves or declines it on its card, and the client
  * carries out an approved one as the person. The contract is zcp's (`../zcp/docs/spec-mate.md`,
  * org mode).
@@ -29,7 +31,9 @@ export type ZeropsProposalKind =
   | "domain.add"
   | "access.set"
   | "mcp.add"
-  | "env.reveal";
+  | "env.reveal"
+  | "service.create"
+  | "release.offer";
 
 interface ProposalHead {
   readonly id: string;
@@ -139,6 +143,24 @@ export interface ZeropsRevealProposalParams {
   readonly key: string;
 }
 
+/**
+ * The services the application's production tier declares and production lacks, by hostname, and
+ * the recipe's `main` the Mate read them at. Hostnames only: what creates them is HQ's plan.
+ */
+export interface ZeropsServiceCreateParams {
+  readonly services: ReadonlyArray<string>;
+  readonly recipeHead: string;
+}
+
+/**
+ * What waits for production, as HQ offered it when the Mate asked: the recipe's `main` the offer
+ * was read at, which pins the ask, and the release name HQ suggested.
+ */
+export interface ZeropsReleaseOfferParams {
+  readonly head: string;
+  readonly suggestion: string;
+}
+
 export type ZeropsProposal =
   | (ProposalHead & {
       readonly kind: "service.restart" | "service.start" | "service.stop";
@@ -180,6 +202,14 @@ export type ZeropsProposal =
       readonly kind: "env.reveal";
       readonly projectId: string;
       readonly params: ZeropsRevealProposalParams;
+    })
+  | (ProposalHead & {
+      readonly kind: "service.create";
+      readonly params: ZeropsServiceCreateParams;
+    })
+  | (ProposalHead & {
+      readonly kind: "release.offer";
+      readonly params: ZeropsReleaseOfferParams;
     });
 
 const Words = Schema.NonEmptyString;
@@ -307,6 +337,21 @@ const RevealProposal = Schema.Struct({
   params: RevealParams,
 });
 
+const ServiceCreateProposal = Schema.Struct({
+  ...Head,
+  kind: Schema.Literal("service.create"),
+  params: Schema.Struct({
+    services: Schema.NonEmptyArray(Words),
+    recipeHead: Words,
+  }),
+});
+
+const ReleaseOfferProposal = Schema.Struct({
+  ...Head,
+  kind: Schema.Literal("release.offer"),
+  params: Schema.Struct({ head: Words, suggestion: Words }),
+});
+
 /** A reveal's params hold its name and scope and nothing else: never a value. */
 const decodeRevealParams = Schema.decodeUnknownOption(RevealParams, { onExcessProperty: "error" });
 
@@ -320,6 +365,8 @@ const ProposalDocument = Schema.Struct({
     AccessProposal,
     McpProposal,
     RevealProposal,
+    ServiceCreateProposal,
+    ReleaseOfferProposal,
   ]),
 });
 
@@ -479,6 +526,26 @@ function shaped(proposal: DecodedProposal, params: unknown): ZeropsProposal | un
       const mcp = mcpParams(proposal.params);
       if (mcp === undefined) return undefined;
       return { ...head, kind: "mcp.add", projectId: proposal.projectId, params: mcp };
+    }
+    case "service.create": {
+      // Each service once, by its hostname: a blank one names nothing to create.
+      const services = [...new Set(proposal.params.services.map((service) => service.trim()))];
+      if (services.some((service) => service === "") || blank(proposal.params.recipeHead))
+        return undefined;
+      return {
+        ...head,
+        kind: "service.create",
+        params: { services, recipeHead: proposal.params.recipeHead },
+      };
+    }
+    case "release.offer": {
+      const { head: offerHead, suggestion } = proposal.params;
+      if (blank(offerHead) || blank(suggestion)) return undefined;
+      return {
+        ...head,
+        kind: "release.offer",
+        params: { head: offerHead, suggestion: suggestion.trim() },
+      };
     }
   }
 }

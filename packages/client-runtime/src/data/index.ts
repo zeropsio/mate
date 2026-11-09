@@ -265,6 +265,8 @@ export {
   type RecordedEnvironment,
 } from "./projections/recordedEnvironment.ts";
 export { operationProgress, type OperationProgress } from "./projections/operation.ts";
+export { serviceCreation, type ServiceCreation } from "./projections/serviceCreation.ts";
+export type { CreateServicesResult } from "./operations/createServices.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
 export { operationWait, type OperationWait } from "./projections/operationWait.ts";
 export {

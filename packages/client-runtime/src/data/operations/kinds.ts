@@ -28,6 +28,7 @@ import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { PERSONA_TEMPLATE_KINDS } from "./hqPersonaTemplates.ts";
 import { importContainer, prepareTierVariables } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
+import { createServices } from "./createServices.ts";
 import { importServices } from "./importServices.ts";
 import { renameApp, deleteApp, answerKeptGit } from "./hqAppWrites.ts";
 import {
@@ -96,6 +97,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   createProject,
   importProject,
   importServices,
+  createServices,
   importContainer,
   prepareTierVariables,
   hardenProject,

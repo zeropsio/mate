@@ -24,15 +24,23 @@ import type {
   ZeropsProposal,
 } from "@t3tools/client-runtime/zerops/model";
 
+import { REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
 import { isTokenMember } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ProjectAccessChange } from "@t3tools/client-runtime/zerops/projectAccess";
 import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import type { ComposerSendOutcome } from "~/hooks/useComposerSendRequests";
 
-import { type AskState, type AskWhere, answeredWords, notNowWords } from "../../ask/ask.logic";
+import {
+  type AskState,
+  type AskWhere,
+  answeredWords,
+  namesWords,
+  notNowWords,
+} from "../../ask/ask.logic";
 import { recordsOf } from "../addresses/addresses.logic";
 import { accessChanges } from "../projects/projectPeople.logic";
+import { releaseOfferTitle, serviceCreateTitle } from "./productionAsk.logic";
 
 /**
  * What the person decided of one proposal, and how what they approved ended; `by` is who decided
@@ -325,6 +333,16 @@ export function proposalOutcomeWords(
     }
     case "env.reveal":
       return running ? "Revealing…" : `${proposal.params.key} was revealed.`;
+    case "service.create": {
+      const names = namesWords(proposal.params.services);
+      return running
+        ? `Creating ${names} in production…`
+        : `${names} ${proposal.params.services.length === 1 ? "runs" : "run"} in production.`;
+    }
+    case "release.offer":
+      return running
+        ? `Releasing ${proposal.params.suggestion} to production…`
+        : `${proposal.params.suggestion} was released.`;
   }
 }
 
@@ -339,8 +357,13 @@ function domainNames(domains: ReadonlyArray<string>): string {
   return `${ordered.slice(0, -1).join(", ")} and ${ordered.at(-1)}`;
 }
 
-/** The card's title: a domain's names the project it puts on them; any other its summary. */
+/**
+ * The card's title: a domain's names the project it puts on them, a production ask what its press
+ * does there; any other its summary.
+ */
 export function proposalTitle(proposal: ZeropsProposal): string {
+  if (proposal.kind === "service.create") return serviceCreateTitle(proposal.params.services);
+  if (proposal.kind === "release.offer") return releaseOfferTitle(proposal.params.suggestion);
   if (proposal.kind !== "domain.add") return proposal.summary;
   return `Put ${proposal.projectName ?? "the project"} on ${domainNames(proposal.params.domains)}`;
 }
@@ -464,6 +487,9 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
         : (proposal.params.projects[0]?.name ?? project ?? null);
     case "mcp.add":
       return "This Mate's agents";
+    case "service.create":
+    case "release.offer":
+      return "Production";
     case "mate.message":
     case "chief.message":
       return null;
@@ -669,6 +695,9 @@ export function accessProposalPlan(input: {
 /** Stage or Production, where the proposal's project is one of its application's environments. */
 type Tier = "stage" | "production" | null;
 
+/** The press that creates what production lacks, here and in the release review. */
+export const CREATE_IN_PRODUCTION = "Create in production";
+
 /** The main press, named for what it does: "Restart medusa", "Set on production", "Send to Rossy". */
 export function proposalPress(proposal: ZeropsProposal, tier: Tier): string {
   switch (proposal.kind) {
@@ -692,6 +721,10 @@ export function proposalPress(proposal: ZeropsProposal, tier: Tier): string {
       return `Add ${proposal.params.server.title ?? proposal.params.server.name}`;
     case "env.reveal":
       return tier === "production" ? "Reveal production value" : "Reveal";
+    case "service.create":
+      return CREATE_IN_PRODUCTION;
+    case "release.offer":
+      return REVIEW_RELEASE_LABEL;
   }
 }
 
@@ -711,6 +744,8 @@ function placeIn(proposal: ZeropsProposal): string | null {
     case "mate.message":
     case "chief.message":
     case "mcp.add":
+    case "service.create":
+    case "release.offer":
       return null;
   }
 }
@@ -729,6 +764,9 @@ export function proposalAskWhere(
   if (proposal.kind === "mate.message")
     return { scope: "otherMate", detail: proposal.params.to.mateName };
   if (proposal.kind === "chief.message") return { scope: "otherMate", detail: "Your Chief" };
+  // Creating what production lacks and releasing to it act in production, whoever asks.
+  if (proposal.kind === "service.create" || proposal.kind === "release.offer")
+    return { scope: "production", detail: null };
   const place = placeIn(proposal);
   if (tier !== null) return { scope: tier, detail: place };
   if (proposal.projectId === home) return { scope: "mate", detail: place };

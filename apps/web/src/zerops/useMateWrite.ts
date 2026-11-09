@@ -35,6 +35,7 @@ import { useMateCommand, useMateHeld } from "./accountEnvironments";
 import {
   useZeropsChangeLandedEvents,
   useZeropsProductionLive,
+  useZeropsReleaseEnded,
 } from "./useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "./vaultTurnNotes";
 import { useMcpTurnNotes } from "./mcpTurnNotes";
@@ -53,6 +54,7 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
   );
   const landed = useZeropsChangeLandedEvents(environmentId);
   const production = useZeropsProductionLive(environmentId);
+  const releasesEnded = useZeropsReleaseEnded(environmentId);
   // The vault changes the Mate has not heard, the same note its own composer would carry.
   const vaultTurn = useVaultTurnNotes(
     environmentId,
@@ -82,7 +84,7 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
     const context = agentContext(
       [
         ...agentTurnNotes(landed, spokeAt),
-        ...productionTurnNotes(production, spokeAt),
+        ...productionTurnNotes(production, spokeAt, releasesEnded),
         ...mcpTurn.lines,
       ],
       vaultTurn.changes,

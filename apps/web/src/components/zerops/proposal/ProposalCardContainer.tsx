@@ -8,7 +8,7 @@
  * application's People write it. What the person decided is kept
  * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
  * Approve twice; an approval is carried out only once HQ kept it. A reveal is its own card
- * (`RevealAskContainer`).
+ * (`RevealAskContainer`), as are the two asks about production (`ProductionAskContainers`).
  */
 import { useTimelineRowReading } from "~/components/chat/timelineRowReads";
 import {
@@ -36,7 +36,7 @@ import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/ze
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { createContext, use, useCallback, useEffect, useMemo, useState } from "react";
 
 import { sendOutcomeOf } from "~/hooks/useComposerSendRequests";
 import { newCommandId, newMessageId } from "~/lib/utils";
@@ -56,6 +56,7 @@ import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
 import { McpProposalCardContainer } from "./McpProposalCardContainer";
+import { ReleaseOfferAsk, ServiceCreateAsk } from "./ProductionAskContainers";
 import { ProposalCard } from "./ProposalCard";
 import { RevealAsk } from "./RevealAskContainer";
 import {
@@ -118,6 +119,12 @@ const SERVICE_OPERATION = {
   "service.stop": "stop-service",
 } as const;
 
+/**
+ * The newest release ask of the conversation the cards stand in, by its proposal id: an earlier
+ * one says another took its place. `null` where the conversation holds none, or outside one.
+ */
+export const NewestReleaseAskContext = createContext<string | null>(null);
+
 /** The card for an operation that proposes; nothing for any other. */
 export function ProposalCardContainer({
   operation,
@@ -132,6 +139,7 @@ export function ProposalCardContainer({
   readonly driver?: string | null;
 }) {
   const proposal = operation.proposal;
+  const newestReleaseAsk = use(NewestReleaseAskContext);
   if (proposal === undefined || environmentId === null) return null;
   if (proposal.kind === "mcp.add") {
     return (
@@ -146,6 +154,19 @@ export function ProposalCardContainer({
   // A reveal approves nothing to run: the person sees a value, on their screen only.
   if (proposal.kind === "env.reveal")
     return <RevealAsk environmentId={environmentId} proposal={proposal} />;
+  // What production lacks is created from HQ's plan, and followed to its end.
+  if (proposal.kind === "service.create")
+    return <ServiceCreateAsk environmentId={environmentId} proposal={proposal} />;
+  // A release is never made from the card: it opens the review.
+  if (proposal.kind === "release.offer")
+    return (
+      <ReleaseOfferAsk
+        askedAt={operation.anchorAt}
+        environmentId={environmentId}
+        newerAsk={newestReleaseAsk !== null && newestReleaseAsk !== proposal.id}
+        proposal={proposal}
+      />
+    );
   return <Proposal environmentId={environmentId} proposal={proposal} />;
 }
 
@@ -153,7 +174,10 @@ function Proposal({
   proposal,
   environmentId,
 }: {
-  readonly proposal: Exclude<ZeropsProposal, { readonly kind: "mcp.add" }>;
+  readonly proposal: Exclude<
+    ZeropsProposal,
+    { readonly kind: "mcp.add" | "service.create" | "release.offer" }
+  >;
   readonly environmentId: EnvironmentId;
 }) {
   // The conversation's own project: the organization every approval acts in, and where HQ keeps
