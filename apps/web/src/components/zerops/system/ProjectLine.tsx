@@ -10,12 +10,14 @@
  * Props: `view` (`projectLine(…)`); `groupId` (a place's station opens
  * `/group/$groupId/$projectId`); `held`; `onOpenChange(pull, from)` (a bead and *Review*: the
  * change's review, as its row in the Changes list opens it); `onReviewRelease(from)`; `onPutLive`;
- * `onOpenMates(from)` (Mates' work: the page's Mates section).
+ * `onOpenMates(from)` (Mates' work: the page's Mates section); `stationEnd(station)` (what stands
+ * at the end of a place's name, e.g. its vault: it keeps its room, so the name never moves — its
+ * station names the hover with `group/place`); `surface` (`panel`: a Mate's panel's own card).
  */
 import { Link } from "@tanstack/react-router";
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { Button, InlineButton } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -32,7 +34,8 @@ import {
 } from "./projectLine.logic";
 
 export interface ProjectLineProps {
-  readonly view: ProjectLineView;
+  /** `undefined` while the project is unread: the card holds the line's height, nothing drawn. */
+  readonly view: ProjectLineView | undefined;
   readonly groupId: string;
   /** The project's reads have not answered: the line's shape alone. */
   readonly held?: boolean | undefined;
@@ -40,7 +43,11 @@ export interface ProjectLineProps {
   readonly onReviewRelease: (from: HTMLElement) => void;
   readonly onPutLive?: (() => void) | undefined;
   readonly onOpenMates?: ((from: HTMLElement) => void) | undefined;
+  readonly stationEnd?: ((station: LineStation) => ReactNode) | undefined;
+  readonly surface?: "page" | "panel" | undefined;
 }
+
+const UNREAD: ProjectLineView = { stations: [], segments: [], sides: [] };
 
 export function ProjectLine({
   view,
@@ -50,8 +57,10 @@ export function ProjectLine({
   onReviewRelease,
   onPutLive,
   onOpenMates,
+  stationEnd,
+  surface = "page",
 }: ProjectLineProps) {
-  const { stations, segments, sides } = view;
+  const { stations, segments, sides } = view ?? UNREAD;
   const [widths, track] = useTrackWidths(segments.length);
   const release = segments.at(-1);
   const press = (segment: LineSegment, from: HTMLElement) => {
@@ -63,9 +72,11 @@ export function ProjectLine({
   };
   return (
     <div
-      aria-busy={held ? true : undefined}
+      aria-busy={held || view === undefined ? true : undefined}
       aria-label="Where each change is"
-      className="pp-card ln"
+      className={
+        surface === "panel" ? "ln rounded-xl border border-border/70 bg-card" : "pp-card ln"
+      }
       data-release={!held && release?.track === "failed" ? "failed" : undefined}
       data-sides={sides.length > 0 ? "" : undefined}
       data-stations={String(stations.length)}
@@ -87,13 +98,16 @@ export function ProjectLine({
               data-track={held ? undefined : segment?.track}
               key={station.kind}
             >
-              <div className="ln-head">
-                <StationName
-                  groupId={groupId}
-                  held={held}
-                  onOpenMates={onOpenMates}
-                  station={station}
-                />
+              <div className="group/place ln-head">
+                <div className="ln-namerow">
+                  <StationName
+                    groupId={groupId}
+                    held={held}
+                    onOpenMates={onOpenMates}
+                    station={station}
+                  />
+                  {held ? null : stationEnd?.(station)}
+                </div>
                 {held ? null : <StationLines station={station} />}
               </div>
               <div
@@ -239,6 +253,7 @@ function StationName({
       <Link
         className="ln-name rounded-sm"
         params={{ groupId, projectId: station.projectId }}
+        preload="intent"
         to="/group/$groupId/$projectId"
       >
         {station.name}
@@ -443,6 +458,7 @@ function SideRow({ side, groupId }: { readonly side: LineSide; readonly groupId:
         <Link
           className="min-w-0 rounded-sm"
           params={{ groupId, projectId: side.projectId }}
+          preload="intent"
           to="/group/$groupId/$projectId"
         >
           {words}

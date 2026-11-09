@@ -39,9 +39,17 @@
   padding-right: 18px;
 }
 
+/* A station's name, and what stands at its end (a place's vault): the row is the name's height. */
+.ln-namerow {
+  display: flex;
+  min-width: 0;
+  height: 20px;
+  align-items: center;
+  gap: 2px;
+}
+
 .ln-name {
-  justify-self: start;
-  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
   color: var(--foreground);
   font-size: var(--text-body);

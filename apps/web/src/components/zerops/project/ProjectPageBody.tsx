@@ -59,6 +59,8 @@ import {
   type LineCopy,
   type NextReleaseView,
 } from "../system";
+import { placeVaultOf } from "../vault/placeVault.logic";
+import { PlaceVaultButton } from "../vault/StopVault";
 import type { ReleaseOffer } from "../ZeropsReleaseVerb";
 import {
   changeGroups,
@@ -447,20 +449,26 @@ function ProjectPlaces<T>({
   const productionNote = facts.slots.find(
     (slot) => slot.kind === "environment" && slot.tier === "production",
   );
+  const withheld = (line: PlaceLineData) =>
+    line.projectId === undefined
+      ? undefined
+      : (facts.withheldNotice?.(line.projectId) ?? undefined);
+  // Opened by its environment, as a bookmark names it: the same through a rename.
+  const placeId = (line: PlaceLineData) =>
+    facts.environments.find(
+      (row) => row.target.kind === "zerops" && row.target.projectId === line.projectId,
+    )?.id ?? line.projectId;
+  const openVault = props.openPlaceVault;
   const view = projectLine({
     flow,
     // A place the grant withholds says so in place of its state.
     places: lines.map((line) => {
-      const notice = line.projectId === undefined ? null : facts.withheldNotice?.(line.projectId);
-      return notice === null || notice === undefined
+      const notice = withheld(line);
+      return notice === undefined
         ? line
         : { ...line, dot: "unknown", words: [notice], trouble: false, addresses: [] };
     }),
-    // Opened by its environment, as a bookmark names it: the same through a rename.
-    placeId: (line) =>
-      facts.environments.find(
-        (row) => row.target.kind === "zerops" && row.target.projectId === line.projectId,
-      )?.id ?? line.projectId,
+    placeId,
     tintOf: (projectId) => {
       const item = entry.mates.get(projectId);
       return item === undefined ? undefined : props.mateTint?.(item);
@@ -510,6 +518,25 @@ function ProjectPlaces<T>({
           facts.onAdd("production");
         }}
         onReviewRelease={facts.release.onReview}
+        // A place's vault, at the end of its station's name: shown while the station is pointed at
+        // or holds focus, always where nothing hovers.
+        stationEnd={
+          openVault === undefined
+            ? undefined
+            : (station) => {
+                const line =
+                  station.projectId === undefined
+                    ? undefined
+                    : lines.find((each) => placeId(each) === station.projectId);
+                const vault =
+                  line === undefined || withheld(line) !== undefined
+                    ? undefined
+                    : placeVaultOf(line);
+                return vault === undefined ? null : (
+                  <PlaceVaultButton name={vault.name} onOpen={() => openVault(vault)} />
+                );
+              }
+        }
         view={view}
       />
       {/* A Put it live run stands under the line while it goes, its failure and its one fixing
