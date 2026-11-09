@@ -201,7 +201,11 @@ import {
   proposedEnvironmentName,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
-import { ZeropsProjectMenu, type ZeropsMenuAction } from "./ZeropsProjectMenu";
+import {
+  ZeropsProjectMenu,
+  type ZeropsMenuAction,
+  type ZeropsMenuEntry,
+} from "./ZeropsProjectMenu";
 import { GitMirrorDialog } from "./GitMirrorDialog";
 import { ProjectAccessDraft, roleProjectKind, WithDraftPeople } from "./projects/ProjectPeople";
 import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
@@ -219,6 +223,8 @@ import {
   useStopDeploymentsShown,
 } from "~/zerops/projectFlows";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
+import { useAskMateToFix } from "~/zerops/fixRequest";
+import { mateReviewCount } from "~/zerops/agentActivity";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
 import { deployRowTone, setUpMateRecord } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
@@ -231,8 +237,12 @@ import {
   type ProjectPageSlot,
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
+import { projectWaits } from "./projects/projectCard.logic";
+import { CardGroupMenu } from "./projects/CardGroupMenu";
 import {
+  lastActivityAt,
   overviewKeeps,
+  overviewOrder,
   parseProjectsSearch,
   shownUngrouped,
   type OverviewShow,
@@ -1745,6 +1755,7 @@ export function ZeropsProjectsContent({
     });
   };
   const openReview = useOpenReview();
+  const askToFix = useAskMateToFix();
   // The change that adds a project's setup files, where one waits: what moves on a stage or a
   // production held for want of them.
   const setupChangeOf = (groupId: string) => {
@@ -2055,14 +2066,6 @@ export function ZeropsProjectsContent({
         />
       );
     },
-    fixerOf: (entry) => {
-      const mine = [...entry.mates.values()].find(
-        (candidate) => projectPeople[candidate.project.id]?.waitsOnViewer === true,
-      );
-      return mine === undefined
-        ? undefined
-        : { projectId: mine.project.id, name: projectNameInApp(mine.project) };
-    },
     nowMs,
   });
   // The person's Chief is the organization's, not a project: no card of its own.
@@ -2161,11 +2164,38 @@ export function ZeropsProjectsContent({
       (candidate) => !hasMate(candidate) || personFacts[candidate.project.id] !== undefined,
     ) &&
     flowGroups.every((entry) => addMateOffer(entry.group.groupId).kind !== "unknown");
-  const keptGroups = flowGroups.filter((entry) =>
-    overviewKeeps({
-      show: search.show,
-      waits: filterFacts.waits.has(entry.group.groupId),
-      mine: filterFacts.mine.has(entry.group.groupId),
+  // What waits on the viewer in each project, by kind: a Mate that asks, or a review or release.
+  const waitKinds = useMemo(() => {
+    const groupOf = new Map(
+      candidates.map(
+        (candidate) =>
+          [candidate.project.id, readZeropsMembership(candidate.project).groupId] as const,
+      ),
+    );
+    const asks = new Set<string>();
+    const reviews = new Set<string>();
+    for (const item of waiting.items) {
+      const groupId =
+        item.kind === "release" ? item.release.groupId : groupOf.get(item.mate.projectId);
+      if (groupId === undefined) continue;
+      (item.kind === "release" || item.kind === "change" ? reviews : asks).add(groupId);
+    }
+    return { asks, reviews };
+  }, [candidates, waiting.items]);
+  // The overview's order (`overviewOrder`): what waits on the viewer first, most urgent first.
+  const keptGroups = overviewOrder(
+    flowGroups.filter((entry) =>
+      overviewKeeps({
+        show: search.show,
+        waits: filterFacts.waits.has(entry.group.groupId),
+        mine: filterFacts.mine.has(entry.group.groupId),
+      }),
+    ),
+    (entry) => ({
+      broken: overview.productionBroken(entry),
+      asks: waitKinds.asks.has(entry.group.groupId),
+      reviews: waitKinds.reviews.has(entry.group.groupId),
+      lastAt: lastActivityAt(entry),
     }),
   );
 
@@ -2228,6 +2258,12 @@ export function ZeropsProjectsContent({
       !input.can.open
       ? undefined
       : () => openMate(candidate);
+  };
+
+  /** Opens a Mate's conversation by its project, where it can open. */
+  const openMateById = (projectId: string) => {
+    const candidate = candidates.find((entry) => entry.project.id === projectId);
+    if (candidate !== undefined) mateOpenerOf(candidate)?.();
   };
 
   const renderEnvironment = (
@@ -2323,10 +2359,12 @@ export function ZeropsProjectsContent({
       layout,
       parts,
       review,
+      quiet,
     }: {
       readonly layout: "card" | "row";
       readonly parts: ReadonlyArray<MatePart>;
       readonly review?: FlowPullRequest | undefined;
+      readonly quiet?: boolean | undefined;
     },
   ): React.ReactNode => {
     const role = roleOf.get(candidate.project.id);
@@ -2409,6 +2447,7 @@ export function ZeropsProjectsContent({
           name={name}
           onOpen={select}
           outsideHq={input.outsideHq === true}
+          quiet={quiet === true}
           shape={shape}
           tint={tint}
         />
@@ -2478,7 +2517,11 @@ export function ZeropsProjectsContent({
    * role is still there to take (`creatableRoles`) and HQ offers it to this
    * person (`useEnvironmentOffers`).
    */
-  const renderGroupMenu = ({ group, flow }: ProjectsFlowGroup<ZeropsCandidatePresentation>) => {
+  const renderGroupMenu = (
+    entry: ProjectsFlowGroup<ZeropsCandidatePresentation>,
+    options?: { readonly page?: boolean },
+  ) => {
+    const { group, flow } = entry;
     // Each Mate's previews, one per service and named by it: links out, so the menu's, not the
     // row's. Its Mate is named where the project has more than one with a preview.
     const previews = flow.mates.flatMap((mate) =>
@@ -2489,108 +2532,118 @@ export function ZeropsProjectsContent({
     const canonicalGroup = groupTree.groups.find(
       (entry) => entry.group.groupId === group.groupId,
     )?.group;
-    return (
-      <ZeropsProjectRenameMenu
-        actions={[
-          ...previews.map((preview) => ({
-            id: `preview:${preview.mate}:${preview.service}`,
-            label: oneMate
-              ? `Open ${preview.service} preview`
-              : `Open ${preview.mate}’s ${preview.service} preview`,
-            onSelect: () => {
-              window.open(preview.url, "_blank", "noopener,noreferrer");
+    const actions: ReadonlyArray<ZeropsMenuEntry> = [
+      ...previews.map((preview) => ({
+        id: `preview:${preview.mate}:${preview.service}`,
+        label: oneMate
+          ? `Open ${preview.service} preview`
+          : `Open ${preview.mate}’s ${preview.service} preview`,
+        onSelect: () => {
+          window.open(preview.url, "_blank", "noopener,noreferrer");
+        },
+      })),
+      ...(previews.length === 0 ? [] : [{ id: "previews-end", separator: true as const }]),
+      // A project with nothing in it is offered its first Mate, and nothing more.
+      ...(groupIsEmpty(group) && addMateOffer(group.groupId).kind === "allowed"
+        ? [
+            {
+              id: "add-mate",
+              label: "Add Mate",
+              disabled: creationRunning,
+              onSelect: () => {
+                requestEnvironment(group.groupId, "dev");
+              },
+            },
+          ]
+        : []),
+      ...(addsOfferedFor(group)
+        ? [
+            {
+              id: "add-mate",
+              label: "Add Mate",
+              disabled: creationRunning || mateWhy !== null,
+              ...(mateWhy === null ? {} : { why: mateWhy }),
+              onSelect: () => {
+                requestEnvironment(group.groupId, "dev");
+              },
+            },
+          ]
+        : []),
+      ...(addableTiers(group).includes("stage") && !groupIsEmpty(group)
+        ? [
+            {
+              id: "add-stage",
+              label: "Add stage",
+              disabled: creationRunning,
+              onSelect: () => {
+                requestEnvironment(group.groupId, "stage");
+              },
+            },
+          ]
+        : []),
+      ...(addableTiers(group).includes("production") && !groupIsEmpty(group)
+        ? [
+            {
+              id: "add-production",
+              label: environmentDoorLabel("production", "production"),
+              disabled: creationRunning,
+              ...(creationRunning ? { why: PUT_LIVE_AFTER_CREATION } : {}),
+              onSelect: () => {
+                openPutLive(group.groupId);
+              },
+            },
+          ]
+        : []),
+      // A stage or a production whose setup is not finished, finished as the person asks —
+      // where HQ offers them finishing it (`can.finish`), as on the application's own page.
+      ...halfMade
+        .filter((entry) => entry.groupId === group.groupId && entry.finish)
+        .map((entry) => ({
+          id: `finish-${entry.tier}`,
+          label: `Finish setting up ${entry.tier}`,
+          disabled: creationRunning || finishing.finishing.has(group.groupId),
+          onSelect: () => {
+            finishing.finish(entry);
+          },
+        })),
+      // Where its code goes on GitHub: one code repository's connection, chosen in a dialog.
+      ...(!groupIsEmpty(group)
+        ? [
+            {
+              id: "mirror-code",
+              label: "Connect to GitHub…",
+              onSelect: () => {
+                setRowDialog({ kind: "mirror-code", group });
+              },
+            },
+          ]
+        : []),
+      // A project with no Mate goes, at whoever writes the structure's word.
+      ...(canonicalGroup === undefined
+        ? []
+        : projectDeleteActions({
+            group: canonicalGroup,
+            offer: orgOffer("delete_app").kind,
+            contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
+            openEmpty: () => {
+              setRowDialog({ kind: "delete-group", group });
             },
           })),
-          ...(previews.length === 0 ? [] : [{ id: "previews-end", separator: true as const }]),
-          // A project with nothing in it is offered its first Mate, and nothing more.
-          ...(groupIsEmpty(group) && addMateOffer(group.groupId).kind === "allowed"
-            ? [
-                {
-                  id: "add-mate",
-                  label: "Add Mate",
-                  disabled: creationRunning,
-                  onSelect: () => {
-                    requestEnvironment(group.groupId, "dev");
-                  },
-                },
-              ]
-            : []),
-          ...(addsOfferedFor(group)
-            ? [
-                {
-                  id: "add-mate",
-                  label: "Add Mate",
-                  disabled: creationRunning || mateWhy !== null,
-                  ...(mateWhy === null ? {} : { why: mateWhy }),
-                  onSelect: () => {
-                    requestEnvironment(group.groupId, "dev");
-                  },
-                },
-              ]
-            : []),
-          ...(addableTiers(group).includes("stage") && !groupIsEmpty(group)
-            ? [
-                {
-                  id: "add-stage",
-                  label: "Add stage",
-                  disabled: creationRunning,
-                  onSelect: () => {
-                    requestEnvironment(group.groupId, "stage");
-                  },
-                },
-              ]
-            : []),
-          ...(addableTiers(group).includes("production") && !groupIsEmpty(group)
-            ? [
-                {
-                  id: "add-production",
-                  label: environmentDoorLabel("production", "production"),
-                  disabled: creationRunning,
-                  ...(creationRunning ? { why: PUT_LIVE_AFTER_CREATION } : {}),
-                  onSelect: () => {
-                    openPutLive(group.groupId);
-                  },
-                },
-              ]
-            : []),
-          // A stage or a production whose setup is not finished, finished as the person asks —
-          // where HQ offers them finishing it (`can.finish`), as on the application's own page.
-          ...halfMade
-            .filter((entry) => entry.groupId === group.groupId && entry.finish)
-            .map((entry) => ({
-              id: `finish-${entry.tier}`,
-              label: `Finish setting up ${entry.tier}`,
-              disabled: creationRunning || finishing.finishing.has(group.groupId),
-              onSelect: () => {
-                finishing.finish(entry);
-              },
-            })),
-          // Where its code goes on GitHub: one code repository's connection, chosen in a dialog.
-          ...(!groupIsEmpty(group)
-            ? [
-                {
-                  id: "mirror-code",
-                  label: "Connect to GitHub…",
-                  onSelect: () => {
-                    setRowDialog({ kind: "mirror-code", group });
-                  },
-                },
-              ]
-            : []),
-          // A project with no Mate goes, at whoever writes the structure's word.
-          ...(canonicalGroup === undefined
-            ? []
-            : projectDeleteActions({
-                group: canonicalGroup,
-                offer: orgOffer("delete_app").kind,
-                contents: applicationContents(hqStructure, activeOrganization?.id, group.groupId),
-                openEmpty: () => {
-                  setRowDialog({ kind: "delete-group", group });
-                },
-              })),
-        ]}
-        group={group}
-      />
+    ];
+    // On the project's own page every other verb has its one place there: the stage it lacks,
+    // and the project's rename and deletion, stay here.
+    if (options?.page === true)
+      return (
+        <ZeropsProjectRenameMenu
+          actions={actions.filter(
+            (action) => action.id === "add-stage" || action.id === "delete-group",
+          )}
+          group={group}
+        />
+      );
+    // On its card, production's rarer verbs too: the card no longer carries them (P2).
+    return (
+      <CardGroupMenu actions={actions} group={group} production={overview.productionVerbs(entry)} />
     );
   };
 
@@ -2724,7 +2777,6 @@ export function ZeropsProjectsContent({
             releaseSince: run?.phase === "releasing" ? run.stepAt : undefined,
           };
         }}
-        renderPlacePanel={overview.renderPlacePanel}
         renderChanges={overview.renderChanges}
         renderHistory={overview.renderHistory}
         setUpProduction={({ group }) =>
@@ -2762,7 +2814,48 @@ export function ZeropsProjectsContent({
           },
           why: creationRunning ? PUT_LIVE_AFTER_CREATION : addMateWhy(group.groupId),
         })}
-        renderCardPeople={overview.renderCardPeople}
+        cardWaits={(entry) =>
+          projectWaits({
+            items: waiting.items,
+            mateIds: entry.flow.mates.map((mate) => mate.projectId),
+            reviewCount: (projectId) =>
+              mateReviewCount(projectFlow.flows.get(entry.group.groupId), projectId),
+          }).map((wait) => ({
+            wait,
+            face: (
+              <MateFace
+                shape={wait.mate.shape}
+                size={24}
+                state={wait.mate.face}
+                tint={wait.mate.tint}
+              />
+            ),
+            onVerb: (from) => {
+              if (wait.kind === "review") {
+                const { change } = wait;
+                if (change === undefined) {
+                  openMateById(wait.mate.projectId);
+                  return;
+                }
+                openReview(
+                  {
+                    kind: "change",
+                    groupId: change.groupId,
+                    repository: change.repository,
+                    number: change.number,
+                  },
+                  { from },
+                );
+              } else if (wait.ask === "failed") {
+                askToFix(wait.mate.projectId, {
+                  what: `${wait.mate.name} stopped on an error`,
+                  error: wait.mate.text,
+                  ask: "Find out why, fix it, and carry on.",
+                });
+              } else openMateById(wait.mate.projectId);
+            },
+          }))
+        }
         renderProductionRun={({ group }) => <ProductionRun groupId={group.groupId} />}
         renderReleaseVerb={({ group, flow }) => {
           const { production } = flow;

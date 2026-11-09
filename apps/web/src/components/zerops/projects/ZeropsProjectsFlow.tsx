@@ -1,5 +1,5 @@
 /**
- * The overview (round 5, "Mate Clean Overview"): a card per project with Mates, side by side —
+ * The overview (round 5, "Mate Clean Overview"): a card per project with Mates, in a grid —
  * its name and address, its Mates, a release ready to go and production's one line
  * (`ProjectCards`); then the projects without a Mate as lines, each its name and production's
  * line; the containers no project holds as one folded group; and the organization's HQ as the
@@ -29,7 +29,7 @@ import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
 import { OverviewCardsStandIn } from "./OverviewStandIn";
 import { OtherContainers, OtherProjects } from "./ProjectList";
 import { ProjectCards } from "./ProjectCards";
-import type { PlaceLine } from "./projectCard.logic";
+import type { ProjectWait } from "./projectCard.logic";
 import type { ChangesUnknown, RowMateActivity } from "./projectsView.logic";
 
 /** One group as the page lays it out: its flow and the carriers the slots draw. */
@@ -104,6 +104,13 @@ export interface ProjectPageSlot {
   readonly unread: (undrawn: boolean) => ReactNode;
 }
 
+/** A wait on a project's card: what waits, its Mate's face, and what its verb does. */
+export interface CardWait {
+  readonly wait: ProjectWait;
+  readonly face: ReactNode;
+  readonly onVerb: (from: HTMLElement) => void;
+}
+
 export interface ZeropsProjectsFlowProps<T> {
   /** In the page's order. */
   readonly groups: ReadonlyArray<ProjectsFlowGroup<T>>;
@@ -128,6 +135,11 @@ export interface ZeropsProjectsFlowProps<T> {
       readonly layout: "card" | "row";
       readonly parts: ReadonlyArray<MatePart>;
       readonly review?: FlowPullRequest | undefined;
+      /**
+       * On a card whose Waiting on you says what this Mate waits on the viewer for: its row is
+       * never lifted and carries no verb of its own.
+       */
+      readonly quiet?: boolean | undefined;
     },
   ) => ReactNode;
   /** A Mate's face, beside its name in a row. */
@@ -147,7 +159,11 @@ export interface ZeropsProjectsFlowProps<T> {
   /** The ready release's door on a card (*Review release*), while one is offered. */
   readonly renderReleaseVerb?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
   /** The row's ··· menu: the project's quiet verbs, and its Mates' previews (`flow.mates`). */
-  readonly renderGroupMenu: (entry: ProjectsFlowGroup<T>) => ReactNode;
+  readonly renderGroupMenu: (
+    entry: ProjectsFlowGroup<T>,
+    /** On the project's own page: only what has no other place there (`page`). */
+    options?: { readonly page?: boolean },
+  ) => ReactNode;
   /** Re-probes the containers not answering. */
   readonly onRetryContainers: (items: ReadonlyArray<T>) => void;
   /** A creation runs: every add verb is disabled, never hidden. */
@@ -181,10 +197,6 @@ export interface ZeropsProjectsFlowProps<T> {
         /** When this tab's run began releasing (wall ms): production's line counts from it. */
         readonly releaseSince?: number | undefined;
       })
-    | undefined;
-  /** A place's panel: its facts and its actions; without it, its line. */
-  readonly renderPlacePanel?:
-    | ((entry: ProjectsFlowGroup<T>, line: PlaceLine) => ReactNode)
     | undefined;
   /**
    * A release or *Put it live* run on the project's production (`ProductionRun`): under way, live
@@ -234,8 +246,11 @@ export interface ZeropsProjectsFlowProps<T> {
         entry: ProjectsFlowGroup<T>,
       ) => { readonly onAdd: () => void; readonly why: string | null } | undefined)
     | undefined;
-  /** The people on a project, beside its name, where more than one. */
-  readonly renderCardPeople?: ((entry: ProjectsFlowGroup<T>) => ReactNode) | undefined;
+  /**
+   * What waits on the viewer in a project beside its release (`projectWaits`), each with its
+   * Mate's face and what its one verb does — lifted on its card.
+   */
+  readonly cardWaits?: ((entry: ProjectsFlowGroup<T>) => ReadonlyArray<CardWait>) | undefined;
   /** One project's own page in place of the overview (`ProjectPageSlot`). */
   readonly page?: ProjectPageSlot | undefined;
   /** The applications HQ knows that the tree leaves out (`InventoryGroupsView.undrawn`). */
