@@ -1,0 +1,54 @@
+/* A project's own page: its header, then a main column for what changes day to day and a side
+   column for what is set up once. Side by side once both have room, the side column under the
+   main one below that. A heading hugs its rows; groups stand three times further apart. */
+.pp {
+  display: grid;
+  min-width: 0;
+  gap: 20px;
+}
+
+.pp-head {
+  display: flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: 12px;
+}
+
+.pp-title {
+  min-width: 0;
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.02em;
+}
+
+.pp-head-acts {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.pp-cols {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 24px 20px;
+}
+
+@container flow (min-width: 980px) {
+  .pp-cols {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+}
+
+.pp-main,
+.pp-side {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 24px;
+}

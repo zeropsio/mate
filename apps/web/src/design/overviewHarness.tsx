@@ -61,7 +61,7 @@ import {
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { placeAddresses, withPlaceAddresses } from "~/zerops/__fixtures__/placeAddresses";
 import "../index.css";
-import { ProjectPageAside, ProjectPagePeople } from "./projectPageFixtures";
+import { harnessProjectPage } from "./projectPageFixtures";
 import { Button } from "~/components/ui/button";
 
 const params = new URLSearchParams(location.search);
@@ -667,9 +667,7 @@ function HarnessPage() {
                 ? undefined
                 : {
                     groupId: PAGE,
-                    aside: <ProjectPageAside groupId={PAGE} />,
-                    people: <ProjectPagePeople />,
-                    onAddMate: () => acted.push(`add-mate:${PAGE}`),
+                    render: harnessProjectPage(PAGE, () => acted.push(`add-mate:${PAGE}`)),
                     unread: () => null,
                   }
             }

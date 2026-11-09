@@ -27,6 +27,8 @@ import type { ProjectPerson } from "~/components/zerops/projects/projectPeople.l
 import { joinSpend } from "~/components/zerops/projects/projectSpend.logic";
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
 import { ZeropsGroupPane } from "~/components/zerops/ProjectPage";
+import { ProjectPageBody } from "~/components/zerops/project/ProjectPageBody";
+import type { ProjectPageSlot } from "~/components/zerops/projects/ZeropsProjectsFlow";
 import { RepoRowsView } from "~/components/zerops/github/GithubRepoRows";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
@@ -491,5 +493,26 @@ export function ProjectPageAside({ groupId }: { readonly groupId: string }) {
         spend={<ProjectSpendSectionView state={running ? SPEND : SPEND_TODAY} />}
       />
     </Standins>
+  );
+}
+
+/** The harness's project page body, as the page draws it from the flow's group and slots. */
+export function harnessProjectPage(
+  groupId: string,
+  onAddMate: () => void,
+): ProjectPageSlot["render"] {
+  return ({ entry, props, addMateWhy }) => (
+    <ProjectPageBody
+      addMateWhy={addMateWhy}
+      entry={entry}
+      onAddMate={onAddMate}
+      props={props}
+      side={
+        <>
+          <ProjectPageAside groupId={groupId} />
+          <ProjectPagePeople />
+        </>
+      }
+    />
   );
 }

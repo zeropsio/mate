@@ -58,10 +58,7 @@ import {
   type PlaceLine,
 } from "./projectCard.logic";
 import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
-import { ProjectPageSpend, ProjectSpendSection } from "./ProjectSpend";
 import { ChangeRow } from "./ChangeRow";
-import { ProjectPageHistory } from "./ProjectHistory";
-import { spendProjectIds } from "./projectSpend.logic";
 import type {
   ProjectsFlowGroup,
   StageSettingUp,
@@ -548,28 +545,24 @@ function CardComingMate<T>({
 }
 
 /**
- * A card's Mates: past four the quiet ones fold into "N more Mates" with their faces. On the
- * project's page every one is drawn, and *Add a Mate* closes the list.
+ * A card's Mates: past four the quiet ones fold into "N more Mates" with their faces, and *Add a
+ * Mate* closes the list.
  */
 function CardMates<T>({
   entry,
   props,
-  all = false,
   onAdd,
   addWhy = null,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
-  readonly all?: boolean;
   readonly onAdd?: (() => void) | undefined;
   /** Why the project takes no Mate now, known before the press: *Add a Mate* stands off with it. */
   readonly addWhy?: string | null;
 }) {
   const [unfolded, setUnfolded] = useState(false);
   const mates = matesOf(entry);
-  const { shown, folded } = all
-    ? { shown: mates, folded: [] }
-    : foldMates(mates, (mate) => mateIsLoud(mate.mate, entry.flow));
+  const { shown, folded } = foldMates(mates, (mate) => mateIsLoud(mate.mate, entry.flow));
   const draw = (mate: FlowMateEntry<T>) =>
     mate.kind === "coming" ? (
       <CardComingMate
@@ -672,19 +665,10 @@ function ProjectCard<T>({
   entry,
   props,
   focused,
-  page,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly focused: boolean;
-  /** Drawn as its own page's card: every Mate unfolded, *Add a Mate* at their foot. */
-  readonly page?:
-    | {
-        readonly onAddMate?: (() => void) | undefined;
-        readonly addMateWhy?: string | null;
-        readonly people?: ReactNode;
-      }
-    | undefined;
 }) {
   const nowMs = useNowMs();
   const { group, flow } = entry;
@@ -712,7 +696,7 @@ function ProjectCard<T>({
       : flow.creatingStages.length > 0 || settingUp !== undefined
         ? ("creating" as const)
         : props.setUpStage?.(entry);
-  const addMate = page === undefined ? props.addMate?.(entry) : undefined;
+  const addMate = props.addMate?.(entry);
   const lines = placeLines({ flow, ...placeFacts, nowMs }).map((line) =>
     line.kind === "stage" && settingUp !== undefined
       ? settingUpLine(line, settingUp)
@@ -734,44 +718,29 @@ function ProjectCard<T>({
     changesUnknown: entry.changesUnknown,
   });
   if (!detail.answered)
-    return (
-      <ProjectCardStandIn
-        id={page === undefined ? cardId(group.groupId) : undefined}
-        label={group.name}
-        page={page !== undefined}
-        ref={detail.ref}
-      />
-    );
+    return <ProjectCardStandIn id={cardId(group.groupId)} label={group.name} ref={detail.ref} />;
   return (
     <article
       aria-label={group.name}
       className="ov-card"
       data-focused={focused ? "true" : undefined}
-      data-page={page === undefined ? undefined : "true"}
       data-zerops-group={group.groupId}
-      id={page === undefined ? cardId(group.groupId) : undefined}
+      id={cardId(group.groupId)}
       ref={detail.ref}
-      role={page === undefined ? "listitem" : undefined}
+      role="listitem"
     >
       <header className="ov-card-head">
         <div className="ov-card-h1">
-          {/* On its own page the card's name is the page's heading. */}
-          {page === undefined ? (
-            <h2 className="ov-card-name">
-              {/* The name opens the project's page; ··· and every other control keep their own. */}
-              <Link
-                className="ov-card-title"
-                params={{ groupId: group.groupId }}
-                to="/group/$groupId/flow"
-              >
-                <GroupName entry={entry} />
-              </Link>
-            </h2>
-          ) : (
-            <h1 className="ov-card-name">
+          <h2 className="ov-card-name">
+            {/* The name opens the project's page; ··· and every other control keep their own. */}
+            <Link
+              className="ov-card-title"
+              params={{ groupId: group.groupId }}
+              to="/group/$groupId/flow"
+            >
               <GroupName entry={entry} />
-            </h1>
-          )}
+            </Link>
+          </h2>
           {props.renderCardPeople?.(entry)}
           <span className="ov-card-menu">{props.renderGroupMenu(entry)}</span>
         </div>
@@ -826,14 +795,7 @@ function ProjectCard<T>({
           {drawn(releaseDoor) ? <div className="ov-acts">{releaseDoor}</div> : null}
         </section>
       )}
-      <CardMates
-        addWhy={page?.addMateWhy ?? addMate?.why ?? null}
-        all={page !== undefined}
-        entry={entry}
-        onAdd={page?.onAddMate ?? addMate?.onAdd}
-        props={props}
-      />
-      {page?.people}
+      <CardMates addWhy={addMate?.why ?? null} entry={entry} onAdd={addMate?.onAdd} props={props} />
       {/* Its changes say why they are unknown where the card draws them. */}
       {unknown.kind === "unread" && props.renderChanges === undefined ? (
         <p className="ov-card-note" data-zerops-row-line="unread">
@@ -846,48 +808,6 @@ function ProjectCard<T>({
       {props.renderChanges?.(entry)}
       <StopReads entry={entry} />
     </article>
-  );
-}
-
-/**
- * A project's own page: its card, the same one the overview draws, at the page's width with every
- * Mate in it — and the page's column beside it, which says what a card has no room for.
- */
-export function ProjectPage<T>({
-  entry,
-  props,
-  aside,
-  onAddMate,
-  addMateWhy = null,
-  people,
-}: {
-  readonly entry: ProjectsFlowGroup<T>;
-  readonly props: ZeropsProjectsFlowProps<T>;
-  readonly aside: ReactNode;
-  readonly onAddMate?: (() => void) | undefined;
-  /** Why the project takes no Mate now, known before the press. */
-  readonly addMateWhy?: string | null;
-  /** Who can work on it, under its Mates. */
-  readonly people?: ReactNode;
-}) {
-  const { group, flow } = entry;
-  const spendIds = useMemo(() => spendProjectIds(flow), [flow]);
-  return (
-    <div className="ov-page" data-zerops-surface="project-page">
-      <ProjectCard
-        entry={entry}
-        focused={false}
-        page={{ onAddMate, addMateWhy, people }}
-        props={props}
-      />
-      {/* Its spend and its History are sections of the column, which the page's flow alone can
-          name the parts of. */}
-      <ProjectPageSpend value={<ProjectSpendSection appId={group.groupId} projectIds={spendIds} />}>
-        <ProjectPageHistory value={props.renderHistory?.(entry) ?? null}>
-          <div className="ov-page-aside">{aside}</div>
-        </ProjectPageHistory>
-      </ProjectPageSpend>
-    </div>
   );
 }
 
