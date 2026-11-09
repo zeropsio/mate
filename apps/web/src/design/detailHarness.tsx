@@ -685,7 +685,7 @@ interface StopFixture {
 const HARNESS_VAULT = {
   orgId: "harness",
   open: true,
-  onToggle: () => {},
+  onOpenChange: () => {},
   body: (
     <VaultPanelBody
       actor="environment"

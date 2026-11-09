@@ -14,7 +14,7 @@ import * as Option from "effect/Option";
 import { useAccountDataOptional, useProjection } from "~/zerops/accountData";
 import { ReleaseAction, useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
-import { StopVaultSide, StopVaultToggle, useStopVaultOpen } from "./vault/StopVault";
+import { StopVaultDrawer, StopVaultToggle, useStopVaultOpen } from "./vault/StopVault";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 /**
@@ -284,7 +284,7 @@ function ZeropsProjectStopDetailPage({
   const recipeFailure = useHqAppFailure(groupId);
   // The environment's vault beside its page, where the account reads its organization.
   const orgId = useAccountOrgId();
-  const [vaultOpen, toggleVault] = useStopVaultOpen();
+  const [vaultOpen, setVaultOpen] = useStopVaultOpen();
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
   const deployments = useStopDeploymentsShown();
@@ -449,7 +449,7 @@ function ZeropsProjectStopDetailPage({
         }
         platformServices={serviceMap.rows}
         usageRead={serviceMap.usageRead}
-        vault={orgId === null ? undefined : { orgId, open: vaultOpen, onToggle: toggleVault }}
+        vault={orgId === null ? undefined : { orgId, open: vaultOpen, onOpenChange: setVaultOpen }}
         readAgain={<StopReadAgain projectId={projectId} />}
         readFailures={
           <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
@@ -776,13 +776,13 @@ export function ZeropsStopPane({
   readonly usageRead?: boolean;
   /** Who reaches the environment's project, as people chips, under its card. */
   readonly access?: React.ReactNode;
-  /** The environment's vault, where the account reads its organization: shown beside the page. */
+  /** The environment's vault, where the account reads its organization: a drawer over the page. */
   readonly vault?:
     | {
         readonly orgId: string;
         readonly open: boolean;
-        readonly onToggle: () => void;
-        /** What the vault column holds; the project's vault unless given (a harness's fixture). */
+        readonly onOpenChange: (open: boolean) => void;
+        /** What the drawer holds; the project's vault unless given (a harness's fixture). */
         readonly body?: React.ReactNode;
       }
     | undefined;
@@ -897,7 +897,7 @@ export function ZeropsStopPane({
       actions={
         <>
           {vault === undefined ? null : (
-            <StopVaultToggle onToggle={vault.onToggle} open={vault.open} />
+            <StopVaultToggle onOpenChange={vault.onOpenChange} open={vault.open} />
           )}
           {stop.target.kind === "zerops" ? (
             <ZeropsStopMenu
@@ -921,19 +921,6 @@ export function ZeropsStopPane({
         </>
       }
       crumbs={[...crumbs, { label: head.title }]}
-      side={
-        vault?.open === true && stop.target.kind === "zerops"
-          ? (placement) => (
-              <StopVaultSide
-                body={vault.body}
-                name={head.title}
-                orgId={vault.orgId}
-                placement={placement}
-                projectId={projectId!}
-              />
-            )
-          : undefined
-      }
       subtitle={
         <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
           <span data-zerops-place-status="">
@@ -1186,6 +1173,16 @@ export function ZeropsStopPane({
       {/* A verb that refused says so under the card it was pressed in. */}
       {trouble === null ? null : (
         <p className="mt-2 text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
+      )}
+      {vault === undefined || projectId === undefined ? null : (
+        <StopVaultDrawer
+          body={vault.body}
+          name={head.title}
+          onOpenChange={vault.onOpenChange}
+          open={vault.open}
+          orgId={vault.orgId}
+          projectId={projectId}
+        />
       )}
     </DetailShell>
   );

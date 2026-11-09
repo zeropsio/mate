@@ -60,7 +60,7 @@ import {
   WorkspaceBreadcrumbItem,
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
-import { ZeropsHostedFrame, type SidePlacement } from "./landing/ZeropsHostedFrame";
+import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { STATUS_BADGE_TONE, VerdictPanelWaiting } from "./primitives";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { HeldInventoryContext, withheldProjectNotice } from "~/zerops/inventoryContext";
@@ -580,7 +580,6 @@ export function DetailShell({
   subtitle,
   actions,
   crumbs,
-  side,
   children,
 }: {
   /** Undefined while the name is not read: its line is held, with no placeholder in it. */
@@ -596,13 +595,10 @@ export function DetailShell({
    * and coming in again.
    */
   readonly crumbs: ReadonlyArray<Crumb>;
-  /** A column beside the page, or under it where the frame is narrow: an environment's vault. */
-  readonly side?: ((placement: SidePlacement) => React.ReactNode) | undefined;
   readonly children: React.ReactNode;
 }) {
   return (
     <ZeropsHostedFrame
-      side={side}
       // The trail is a way out, not the page's business: it sits in the bar,
       // where /zerops keeps its own, rather than competing with the verbs
       // beside the name.
