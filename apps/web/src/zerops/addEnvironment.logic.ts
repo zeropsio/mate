@@ -50,8 +50,8 @@ export function questionFactsOf(input: {
 
 /**
  * The tiers HQ offers this person to add to an application (`add_stage` / `add_production`), from
- * its `can` record as HQ streamed it (`hqOffer`): only an allowed decision offers, and nothing while
- * HQ does not answer. `null` while HQ has not said of the application.
+ * its `can` record as HQ last streamed it (`hqOffer`): only an allowed decision offers. `null` while
+ * HQ has not said of the application.
  */
 export function environmentOffersOf(can: HqOffers | undefined): {
   readonly stage: boolean;

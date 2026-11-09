@@ -5,28 +5,17 @@
  * Drawn, never decided here.
  */
 import { useAtomValue } from "@effect/atom-react";
-import {
-  hqMateOffers,
-  hqOfferWords,
-  type HqMateOfferStates,
-} from "@t3tools/client-runtime/zerops/hq";
+import { hqMateOffers, type HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
 import { type HqOfferState, hqOffer } from "@t3tools/shared/hqOffers";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 
 import { hqNavigationAtom, zeropsSessionAtom } from "../state/zerops";
 
-/** The organization's structure as HQ last streamed it, and how a verb's state reads in words. */
-export function useHqOffers() {
+/** The organization in view's structure as HQ last streamed it, whose `can` records the offers are. */
+export function useHqStructure() {
   const view = useAtomValue(hqNavigationAtom);
   const organizationId = useAtomValue(zeropsSessionAtom)?.activeOrganization?.organizationId;
-  return useMemo(
-    () => ({
-      structure: view.orgId !== organizationId ? null : view.structure,
-      state: hqOffer,
-      words: (state: HqOfferState) => hqOfferWords(state),
-    }),
-    [organizationId, view],
-  );
+  return view.orgId !== organizationId ? null : view.structure;
 }
 
 /**
@@ -35,7 +24,7 @@ export function useHqOffers() {
  * its Mate's record. `undefined` while HQ's structure is not known.
  */
 export function useMateOffers(): (projectId: string) => HqMateOfferStates | undefined {
-  const { structure } = useHqOffers();
+  const structure = useHqStructure();
   return useCallback(
     (projectId) => (structure === null ? undefined : hqMateOffers(structure, projectId)),
     [structure],
@@ -47,14 +36,14 @@ export function useMateOffers(): (projectId: string) => HqMateOfferStates | unde
  * unknown while HQ has not said.
  */
 export function useOrgOffers(): (verb: string) => HqOfferState {
-  const { structure, state } = useHqOffers();
-  return useCallback((verb) => state(structure?.can, verb), [state, structure]);
+  const structure = useHqStructure();
+  return useCallback((verb) => hqOffer(structure?.can, verb), [structure]);
 }
 
 export function useAddMateOffer(): (groupId: string) => HqOfferState {
-  const { structure, state } = useHqOffers();
+  const structure = useHqStructure();
   return useCallback(
-    (groupId) => state(structure?.apps.find((app) => app.id === groupId)?.can, "add_mate"),
-    [state, structure],
+    (groupId) => hqOffer(structure?.apps.find((app) => app.id === groupId)?.can, "add_mate"),
+    [structure],
   );
 }

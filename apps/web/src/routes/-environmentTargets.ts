@@ -48,8 +48,7 @@ import { useEnvironments } from "../state/environments";
 import { environmentShell } from "../state/shell";
 import { hqProjectAtom } from "../state/zerops";
 import { useClientSettings } from "../hooks/useSettings";
-import { hqOutage, type HqOutage } from "../zerops/hqNavigation";
-import { useNowMs } from "../zerops/useNowMs";
+import { useHqOutage, type hqOutage, type HqOutage } from "../zerops/hqNavigation";
 import { useZeropsMate } from "../zerops/useZeropsMates";
 import { STILL_READING_PATIENCE_MS } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -301,10 +300,10 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
     hqNamed === undefined &&
     resolveEnvironment(machines, index, environmentId) === undefined;
   // What the menu says of HQ now, from the same reads and clock the menu's header says it from.
-  const outage = hqOutage(
+  const outage = useHqOutage(
     useAtomValue(onHq ? shownCanonicalHqListNavigationAtom : HQ_ANSWERING),
     useClientSettings((settings) => settings.timestampFormat),
-    useNowMs(onHq),
+    onHq,
   );
   const targetOf = (overdue: boolean) =>
     environmentId === null

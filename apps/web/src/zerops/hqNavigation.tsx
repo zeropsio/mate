@@ -23,6 +23,7 @@ import { useEffect, useMemo } from "react";
 import { formatDayAwareTimestamp } from "../timestampFormat";
 import { accountHqApi, configuredHq } from "./accountHq";
 import { holdHqWrites } from "./hqWrites";
+import { useNowMs, useWakeAt } from "./useNowMs";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -70,7 +71,7 @@ export function hqOutage(
       timestampFormat,
       nowMs,
     );
-    const state = link.kind === "restarting" ? "is restarting" : "is not reachable";
+    const state = link.kind === "restarting" ? "has been restarting" : "hasn't been reachable";
     return {
       kind: "last-known",
       line: `HQ ${state} since ${since} — showing what it last said. Reconnecting…`,
@@ -82,6 +83,21 @@ export function hqOutage(
     return { kind: "unavailable", line: "HQ unavailable. Retrying every minute.", again: true };
   if (navigation.retrying) return { kind: "syncing", line: "Reconnecting…", again: false };
   return null;
+}
+
+/**
+ * {@link hqOutage} on the clock, redrawn the moment HQ's budget passes (`hqAwaySaidAt`), not on the
+ * next minute's tick. `active: false` reads it without following the clock.
+ */
+export function useHqOutage(
+  navigation: Parameters<typeof hqOutage>[0],
+  timestampFormat: TimestampFormat,
+  active = true,
+): HqOutage | null {
+  const minute = useNowMs(active);
+  const saidAt = hqAwaySaidAt(navigation.link);
+  const woke = useWakeAt(active && saidAt !== null ? [saidAt] : []);
+  return hqOutage(navigation, timestampFormat, Math.max(minute, woke));
 }
 
 /** Observes the organization in view's HQ for as long as the account shows it. */

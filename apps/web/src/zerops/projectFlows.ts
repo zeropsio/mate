@@ -14,7 +14,8 @@ import {
   projectApplications,
 } from "@t3tools/client-runtime/data";
 import type { CanonicalHqEnvironment } from "@t3tools/client-runtime/zerops/hq";
-import { HQ_REMOTE_WRITE_VERB } from "@t3tools/shared/hqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import {
   flowReleaseOf,
   gitProductionRuns,
@@ -60,7 +61,7 @@ import {
   type ReleaseLive,
   type ReleasePlan,
 } from "@t3tools/client-runtime/data";
-import { OFFER_READING, releaseGateOf } from "./appOffers";
+import { releaseGateOf } from "./appOffers";
 import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useReleaseComparisons } from "./useReleaseComparisons";
 import { useProjection, useProjectsServices } from "./ZeropsAccountData";
@@ -477,7 +478,7 @@ export function useProjectFlows(
       new Map(
         appIds.map((groupId) => [
           groupId,
-          releaseGateOf(OFFER_READING, told?.find(({ id }) => id === groupId)?.can),
+          releaseGateOf(told?.find(({ id }) => id === groupId)?.can),
         ]),
       ),
     [appIds, told],
@@ -492,7 +493,7 @@ export function useProjectFlows(
       const attachment = canonical.flows.get(appId)?.release.git?.attachment;
       if (attachment?.target.kind !== "git") continue;
       const flow = canonical.flows.get(appId);
-      const replacement = OFFER_READING.state(app?.can, HQ_REMOTE_WRITE_VERB);
+      const replacement = hqOffer(app?.can, HQ_REMOTE_WRITE_VERB);
       values.set(appId, {
         attachment: { ...attachment, target: attachment.target },
         delivery: flow?.release.git?.delivery,
@@ -502,7 +503,7 @@ export function useProjectFlows(
             ? { allowed: true }
             : {
                 allowed: false,
-                reason: OFFER_READING.words(replacement) ?? "HQ has not offered token replacement.",
+                reason: hqOfferWords(replacement) ?? "HQ has not offered token replacement.",
               },
       });
     }

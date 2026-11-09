@@ -208,7 +208,8 @@ import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useHqOffers, useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { configuredHq } from "~/zerops/accountHq";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
@@ -1674,13 +1675,12 @@ export function ZeropsProjectsContent({
     activeOrganization?.id,
     creationRequest?.groupId ?? null,
   );
-  const hqOffers = useHqOffers();
   // Why Add a Mate stands off, where that is known before the press (`newMateGate`): HQ refusing
   // the person a Mate here, or the project's setup files not ready for another.
   const addMateGate = useNewMateGate();
   const addMateWhy = (groupId: string): string | null => {
     const offer = addMateOffer(groupId);
-    if (offer.kind === "refused") return hqOffers.words(offer) ?? null;
+    if (offer.kind === "refused") return hqOfferWords(offer) ?? null;
     const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
     if (entry === undefined) return null;
     return addMateGate({

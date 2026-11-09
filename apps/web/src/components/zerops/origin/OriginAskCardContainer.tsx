@@ -24,11 +24,11 @@ import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
 import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
-import { HQ_REMOTE_WRITE_VERB } from "@t3tools/shared/hqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
-import { useHqOffers } from "~/zerops/useHqOffers";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -97,8 +97,7 @@ function AskCard({
   const detail = useHqAppDetail(appId);
   const repos = detail.live ? detail.repos : undefined;
   const target = useGitTargetOperations(appId ?? "");
-  const hqOffers = useHqOffers();
-  const offer = hqOffers.state(target.can, HQ_REMOTE_WRITE_VERB);
+  const offer = hqOffer(target.can, HQ_REMOTE_WRITE_VERB);
   const viaApp = target.actions?.viaApp;
   const follow = appId === null ? undefined : target.actions?.follow;
   // The apps are read while the GitHub way can still be picked.
@@ -185,7 +184,7 @@ function AskCard({
               app,
               repos,
               mountable: offer.kind === "allowed" && viaApp !== undefined,
-              refusal: hqOffers.words(offer),
+              refusal: hqOfferWords(offer),
               onMount: async (repository) => {
                 if (viaApp === undefined) return "HQ doesn't let you connect a repository here.";
                 try {

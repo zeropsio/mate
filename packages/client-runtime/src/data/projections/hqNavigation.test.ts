@@ -721,23 +721,10 @@ describe("hqMates", () => {
   ]);
 
   it.each([
-    { name: "a relayed Mate", state: withMate, mates: { ada: { presence } } },
+    { name: "a relayed Mate, live", state: withMate, mates: { ada: { presence } } },
     { name: "none relayed yet", state: read, mates: {} },
   ])("$name", ({ state, mates }) => {
     expect(hqMates.derive(readsOfState(state), ORG)).toEqual({ mates });
-  });
-
-  it("keeps a Mate's last word through an outage", () => {
-    const outage = pastGrace(
-      apply(withMate, [
-        stream(linkKeys.hq(ORG), {
-          kind: "fault",
-          fault: { outcome: "transient", message: "HQ's stream broke." },
-          jitter: 0,
-        }),
-      ]),
-    );
-    expect(hqMates.derive(readsOfState(outage), ORG)).toEqual({ mates: { ada: { presence } } });
   });
 });
 

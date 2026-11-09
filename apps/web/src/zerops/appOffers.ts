@@ -5,31 +5,20 @@
  */
 import type { ReleaseGate } from "@t3tools/client-runtime/zerops";
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
-import { hqOffer, type HqOfferState, type HqOffers } from "@t3tools/shared/hqOffers";
-
-/** How an offer reads: its state from a `can` record, and its words. */
-export interface OfferReading {
-  readonly state: (can: HqOffers | undefined, verb: string) => HqOfferState;
-  readonly words: (state: HqOfferState) => string | undefined;
-}
-
-export const OFFER_READING: OfferReading = { state: hqOffer, words: hqOfferWords };
+import { hqOffer, type HqOffers } from "@t3tools/shared/hqOffers";
 
 /**
  * Whether HQ offers releasing the application's production, its refusal — or that it has not
  * said — in words; `undefined` for an application HQ has not named.
  */
-export function releaseGateOf(
-  reading: OfferReading,
-  can: HqOffers | undefined,
-): ReleaseGate | undefined {
+export function releaseGateOf(can: HqOffers | undefined): ReleaseGate | undefined {
   if (can === undefined) return undefined;
-  const offer = reading.state(can, "release");
+  const offer = hqOffer(can, "release");
   return offer.kind === "allowed"
     ? { allowed: true }
     : {
         allowed: false,
-        reason: reading.words(offer) ?? "",
+        reason: hqOfferWords(offer) ?? "",
         ...(offer.kind === "refused" ? { refusedBy: "hq" as const } : {}),
       };
 }

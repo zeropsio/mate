@@ -51,11 +51,14 @@ slow, not down, said as slow and never asked again meanwhile. A definitive refus
 and waits for changed input, changed access or an explicit retry.
 
 The viewer's link to an organization's HQ is one value, derived once (`hqLink`): live, restarting since
-(the stream ended as planned and the next did not open), or unreachable since. Only the menu's header
-says it, and only past its budget (longer than an HQ deploy); no other surface reads stream status to
-decide what it draws. HQ being away is never evidence about a Mate: a row keeps what HQ last said, and
-changes only on an affirmative observation (a live HQ's verdict, the Mate's own socket). Controls that
-need HQ stay as they are; a write while HQ is away is answered at once that it is away, never queued.
+(the stream ended as planned and the next did not open), or unreachable since. The menu's header says
+it, and only past its budget (longer than an HQ deploy); a route waiting on HQ quotes the same line.
+No other surface reads HQ's stream status to decide what it draws of what HQ said; only HQ's refusal,
+its own answer, is said at once. HQ being away is never evidence about a Mate: a row keeps what HQ last
+said, and changes only on an affirmative observation (a live HQ's verdict, the Mate's own socket).
+Controls that need HQ stay as they are; a write while HQ is away is answered at once that it is away,
+never queued. A wait for fresh HQ evidence (an accepted write's settlement, a birth's end) waits for a
+live HQ.
 
 A route's wait for its conversation is such a wait. Its opening (the Mate's wordless "opening the
 conversation") ends by a deadline in the conversation, in a cause the route already says, or in the

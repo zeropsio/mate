@@ -2526,7 +2526,7 @@ function bringUnfoldedIntoView(rows: HTMLElement): void {
  * How current the menu is while HQ is not answering it (`hqOutage`, SPEC §6.2.3), in the header
  * row: a spinner while HQ's first read catches up; a spinner and its words while HQ is slow on a
  * connection that holds, with nothing to try again; in words once HQ has been away past its budget
- * ("HQ is restarting since … — showing what it last said") or it never answered ("HQ unavailable") —
+ * ("HQ has been restarting since … — showing what it last said") or it never answered ("HQ unavailable") —
  * the whole line in its tooltip, and *Try again* on a press where it is offered. Never a line above
  * the list: the owner, 2026-10-05, of one that pushed the menu down and back on every reconnect.
  */

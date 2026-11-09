@@ -16,7 +16,6 @@ export interface GitDeliveryFacts {
   readonly releases?: ReadonlyArray<Release> | undefined;
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
   readonly preflight?: Readonly<Record<string, HqGitReleasePreflight>> | undefined;
-  readonly live?: boolean;
 }
 
 export type GitStanding =
@@ -26,8 +25,7 @@ export type GitStanding =
   | "pushed"
   | "partly"
   | "unresolved"
-  | "refused"
-  | "last-known";
+  | "refused";
 
 export interface GitRepositoryDelivery {
   readonly repo: string;
@@ -313,24 +311,22 @@ export function gitDeliveryOf(
   const reason =
     target.delivery !== "direct"
       ? "Pull-request delivery is not available here yet."
-      : facts.live === false
-        ? "HQ's standing is last known."
-        : blocker !== undefined
-          ? line
-          : credential
-            ? "The remote refused Mate's token, so this release can't go out. Replace the token in this production's settings, then release again."
-            : preflight !== undefined
-              ? (preflight.reason ??
-                `The remote preflight is ${preflight.verdict}; this release can't go out.`)
-              : diverged
-                ? "The remote branch has commits Mate doesn't, so this release can't go out."
-                : undefined;
+      : blocker !== undefined
+        ? line
+        : credential
+          ? "The remote refused Mate's token, so this release can't go out. Replace the token in this production's settings, then release again."
+          : preflight !== undefined
+            ? (preflight.reason ??
+              `The remote preflight is ${preflight.verdict}; this release can't go out.`)
+            : diverged
+              ? "The remote branch has commits Mate doesn't, so this release can't go out."
+              : undefined;
   const actor =
     blocker?.evidence?.nextActor ?? (replaced ? undefined : failed?.job?.evidence?.nextActor);
   return {
     kind: "git",
-    standing: facts.live === false ? "last-known" : standing,
-    line: facts.live === false ? `Last known · ${line}` : line,
+    standing,
+    line,
     version,
     activeVersion: active?.ref ?? undefined,
     queuedVersion: queued?.ref ?? undefined,
@@ -347,7 +343,6 @@ export function gitDeliveryOf(
     blocked: reason !== undefined,
     recheck:
       target.delivery === "direct" &&
-      facts.live !== false &&
       blocker === undefined &&
       !credential &&
       (preflight !== undefined || diverged),

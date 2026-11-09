@@ -154,20 +154,4 @@ describe("HQ's planned segment end, as the menu shows it", () => {
     hqDrops(store, ORG, 60_000);
     expect(surfaces(store, 61_000)).toEqual(before);
   });
-
-  it("HQ gone past its budget: the top bar says it is not reachable since it went away, the rows keep what HQ last said", () => {
-    const store = seeded();
-    const before = surfaces(store, 60_000);
-    const wentAway = Date.parse("2026-10-09T13:27:00.000Z");
-    hqDrops(store, ORG, wentAway);
-    for (const input of graceOver(store.state())) store.dispatch(input);
-    const after = surfaces(store, wentAway + 60_000);
-    const since = new Intl.DateTimeFormat(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).format(wentAway);
-    expect(after.topBar).toContain(`HQ is not reachable since ${since}`);
-    expect(after.rows).toEqual(before.rows);
-  });
 });

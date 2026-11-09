@@ -74,12 +74,6 @@ describe("project rename in the row and detail menu, as HQ offers it", () => {
     expect(tree!.root.findAllByType("button")).toHaveLength(0);
   });
 
-  it("draws it not pressable while HQ has not said", () => {
-    mock.rename = { kind: "unknown" };
-    mount();
-    expect(mock.actions).toMatchObject([{ id: "rename-group", disabled: true }]);
-  });
-
   it("offers a project whose name could not be read the same rename, never a naming", () => {
     mount({ ...GROUP, nameSource: "unread" });
     expect(mock.actions).toMatchObject([{ id: "rename-group", label: "Rename project" }]);

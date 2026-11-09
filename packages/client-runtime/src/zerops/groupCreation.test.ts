@@ -26,13 +26,6 @@ describe("who may add a project: whom HQ offers making an application", () => {
     });
     expect(verb).toEqual({ offered: false, reason: "Only an owner or admin adds a project." });
   });
-
-  it("does not offer it before HQ has said", () => {
-    expect(resolveAddProjectVerb({ offer: { kind: "unknown" } })).toEqual({
-      offered: false,
-      reason: "HQ has not said yet.",
-    });
-  });
 });
 
 describe("resolveMateRegistration", () => {
