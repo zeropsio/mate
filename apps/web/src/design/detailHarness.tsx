@@ -40,11 +40,14 @@ import {
   type FlowPullRequest,
   type FlowRelease,
   type MovedCommits,
+  type ReleaseCreationFailure,
   type ReleaseDeployFailure,
   type ZeropsPublicRoute,
   type ZeropsRouteOffer,
 } from "@t3tools/client-runtime/zerops";
 import {
+  releaseNotCreated,
+  releasesNotDeployed,
   serviceRows,
   rowsRunningAgain,
   stopFailedDeploys,
@@ -65,6 +68,7 @@ import {
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { ZeropsStopPane } from "~/components/zerops/PlacePage";
+import { changesOfRelease } from "~/components/zerops/place/placePage.logic";
 import { GitStopDetail } from "~/components/zerops/GitStopDetail";
 import { DetailShell } from "~/components/zerops/ZeropsGroupDetail";
 import { PlaceLine } from "~/components/zerops/system";
@@ -491,6 +495,122 @@ const ACME_RELEASES: ReadonlyArray<FlowRelease> = TEASHOP_RELEASES.map((release,
   })),
 }));
 
+/** The storefront commits v0.1.14 and v0.1.15 listed; neither was ever deployed. */
+const STOREFRONT_REFUSED = ["c7d19e42", "e2a60b5f"] as const;
+
+/** HQ's job of a release's deploy it refused at its one try. */
+const refusedBy = (tag: string, commit: string): HqJob => ({
+  ...deployRecord(sha(commit), "refused"),
+  cause: "release",
+  ref: tag,
+  reason: "The release could not create what it needs first.",
+});
+
+/**
+ * Acme's production after two releases that needed a database it does not have: the shop and the
+ * storefront run what v0.1.13 put live, the storefront's newest job is HQ's refusal of v0.1.15,
+ * and Zerops lists no db.
+ */
+const ACME_WITHOUT_DB = [
+  inspectable(service("shop", MEDUSA, "v0.1.9", "live", "acme-shop")),
+  {
+    ...service("storefront", NEXTSTORE[0], "v0.1.13", "live", "acme-storefront"),
+    deploy: {
+      latest: refusedBy("v0.1.15", STOREFRONT_REFUSED[1]),
+      live: deployRecord(sha(NEXTSTORE[0]), "live"),
+    },
+  },
+  managed("redis"),
+  managed("search"),
+  managed("storage"),
+];
+
+/** v0.1.14 and v0.1.15 over Acme's releases: each listed a storefront commit that never deployed. */
+const ACME_REFUSED_RELEASES: ReadonlyArray<FlowRelease> = [
+  ...(["v0.1.15", "v0.1.14"] as const).map((tag, index) => ({
+    tag,
+    verdict: "approved" as const,
+    detail: undefined,
+    line: `shop ${MEDUSA.slice(0, 7)} · storefront ${(STOREFRONT_REFUSED[1 - index] ?? "").slice(0, 7)}`,
+    entries: [
+      { service: "shop", commit: sha(MEDUSA) },
+      { service: "storefront", commit: sha(STOREFRONT_REFUSED[1 - index] ?? "") },
+    ],
+    taggedAt: new Date(NOW - (index + 1) * 420_000).toISOString(),
+    history: {
+      ranges: [],
+      changes: [
+        {
+          repo: "appdev",
+          number: 31 - index,
+          title:
+            index === 0
+              ? "Keep sign-ins in the database (#17)"
+              : "Remember who is signed in across restarts (#16)",
+        },
+      ],
+      commitCount: 1,
+      outsideCommitCount: 0,
+    },
+  })),
+  ...ACME_RELEASES,
+];
+
+/** Three changes merged since v0.1.13, waiting for a release that goes live. */
+const MERGED_THREE = [
+  {
+    ...change(31, "Keep sign-ins in the database (#17)", "p-juno", 0.3, true),
+    pullRequest: {
+      number: 17,
+      url: "https://github.com/acme/storefront/pull/17",
+      state: "merged" as const,
+    },
+  },
+  {
+    ...change(30, "Remember who is signed in across restarts (#16)", "p-juno", 2, true),
+    pullRequest: {
+      number: 16,
+      url: "https://github.com/acme/storefront/pull/16",
+      state: "merged" as const,
+    },
+  },
+  change(29, "Show the delivery estimate on the product page", "p-raya", 5, true),
+];
+
+const READY_THREE_FAILED: CardReady = {
+  count: 3,
+  changeCount: 3,
+  atLeast: false,
+  stage: undefined,
+  from: "v0.1.13",
+  failed: true,
+};
+
+/** v0.1.14 on its way over Acme's releases: it carries two of the three merged changes. */
+const ACME_RELEASING: ReadonlyArray<FlowRelease> = [
+  {
+    tag: "v0.1.14",
+    verdict: "approved",
+    detail: undefined,
+    line: `shop ${MEDUSA.slice(0, 7)} · storefront ${STOREFRONT_REFUSED[0].slice(0, 7)}`,
+    entries: [
+      { service: "shop", commit: sha(MEDUSA) },
+      { service: "storefront", commit: sha(STOREFRONT_REFUSED[0]) },
+    ],
+    taggedAt: new Date(NOW - 3_600_000).toISOString(),
+    history: {
+      ranges: [],
+      changes: [
+        { repo: "appdev", number: 30, title: "Remember who is signed in across restarts (#16)" },
+        { repo: "appdev", number: 29, title: "Show the delivery estimate on the product page" },
+      ],
+      commitCount: 2,
+      outsideCommitCount: 0,
+    },
+  },
+  ...ACME_RELEASES,
+];
+
 /** Fifteen people who reach Acme's production, as its access reads them: two set, the rest by default. */
 const ACME_PEOPLE: ReturnType<typeof columnPeople> = {
   label: "Production",
@@ -739,6 +859,14 @@ interface StopFixture {
   readonly line?: PlaceLineData;
   /** The person's own Mate a failure is offered to, by name. */
   readonly fixer?: string;
+  /** The releases whose services HQ could not create in production first. */
+  readonly creationFailures?: ReadonlyArray<ReleaseCreationFailure>;
+  /** False where HQ declares no service for the place: its page lists the platform's own. */
+  readonly declared?: boolean;
+  /** Whether the reads the services wait on have answered; answered unless given. */
+  readonly servicesRead?: boolean;
+  /** Where HQ's answer of the releases stands; known unless given. */
+  readonly releasesRead?: React.ComponentProps<typeof ZeropsStopPane>["releasesRead"];
 }
 
 /** Acme production's vault, its values the vault fixture's. */
@@ -860,6 +988,13 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
   const waiting = production ? (fixture.waiting ?? []).flatMap((entry) => entry.commits) : [];
   const history = fixture.history ?? HISTORY;
   const mainHead = !production && history.kind === "read" ? history.commits[0]?.sha : undefined;
+  const notCreated = releaseNotCreated({
+    tier: fixture.tier,
+    releases,
+    services: fixture.services,
+    creationFailures: fixture.creationFailures,
+    missing: fixture.notInZerops ?? [],
+  });
   const services = serviceRows({
     environment: name,
     services: fixture.services,
@@ -869,13 +1004,23 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     offers: fixture.offers ?? [],
     nowMs: NOW,
     age: () => "2h ago",
+    notCreated: notCreated?.tag,
   });
   const failedDeploys = stopFailedDeploys({ tier: fixture.tier, rows: services, releases });
+  const askedAgain = notCreated === undefined ? failedDeploys : [];
   const failed = failedDeploys.map((entry) => ({
     ...entry,
     mayRunAgain: fixture.mayRunAgain ?? false,
   }));
-  const [onlyFailed] = failed.length === 1 ? failed : [];
+  const [onlyFailed] = askedAgain.length === 1 ? failed : [];
+  // While a release is on its way, the changes it carries; the rest are counted, as the page does.
+  const onItsWay =
+    fixture.releasing === undefined || fixture.next === undefined
+      ? undefined
+      : changesOfRelease(
+          fixture.next,
+          releases.find((entry) => entry.tag === fixture.releasing),
+        );
   return (
     <ZeropsStopPane
       deployAnswer={fixture.deployAnswer}
@@ -902,7 +1047,15 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
           ? { running: false, refused: null, onRunAgain: () => {} }
           : undefined
       }
-      services={rowsRunningAgain(services, failedDeploys)}
+      services={fixture.declared === false ? undefined : rowsRunningAgain(services, askedAgain)}
+      servicesRead={fixture.servicesRead}
+      releasesRead={fixture.releasesRead}
+      laterChanges={onItsWay?.later}
+      releasesNotDeployed={releasesNotDeployed({
+        releases,
+        failures: fixture.failedDeploys,
+        services: fixture.services,
+      })}
       stop={stop}
       tags={TAGS}
       trouble={null}
@@ -924,6 +1077,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
           mayKeep: fixture.mayKeep,
           project: stop.name,
         }),
+        notCreated,
       })}
       view={view}
       untold={[]}
@@ -940,7 +1094,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       releasing={fixture.releasing}
       deployFailed={failedDeploys.length > 0}
       ready={fixture.ready}
-      nextChanges={fixture.next}
+      nextChanges={onItsWay?.carried ?? fixture.next}
       faces={mateFace}
       mateName={(mateProjectId) => MATES[mateProjectId]?.name}
       onOpenPull={() => {}}
@@ -1349,6 +1503,107 @@ function Harness() {
             releases: TEASHOP_FAILED_RELEASES,
             carried: carriedOf(TEASHOP_FAILED_RELEASES),
             failedDeploys: [{ tag: "v0.1.14", service: "nextstore", sha: sha(NEXTSTORE_FAILED) }],
+          }}
+        />
+      </State>
+
+      <State
+        label="A production whose releases were refused on a missing service"
+        note="Acme: v0.1.14 and v0.1.15 needed a db production does not have, and HQ refused every deploy of both. One sentence says it, cause first, with no Run again; the next release keeps its ordinary card and verb; the storefront keeps its calm line; db stands as a slot the next release creates."
+      >
+        <StopState
+          fixture={{
+            fixer: "Juno",
+            tier: "production",
+            group: "Acme",
+            services: ACME_WITHOUT_DB,
+            deployment: TEASHOP_RUNNING,
+            routes: ACME_ROUTES,
+            releases: ACME_REFUSED_RELEASES,
+            failedDeploys: [
+              {
+                tag: "v0.1.15",
+                service: "storefront",
+                sha: sha(STOREFRONT_REFUSED[1]),
+                refused: true,
+              },
+              {
+                tag: "v0.1.14",
+                service: "storefront",
+                sha: sha(STOREFRONT_REFUSED[0]),
+                refused: true,
+              },
+            ],
+            creationFailures: [
+              { tag: "v0.1.15", reason: "Zerops did not create db: its type is not offered." },
+            ],
+            notInZerops: ["db"],
+            platformServices: ACME_SERVICES.filter((row) => row.service.hostname !== "db"),
+            access: { summary: ACME_PEOPLE, line: null },
+            mayRunAgain: true,
+            release: { ...RELEASE_WAITING, tag: "v0.1.16" },
+            ready: READY_THREE_FAILED,
+            next: MERGED_THREE,
+            liveBy: "Dana K.",
+          }}
+        />
+      </State>
+
+      <State
+        label="A production putting a release live"
+        note="Acme: v0.1.14 is on its way with two changes; a third merged after it was made. The section says Releasing now, the card lists the release's own two, one quiet line counts the third, and v0.1.14's row says Releasing."
+      >
+        <StopState
+          fixture={{
+            tier: "production",
+            group: "Acme",
+            services: ACME_LIVE,
+            deployment: TEASHOP_RUNNING,
+            routes: ACME_ROUTES,
+            releases: ACME_RELEASING,
+            releasing: "v0.1.14",
+            release: { ...TEASHOP_RELEASING, inFlight: "v0.1.14" },
+            platformServices: ACME_SERVICES,
+            access: { summary: ACME_PEOPLE, line: null },
+            next: MERGED_THREE,
+            liveBy: "Dana K.",
+          }}
+        />
+      </State>
+
+      <State
+        label="A production whose reads have not answered"
+        note="The platform's listing and HQ's releases are still being read: the Services slot holds two cards' shape and the Releases slot its rows', never a sentence that goes away."
+      >
+        <StopState
+          fixture={{
+            tier: "production",
+            group: "Acme",
+            services: ACME_LIVE,
+            deployment: TEASHOP_RUNNING,
+            routes: ACME_ROUTES,
+            declared: false,
+            servicesRead: false,
+            releasesRead: "reading",
+            access: { summary: ACME_PEOPLE, line: null },
+          }}
+        />
+      </State>
+
+      <State
+        label="A production HQ declares nothing for"
+        note="The reads answered, HQ declares no service and recorded no release: the platform's own services stand in the same cards, without a commit line, and Releases says what is true."
+      >
+        <StopState
+          fixture={{
+            tier: "production",
+            group: "Acme",
+            services: ACME_LIVE,
+            deployment: TEASHOP_RUNNING,
+            routes: ACME_ROUTES,
+            declared: false,
+            platformServices: ACME_SERVICES,
+            access: { summary: ACME_PEOPLE, line: null },
           }}
         />
       </State>

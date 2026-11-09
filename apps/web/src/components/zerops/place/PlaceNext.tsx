@@ -20,12 +20,15 @@ export function PlaceNextRelease({
   release,
   ready,
   from,
+  creates,
   children,
 }: {
   readonly release: ReleaseOffer;
   readonly ready: CardReady | undefined;
   /** Whose changes they are, said after the commits: "from Juno and Theo". */
   readonly from: string | undefined;
+  /** What it does before it deploys: "creates db in production first" (`createsFirstLine`). */
+  readonly creates?: string | undefined;
   /** The changes it carries: `ChangeRow`s in a `ChangeList`. */
   readonly children?: ReactNode;
 }) {
@@ -33,7 +36,7 @@ export function PlaceNextRelease({
   if (!release.offered && !release.releasing)
     return (
       <PlaceNextCard
-        facts={[...(release.reason === undefined ? [] : [release.reason]), from]}
+        facts={[...(release.reason === undefined ? [] : [release.reason]), from, creates]}
         state="waiting"
         title={nextReleaseTitle(ready)}
       >
@@ -44,7 +47,7 @@ export function PlaceNextRelease({
   if (view.kind === "none") return null;
   return (
     <PlaceNextCard
-      facts={view.kind === "releasing" ? [] : [...view.facts, from]}
+      facts={view.kind === "releasing" ? [] : [...view.facts, from, creates]}
       lead={view.kind === "failed" ? <Badge tone="danger">{view.pill}</Badge> : undefined}
       state={view.kind}
       title={view.title}

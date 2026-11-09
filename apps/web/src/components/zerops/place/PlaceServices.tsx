@@ -25,6 +25,7 @@ import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { Button } from "../../ui/button";
 import { MenuGroup, MenuGroupLabel, MenuItem, MenuSeparator } from "../../ui/menu";
 import { MiddleTruncate } from "../../ui/middle-truncate";
+import { Skeleton } from "../../ui/skeleton";
 import { StopPublicAccessStatus } from "../StopPublicAccess";
 import { DeployLogDetails, useDeployLogUnavailable } from "../ZeropsDeployLog";
 import { ServiceList, ServiceRow, serviceRunsLine } from "../system";
@@ -82,18 +83,63 @@ export function PlaceServiceTable({
 }
 
 /**
+ * The services' slot while they are being read: two cards in a service card's shape — its name
+ * and what it is, the line under them, its three meters — so what arrives moves nothing.
+ */
+export function PlaceServicesWaiting() {
+  return (
+    <ul
+      aria-hidden="true"
+      className="m-0 flex min-w-0 list-none flex-col gap-2.5 p-0"
+      data-zerops-surface="place-services-waiting"
+    >
+      {[0, 1].map((card) => (
+        <li
+          className="flex min-w-0 flex-col gap-3.5 rounded-xl border border-border/70 bg-card px-4 pt-3.5 pb-4"
+          key={card}
+        >
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="flex h-5 items-center gap-2">
+              <Skeleton className="h-3 w-16" surface="card" />
+              <Skeleton className="h-3 w-20" surface="card" />
+            </span>
+            <span className="flex h-4 items-center">
+              <Skeleton className="h-3 w-44 max-w-full" surface="card" />
+            </span>
+          </div>
+          <div className="grid min-w-0 grid-cols-3 items-end gap-x-4">
+            {[0, 1, 2].map((meter) => (
+              <div className="flex min-w-0 flex-col gap-1.5" key={meter}>
+                <span className="flex h-4 items-center">
+                  <Skeleton className="h-3 w-12" surface="card" />
+                </span>
+                <Skeleton className="h-1 w-full" shape="pill" surface="card" />
+              </div>
+            ))}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
  * A service the recipe declares and the project lacks, as an empty slot: what it is for and the one
- * verb that adds it — or, once asked, HQ's answer in its place.
+ * verb that adds it — or, once asked, HQ's answer in its place. A production gets one only by a
+ * release (`byRelease`), so its slot says that and carries no verb.
  */
 export function PlaceMissingService({
   hostname,
   answer,
   verb,
+  byRelease = false,
 }: {
   readonly hostname: string;
   readonly answer: DeployAnswerJob | undefined;
   /** *Add <service>*, for whoever may run deploys here. */
   readonly verb: ReactNode;
+  /** A production's: the next release creates it. */
+  readonly byRelease?: boolean;
 }) {
   return (
     <li
@@ -105,7 +151,9 @@ export function PlaceMissingService({
         <span className="truncate text-sm font-semibold text-foreground/85">{hostname}</span>
         {answer === undefined ? (
           <span className="truncate text-caption text-muted-foreground">
-            In its setup files, not in Zerops yet
+            {byRelease
+              ? "In the setup files · created by the next release"
+              : "In its setup files, not in Zerops yet"}
           </span>
         ) : (
           <span

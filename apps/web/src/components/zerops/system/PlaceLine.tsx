@@ -58,6 +58,7 @@ export function PlaceLine({
       )}
       data-zerops-place-name=""
       params={{ groupId, projectId }}
+      preload="intent"
       to="/group/$groupId/$projectId"
     >
       {view.title}

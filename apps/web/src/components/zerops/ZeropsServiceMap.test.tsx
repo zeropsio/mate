@@ -132,7 +132,7 @@ describe("ZeropsServiceMap — the card", () => {
       </ZeropsDataLinkContext>,
     );
     expect(withOpener.match(/data-zerops-service-data-button/g)).toHaveLength(1);
-    expect(withOpener).toContain('aria-label="Browse data of db"');
+    expect(withOpener).toContain('aria-label="Browse db&#x27;s data"');
     expect(render(view)).not.toContain("data-zerops-service-data-button");
   });
 

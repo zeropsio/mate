@@ -35,8 +35,9 @@ import {
 } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
-import { EllipsisIcon } from "lucide-react";
+import { ChevronDownIcon, EllipsisIcon, GlobeIcon } from "lucide-react";
 
+import { HeaderLinksView } from "~/components/chat/ChatHeaderLinks";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { MatePersonaPress } from "~/components/chat/MatePersonaPress";
 import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
@@ -50,7 +51,9 @@ import {
 import { Button } from "~/components/ui/button";
 import { threadAgentActivity } from "~/zerops/agentActivity";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
-import { ZeropsMark } from "~/components/ZeropsMark";
+import { MateStatusMarker } from "~/components/zerops/MateStatusMarker";
+import { ZeropsProjectLink } from "~/components/zerops/ZeropsProjectLink";
+import type { MateStatusAsk } from "~/zerops/mateStatus.logic";
 import { CrewmateMenuPopup } from "~/components/zerops/crew/CrewmateMenu";
 import { crewmateMenuModel } from "~/components/zerops/crew/CrewmateMenu.logic";
 import { crewTryOf, crewTryPress, crewTryStops } from "~/zerops/crew/crewTry";
@@ -316,6 +319,14 @@ interface HeadState {
   readonly latePersona?: true;
   /** Changes wait on the person: the Review door stands after the name. */
   readonly review?: true;
+  /**
+   * The header's links by what is known of the Mate's project: both rooms `held` while it is not
+   * known; `project` at once with Sites' room held until the menu draws it; `none` for a Mate in
+   * no project. Absent: Project and Sites, settled.
+   */
+  readonly links?: "held" | "project" | "none";
+  /** The Mate waits on a key: its status after the line, a press for its person, words otherwise. */
+  readonly needsKey?: { readonly ask: MateStatusAsk; readonly mine: boolean };
 }
 
 const LONG_SUBJECT =
@@ -478,14 +489,66 @@ const STATES: ReadonlyArray<HeadState> = [
     crew: [...CREW, ...EXTRA_CREW],
     on: "load-tests",
   },
+  {
+    id: "links-held",
+    title: "The links before the Mate's project is known — both rooms held, nothing in them",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    links: "held",
+  },
+  {
+    id: "links-project",
+    title: "A Mate in a project, the menu not drawn yet — Project at once, Sites' room held",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    links: "project",
+  },
+  {
+    id: "links-none",
+    title: "A Mate in no project — Open in Zerops, and only here",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    links: "none",
+  },
+  {
+    id: "needs-key",
+    title: "Fen waits on a key from you — its status is a press that goes to the ask",
+    chats: [{ title: FEN_TASK, activity: "needs" }],
+    crew: [],
+    on: 0,
+    needsKey: { ask: { asked: "Stripe secret key" }, mine: true },
+  },
+  {
+    id: "needs-key-reads",
+    title: "The same to someone reading along — words, and who is asked on hover",
+    chats: [{ title: FEN_TASK, activity: "needs" }],
+    crew: [],
+    on: 0,
+    needsKey: { ask: { askedOf: "Dana" }, mine: false },
+  },
 ];
 
+/** Sites as the header draws it; its panel is the menu's, which reads the app's stores. */
+const SITES = (
+  <Button aria-label="Open the Mate's sites" data-chat-header-ghost size="sm" variant="ghost">
+    <GlobeIcon className="size-3.5 shrink-0" />
+    <span className="hidden text-line @3xl/header-actions:inline">Sites</span>
+    <ChevronDownIcon className="size-3 shrink-0 opacity-70" />
+  </Button>
+);
+
 /** The header's actions on the right, as `ChatHeader` draws them for a Mate. */
-function HeaderActions() {
+function HeaderActions({ links }: { readonly links: HeadState["links"] }) {
   return (
     <>
       <span className="flex size-4 shrink-0 items-center justify-center" />
-      <div className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25">
+      <div
+        className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25"
+        data-chat-header-actions
+      >
         <Button
           aria-label="More header actions"
           data-chat-header-ghost
@@ -494,10 +557,20 @@ function HeaderActions() {
         >
           <EllipsisIcon className="size-4" />
         </Button>
-        <Button data-chat-header-ghost size="sm" variant="ghost">
-          <ZeropsMark className="size-3.5 shrink-0" />
-          <span className="hidden text-line @3xl/header-actions:inline">Open in Zerops</span>
-        </Button>
+        <HeaderLinksView
+          onOpenProject={() => {}}
+          page={
+            links === "none"
+              ? { kind: "none" }
+              : links === "held"
+                ? { kind: "unknown" }
+                : { kind: "page", groupId: "acme-docs", projectName: "Acme Docs" }
+          }
+          sites={links === undefined ? SITES : null}
+        />
+        {links === "none" ? (
+          <ZeropsProjectLink projectUrl="https://app.zerops.io/project/fen" />
+        ) : null}
       </div>
     </>
   );
@@ -666,7 +739,16 @@ function Frame({
               renameField={null}
               trailing={state.review === true ? <HeaderReviewDoor {...REVIEW_DOOR} /> : undefined}
             />
-            <HeaderActions />
+            {state.needsKey === undefined ? null : (
+              <MateStatusMarker
+                ask={state.needsKey.ask}
+                mateName={FEN.name}
+                onOpen={state.needsKey.mine ? () => {} : undefined}
+                status={{ kind: "answer", severity: "attention", key: true }}
+                timestampFormat="locale"
+              />
+            )}
+            <HeaderActions links={state.links} />
           </div>
         </WorkspacePageHeader>
         <Conversation />
