@@ -84,6 +84,7 @@ import { cellKey, PlaceAccessSummary, ProjectAccessTable } from "./ProjectAccess
 import { Skeleton } from "../../ui/skeleton";
 import { SetupRow } from "../project/SetupCard";
 import { peopleSummary } from "../project/projectSetup.logic";
+import { PersonAvatar } from "../primitives";
 import { SectionAction } from "../system";
 
 /** Outside an account nothing is read: every project's grants are still to come. */
@@ -428,30 +429,45 @@ export function ProjectPeopleRowView({
   readonly onManage: (from: HTMLElement) => void;
 }) {
   const summary = peopleSummary(view);
+  const people = view.kind === "table" ? view.rows : [];
+  const more = people.length - FACES_SHOWN;
   return (
     <SetupRow
       action={<SectionAction onClick={onManage}>Manage</SectionAction>}
       busy={view.kind === "reading"}
-      label="People"
+      label="Who has access"
       surface="project-people"
     >
-      <p className="flex min-h-5 min-w-0 flex-wrap gap-x-1.5 text-line">
+      <div className="flex min-h-7 min-w-0 items-center gap-3.5">
         {view.kind === "unreadable" ? (
-          <span className="text-muted-foreground">{view.line}</span>
+          <span className="text-line text-muted-foreground">{view.line}</span>
         ) : summary === null ? (
           <Skeleton className="h-5 w-48" />
         ) : (
           <>
-            <span className="text-foreground">{summary.people}</span>
-            {summary.production === null ? null : (
-              <span className="text-muted-foreground">· {summary.production}</span>
+            {people.length === 0 ? null : (
+              <span aria-hidden="true" className="pp-faces">
+                {people.slice(0, FACES_SHOWN).map((person) => (
+                  <PersonAvatar
+                    key={person.key}
+                    name={person.name}
+                    picture={person.avatarUrl}
+                    size={24}
+                  />
+                ))}
+                {more > 0 ? <span className="pp-faces-more">+{more}</span> : null}
+              </span>
             )}
+            <span className="text-sm text-foreground">{summary}</span>
           </>
         )}
-      </p>
+      </div>
     </SetupRow>
   );
 }
+
+/** How many faces stand for who has access before "+N" says the rest. */
+const FACES_SHOWN = 5;
 
 /** The app a project is part of, as HQ's structure places it; `undefined` for one on its own. */
 export function useProjectGroup(

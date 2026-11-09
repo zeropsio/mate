@@ -133,20 +133,70 @@
   padding: 0 8px 0 38px;
 }
 
-/* The side column's card: one row a setup, each split from the last by a hairline. */
+/* The side column: a card a setup, each under its label. */
 .pp-setup {
-  padding: 4px 16px;
-}
-
-.pp-setup-row {
   display: grid;
   min-width: 0;
-  gap: 4px;
-  padding: 12px 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 26px;
 }
 
-.pp-setup-row + .pp-setup-row {
-  border-top: 1px solid var(--ov-rule);
+/* A side card: what one setup is, its label above it. */
+.pp-setup-card {
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 12px;
+}
+
+/* A side card of rows (the code repositories): the rows' own padding stands in for the card's. */
+.pp-setup-card[data-rows] {
+  padding: 4px 8px;
+}
+
+/* A setup nobody made yet: a dashed slot saying what it is for, beside its one verb. */
+.pp-setup-card[data-empty] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: none;
+  box-shadow: none;
+  outline: 1px dashed color-mix(in oklab, var(--foreground) 16%, transparent);
+  outline-offset: -1px;
+}
+
+.pp-setup-card[data-empty] > p {
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 1.45;
+}
+
+/* Who has access, as faces: each over the last, ringed in the card's ground. */
+.pp-faces {
+  display: flex;
+  flex: none;
+  padding-inline-start: 6px;
+}
+
+.pp-card .pp-faces > * {
+  margin-inline-start: -6px;
+  box-shadow: 0 0 0 2px var(--ov-ground);
+}
+
+.pp-faces-more {
+  position: relative;
+  display: inline-flex;
+  min-width: 24px;
+  height: 24px;
+  padding-inline: 4px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--foreground) 12%, var(--ov-ground));
+  color: var(--foreground);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .pp-addresses {
