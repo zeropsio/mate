@@ -1001,12 +1001,14 @@ export function ZeropsStopPane({
       routes,
     });
   const rollBackTo = production ? rollBackTarget(releases) : undefined;
-  // The verdict speaks only where no section says it: a failure, or a place that runs nothing.
-  // What waits for a release is Next release's, a release on its way is the header's, calm is
-  // the header's dot.
+  // The verdict speaks only where no section says it: a failure, or a place that runs nothing
+  // and has more to say than the header's "Not released yet" — what deploys it, or its first
+  // deploy under way. What waits for a release is Next release's, a release on its way is the
+  // header's, calm is the header's dot.
   const verdictShown =
     verdict.tone === "failed" ||
     (view.version === undefined &&
+      (verdict.detail !== undefined || verdict.tone === "busy") &&
       verb?.kind !== "release" &&
       !(production && releasing !== undefined));
   const brought = live === undefined ? undefined : releaseBrought(live);

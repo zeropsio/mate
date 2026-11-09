@@ -128,7 +128,10 @@ export function placeHeaderLine(input: {
       : input.failed
         ? [
             "failed",
-            [input.tier === "production" ? "Release failed" : "Deploy failed", ...stillRuns(label)],
+            // A stage names the commit that failed, never one that still runs.
+            input.tier === "production"
+              ? ["Release failed", ...stillRuns(label)]
+              : ["Deploy failed"],
           ]
         : view.tone === "pending"
           ? ["releasing", calm]

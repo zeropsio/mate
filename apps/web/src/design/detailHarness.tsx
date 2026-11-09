@@ -570,12 +570,12 @@ const ACME_PEOPLE: ReturnType<typeof columnPeople> = {
 const SIX_SERVICES = [
   {
     label: "Six services in production",
-    note: "A 1786 window: the vault beside the page; one row per service, meters under each compute one, none under the bucket. The storefront answers on its own domains, so nothing calls it closed.",
+    note: "A 1786 window, a release ready: Next release over the two merged changes, Live now with what it brought, one row per service with its meters. Vault opens the drawer.",
     width: 1351,
   },
   {
     label: "Six services in production at 1280",
-    note: "A 1280 window: no room beside the page, so the vault goes under it and the table keeps one row per service.",
+    note: "A 1280 window: the same sections; a service's meters stack in their column.",
     width: 845,
   },
   {

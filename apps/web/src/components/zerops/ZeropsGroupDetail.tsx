@@ -56,7 +56,7 @@ import {
 import { useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { Crumbs, PageHeader, usePageTrail, type Crumb } from "./system";
+import { Crumbs, PageHeader, SectionLabel, usePageTrail, type Crumb } from "./system";
 import { STATUS_BADGE_TONE, VerdictPanelWaiting } from "./primitives";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { HeldInventoryContext, withheldProjectNotice } from "~/zerops/inventoryContext";
@@ -571,12 +571,8 @@ function Section({
   readonly children: React.ReactNode;
 }) {
   return (
-    <section>
-      {/* A hairline under the heading: without one the page was four blocks of
-          identical weight and a reader had to parse it to find the seams. */}
-      <h2 className="mb-3 border-b border-border pb-1.5 text-sm font-semibold tracking-tight text-foreground">
-        {title}
-      </h2>
+    <section className="flex min-w-0 flex-col gap-1.5">
+      <SectionLabel>{title}</SectionLabel>
       {children}
     </section>
   );
