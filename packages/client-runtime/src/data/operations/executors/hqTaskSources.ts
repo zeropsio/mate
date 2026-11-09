@@ -26,7 +26,8 @@ export type TaskSourceWrites = Pick<
   | "setTaskLimits"
   | "stopAppTask"
   | "githubManifest"
-  | "githubDisconnect"
+  | "githubForget"
+  | "githubConfirm"
   | "githubInstall"
   | "githubAcceptInstallation"
   | "githubSuspendInstallation"
@@ -42,13 +43,18 @@ const UPDATE_HQ_GITHUB = "Update HQ to connect GitHub.";
 export const UPDATE_HQ_TASK_STOP = "Update HQ to stop tasks from Mate.";
 
 /**
- * HQ's refusal of an install link, an Accept or a Suspend in words: an HQ without the route (a bare
- * `404`) needs updating, and an installation HQ no longer holds is gone. `undefined`: HQ's own
- * words stand.
+ * HQ's refusal of an install link, a Confirm, an Accept or a Suspend in words: an HQ without the
+ * route (a bare `404`) needs updating, an installation or app HQ no longer holds is gone, and an app
+ * whose key GitHub no longer takes cannot be confirmed. `undefined`: HQ's own words stand.
  */
-function installationRefusal(cause: HqError): string | undefined {
+function installationRefusal(cause: HqError, of: "installation" | "app"): string | undefined {
   if (cause.status === 404 && cause.code !== "not_found") return UPDATE_HQ_GITHUB;
-  if (cause.code === "not_found") return "That installation is gone from GitHub.";
+  if (cause.code === "not_found")
+    return of === "app"
+      ? "That GitHub app is no longer in this organization."
+      : "That installation is gone from GitHub.";
+  if (of === "app" && cause.reason === "github_unavailable")
+    return "GitHub didn't take this app's key. Check the app on GitHub, or remove it and add another.";
   return undefined;
 }
 
@@ -157,13 +163,17 @@ export function makeTaskSourceExecutor(options: {
                     options.manifested(requestId, view);
                   }) ?? null
               );
-            case "github-disconnect":
-              return api.githubDisconnect?.() ?? null;
+            case "github-forget":
+              return api.githubForget?.(write.githubAppId) ?? null;
+            case "github-confirm":
+              return api.githubConfirm?.(write.githubAppId) ?? null;
             case "github-install":
               return (
-                api.githubInstall?.({ returnTo: write.returnTo }).then((view) => {
-                  options.linked(requestId, view.url);
-                }) ?? null
+                api
+                  .githubInstall?.(write.githubAppId, { returnTo: write.returnTo })
+                  .then((view) => {
+                    options.linked(requestId, view.url);
+                  }) ?? null
               );
             case "github-accept":
               return api.githubAcceptInstallation?.(write.installationId) ?? null;
@@ -196,11 +206,14 @@ export function makeTaskSourceExecutor(options: {
                     (write.kind === "task-stop"
                       ? taskStopRefusal(cause)
                       : write.kind === "github-install" ||
-                          write.kind === "github-accept" ||
-                          write.kind === "github-suspend" ||
-                          write.kind === "github-resume"
-                        ? installationRefusal(cause)
-                        : undefined) ??
+                          write.kind === "github-confirm" ||
+                          write.kind === "github-forget"
+                        ? installationRefusal(cause, "app")
+                        : write.kind === "github-accept" ||
+                            write.kind === "github-suspend" ||
+                            write.kind === "github-resume"
+                          ? installationRefusal(cause, "installation")
+                          : undefined) ??
                       (typed.some((value) => cause.message.includes(value))
                         ? "HQ did not take what was entered."
                         : cause.message),

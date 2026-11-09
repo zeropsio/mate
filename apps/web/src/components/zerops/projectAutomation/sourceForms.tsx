@@ -67,7 +67,7 @@ export function AppIntakeView({
   readonly appId: string;
   readonly name: string;
   readonly choices: ReadonlyArray<string>;
-  /** The organization's GitHub app's name, where it is connected and read. */
+  /** The name of the organization's GitHub app the intake's repository goes through, where read. */
   readonly githubApp?: string | undefined;
   readonly reposRead: boolean;
   /** HQ's reason its repositories could not be read: said, with *Read again*. */
