@@ -6,22 +6,11 @@
  */
 import { Vault } from "lucide-react";
 import type { ReactNode } from "react";
-import { create } from "zustand";
 
 import { PreviewPanelShell } from "../../RightPanelShell";
 import { Button } from "../../ui/button";
 import { Sheet, SheetPopup } from "../../ui/sheet";
 import { ProjectVaultPanel } from "./VaultPanelContainer";
-
-/** Whether an environment's vault drawer is open: closed until the person opens it. */
-const useStopVaultStore = create<{ readonly open: boolean }>()(() => ({ open: false }));
-
-const setStopVaultOpen = (open: boolean) => useStopVaultStore.setState({ open });
-
-/** Whether an environment's page shows its vault, and the way to open or close it. */
-export function useStopVaultOpen(): readonly [boolean, (open: boolean) => void] {
-  return [useStopVaultStore((state) => state.open), setStopVaultOpen] as const;
-}
 
 /** The page's verb that opens its vault drawer. */
 export function StopVaultToggle({
