@@ -133,12 +133,24 @@ describe("an organization's persona templates in Settings", () => {
       says: "No templates yet.",
     },
     {
+      title: "a failed read gives its cause",
+      read: { state: "failed" as const, templates: [], failure: "HQ is not answering right now." },
+      says: "Couldn't read the persona templates. HQ is not answering right now.",
+    },
+    {
       title: "a list HQ no longer keeps current says it may be out of date, and why",
       read: { failure: "Zerops refused HQ's access." },
       says: "This list may be out of date. Zerops refused HQ's access.",
     },
   ])("$title", ({ read, says }) => {
     expect(shown(read)).toContain(says);
+  });
+
+  it("a failed read reads the templates again when asked", () => {
+    const retry = vi.fn();
+    const tree = mount(view({ state: "failed", templates: [], failure: "x", retry }).element);
+    press(tree, "Try again");
+    expect(retry).toHaveBeenCalledOnce();
   });
 
   it("an Admin's new template is sent with its trimmed text and its instructions counted against 3,000", () => {

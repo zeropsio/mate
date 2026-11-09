@@ -162,6 +162,16 @@ describe("the organization's API keys", () => {
     release();
     r.close();
   });
+
+  it("asks for an update where HQ does not keep organization keys yet", async () => {
+    const r = rig({});
+    await r.host.setKey(ORG, "nebius", KEY);
+    expect(r.keys().action).toEqual({
+      kind: "failed",
+      words: "HQ needs an update to set up automated Mates.",
+    });
+    r.close();
+  });
 });
 
 describe("an application's intake", () => {

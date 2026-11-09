@@ -61,6 +61,19 @@ describe("personal observe authorization data", () => {
     r.close();
   });
 
+  it("an HQ without observe metadata is unavailable instead of unauthorized", async () => {
+    const r = rig({});
+    const failed = waitFor(r, () => r.view().metadata.state === "failed");
+    const release = r.host.demand(KEY);
+    await failed;
+    expect(r.view().metadata).toEqual({
+      state: "failed",
+      words: "HQ needs an update to manage observe authorization.",
+    });
+    release();
+    r.close();
+  });
+
   it("definitive refusal remains an error and account close fences delayed answers", async () => {
     const answer = deferred<typeof AUTH>();
     const started = deferred<void>();

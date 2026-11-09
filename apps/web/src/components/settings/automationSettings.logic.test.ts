@@ -102,10 +102,22 @@ describe("Settings › Automation's GitHub section", () => {
       says: "1 GitHub app · pushes as acme-mate[bot]",
     },
     {
+      case: "an HQ older than the app",
+      setting: { state: "unsupported" },
+      admin: true,
+      says: "HQ needs an update to connect GitHub",
+    },
+    {
       case: "a person HQ shows nothing of it",
       setting: { state: "withheld" },
       admin: false,
       says: "Only the organization's Owner and Admins see this.",
+    },
+    {
+      case: "HQ's failure",
+      setting: { state: "failed", words: "HQ isn't answering." },
+      admin: true,
+      says: "HQ isn't answering.",
     },
     { case: "a read under way", setting: { state: "reading" }, admin: true, says: "Reading…" },
   ] as const)("says $case in one line", ({ setting, admin, says }) => {
