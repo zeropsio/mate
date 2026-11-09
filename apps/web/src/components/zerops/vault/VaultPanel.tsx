@@ -82,6 +82,8 @@ export interface VaultPanelBodyProps {
   readonly onReveal?: (scope: VaultScopeRef, id: string) => Promise<VaultRevealed>;
   /** The clock relative times are read against; now when absent. */
   readonly nowMs?: number;
+  /** Reads the vault again after a read that failed: *Try again*; none without it. */
+  readonly onRetry?: () => void;
 }
 
 const SETTLE_MS = 1400;
@@ -244,6 +246,13 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
   const editing = mode.kind === "text" || mode.kind === "review";
   const shared = view.scopes.find((scope) => scope.kind === "shared");
 
+  // Until the vault has been read whole, an empty list proves nothing: hold the list's place
+  // rather than say there are no values. A read that failed with nothing to show says so instead.
+  const nothingShown =
+    shared === undefined ||
+    (!view.complete && view.scopes.every((scope) => scope.values.length === 0));
+  // Nothing to search or write in until there are values to show.
+  const held = view.status === "unread" || nothingShown;
   const header = (
     <div className="flex h-12 flex-none items-center gap-1.5 pr-2.5 pl-3" data-vault-header>
       <InputGroup className="min-w-0 flex-1">
@@ -253,7 +262,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         <InputGroupInput
           aria-label="Search"
           autoComplete="off"
-          disabled={view.status === "unread" || editing}
+          disabled={held || editing}
           onChange={(event) => setQuery(event.currentTarget.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") setQuery("");
@@ -277,7 +286,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         )}
       </InputGroup>
       <Button
-        disabled={view.status === "unread" || editing || writable.length === 0}
+        disabled={held || editing || writable.length === 0}
         onClick={() => {
           setOpenRow(null);
           setQuery("");
@@ -291,14 +300,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
       </Button>
       <Menu>
         <MenuTrigger
-          render={
-            <Button
-              aria-label="More"
-              disabled={view.status === "unread"}
-              size="icon-sm"
-              variant="ghost"
-            />
-          }
+          render={<Button aria-label="More" disabled={held} size="icon-sm" variant="ghost" />}
         >
           <EllipsisIcon />
         </MenuTrigger>
@@ -322,31 +324,33 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     </div>
   );
 
-  // Until the vault has been read whole, an empty list proves nothing: hold the list's place
-  // rather than say there are no values.
-  const holding =
-    view.status === "unread" ||
-    shared === undefined ||
-    (view.status === "ready" &&
-      !view.complete &&
-      view.scopes.every((scope) => scope.values.length === 0));
-  if (holding) {
+  const failure =
+    view.status === "failed" ? (
+      <div className="flex min-h-7 items-center gap-3 px-1" data-vault-failed role="alert">
+        <p className="text-line text-muted-foreground">Couldn't read the vault</p>
+        {props.onRetry === undefined ? null : (
+          <Button onClick={props.onRetry} size="sm" variant="secondary">
+            Try again
+          </Button>
+        )}
+      </div>
+    ) : null;
+  if (held) {
+    const failed = view.status === "failed";
     return (
       <div
         className="vault-panel flex h-full min-h-0 flex-col bg-background"
-        data-vault-panel="unread"
+        data-vault-panel={failed ? "failed" : "unread"}
       >
         {header}
-        <div aria-busy="true" className="vault-canvas min-h-0 flex-1 px-3 pt-1" data-vault-skeleton>
-          <Skeleton className="mx-1 mt-2 mb-2 h-3.5 w-20" />
-          <div className="vault-box">
-            {[0, 1, 2, 3, 4].map((index) => (
-              <div className="flex h-11 items-center justify-between px-3.5" key={index}>
-                <Skeleton className="h-3.5 w-28" />
-                <Skeleton className="h-3.5 w-40" />
-              </div>
-            ))}
-          </div>
+        <div className="vault-canvas min-h-0 flex-1 border-t border-transparent">
+          {failed ? (
+            <div className="grid gap-6 px-3 pt-1 pb-12" data-vault-list>
+              {failure}
+            </div>
+          ) : (
+            <VaultHeld />
+          )}
         </div>
       </div>
     );
@@ -569,14 +573,59 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         ref={scroller}
       >
         <div className="grid gap-6 px-3 pt-1 pb-12" data-vault-list>
-          {view.status === "failed" ? (
-            <p className="px-1 text-line text-muted-foreground" data-vault-failed role="alert">
-              Couldn't read the vault
-            </p>
-          ) : null}
+          {failure}
           {list()}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The list's place while the vault reads: two sections of three rows in the real rows' shape and
+ * height (name and key at the left, the value at the right), so the values take their place
+ * without a move.
+ */
+function VaultHeld() {
+  return (
+    <div aria-busy="true" className="grid gap-6 px-3 pt-1 pb-12" data-vault-skeleton>
+      <HeldSection label={<Skeleton className="h-3.5 w-20" />}>
+        <HeldRow name={<Skeleton className="h-3 w-24" surface="card" />} />
+        <HeldRow name={<Skeleton className="h-3 w-16" surface="card" />} />
+        <HeldRow name={<Skeleton className="h-3 w-28" surface="card" />} />
+      </HeldSection>
+      <HeldSection label={<Skeleton className="h-3.5 w-14" />}>
+        <HeldRow name={<Skeleton className="h-3 w-20" surface="card" />} />
+        <HeldRow name={<Skeleton className="h-3 w-28" surface="card" />} />
+        <HeldRow name={<Skeleton className="h-3 w-16" surface="card" />} />
+      </HeldSection>
+    </div>
+  );
+}
+
+function HeldSection({
+  label,
+  children,
+}: {
+  readonly label: ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex min-h-7 items-center">{label}</div>
+      <div className="vault-box">
+        <div className="vault-rows">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function HeldRow({ name }: { readonly name: ReactNode }) {
+  return (
+    <div className="flex h-11 items-center gap-3 px-3.5">
+      {name}
+      <Skeleton className="h-2.5 w-24" surface="card" />
+      <Skeleton className="ml-auto h-3 w-16" surface="card" />
     </div>
   );
 }
