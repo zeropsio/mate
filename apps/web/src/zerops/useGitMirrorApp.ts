@@ -1,6 +1,9 @@
 /**
- * The organization's GitHub app as Git's surfaces read it (`GitMirrorApp`), read while shown:
- * `null` while HQ is still asked, and a way to ask again after the person changed it on GitHub.
+ * The organization's first GitHub app as Git's surfaces once read it (`GitMirrorApp`), read while
+ * shown: `null` while HQ is still asked, and a way to ask again after the person changed it on
+ * GitHub. Repositories come from every app, so a picker still offers all of them.
+ *
+ * Removed once the mirror surfaces read useGitMirrorApps.
  */
 import {
   appName,
@@ -19,28 +22,31 @@ export function useGitMirrorApp(shown = true): {
 } {
   const { read, again, install } = useGithubApp(shown);
   const setting = read.setting;
+  const first = setting.state === "known" ? setting.held.apps[0] : undefined;
   const app: GitMirrorApp | null =
     setting.state === "unread" || setting.state === "reading"
       ? null
-      : setting.state === "known" && setting.held.state === "connected"
+      : setting.state === "known" && first !== undefined
         ? {
             kind: "connected",
-            name: appName(setting.held),
-            ...(setting.held.appId === undefined ? {} : { appId: setting.held.appId }),
+            name: appName(first),
+            appId: first.appId,
             repositories: appRepositories(setting.held),
-            installUrl: setting.held.installUrl,
-            installTrip: setting.held.public !== undefined,
-            waiting: setting.held.installations.flatMap((installation) =>
-              installation.state !== "unknown" && installationStanding(installation) === "waiting"
-                ? [
-                    {
-                      account: installation.account,
-                      repositories: installation.repositories.map(
-                        (repository) => repository.fullName,
-                      ),
-                    },
-                  ]
-                : [],
+            installUrl: first.installUrl,
+            installTrip: true,
+            waiting: setting.held.apps.flatMap((one) =>
+              one.installations.flatMap((installation) =>
+                installation.state !== "unknown" && installationStanding(installation) === "waiting"
+                  ? [
+                      {
+                        account: installation.account,
+                        repositories: installation.repositories.map(
+                          (repository) => repository.fullName,
+                        ),
+                      },
+                    ]
+                  : [],
+              ),
             ),
             unanswered: unansweredInstallations(setting.held),
           }
@@ -52,7 +58,8 @@ export function useGitMirrorApp(shown = true): {
     app,
     again,
     install: (returnTo = window.location.href) => {
-      void install(returnTo).then((url) => {
+      if (first === undefined) return;
+      void install(first.appId, returnTo).then((url) => {
         if (url !== null) window.location.assign(url);
       });
     },

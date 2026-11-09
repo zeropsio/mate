@@ -301,8 +301,12 @@ export function makeTaskSourceSettings(options: {
    * address with a one-time state, for the screen to open, or `null` where HQ refused or did not
    * answer — its words are the GitHub setting's action.
    */
-  const githubInstall = async (key: OrgSettingKey, returnTo: string): Promise<string | null> => {
-    const requestId = await write(key, { kind: "github-install", returnTo });
+  const githubInstall = async (
+    key: OrgSettingKey,
+    githubAppId: number,
+    returnTo: string,
+  ): Promise<string | null> => {
+    const requestId = await write(key, { kind: "github-install", githubAppId, returnTo });
     const url = links.get(requestId) ?? null;
     links.delete(requestId);
     return url;

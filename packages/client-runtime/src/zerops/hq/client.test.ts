@@ -807,13 +807,17 @@ describe("Git token refusals", () => {
     bad_branch: "This branch name is not valid. Enter a valid Git branch name.",
     key_unavailable: "HQ cannot open the saved token. Replace it with a new token.",
     app_not_installed:
-      "The organization's GitHub app isn't installed on this repository. Add the repository to the app on GitHub, then try again.",
+      "No GitHub app in this organization is installed on this repository. Add the repository to an app's account on GitHub, then try again.",
     app_unavailable:
-      "GitHub didn't let the organization's GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
+      "GitHub didn't let the GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
     needs_owner_seal:
-      "The organization's GitHub app needs to be made again by an Owner or Admin before Mate uses it. They do it in Settings › Automation › GitHub.",
+      "This GitHub app needs an Owner or Admin to confirm it before Mate uses it. They do it in Settings › GitHub.",
     object_too_large:
       "A file in this repository's history is larger than 100 MiB. HQ takes files up to 100 MiB, as GitHub does.",
+    app_ambiguous:
+      "More than one of the organization's GitHub apps reaches this repository. Pick the account to connect through, then try again.",
+    repository_in_use:
+      "Another repository in this organization is already connected to this GitHub repository. Disconnect it there, or pick another repository.",
   } satisfies Record<HqRemoteRefusalReason, string>;
   it.each(Object.entries(remoteCases))(
     "Every repository connection refusal explains %s and the next step",
@@ -3208,16 +3212,22 @@ describe("Every HQ verb that decides on the person's role carries their current 
         api.githubManifest?.({ owner: null, name: "acme-mate", returnTo: "https://mate/x" }),
     },
     {
-      call: "githubDisconnect",
+      call: "githubForget",
       method: "DELETE",
-      path: "/api/org/github",
-      ask: (api) => api.githubDisconnect?.(),
+      path: "/api/org/github/apps/42",
+      ask: (api) => api.githubForget?.(42),
+    },
+    {
+      call: "githubConfirm",
+      method: "POST",
+      path: "/api/org/github/apps/42/confirm",
+      ask: (api) => api.githubConfirm?.(42),
     },
     {
       call: "githubInstall",
       method: "POST",
-      path: "/api/org/github/install",
-      ask: (api) => api.githubInstall?.({ returnTo: "https://mate/x" }),
+      path: "/api/org/github/apps/42/install",
+      ask: (api) => api.githubInstall?.(42, { returnTo: "https://mate/x" }),
     },
     {
       call: "githubAcceptInstallation",

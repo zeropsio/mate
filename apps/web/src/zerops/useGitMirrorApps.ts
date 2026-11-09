@@ -75,60 +75,52 @@ export function useGitMirrorApps(shown = true): {
   const setting = read.setting;
   let apps: GitMirrorApps | null;
   if (setting.state === "unread" || setting.state === "reading") apps = null;
-  else if (setting.state === "known" && setting.held.state === "connected") {
-    const view = setting.held;
-    const appId = view.appId ?? 0;
+  else if (setting.state === "known")
     apps = {
       kind: "ready",
-      apps: [
-        {
-          appId,
-          name: appName(view),
-          slug: view.slug,
-          owner: view.owner,
-          ownerType: view.ownerType ?? null,
-          botLogin: view.botLogin,
-          setUpBy: view.sealedBy ?? null,
-          setUpAt: view.sealedAt ?? null,
-          public: view.public ?? null,
-          installUrl: view.installUrl,
-          appUrl: view.appUrl,
-          installTrip: view.public !== undefined,
-          unanswered: view.installations.filter((one) => one.state === "unknown").length,
-        },
-      ],
-      installations: view.installations.flatMap((installation) => {
-        if (installation.state === "unknown") return [];
-        const standing = installationStanding(installation);
-        if (standing === "unknown") return [];
-        return [
-          {
-            installationId: installation.id,
-            appId,
-            account: installation.account,
-            accountType: installation.accountType,
-            standing,
-            addedBy: null,
-            manageUrl: installation.manageUrl,
-            repositories: installation.repositories.map((repository) => ({
-              id: null,
-              fullName: repository.fullName,
-              private: repository.private,
-              defaultBranch: repository.defaultBranch,
-              usedBy: null,
-            })),
-          },
-        ];
-      }),
+      apps: setting.held.apps.map((app) => ({
+        appId: app.appId,
+        name: appName(app),
+        slug: app.slug,
+        owner: app.owner,
+        ownerType: app.ownerType ?? null,
+        botLogin: app.botLogin,
+        setUpBy: app.sealedBy,
+        setUpAt: app.sealedAt,
+        public: app.public,
+        installUrl: app.installUrl,
+        appUrl: app.appUrl,
+        installTrip: true,
+        unanswered: app.installations.filter((one) => one.state === "unknown").length,
+      })),
+      installations: setting.held.apps.flatMap((app) =>
+        app.installations.flatMap((installation) => {
+          if (installation.state === "unknown") return [];
+          const standing = installationStanding(installation);
+          if (standing === "unknown") return [];
+          return [
+            {
+              installationId: installation.id,
+              appId: app.appId,
+              account: installation.account,
+              accountType: installation.accountType,
+              standing,
+              addedBy: installation.addedBy,
+              manageUrl: installation.manageUrl,
+              repositories: installation.repositories,
+            },
+          ];
+        }),
+      ),
     };
-  } else if (setting.state === "known" || setting.state === "unsupported")
-    apps = { kind: "ready", apps: [], installations: [] };
+  // An HQ before the app list: none is said to be there.
+  else if (setting.state === "unsupported") apps = { kind: "ready", apps: [], installations: [] };
   else apps = { kind: "unknown" };
   return {
     apps,
     again,
-    install: (_appId, returnTo = window.location.href) => {
-      void install(returnTo).then((url) => {
+    install: (appId, returnTo = window.location.href) => {
+      void install(appId, returnTo).then((url) => {
         if (url !== null) window.location.assign(url);
       });
     },

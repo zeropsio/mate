@@ -6,7 +6,7 @@
  * navigation says their tasks moved (`hqTaskBoardRefresh`); then the sources
  * its tasks come from — GitHub issues by label, a Slack or Discord channel, webhooks, schedules —
  * one row each with its own Edit and Stop, and *Take tasks from…* to add one. Configured where the
- * project is: Settings keeps only what is the organization's (its key, its GitHub app, its Slack
+ * project is: Settings keeps only what is the organization's (its key, its GitHub apps, its Slack
  * and Discord, its limits and budget).
  *
  * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
@@ -58,6 +58,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Skeleton } from "../../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
+import { appName, appReaching } from "../../settings/automationSettings.logic";
 import { MateFace } from "../primitives";
 import { changesInReview, mateAutomation, type MateAutomationLine } from "../SidebarMateRow.logic";
 import {
@@ -350,10 +351,12 @@ function AdminAutomation({
   const webhooks = useAppTaskSource("hqAppWebhooks", groupId);
   const schedules = useAppTaskSource("hqAppSchedules", groupId);
   const github = useGithubApp();
-  const githubApp =
-    github.read.setting.state === "known" && github.read.setting.held.state === "connected"
-      ? github.read.setting.held.slug
-      : undefined;
+  // The app GitHub tells Mate through about the intake's repository.
+  const reaching = appReaching(
+    github.read.setting.state === "known" ? github.read.setting.held : null,
+    intake.read.answer?.repo,
+  );
+  const githubApp = reaching === undefined ? undefined : appName(reaching);
   const orgSlack = useOrgTaskSource("hqSlack");
   const orgDiscord = useOrgTaskSource("hqDiscord");
   const navigate = useNavigate();
