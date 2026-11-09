@@ -8214,6 +8214,8 @@ function ConversationView(props: ChatViewProps) {
         "absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
       )}
       data-workspace-titlebar-controls
+      // The panel toggles arrive with the conversation, as the header's actions do.
+      data-opening-waits=""
     >
       {rightPanelOpen && !shouldUseRightPanelSheet ? (
         <RightPanelMaximizeControl

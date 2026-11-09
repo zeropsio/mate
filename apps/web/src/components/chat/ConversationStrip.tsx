@@ -344,7 +344,11 @@ function MatePill({
       {chats === null ? null : (
         <MateChatsMenu chats={chats} mateName={mate.name} onClose={onCloseChat} onOpen={onOpen} />
       )}
-      {trailing}
+      {/* What waits on the person (its Review, a task's state) arrives with the conversation, as the
+          name does: it never stands in the header ahead of what it is about. */}
+      {trailing === undefined || trailing === null ? null : (
+        <ConversationOpeningYields>{trailing}</ConversationOpeningYields>
+      )}
       {/* After what waits on the person, so arriving late it moves nothing already placed. */}
       {persona == null ? null : (
         <span
