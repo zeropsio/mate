@@ -18,6 +18,71 @@
   }
 }
 
+/* The overview, a project's page and a place's page are one place at three depths: going among
+   them (`pageTransitions.ts`, the router's `pages` transition) cross-fades the page's content and
+   nothing else. The window itself is left out of the transition, so the left menu and the frame
+   are drawn live throughout and not a pixel of them changes; the page's ground stays under the
+   fade, so nothing shows through it. The trail above a page's title is one element across the
+   pages while it is in view (`pages-trail`): the steps two pages share hold still while the last
+   one changes. Left scrolled away, it belongs to its page and comes with it. */
+@media (prefers-reduced-motion: no-preference) {
+  html:active-view-transition-type(pages) {
+    view-transition-name: none;
+  }
+
+  html:active-view-transition-type(pages) [data-slot="sidebar-inset"] {
+    view-transition-name: zerops-page;
+  }
+
+  html:active-view-transition-type(pages-trail) .page-crumbs {
+    view-transition-name: zerops-page-crumbs;
+  }
+
+  /* The menu stays pressable while the page fades. */
+  html:active-view-transition-type(pages)::view-transition {
+    pointer-events: none;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-group(zerops-page) {
+    background: var(--background);
+    animation-duration: 180ms;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-old(zerops-page) {
+    animation: zerops-page-out 120ms ease-out both;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-new(zerops-page) {
+    animation: zerops-page-in 180ms ease-out both;
+  }
+
+  /* The trail's two drawings fade over the same 180 ms, so what both hold never dims; each keeps
+     its own size at the row's start, so a longer trail is never a stretched one. */
+  html:active-view-transition-type(pages)::view-transition-group(zerops-page-crumbs) {
+    animation-duration: 180ms;
+    animation-timing-function: ease-out;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-old(zerops-page-crumbs),
+  html:active-view-transition-type(pages)::view-transition-new(zerops-page-crumbs) {
+    height: 100%;
+    object-fit: none;
+    object-position: left top;
+  }
+}
+
+@keyframes zerops-page-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes zerops-page-in {
+  from {
+    opacity: 0;
+  }
+}
+
 /* On mobile, morph the expanded hero composer into the compact docked
    composer while it moves; the rest of the app remains visually stationary. */
 html[data-mobile-composer-route-transition="true"]::view-transition-old(root),
@@ -790,6 +855,24 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     [data-zerops-flash] :focus-visible {
       box-shadow: none !important;
     }
+  }
+
+  /* An ask above the composer is cut by the composer's own edge, so a ring around it would not
+     show: it lights its ground once instead (`showWaitingAsk`). */
+  @keyframes zerops-ask-dock-flash {
+    0%,
+    100% {
+      background-color: transparent;
+    }
+    18%,
+    55% {
+      background-color: color-mix(in oklab, var(--color-ring) 14%, transparent);
+    }
+  }
+
+  [data-chat-composer-asks][data-zerops-flash] {
+    border-radius: 0;
+    animation-name: zerops-ask-dock-flash;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -7101,12 +7184,13 @@ a.ov-card-site:hover {
   text-decoration-color: color-mix(in oklab, currentColor 40%, transparent);
 }
 
-.ov-card-note {
-  margin-top: 8px;
-  padding: 0 6px;
+/* Why Put it live stands off, under the line that carries it, in from its dot. */
+.ov-place-note {
+  margin: 0;
+  padding-inline-start: 16px;
   color: var(--muted-foreground);
-  font-size: 13px;
-  line-height: 18px;
+  font-size: var(--text-caption);
+  line-height: var(--text-caption--line-height);
 }
 
 /* A card's places, a line each, under its name: they hug the name, the waits stand apart. */
@@ -7196,15 +7280,6 @@ a.ov-card-site:hover {
 .ov-more:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
-}
-
-/* Put it live, at the card's foot while the project has no production. */
-.ov-card-foot {
-  display: grid;
-  justify-items: start;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 0 6px 4px;
 }
 
 /* A Mate: its face, its name and time, its line; what waits on you lifted onto a white card. */
@@ -8690,31 +8765,49 @@ label.tm-advanced-row:not([data-disabled]) {
   padding: 0 6px;
 }
 
-/* A project's latest changes: open ones with what stops them, merged ones with where they went. */
+/* A project's latest changes: open ones with what stops them, merged ones with where they went.
+   One grid for the list: a row's face and words, then its trailing facts in columns of their own —
+   its pull request, when it last moved, its verb — each as wide as the widest in the list, so the
+   ages and the pull requests run down it whichever rows have them. */
 .ov-changes {
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   margin: -6px -8px 0;
   padding: 0;
   list-style: none;
 }
 
-/* A change's row: the row that opens it, then its pull request on GitHub where it has one. */
+.ov-changes > li {
+  grid-column: 1 / -1;
+}
+
+/* A change's row: the row that opens it across every column, and over it, in its own column, its
+   pull request on GitHub where it has one. Its padding and its gap are the row's to set
+   (`--ov-change-pad-y`, `--ov-change-pad-x`, `--ov-change-gap`). */
 .ov-change-row {
-  display: flex;
+  --ov-change-pad-y: 6px;
+  --ov-change-pad-x: 8px;
+  --ov-change-gap: 10px;
+  display: grid;
   min-width: 0;
+  grid-template-columns: subgrid;
   align-items: center;
 }
 
 .ov-change {
   display: grid;
-  width: 100%;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  column-gap: 10px;
+  grid-row: 1;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
   align-items: start;
-  padding: 6px 8px;
+  padding: var(--ov-change-pad-y) var(--ov-change-pad-x);
   border-radius: 10px;
   text-align: left;
   transition: background-color 150ms var(--ease-out-strong);
+}
+
+.ov-change > * {
+  grid-row: 1;
 }
 
 .ov-change:hover {
@@ -8734,8 +8827,9 @@ label.tm-advanced-row:not([data-disabled]) {
 /* A row's own verb, beside its press: Update from main, Read again. */
 .ov-change-verb {
   display: flex;
-  flex: none;
-  margin-inline: 4px 8px;
+  grid-row: 1;
+  grid-column: 5;
+  margin-inline: 8px var(--ov-change-pad-x);
 }
 
 .ov-change-icon {
@@ -8745,14 +8839,33 @@ label.tm-advanced-row:not([data-disabled]) {
   color: var(--muted-foreground);
 }
 
-/* The row's end: when it last moved, and Review on a change still open. */
-.ov-change-end {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* A change with no face of its own: its git mark in the face's column. */
+.ov-change > .ov-change-icon {
+  grid-column: 1;
+  margin-inline-end: calc(2px + var(--ov-change-gap));
 }
 
-.ov-change[data-open] .ov-change-end {
+/* When it last moved: the last column of facts, its figures ending on one edge. */
+.ov-change-when {
+  display: flex;
+  grid-column: 4;
+  justify-content: flex-end;
+  margin-inline-start: var(--ov-change-gap);
+}
+
+.ov-change-when:empty {
+  display: none;
+}
+
+/* Review on a change still open, at the row's end. */
+.ov-change-act {
+  display: flex;
+  grid-column: 5;
+  margin-inline-start: 8px;
+}
+
+.ov-change[data-open] .ov-change-when,
+.ov-change[data-open] .ov-change-act {
   align-self: center;
 }
 
@@ -8766,6 +8879,7 @@ label.tm-advanced-row:not([data-disabled]) {
 
 .ov-change-text {
   display: grid;
+  grid-column: 2;
   min-width: 0;
 }
 
@@ -8795,12 +8909,18 @@ label.tm-advanced-row:not([data-disabled]) {
   white-space: nowrap;
 }
 
+/* Its pull request on GitHub, in the column before when it last moved, on the title's line. */
 .ov-change-pr {
+  z-index: 1;
   display: inline-flex;
-  flex: none;
+  grid-row: 1;
+  grid-column: 3;
   align-items: center;
+  align-self: start;
+  justify-self: end;
   gap: 2px;
-  margin-inline: 2px 8px;
+  margin-block-start: calc(var(--ov-change-pad-y) + 2px);
+  margin-inline-start: var(--ov-change-gap);
   border-radius: var(--radius-control);
   color: var(--muted-foreground);
   font-size: 12px;
@@ -8816,6 +8936,11 @@ label.tm-advanced-row:not([data-disabled]) {
 .ov-change-pr:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+.ov-change-row:has(> .ov-change[data-open]) > .ov-change-pr {
+  align-self: center;
+  margin-block-start: 0;
 }
 
 .ov-change-line[data-tone="attention"] {
@@ -8858,9 +8983,11 @@ label.tm-advanced-row:not([data-disabled]) {
 /* A change's Mate: its face where the git mark stood, the face a bit smaller than a Mate row's. */
 .ov-change-face {
   display: flex;
+  grid-column: 1;
   width: 20px;
   height: 20px;
   margin-top: 0;
+  margin-inline-end: var(--ov-change-gap);
 }
 
 /* A release in the changes: where it was cut, its tag, and production's mark on the one it runs. */

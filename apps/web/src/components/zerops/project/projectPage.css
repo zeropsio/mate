@@ -249,8 +249,9 @@
   border-top: 1px solid var(--ov-rule);
 }
 
-[data-zerops-surface="project-changes"] .ov-change {
-  padding: 10px;
+[data-zerops-surface="project-changes"] .ov-change-row {
+  --ov-change-pad-y: 10px;
+  --ov-change-pad-x: 10px;
 }
 
 /* Setup files: no change a release ships, said quietly. */
@@ -389,11 +390,15 @@ button.pp-hist-head:hover {
   border-top: 1px solid var(--ov-rule);
 }
 
+.pp-hist-body .ov-change-row {
+  --ov-change-pad-y: 8px;
+  --ov-change-pad-x: 0px;
+  --ov-change-gap: 12px;
+}
+
 .pp-hist-body .ov-change {
   align-items: center;
-  padding: 8px 0;
   border-radius: 0;
-  column-gap: 12px;
 }
 
 .pp-hist-body .ov-change:hover {

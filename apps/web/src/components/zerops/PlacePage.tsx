@@ -59,6 +59,8 @@ import {
   DEPLOYS_ASIDE,
   earlierReleasesLabel,
   notInZerops,
+  releaseNotCreated,
+  releasesNotDeployed,
   serviceRows,
   rowsRunningAgain,
   stopFailedDeploys,
@@ -87,10 +89,11 @@ import {
 import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
-import { useHqAppFailure } from "~/zerops/useHqAppDetail";
+import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { Skeleton } from "../ui/skeleton";
 import { usePlaceAccessPeople } from "./projects/ProjectPeople";
 import type { columnPeople } from "./projects/accessTable.logic";
 import { possessive } from "./matePanels.logic";
@@ -100,7 +103,7 @@ import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./Zero
 import { MateFace, VerdictPanel } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
-import { ZeropsReleaseRows } from "./ZeropsReleaseRows";
+import { ReleaseList, ReleaseRowsWaiting, ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { RecordedStageHistory, type RecordedStageHistoryProps } from "./RecordedStageHistory";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
@@ -117,6 +120,7 @@ import {
   PlaceAddressCard,
   PlaceMissingService,
   PlaceServiceTable,
+  PlaceServicesWaiting,
   type StopDeployAgain,
 } from "./place/PlaceServices";
 import { PlaceAccessCard } from "./place/PlaceAccess";
@@ -132,8 +136,11 @@ import {
 import type { CardReady, PlaceLine as PlaceLineData } from "./projects/projectCard.logic";
 import {
   changesFrom,
+  changesOfRelease,
   changesWaitingForRelease,
   changesWaitingForStage,
+  createsFirstLine,
+  laterChangesLine,
   placeFixProblem,
   placeHeaderLine,
   stageNextTitle,
@@ -329,6 +336,13 @@ function ZeropsProjectStopDetailPage({
   readonly projectId: ProjectId;
 }) {
   const recipeFailure = useHqAppFailure(groupId);
+  // Whether HQ has answered the application's detail (its recipe, its releases), or said why not.
+  const hqDetail = useHqAppDetail(groupId);
+  const hqAnswered =
+    hqDetail.read === "read" ||
+    hqDetail.failure !== null ||
+    hqDetail.reconnecting ||
+    hqDetail.unavailableReason !== undefined;
   // The environment's vault beside its page, where the account reads its organization.
   const orgId = useAccountOrgId();
   // Closed on every place's page as it opens: the drawer is this page's, never carried across.
@@ -417,6 +431,22 @@ function ZeropsProjectStopDetailPage({
   // Where a stage that runs nothing stands on its first deploy, as its cell and the menu say it.
   const firstDeployOf = useStageFirstDeploys(flow);
   const firstDeploy = stop?.tier === "stage" ? firstDeployOf(projectId) : undefined;
+  // The services its tier declares and Zerops does not have there.
+  const missing =
+    declared === undefined || withheld !== null
+      ? NOTHING_MISSING
+      : notInZerops({ recipeServices: declared.recipeServices, platform });
+  // Production's release that put nothing live because a service it needs was not created.
+  const notCreated =
+    flow === undefined || stop === undefined || declared === undefined || withheld !== null
+      ? undefined
+      : releaseNotCreated({
+          tier: stop.tier,
+          releases: flow.releases,
+          services: declared.services,
+          creationFailures: declared.creationFailures,
+          missing,
+        });
   // A withheld stop lists no service, so no build of one is read either.
   const services =
     declared === undefined || withheld !== null
@@ -431,6 +461,7 @@ function ZeropsProjectStopDetailPage({
           nowMs,
           age: formatRelativeTimeLabel,
           firstDeploy,
+          notCreated: notCreated?.tag,
         });
   const failedDeploys =
     flow === undefined || stop === undefined
@@ -474,8 +505,10 @@ function ZeropsProjectStopDetailPage({
   const live = flow.releases.find((entry) => entry.standing === "live");
   const releasingTag = flow.release.inFlight ?? (release.releasing ? release.tag : undefined);
   const releasedAge = live?.taggedAt === undefined ? "" : formatRelativeTimeLabel(live.taggedAt);
-  // One failed part is asked again from the verdict; several, each from its own row.
-  const redeploy = failedDeploys.length === 1 ? failedDeploys[0]?.redeploy : undefined;
+  // One failed part is asked again from the verdict; several, each from its own row. None of a
+  // release whose services were not created: HQ would deploy the part without them.
+  const askedAgain = notCreated === undefined ? failedDeploys : NO_FAILED_DEPLOYS;
+  const redeploy = askedAgain.length === 1 ? askedAgain[0]?.redeploy : undefined;
   // How many changes production lacks, at least that many where HQ stopped counting.
   const notLive =
     flow.release.summary === undefined
@@ -500,7 +533,27 @@ function ZeropsProjectStopDetailPage({
         ? undefined
         : stopKeyGap({ ...declared, mayKeep: mayKeepKey(projectId), project: stop.name }),
     firstDeploy,
+    notCreated,
   });
+  // The changes that go next. While a release is on its way, the ones it carries; what merged
+  // after it waits for the next and is only counted.
+  const waitingChanges = !flow.changesKnown
+    ? NO_CHANGES
+    : production
+      ? // Until HQ answers the releases, every merged change would read as waiting.
+        flow.releasesKnown
+        ? changesWaitingForRelease(flow.merged, flow.releases)
+        : NO_CHANGES
+      : stop.source === "main"
+        ? changesWaitingForStage(flow.pullRequests)
+        : NO_CHANGES;
+  const onItsWay =
+    !production || releasingTag === undefined
+      ? undefined
+      : changesOfRelease(
+          waitingChanges,
+          flow.releases.find((entry) => entry.tag === releasingTag),
+        );
 
   return (
     <>
@@ -533,18 +586,19 @@ function ZeropsProjectStopDetailPage({
         releasing={production ? releasingTag : undefined}
         deployFailed={failedDeploys.length > 0}
         ready={production ? readyOfFlow(flow) : undefined}
-        nextChanges={
-          !flow.changesKnown
-            ? NO_CHANGES
-            : production
-              ? // Until HQ answers the releases, every merged change would read as waiting.
-                flow.releasesKnown
-                ? changesWaitingForRelease(flow.merged, flow.releases)
-                : NO_CHANGES
-              : stop.source === "main"
-                ? changesWaitingForStage(flow.pullRequests)
-                : NO_CHANGES
+        releasesNotDeployed={
+          production && declared !== undefined
+            ? releasesNotDeployed({
+                releases: flow.releases,
+                failures: declared.releaseFailures,
+                services: declared.services,
+              })
+            : undefined
         }
+        nextChanges={onItsWay?.carried ?? waitingChanges}
+        laterChanges={onItsWay?.later}
+        releasesRead={flow.releasesKnown ? "known" : hqAnswered ? "unanswered" : "reading"}
+        servicesRead={platform.state !== "unread" && platform.state !== "reading" && hqAnswered}
         faces={(mateProjectId) => {
           const mate = mates.get(mateProjectId);
           return mate === undefined ? undefined : (
@@ -599,7 +653,8 @@ function ZeropsProjectStopDetailPage({
             : undefined
         }
         addService={
-          mayRunAgain
+          // HQ adds a service to a production only by a release: never offered there.
+          mayRunAgain && !production
             ? {
                 running: (service) =>
                   verbs.pending.has(
@@ -609,11 +664,7 @@ function ZeropsProjectStopDetailPage({
               }
             : undefined
         }
-        notInZerops={
-          declared === undefined || withheld !== null
-            ? undefined
-            : notInZerops({ recipeServices: declared.recipeServices, platform })
-        }
+        notInZerops={missing}
         tierStops={
           declared === undefined || withheld !== null
             ? undefined
@@ -637,7 +688,7 @@ function ZeropsProjectStopDetailPage({
           platform.state !== "known" ||
           platform.coverage !== "complete"
             ? undefined
-            : rowsRunningAgain(services, failedDeploys)
+            : rowsRunningAgain(services, askedAgain)
         }
         stop={stop}
         tags={tags}
@@ -649,9 +700,11 @@ function ZeropsProjectStopDetailPage({
           production
             ? {
                 commits:
-                  flow.release.summary?.changeCount !== undefined
-                    ? flow.release.summary.subjects.map((subject) => ({ subject }))
-                    : [],
+                  onItsWay !== undefined
+                    ? onItsWay.unlisted.map((subject) => ({ subject }))
+                    : flow.release.summary?.changeCount !== undefined
+                      ? flow.release.summary.subjects.map((subject) => ({ subject }))
+                      : [],
                 total: notLive.count,
                 changeCount: flow.release.summary?.changeCount,
                 atLeast: notLive.atLeast,
@@ -839,6 +892,10 @@ export function ZeropsStopPane({
   deployFailed = false,
   ready,
   nextChanges = NO_CHANGES,
+  laterChanges = 0,
+  releasesNotDeployed,
+  releasesRead = "known",
+  servicesRead = true,
   faces,
   mateName,
   onOpenPull,
@@ -926,6 +983,21 @@ export function ZeropsStopPane({
    * on a stage, the open changes that merge to it.
    */
   readonly nextChanges?: ReadonlyArray<FlowPullRequest> | undefined;
+  /** While a release is on its way: how many changes merged after it and wait for the next. */
+  readonly laterChanges?: number | undefined;
+  /** The releases HQ refused before anything of them deployed (`releasesNotDeployed`). */
+  readonly releasesNotDeployed?: ReadonlySet<string> | undefined;
+  /**
+   * Where HQ's answer of the releases stands: until it is in (`reading`) their slot holds its
+   * shape; `unanswered` where HQ said why not or is away, which the page says elsewhere.
+   */
+  readonly releasesRead?: "known" | "reading" | "unanswered" | undefined;
+  /**
+   * Whether the reads the services wait on have answered — the platform's listing and HQ's
+   * detail. Until then the slot holds its cards' shape; once they have and `services` is still
+   * undefined, HQ declares nothing here and the platform's own services are listed.
+   */
+  readonly servicesRead?: boolean | undefined;
   /** A change's Mate's face, by the Mate's project. */
   readonly faces?: ((mateProjectId: string) => React.ReactNode) | undefined;
   /** A change's Mate's name, by the Mate's project. */
@@ -946,7 +1018,10 @@ export function ZeropsStopPane({
   /** What the stop runs, as the left menu reads it — its menu is that menu. */
   readonly view: StopView;
   readonly verdict: StopVerdict;
-  /** Undefined until the recipe and complete platform service listing have been read. */
+  /**
+   * The code services as HQ deploys them; undefined until the recipe and the complete platform
+   * listing are read, or for good where HQ declares none (`servicesRead`).
+   */
   readonly services: ReadonlyArray<StopServiceRow> | undefined;
   /** Offered on a production that is behind — the one stop a release moves. */
   readonly release: ReleaseOffer;
@@ -1028,6 +1103,10 @@ export function ZeropsStopPane({
         };
   const projectId = stop.target.kind === "zerops" ? stop.target.projectId : undefined;
   const table = placeServiceRows(services, platformServices);
+  // Still being read: the slot holds its cards' shape. Read, with nothing declared by HQ: the
+  // platform's own services stand in the same cards.
+  const servicesWaiting =
+    readServices === undefined && (!servicesRead || platformServices === undefined);
   const head = placeTitle(stop.name, stop.tier);
   const live = releases.find((entry) => entry.standing === "live");
   const releasedAge = live === undefined ? undefined : formatRelativeTimeLabel(live.taggedAt);
@@ -1052,6 +1131,13 @@ export function ZeropsStopPane({
   // header's, calm is the header's dot.
   // A place the platform says is down, where no deploy failed: the header's Down, said as a failure.
   const down = headerLine.dot === "down" && verdict.tone !== "failed";
+  // A release that created nothing it needed: the panel says it once, and its way out is the
+  // next release's card in its ordinary form — no pill, no verb, saying it again.
+  const reviewNext = !down && verdict.reviewNext === true;
+  const nextReady = reviewNext && ready?.failed === true ? { ...ready, failed: false } : ready;
+  const releasingNow = production && (releasing !== undefined || release.releasing);
+  const laterLine = releasingNow ? laterChangesLine(laterChanges) : undefined;
+  const runs = view.version?.label;
   const panel = down
     ? {
         tone: "failed" as const,
@@ -1147,7 +1233,7 @@ export function ZeropsStopPane({
       {!verdictShown ? null : (
         <div>
           <VerdictPanel detail={panel.detail} text={panel.text} tone={panel.tone}>
-            {askToFix === undefined || panel.tone !== "failed" ? null : (
+            {askToFix === undefined || panel.tone !== "failed" || reviewNext ? null : (
               <Button
                 onClick={() => {
                   askToFix.onAsk(
@@ -1184,6 +1270,15 @@ export function ZeropsStopPane({
           {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
             <p className="mt-1.5 px-3 text-sm text-status-failed-text">{runAgain.refused}</p>
           )}
+          {down || verdict.why === undefined ? null : (
+            // HQ's own words for the cause, under the sentence that names it.
+            <p
+              className="mt-1.5 px-3 text-body text-muted-foreground"
+              data-zerops-surface="place-why"
+            >
+              {verdict.why}
+            </p>
+          )}
         </div>
       )}
 
@@ -1193,10 +1288,27 @@ export function ZeropsStopPane({
         <div className="grid min-w-0 grid-cols-1 items-start gap-x-10 gap-y-9 @4xl/place:grid-cols-[minmax(0,1fr)_24.5rem]">
           <div className="flex min-w-0 flex-col gap-9">
             {!nextShown ? null : production ? (
-              <PlaceSection label={<SectionLabel>Next release</SectionLabel>}>
-                <PlaceNextRelease from={from} ready={ready} release={release}>
+              <PlaceSection
+                label={
+                  <SectionLabel>{releasingNow ? "Releasing now" : "Next release"}</SectionLabel>
+                }
+              >
+                <PlaceNextRelease
+                  creates={releasingNow ? undefined : createsFirstLine(notInZerops)}
+                  from={from}
+                  ready={nextReady}
+                  release={release}
+                >
                   {nextRows}
                 </PlaceNextRelease>
+                {laterLine === undefined ? null : (
+                  <p
+                    className="px-1 text-body text-muted-foreground"
+                    data-zerops-surface="place-later-changes"
+                  >
+                    {laterLine}
+                  </p>
+                )}
               </PlaceSection>
             ) : (
               <PlaceSection label={<SectionLabel>Next on {head.title}</SectionLabel>}>
@@ -1206,7 +1318,26 @@ export function ZeropsStopPane({
               </PlaceSection>
             )}
 
-            {!production || releases.length > 0 || nextShown ? null : (
+            {!production || releases.length > 0 ? null : releasesRead === "reading" ? (
+              // Its releases are not answered yet: a place that runs something has some, so the
+              // slot holds their rows' shape; one that runs nothing says so once they are.
+              runs === undefined ? null : (
+                <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
+                  <div className={cn(PLACE_CARD_CLASS, "p-1.5")}>
+                    <ReleaseRowsWaiting />
+                  </div>
+                </PlaceSection>
+              )
+            ) : releasesRead === "unanswered" ? null : runs !== undefined ? (
+              <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
+                <p
+                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  data-zerops-surface="place-releases-unrecorded"
+                >
+                  {`No releases are recorded for this production; it runs ${runs}.`}
+                </p>
+              </PlaceSection>
+            ) : nextShown ? null : (
               <PlaceSection label={<SectionLabel>Releases</SectionLabel>}>
                 <p
                   className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
@@ -1221,7 +1352,7 @@ export function ZeropsStopPane({
             {!production || releases.length === 0 ? null : (
               <PlaceSection label={<SectionLabel count={releases.length}>Releases</SectionLabel>}>
                 <div className={cn(PLACE_CARD_CLASS, "@container/releases p-1.5")}>
-                  <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+                  <ReleaseList>
                     <ZeropsReleaseRows
                       {...(carried === undefined
                         ? {}
@@ -1237,9 +1368,11 @@ export function ZeropsStopPane({
                       liveBy={liveBy}
                       onRollBack={onRollBack}
                       pending={pending}
+                      notDeployed={releasesNotDeployed}
                       releases={listed}
+                      releasing={releasing}
                     />
-                  </ul>
+                  </ReleaseList>
                   {earlier === 0 || allReleases ? null : (
                     <span className="flex px-2 pt-1 pb-1.5">
                       <Button
@@ -1276,8 +1409,11 @@ export function ZeropsStopPane({
                 <div className={cn(PLACE_CARD_CLASS, "px-4 py-3")}>
                   {recordedHistory !== undefined ? (
                     <RecordedStageHistory {...recordedHistory} onOpenChange={onOpenChange} />
-                  ) : readServices === undefined ? (
-                    <p className="text-body text-muted-foreground">Repository not known yet.</p>
+                  ) : servicesWaiting ? (
+                    <div aria-hidden="true" className="flex flex-col gap-2.5 py-1">
+                      <Skeleton className="h-3 w-2/3" surface="card" />
+                      <Skeleton className="h-3 w-1/2" surface="card" />
+                    </div>
                   ) : repo === undefined ? (
                     <p className="text-body text-muted-foreground">
                       No repository is declared for this environment&rsquo;s services, so its
@@ -1305,15 +1441,13 @@ export function ZeropsStopPane({
           <aside className="flex min-w-0 flex-col gap-8" aria-label={`${head.title} setup`}>
             <PlaceSection
               label={
-                <SectionLabel count={readServices === undefined ? undefined : table.length}>
+                <SectionLabel count={servicesWaiting ? undefined : table.length}>
                   Services
                 </SectionLabel>
               }
             >
-              {readServices === undefined ? (
-                <p className={cn(PLACE_CARD_CLASS, "px-4 py-3.5 text-body text-muted-foreground")}>
-                  Services aren&rsquo;t known yet.
-                </p>
+              {servicesWaiting ? (
+                <PlaceServicesWaiting />
               ) : projectId === undefined ? null : (
                 <PlaceServiceTable
                   answered={answered}
@@ -1326,10 +1460,12 @@ export function ZeropsStopPane({
                   {notInZerops.map((hostname) => (
                     <PlaceMissingService
                       answer={answered.get(hostname)}
+                      byRelease={production}
                       hostname={hostname}
                       key={hostname}
                       verb={
-                        addService === undefined ? null : (
+                        // A production gets a service only by a release: HQ refuses the verb.
+                        addService === undefined || production ? null : (
                           <Button
                             disabled={addService.running(hostname)}
                             onClick={() => addService.onAdd(hostname)}
@@ -1346,7 +1482,7 @@ export function ZeropsStopPane({
                   ))}
                 </PlaceServiceTable>
               )}
-              {readServices === undefined || table.length > 0 || notInZerops.length > 0 ? null : (
+              {servicesWaiting || table.length > 0 || notInZerops.length > 0 ? null : (
                 // Its code services and the platform's both: a place with a database alone has one.
                 <p
                   className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"

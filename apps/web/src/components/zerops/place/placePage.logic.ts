@@ -63,6 +63,65 @@ export function changesWaitingForRelease(
     .toSorted((left, right) => newestFirst(left.mergedAt, right.mergedAt));
 }
 
+/**
+ * The waiting changes while a release is on its way: those it carries are the card's, the ones
+ * merged after it was made wait for the next and are only counted. The release's own record of
+ * its changes decides (`history.changes`); one made before HQ kept that is split by when it was
+ * made. Without the release — HQ has not listed it yet — everything waiting is what was just sent.
+ */
+export function changesOfRelease(
+  waiting: ReadonlyArray<FlowPullRequest>,
+  release: Pick<FlowReleaseRow, "taggedAt" | "history"> | undefined,
+): {
+  readonly carried: ReadonlyArray<FlowPullRequest>;
+  /** The titles of changes it carries that the merged list no longer holds. */
+  readonly unlisted: ReadonlyArray<string>;
+  /** How many merged after it. */
+  readonly later: number;
+} {
+  if (release === undefined) return { carried: waiting, unlisted: [], later: 0 };
+  const made = Date.parse(release.taggedAt);
+  const after = (pull: FlowPullRequest) =>
+    pull.mergedAt !== undefined && !Number.isNaN(made) && Date.parse(pull.mergedAt) > made;
+  const changes = release.history?.changes;
+  if (changes === undefined) {
+    const carried = waiting.filter((pull) => !after(pull));
+    return { carried, unlisted: [], later: waiting.length - carried.length };
+  }
+  const own = (pull: FlowPullRequest) =>
+    changes.some((change) => change.repo === pull.repository && change.number === pull.number);
+  const carried = waiting.filter(own);
+  return {
+    carried,
+    unlisted: changes
+      .filter(
+        (change) =>
+          !carried.some((pull) => pull.repository === change.repo && pull.number === change.number),
+      )
+      .map((change) => change.title),
+    later: waiting.filter((pull) => !own(pull) && after(pull)).length,
+  };
+}
+
+/** "1 more change waits for the next release", under a release on its way. */
+export function laterChangesLine(count: number): string | undefined {
+  if (count <= 0) return undefined;
+  return `${String(count)} more ${count === 1 ? "change waits" : "changes wait"} for the next release`;
+}
+
+/**
+ * What production's next release does before it deploys, on its card's line: it creates the
+ * services its setup files declare and Zerops lacks there — "creates db in production first".
+ */
+export function createsFirstLine(missing: ReadonlyArray<string>): string | undefined {
+  if (missing.length === 0) return undefined;
+  const names =
+    missing.length === 1
+      ? (missing[0] ?? "")
+      : `${missing.slice(0, -1).join(", ")} and ${missing.at(-1) ?? ""}`;
+  return `creates ${names} in production first`;
+}
+
 /** A stage's next: the open changes that merge to it, those ready to merge first, then newest. */
 export function changesWaitingForStage(
   open: ReadonlyArray<FlowPullRequest>,

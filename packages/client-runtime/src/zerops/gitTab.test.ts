@@ -11,6 +11,7 @@ import {
   gitBlock,
   gitCheckoutLine,
   gitTrouble,
+  gitTroubleDetail,
   mateChangeIn,
   pullRequestBlocked,
   threadCheckoutHostnames,
@@ -252,7 +253,7 @@ describe("where the work stands", () => {
     });
     expect(answer.verdict).toEqual({
       tone: "failed",
-      text: "remote: Repository not found.",
+      text: "Can't reach the repository",
       ask: undefined,
     });
   });
@@ -412,7 +413,7 @@ describe("the fact that has to be proved", () => {
     {
       name: "a remote that did not answer",
       evidence: { remoteReachable: false },
-      expected: "HQ did not answer for this repository.",
+      expected: "Can't reach the repository",
     },
     {
       name: "a remote proved fine, which is still not a claim",
@@ -425,7 +426,7 @@ describe("the fact that has to be proved", () => {
 
   it("says what git said, when git said anything", () => {
     expect(
-      gitTrouble({
+      gitTroubleDetail({
         remoteReachable: false,
         remoteDetail: "remote: Gitea: user does not have permission",
       }),
@@ -434,7 +435,7 @@ describe("the fact that has to be proved", () => {
 
   it("caps git's line where the probe caps it", () => {
     expect(
-      gitTrouble({
+      gitTroubleDetail({
         remoteReachable: false,
         remoteDetail: `remote: ${"x".repeat(500)}`,
       }),

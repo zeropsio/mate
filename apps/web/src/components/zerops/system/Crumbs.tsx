@@ -54,7 +54,9 @@ export function usePageTrail(input: {
 /** Props: `trail` (from `usePageTrail`, or any `Crumb`s). The last step without `onClick` is the page. */
 export function Crumbs({ trail }: { readonly trail: ReadonlyArray<Crumb> }) {
   return (
-    <WorkspaceBreadcrumb ariaLabel="Breadcrumb" className="min-w-0">
+    // One element across the overview's pages (`page-crumbs`, index.css): going from a project to
+    // its place the shared steps hold still and only the last one changes.
+    <WorkspaceBreadcrumb ariaLabel="Breadcrumb" className="page-crumbs min-w-0">
       {trail.map((crumb, index) => (
         <Fragment key={`${String(index)}:${crumb.label}`}>
           {index === 0 ? null : <WorkspaceBreadcrumbSeparator />}

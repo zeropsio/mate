@@ -2,6 +2,8 @@
  * The overview: the project cards side by side, from made-up projects in the four states the
  * project-page board draws — (a) setting up, (b) needs you, (c) running, (d) release failed.
  * `?page=tea` (or `watchlist`, …) draws that project's own page: its header and its road.
+ * A card's name, a place's line and a page's crumbs go where they go in the app — the overview, a
+ * project's page, a place's page (its head only here) — so the way among the three can be walked.
  *
  * Served by the dev server at `/design-overview.html` (`?theme=dark`). It stands beside a blank
  * left menu at the owner's 435 px; open it at 1786 × 1000. A place's line opens its panel; a
@@ -25,8 +27,10 @@ import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 import {
   createMemoryHistory,
   createRootRoute,
+  createRoute,
   createRouter,
   RouterProvider,
+  useRouterState,
 } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import type { AppRouter } from "~/router";
@@ -40,6 +44,12 @@ import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.l
 import { MateAutomatedMark } from "~/components/zerops/MateAutomatedMark";
 import { CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
 import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
+import { PageHeader } from "~/components/zerops/system/PageHeader";
+import { PlaceLine } from "~/components/zerops/system/PlaceLine";
+import { usePageTrail } from "~/components/zerops/system/Crumbs";
+import { placeLines } from "~/components/zerops/projects/projectCard.logic";
+import { Skeleton } from "~/components/ui/skeleton";
+import { pagesViewTransition } from "~/pageTransitions";
 import {
   cardMateReading,
   cardReady,
@@ -759,8 +769,54 @@ const ALL_WAITS: ReadonlyArray<WaitingItem> = [
   ),
 ];
 
-/** `?page=tea` (or another project's id) draws that project's own page instead. */
-const PAGE = params.get("page");
+/** `?page=tea` (or another project's id) opens on that project's own page instead. */
+const FIRST_PAGE = params.get("page");
+
+/**
+ * Which of the three pages the harness's router is on: the page its matches hold, which the
+ * router commits inside the pages' transition as the app's routes are (its location moves first).
+ */
+function useHarnessPage(): { readonly project: string | null; readonly place: string | null } {
+  const pathname = useRouterState({
+    select: (state) => state.matches.at(-1)?.pathname ?? "/zerops",
+  });
+  const [, at, groupId, last] = pathname.split("/");
+  if (at !== "group" || groupId === undefined || last === undefined) {
+    return { project: null, place: null };
+  }
+  return { project: groupId, place: last === "flow" ? null : last };
+}
+
+/**
+ * A place's page as far as its head — the trail, the title, its line — so the way there and back
+ * can be walked; its body is `design-detail.html`'s.
+ */
+function HarnessPlacePage({
+  groupId,
+  projectId,
+}: {
+  readonly groupId: string;
+  readonly projectId: string;
+}) {
+  const entry = PROJECTS.find((each) => each.entry.group.groupId === groupId)?.entry;
+  const line =
+    entry === undefined
+      ? undefined
+      : placeLines({ flow: entry.flow, nowMs: NOW }).find((each) => each.projectId === projectId);
+  const title = line?.kind === "production" ? "Production" : (line?.name ?? "Stage");
+  const trail = usePageTrail({ project: { groupId, name: entry?.group.name }, here: title });
+  return (
+    <>
+      <PageHeader
+        summary={line === undefined ? undefined : <PlaceLine density="header" line={line} />}
+        title={title}
+        trail={trail}
+      />
+      <Skeleton className="h-40 w-full" />
+      <Skeleton className="h-24 w-full" />
+    </>
+  );
+}
 
 /** A place's vault, its values the vault fixture's whichever place opened it. */
 function harnessVault(place: PlaceVault) {
@@ -780,7 +836,8 @@ function harnessVault(place: PlaceVault) {
 
 function HarnessPage() {
   const placeVault = usePlaceVaultDrawer("harness", harnessVault);
-  const busy = PAGE === "line-mine" ? byId.get("line-busy")?.entry : undefined;
+  const { project: PAGE, place } = useHarnessPage();
+  const busy = FIRST_PAGE === "line-mine" ? byId.get("line-busy")?.entry : undefined;
   if (busy !== undefined)
     return (
       <div className="min-h-dvh bg-background text-foreground">
@@ -801,8 +858,12 @@ function HarnessPage() {
           waiting={{ items: ALL_WAITS, verbs: { onOpenMate: () => {}, onAskToFix: () => {} } }}
         />
       </aside>
-      <main className="min-w-0 flex-1 overflow-y-auto">
+      {/* The page's content region, as the app's frame marks it (`SidebarInset`). */}
+      <main className="min-w-0 flex-1 overflow-y-auto bg-background" data-slot="sidebar-inset">
         <div className="flex w-full flex-col gap-6 px-6 pt-6 pb-12">
+          {PAGE !== null && place !== null ? (
+            <HarnessPlacePage groupId={PAGE} projectId={place} />
+          ) : null}
           {PAGE === null ? (
             <div className="flex items-center justify-between">
               <h1 className="text-xl font-medium text-foreground">Overview</h1>
@@ -835,145 +896,147 @@ function HarnessPage() {
               viewer={ARRIVAL}
             />
           )}
-          <ZeropsProjectsFlow<Mate>
-            cardPlaces={(entry) => {
-              const found = byId.get(entry.group.groupId);
-              return {
-                chip: found?.chip,
-                since: found?.since,
-                releaseSince: found?.releaseSince,
-              };
-            }}
-            getKey={(entry) => entry.id}
-            groups={overviewOrder(
-              PROJECTS.map((entry) => entry.entry),
-              (entry) => ({
-                broken: ["down", "failed"].includes(
-                  byId.get(entry.group.groupId)?.chip?.state ?? "",
-                ),
-                asks: waitingOf(entry).some((item) => item.kind !== "change"),
-                reviews:
-                  waitingOf(entry).some((item) => item.kind === "change") ||
-                  entry.flow.production.kind === "ready-to-release",
-              }),
-            )}
-            hqCard={null}
-            isMate={() => true}
-            onRetryContainers={() => {}}
-            openMate={() => () => {}}
-            page={
-              PAGE === null
-                ? undefined
-                : {
-                    groupId: PAGE,
-                    render: harnessProjectPage(PAGE, () => acted.push(`add-mate:${PAGE}`)),
-                    unread: () => null,
-                  }
-            }
-            renderProductionRun={(entry) =>
-              entry.group.groupId === "tea" ? (
-                <PutLiveRow
-                  address={undefined}
-                  copied={false}
-                  nowMs={NOW}
-                  onAgain={() => acted.push("run-again")}
-                  onCopy={() => {}}
-                  onDismiss={() => acted.push("run-dismiss")}
-                  onOpenProject={() => {}}
-                  run={{
-                    orgId: "harness",
-                    groupId: "tea",
-                    project: "Tea Shop",
-                    phase: "releasing",
-                    tag: "v0.1.4",
-                    stepAt: NOW - 42_000,
-                  }}
+          {place !== null ? null : (
+            <ZeropsProjectsFlow<Mate>
+              cardPlaces={(entry) => {
+                const found = byId.get(entry.group.groupId);
+                return {
+                  chip: found?.chip,
+                  since: found?.since,
+                  releaseSince: found?.releaseSince,
+                };
+              }}
+              getKey={(entry) => entry.id}
+              groups={overviewOrder(
+                PROJECTS.map((entry) => entry.entry),
+                (entry) => ({
+                  broken: ["down", "failed"].includes(
+                    byId.get(entry.group.groupId)?.chip?.state ?? "",
+                  ),
+                  asks: waitingOf(entry).some((item) => item.kind !== "change"),
+                  reviews:
+                    waitingOf(entry).some((item) => item.kind === "change") ||
+                    entry.flow.production.kind === "ready-to-release",
+                }),
+              )}
+              hqCard={null}
+              isMate={() => true}
+              onRetryContainers={() => {}}
+              openMate={() => () => {}}
+              page={
+                PAGE === null
+                  ? undefined
+                  : {
+                      groupId: PAGE,
+                      render: harnessProjectPage(PAGE, () => acted.push(`add-mate:${PAGE}`)),
+                      unread: () => null,
+                    }
+              }
+              renderProductionRun={(entry) =>
+                entry.group.groupId === "tea" ? (
+                  <PutLiveRow
+                    address={undefined}
+                    copied={false}
+                    nowMs={NOW}
+                    onAgain={() => acted.push("run-again")}
+                    onCopy={() => {}}
+                    onDismiss={() => acted.push("run-dismiss")}
+                    onOpenProject={() => {}}
+                    run={{
+                      orgId: "harness",
+                      groupId: "tea",
+                      project: "Tea Shop",
+                      phase: "releasing",
+                      tag: "v0.1.4",
+                      stepAt: NOW - 42_000,
+                    }}
+                  />
+                ) : null
+              }
+              renderEnvironment={() => null}
+              renderGroupMenu={(entry) => (
+                // Its places' vaults, as the app's card menu offers them.
+                <ZeropsProjectMenu
+                  actions={placeVaults(entry.flow, NOW).map((vault) => ({
+                    id: `vault:${vault.projectId}`,
+                    label: `${vault.name} vault`,
+                    onSelect: () => placeVault.open?.(vault),
+                  }))}
+                  label="Project menu"
                 />
-              ) : null
-            }
-            renderEnvironment={() => null}
-            renderGroupMenu={(entry) => (
-              // Its places' vaults, as the app's card menu offers them.
-              <ZeropsProjectMenu
-                actions={placeVaults(entry.flow, NOW).map((vault) => ({
-                  id: `vault:${vault.projectId}`,
-                  label: `${vault.name} vault`,
-                  onSelect: () => placeVault.open?.(vault),
-                }))}
-                label="Project menu"
-              />
-            )}
-            renderMate={(entry, options) => {
-              const read = cardMateReading({
-                view: entry.view,
-                status: entry.status,
-                mine: mineOf(entry),
-                review: options.review,
-              });
-              // On a card its wait stands in Waiting on you: the row is never lifted.
-              const reading = options.quiet === true ? { ...read, lift: undefined } : read;
-              return (
-                <MateRow
-                  actions={
-                    reading.lift === undefined ? null : (
-                      <CardMateLiftActions
-                        lift={reading.lift}
-                        name={entry.name}
-                        onApprove={() => acted.push(`approve:${entry.id}`)}
-                        onFix={() => acted.push(`fix:${entry.id}`)}
-                        onReply={(text) => acted.push(`reply:${entry.id}:${text}`)}
-                        onReview={() => acted.push(`review:${entry.id}`)}
-                        choices={(entry.choices ?? []).map((choice) => ({
-                          label: choice,
-                          primary: false,
-                          onPick: () => acted.push(`pick:${entry.id}:${choice}`),
-                        }))}
-                      />
-                    )
-                  }
-                  face={<MateFace size={32} state={entry.face} tint={entry.tint} />}
-                  key={entry.id}
-                  mark={entry.automated === true ? <MateAutomatedMark /> : undefined}
-                  name={entry.name}
-                  onOpen={() => acted.push(`open:${entry.id}`)}
-                  parts={options.parts}
-                  reading={reading}
-                  time={<MateRowTime dot={entry.view.dot}>{entry.time}</MateRowTime>}
-                />
-              );
-            }}
-            mateTint={(entry) => entry.tint}
-            renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
-            renderReleaseVerb={(entry) =>
-              projectReleaseWait(ALL_WAITS, entry.group.groupId) === undefined ? null : (
-                <Button size="sm">Review release</Button>
-              )
-            }
-            // Harbor Radio's production is down and Nell, the viewer's, would fix it; Watchlist's
-            // failed release has no Mate of theirs, so its wait opens the place.
-            placeFix={(entry) => ({
-              fixer: entry.group.groupId === "harbor" ? "Nell" : undefined,
-              onVerb: () => acted.push(`fix-place:${entry.group.groupId}`),
-            })}
-            cardWaits={(entry) =>
-              projectWaits({ items: waitingOf(entry), flow: entry.flow }).map((wait) => ({
-                wait,
-                face: <MateFace size={24} state={wait.mate.face} tint={wait.mate.tint} />,
-                onVerb: () => acted.push(`wait:${wait.key}`),
-              }))
-            }
-            setUpProduction={(entry) =>
-              byId.get(entry.group.groupId)?.canPutLive === true
-                ? () => acted.push(`put-live:${entry.group.groupId}`)
-                : undefined
-            }
-            addMate={(entry) => ({
-              onAdd: () => acted.push(`add-mate:${entry.group.groupId}`),
-              why: null,
-            })}
-            openPlaceVault={placeVault.open}
-            ungrouped={[]}
-          />
+              )}
+              renderMate={(entry, options) => {
+                const read = cardMateReading({
+                  view: entry.view,
+                  status: entry.status,
+                  mine: mineOf(entry),
+                  review: options.review,
+                });
+                // On a card its wait stands in Waiting on you: the row is never lifted.
+                const reading = options.quiet === true ? { ...read, lift: undefined } : read;
+                return (
+                  <MateRow
+                    actions={
+                      reading.lift === undefined ? null : (
+                        <CardMateLiftActions
+                          lift={reading.lift}
+                          name={entry.name}
+                          onApprove={() => acted.push(`approve:${entry.id}`)}
+                          onFix={() => acted.push(`fix:${entry.id}`)}
+                          onReply={(text) => acted.push(`reply:${entry.id}:${text}`)}
+                          onReview={() => acted.push(`review:${entry.id}`)}
+                          choices={(entry.choices ?? []).map((choice) => ({
+                            label: choice,
+                            primary: false,
+                            onPick: () => acted.push(`pick:${entry.id}:${choice}`),
+                          }))}
+                        />
+                      )
+                    }
+                    face={<MateFace size={32} state={entry.face} tint={entry.tint} />}
+                    key={entry.id}
+                    mark={entry.automated === true ? <MateAutomatedMark /> : undefined}
+                    name={entry.name}
+                    onOpen={() => acted.push(`open:${entry.id}`)}
+                    parts={options.parts}
+                    reading={reading}
+                    time={<MateRowTime dot={entry.view.dot}>{entry.time}</MateRowTime>}
+                  />
+                );
+              }}
+              mateTint={(entry) => entry.tint}
+              renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
+              renderReleaseVerb={(entry) =>
+                projectReleaseWait(ALL_WAITS, entry.group.groupId) === undefined ? null : (
+                  <Button size="sm">Review release</Button>
+                )
+              }
+              // Harbor Radio's production is down and Nell, the viewer's, would fix it; Watchlist's
+              // failed release has no Mate of theirs, so its wait opens the place.
+              placeFix={(entry) => ({
+                fixer: entry.group.groupId === "harbor" ? "Nell" : undefined,
+                onVerb: () => acted.push(`fix-place:${entry.group.groupId}`),
+              })}
+              cardWaits={(entry) =>
+                projectWaits({ items: waitingOf(entry), flow: entry.flow }).map((wait) => ({
+                  wait,
+                  face: <MateFace size={24} state={wait.mate.face} tint={wait.mate.tint} />,
+                  onVerb: () => acted.push(`wait:${wait.key}`),
+                }))
+              }
+              setUpProduction={(entry) =>
+                byId.get(entry.group.groupId)?.canPutLive === true
+                  ? () => acted.push(`put-live:${entry.group.groupId}`)
+                  : undefined
+              }
+              addMate={(entry) => ({
+                onAdd: () => acted.push(`add-mate:${entry.group.groupId}`),
+                why: null,
+              })}
+              openPlaceVault={placeVault.open}
+              ungrouped={[]}
+            />
+          )}
           {placeVault.drawer}
         </div>
       </main>
@@ -983,11 +1046,21 @@ function HarnessPage() {
 
 applyThemePalette(ZEROPS_THEME_ID, appearance);
 document.documentElement.classList.toggle("dark", appearance === "dark");
-// A router of its own, so a card's name opens its project's page as it does in the app.
+// A router of its own with the app's three pages, so a card's name, a place's line and a crumb go
+// where they go in the app, by the app's own transition (`pagesViewTransition`).
+const rootRoute = createRootRoute({ component: HarnessPage });
 const router = createRouter({
-  routeTree: createRootRoute({ component: HarnessPage }),
-  history: createMemoryHistory({ initialEntries: ["/"] }),
+  routeTree: rootRoute.addChildren(
+    ["/zerops", "/group/$groupId/flow", "/group/$groupId/$projectId"].map((path) =>
+      createRoute({ getParentRoute: () => rootRoute, path }),
+    ),
+  ),
+  history: createMemoryHistory({
+    initialEntries: [FIRST_PAGE === null ? "/zerops" : `/group/${FIRST_PAGE}/flow`],
+  }),
+  ...pagesViewTransition(),
 }) as unknown as AppRouter;
+Object.assign(window, { __overviewRouter: router });
 createRoot(document.getElementById("design")!).render(
   <StrictMode>
     <RouterProvider router={router} />
