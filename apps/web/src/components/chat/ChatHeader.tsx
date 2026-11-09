@@ -1,5 +1,5 @@
 import { useMateVoice } from "../../zerops/mateVoiceContext";
-import { mateStatus } from "../../zerops/mateStatus.logic";
+import { mateStatus, type MateStatusAsk } from "../../zerops/mateStatus.logic";
 import { taskTitle, type ConversationTask } from "../../zerops/automatedMate.logic";
 import { MateTaskStatus } from "../zerops/MateTaskCard";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
@@ -71,6 +71,9 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { cn } from "~/lib/utils";
 import { useMateReadOnly } from "~/zerops/useMateReadOnly";
+import { useHqProjectPerson } from "~/zerops/useZeropsMateOwners";
+import { showWaitingAsk } from "../ask/askReveal";
+import { useOpenVaultAskDoor } from "../zerops/vault/VaultAskContainer";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 
@@ -337,6 +340,26 @@ export const ChatHeader = memo(function ChatHeader({
   // no rename, no archive, no new session, no commit from here.
   const crewOrigin = activeThreadShell?.crew ?? null;
   const mateReadOnly = useMateReadOnly(activeThreadEnvironmentId);
+  // A Mate that waits on its person leads to what it waits on: its status names the key or the
+  // question, and a press goes to the ask. Someone reading along is told who is asked instead.
+  const waitsOnAnswer = status?.kind === "answer" ? status : undefined;
+  const vaultAsk = useOpenVaultAskDoor(
+    waitsOnAnswer?.key === true && isServerThread ? activeThreadRef : null,
+  );
+  const mateOwner = useHqProjectPerson(mate?.projectId ?? "")?.owner;
+  const statusAsk: MateStatusAsk | undefined =
+    waitsOnAnswer === undefined
+      ? undefined
+      : mateReadOnly
+        ? { askedOf: mateOwner?.called }
+        : { asked: waitsOnAnswer.key === true ? vaultAsk?.name : mateActivity?.question };
+  const openStatusAsk =
+    waitsOnAnswer === undefined || mateReadOnly
+      ? undefined
+      : () => {
+          // Drawn above the composer or in view: there. A card the list set aside: by its row.
+          if (!showWaitingAsk()) vaultAsk?.show();
+        };
   // A Mate's chat is headed by what the Mate is on in it — the subject its
   // row shows for the main chat (`agentActivity.ts`): the last task as the
   // person put it, not the chat's title, which names its first task forever.
@@ -691,7 +714,9 @@ export const ChatHeader = memo(function ChatHeader({
             />
             {status === null ? null : (
               <MateStatusMarker
+                ask={statusAsk}
                 mateName={mate?.name}
+                onOpen={openStatusAsk}
                 status={status}
                 timestampFormat={settings.timestampFormat}
               />

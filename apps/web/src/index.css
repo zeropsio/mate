@@ -791,6 +791,24 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     }
   }
 
+  /* An ask above the composer is cut by the composer's own edge, so a ring around it would not
+     show: it lights its ground once instead (`showWaitingAsk`). */
+  @keyframes zerops-ask-dock-flash {
+    0%,
+    100% {
+      background-color: transparent;
+    }
+    18%,
+    55% {
+      background-color: color-mix(in oklab, var(--color-ring) 14%, transparent);
+    }
+  }
+
+  [data-chat-composer-asks][data-zerops-flash] {
+    border-radius: 0;
+    animation-name: zerops-ask-dock-flash;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     [data-zerops-flash] {
       animation: none;

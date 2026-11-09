@@ -48,6 +48,39 @@ export function useAskReveal<Row extends { readonly kind: string }>(
   }, [rows, scrollTo, target]);
 }
 
+/**
+ * Takes the person to what the open conversation waits on them for, where it is drawn now: the ask
+ * above the composer, else the last card still waiting in the conversation. It is brought into
+ * view and rings once (`data-zerops-flash`), and focus goes to what it asks with. `false` where
+ * neither is drawn — a card the list has set aside — and the caller goes by the card's row
+ * (`showAskInConversation`).
+ */
+export function showWaitingAsk(root: ParentNode = document): boolean {
+  const ask =
+    root.querySelector<HTMLElement>("[data-chat-composer-asks]") ??
+    [
+      ...root.querySelectorAll<HTMLElement>('[data-ask-density="full"][data-ask-state="waiting"]'),
+    ].at(-1);
+  if (ask === undefined) return false;
+  const still =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  ask.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
+  ask.removeAttribute("data-zerops-flash");
+  // Read, so a second press rings again.
+  void ask.offsetWidth;
+  ask.setAttribute("data-zerops-flash", "");
+  ask.addEventListener("animationend", () => ask.removeAttribute("data-zerops-flash"), {
+    once: true,
+  });
+  ask
+    .querySelector<HTMLElement>(
+      "input:not(:disabled), textarea:not(:disabled), button:not(:disabled):not([data-pending-user-input-toggle])",
+    )
+    ?.focus({ preventScroll: true });
+  return true;
+}
+
 /** The asks whose card is drawn in the conversation, and whether each is in view. */
 const useOnScreen = create<{ readonly cards: Readonly<Record<string, boolean>> }>()(() => ({
   cards: {},
