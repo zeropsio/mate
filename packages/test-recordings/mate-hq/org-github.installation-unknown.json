@@ -1,9 +1,18 @@
 {
   "$provenance": {
     "producer": "mate-hq",
-    "revision": "095038f73398946a4b0bdd2f316c2393f95dafa1",
     "via": "s10a-github-app.test.ts",
-    "schema": "GET /api/org/github"
+    "schema": "GET /api/org/github",
+    "target": "Local conformance HQ from the recorded source, with disposable PostgreSQL, fake Zerops, fake GitHub",
+    "recordedAt": "2026-11-09",
+    "steps": [
+      "Use Node 24.19.0 and follow conformance/README.md for PostgreSQL, Git, Go and object-store prerequisites; run vp install in conformance/.",
+      "From conformance/ set recordings_dir to a new empty temporary directory outside the checkout.",
+      "From conformance/ run TMPDIR=/private/tmp GOTOOLCHAIN=local HQ_RECORD_EXEMPLARS=\"$recordings_dir\" env -u HQ_COMMAND vp test run s10a-github-app.test.ts.",
+      "The whole GitHub case file runs so its fake app and installation IDs have the same preceding-case sequence.",
+      "Compare the generated org-github.installation-unknown.json value with this recording. Remove the temporary directory; the harness stops its local processes and fixtures."
+    ],
+    "command": "cd conformance && TMPDIR=/private/tmp GOTOOLCHAIN=local HQ_RECORD_EXEMPLARS=<empty-output-dir> env -u HQ_COMMAND vp test run s10a-github-app.test.ts"
   },
   "value": {
     "apps": [
