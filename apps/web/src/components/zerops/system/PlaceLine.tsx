@@ -42,6 +42,9 @@ export function PlaceLine({
     density === "compact"
       ? view.facts.filter((fact) => !fact.startsWith(`${SINCE_WORD} `))
       : view.facts;
+  // A compact line that is not calm gives its address's room to why: "Down · app and db failed"
+  // reads whole, where the address would cut both. The place's page still carries it.
+  const address = density === "compact" && view.pill !== undefined ? undefined : view.address;
   const projectId = line.projectId;
   const opens = groupId !== undefined && projectId !== undefined;
   const header = density === "header";
@@ -86,18 +89,18 @@ export function PlaceLine({
         </Fragment>
       ))}
       {line.clock === undefined ? null : <PlaceClock since={line.clock.since} />}
-      {view.address === undefined ? null : (
+      {address === undefined ? null : (
         <>
           <Sep />
           <a
-            aria-label={`Open ${view.title} at ${view.address.host}`}
+            aria-label={`Open ${view.title} at ${address.host}`}
             className="relative z-10 inline-flex min-w-0 shrink items-center gap-0.5 rounded-sm text-muted-foreground outline-none underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
             data-zerops-place-address=""
-            href={view.address.url}
+            href={address.url}
             rel="noreferrer"
             target="_blank"
           >
-            <span className="truncate">{view.address.host}</span>
+            <span className="truncate">{address.host}</span>
             <ArrowUpRightIcon aria-hidden="true" className="size-3 shrink-0" />
           </a>
         </>
