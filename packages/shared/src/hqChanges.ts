@@ -365,10 +365,15 @@ export const HqRepoRemote = Schema.Struct({
   expiresAt: Schema.NullOr(HqTargetTimestamp),
   invalidSince: Schema.NullOr(HqTargetTimestamp),
   /**
-   * How HQ reaches it: the organization's GitHub app (no token kept) or a person's token. Absent
-   * from an older HQ: a token.
+   * How HQ reaches it: one of the organization's GitHub apps (no token kept) or a person's token.
+   * Absent from an older HQ: a token.
    */
   via: Schema.optionalKey(Schema.Literals(["app", "token"])),
+  /**
+   * The organization's GitHub app it goes through (`HqGithubApp.appId`); `null` through a token or
+   * an app HQ no longer holds. Absent from an older HQ.
+   */
+  githubAppId: Schema.optionalKey(Schema.NullOr(Schema.Number)),
   /**
    * Since when HQ's `main` and the default branch there hold histories neither contains, so the
    * mirror moves neither (`githubMirror.ts`); absent while they follow each other.
@@ -474,6 +479,18 @@ export const RepoListEntry = Schema.Struct({
   remote: Schema.optionalKey(Schema.NullOr(HqRepoRemote)),
   /** The GitHub repository whose code its Mates fetch while HQ keeps it (`follow`); a remote outranks it. */
   follows: Schema.optionalKey(HqRemoteUrl),
+  /**
+   * How HQ's mirror last followed its remote: when it last pushed or fetched (`syncedAt`, `null`
+   * before it has) and since when the histories split. Absent or `null` with no mirrored remote.
+   */
+  mirror: Schema.optionalKey(
+    Schema.NullOr(
+      Schema.Struct({
+        syncedAt: Schema.NullOr(Schema.String),
+        divergedSince: Schema.NullOr(Schema.String),
+      }),
+    ),
+  ),
   mainHead: Schema.NullOr(Sha),
   updatedAt: Instant,
   /** Where Git clones it, as HQ gives it; used as given (protocol §repos). */

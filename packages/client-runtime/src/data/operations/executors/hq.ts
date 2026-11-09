@@ -935,11 +935,14 @@ export function makeHqExecutor(ports: {
           if (api.repoRemoteViaApp === undefined)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
-              message: "Update HQ to mirror through the organization's GitHub app.",
+              message: "Update HQ to connect through the organization's GitHub apps.",
             });
           yield* Effect.tryPromise({
             try: () =>
-              api.repoRemoteViaApp!(intent.appId, intent.repo, { repository: intent.repository }),
+              api.repoRemoteViaApp!(intent.appId, intent.repo, {
+                repository: intent.repository,
+                ...(intent.githubAppId === undefined ? {} : { githubAppId: intent.githubAppId }),
+              }),
             catch: faultOf,
           });
           return {
