@@ -15,6 +15,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import type { CardChange } from "../projects/projectCard.logic";
+import { changeTitle } from "../projects/projectHistory.logic";
 
 /** How long a cut line is pointed at before its whole shows, as a tooltip waits. */
 const CUT_TEXT_DELAY_MS = 500;
@@ -109,7 +110,8 @@ export type ChangeRowProps = ChangeRowSubject & {
  */
 export function ChangeRow(props: ChangeRowProps) {
   const { pull, open = false, line, tone, at, by, face, onOpen, verb } = props;
-  const title = pull?.title ?? props.title ?? "";
+  // One title for a change on every page: GitHub's squash suffix "(#17)" is never part of it.
+  const title = changeTitle(pull?.title ?? props.title ?? "");
   const Icon = open ? GitPullRequestIcon : GitMergeIcon;
   const github = pull?.pullRequest;
   const review = open && verb === undefined && onOpen !== undefined;
