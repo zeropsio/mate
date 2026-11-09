@@ -11,8 +11,10 @@
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import { ChevronLeftIcon, ChevronRightIcon, PackageIcon, PlusIcon } from "lucide-react";
 import {
+  createContext,
   Fragment,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -70,6 +72,12 @@ const ROW_FOOT_PX = 20;
  */
 const BELOW_KEPT_PX = 64;
 
+/**
+ * The row the cards scroll in, which a card watches itself come into sight against: a row that
+ * scrolls sideways is the only reliable root for that (the window missed cards scrolled into sight).
+ */
+const CardRowRoot = createContext<HTMLElement | null>(null);
+
 /** The nearest ancestor that scrolls down: the page's own scroll, or a panel's. */
 function scrollingParent(element: HTMLElement): HTMLElement | null {
   for (let at = element.parentElement; at !== null; at = at.parentElement) {
@@ -93,6 +101,11 @@ function CardRow({
   readonly contentsKey: string;
 }) {
   const row = useRef<HTMLDivElement>(null);
+  const [rowElement, setRowElement] = useState<HTMLDivElement | null>(null);
+  const rowRef = useCallback((element: HTMLDivElement | null) => {
+    row.current = element;
+    setRowElement(element);
+  }, []);
   const [edges, setEdges] = useState({ left: false, right: false });
   const measure = useCallback(() => {
     const element = row.current;
@@ -159,10 +172,10 @@ function CardRow({
         aria-label="Projects"
         className="ov-row"
         data-zerops-surface="project-cards"
-        ref={row}
+        ref={rowRef}
         role="list"
       >
-        {children}
+        <CardRowRoot value={rowElement}>{children}</CardRowRoot>
       </div>
       <button
         aria-label="Back"
@@ -207,6 +220,7 @@ function useDetailWhileSeen(groupId: string) {
   // The element the card stands as — its stand-in, then itself: watched whichever it is.
   const [element, ref] = useState<HTMLElement | null>(null);
   const [seen, setSeen] = useState(false);
+  const root = useContext(CardRowRoot);
   const [waitedOut, setWaitedOut] = useState(false);
   const [painted, setPainted] = useState(false);
   const orgId = useAccountOrgId();
@@ -235,16 +249,18 @@ function useDetailWhileSeen(groupId: string) {
       // A busy page gets several of its reports in one call, oldest first: the last says where it
       // stands now. Read first, a card mounted out of sight under the overview's wait stood in
       // for good once it came into sight (State Smoke, 2026-10-27).
+      // Once seen, a card keeps its detail while it is on the page: scrolling it out of sight and
+      // back must not drop it to its stand-in and read it again.
       (records) => {
-        setSeen(records.at(-1)?.isIntersecting === true);
+        if (records.at(-1)?.isIntersecting === true) setSeen(true);
       },
-      { rootMargin: `0px ${String(CARD_STEP)}px` },
+      { root, rootMargin: `0px ${String(CARD_STEP)}px` },
     );
     observer.observe(element);
     return () => {
       observer.disconnect();
     };
-  }, [element]);
+  }, [element, root]);
   useHqAppDetailHold(seen ? [groupId] : NO_GROUPS);
   return { ref, answered };
 }
