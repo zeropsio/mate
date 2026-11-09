@@ -11,11 +11,7 @@ import { FileIcon, PlusIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-runtime/zerops";
-import type {
-  EnvironmentSlotRow,
-  FlowPullRequest,
-  ReleaseFailure,
-} from "@t3tools/client-runtime/zerops";
+import type { EnvironmentSlotRow, FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { ENVIRONMENT_NOT_ADDED, REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
@@ -82,8 +78,11 @@ export interface ProjectPageFacts {
   readonly repos: ZeropsProjectFlow["repos"];
   /** Its copies elsewhere that are not calm (`lineCopies`): each a row under the line's `main`. */
   readonly copies: ReadonlyArray<LineCopy>;
-  /** How its last release did not go live (`releaseFailureOf`); none where it did. */
-  readonly releaseFailure: ReleaseFailure | undefined;
+  /**
+   * Why its last release did not go live, in the place page's own sentence
+   * (`releaseNotCreatedWords`), else how its deploy ended; none where it went live.
+   */
+  readonly releaseCause: string | undefined;
   readonly environments: ReadonlyArray<EnvironmentRow>;
   /** Its places: what exists, and a slot for each tier that does not (`environmentSlots`). */
   readonly slots: ReadonlyArray<EnvironmentSlotRow>;
@@ -480,7 +479,7 @@ function ProjectPlaces<T>({
     waiting,
     release: {
       view: door.view,
-      failure: facts.releaseFailure,
+      cause: facts.releaseCause,
       ready: door.ready,
       note:
         productionNote?.kind === "environment" && door.view.kind === "none"

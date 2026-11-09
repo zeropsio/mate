@@ -27,7 +27,6 @@ export {
   lineChangeKey,
   projectLine,
   READY_FOR_REVIEW,
-  releaseDidntGoLive,
   type LineBead,
   type LineCopy,
   type LineSegment,

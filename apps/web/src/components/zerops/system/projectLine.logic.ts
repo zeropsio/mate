@@ -12,7 +12,6 @@ import {
   REVIEW_RELEASE_LABEL,
   type FlowPullRequest,
   type GroupFlow,
-  type ReleaseFailure,
 } from "@t3tools/client-runtime/zerops";
 import type { MateTintId } from "@t3tools/shared/brand";
 
@@ -147,8 +146,12 @@ export interface ProjectLineInput {
   readonly release: {
     /** The next release as the page offers it (`nextReleaseView`); `none` where it offers none. */
     readonly view: NextReleaseView;
-    /** How the last release did not go live (`releaseFailureOf`). */
-    readonly failure: ReleaseFailure | undefined;
+    /**
+     * Why the last release did not go live, in the place page's own sentence
+     * (`releaseNotCreatedWords`, "v0.1.5 didn't go live: db could not be created in production");
+     * where none is told the segment says that it didn't.
+     */
+    readonly cause?: string | undefined;
     readonly ready: CardReady | undefined;
     /** Production's own note where no release is offered ("Waiting for its first release"). */
     readonly note?: string | undefined;
@@ -238,13 +241,6 @@ function placeStation(
     address: view.address,
     version: view.version,
   };
-}
-
-/** "v0.1.5 didn't go live: production has no db yet" — the release's one sentence, cause last. */
-export function releaseDidntGoLive(failure: ReleaseFailure | undefined): string {
-  if (failure === undefined) return "The last release didn't go live";
-  const why = failure.error === undefined ? "" : `: ${failure.error.replace(/\.$/u, "")}`;
-  return `${failure.tag} didn't go live${why}`;
 }
 
 /** The line of one project, from its setup and what is on its way. */
@@ -515,7 +511,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
           : view.kind === "releasing"
             ? [{ text: view.title, tone: "info" }]
             : view.kind === "failed"
-              ? [{ text: releaseDidntGoLive(input.release.failure), tone: "danger" }]
+              ? [{ text: input.release.cause ?? view.pill, tone: "danger" }]
               : view.kind === "ready"
                 ? readyWords()
                 : input.release.note !== undefined

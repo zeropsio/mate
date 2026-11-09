@@ -7,6 +7,11 @@ import {
   releaseFailureOf,
   type GroupFlow,
 } from "@t3tools/client-runtime/zerops";
+import {
+  notInZerops,
+  releaseNotCreated,
+  releaseNotCreatedWords,
+} from "@t3tools/client-runtime/zerops/flow";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
@@ -24,6 +29,9 @@ import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { useAddEnvironment, useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { useOpenPutLive } from "~/zerops/putLive";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
+import { useStopServices } from "~/zerops/accountForge";
+import { findInventoryProjectRef } from "~/zerops/inventoryContext";
+import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
@@ -50,6 +58,7 @@ import { spendProjectIds } from "./projects/projectSpend.logic";
 import { groupRepository } from "./projects/projectHistory.logic";
 import { ProjectAutomation, ProjectAutomationRow } from "./projectAutomation/ProjectAutomation";
 import { useReleaseOffer } from "./ZeropsReleaseVerb";
+import { failedHow } from "./SidebarProductionChip.logic";
 import { ZeropsProjectsContent } from "./ZeropsProjectsPage";
 import { PageHeader, usePageTrail } from "./system";
 import {
@@ -194,6 +203,38 @@ function useProjectPageFacts(
   const { withheldNotice } = useWithheldStops(environments);
   const orgName = useZeropsSessionOptional()?.activeOrganization?.name;
   const nowMs = useNowMs();
+  // How the last release did not go live, as production's own page says it: a release that could
+  // not create a service it needs names the service, which Zerops' listing of production tells.
+  // That listing is asked only while a release stands failed.
+  const failure =
+    flow === undefined || !flow.releasesKnown
+      ? undefined
+      : releaseFailureOf({
+          releases: flow.releases,
+          environmentInputs: flow.environmentInputs,
+          stalled: flow.release.stalled,
+        });
+  const productionInput = flow?.environmentInputs.find(
+    (entry) => entry.tier === "production" && entry.target.kind === "zerops",
+  );
+  const productionId =
+    productionInput?.target.kind === "zerops" ? productionInput.target.projectId : undefined;
+  const failedThere =
+    failure !== undefined && productionId !== undefined && withheldNotice(productionId) === null;
+  const inventory = useZeropsInventory();
+  const platform = useStopServices(
+    failedThere ? findInventoryProjectRef(inventory, productionId) : null,
+  );
+  const notCreated =
+    flow === undefined || productionInput === undefined || !failedThere
+      ? undefined
+      : releaseNotCreated({
+          tier: "production",
+          releases: flow.releases,
+          services: productionInput.services,
+          creationFailures: productionInput.creationFailures,
+          missing: notInZerops({ recipeServices: productionInput.recipeServices, platform }),
+        });
   const environmentFacts = useApplicationEnvironmentFacts();
   const addEnvironment = useAddEnvironment();
   const openPutLive = useOpenPutLive();
@@ -245,14 +286,12 @@ function useProjectPageFacts(
         : undefined,
     repos: flow?.codeRepos ?? flow?.repos,
     copies: lineCopies(flow?.codeRepos ?? flow?.repos, { orgName, now: nowMs }),
-    releaseFailure:
-      flow === undefined || !flow.releasesKnown
-        ? undefined
-        : releaseFailureOf({
-            releases: flow.releases,
-            environmentInputs: flow.environmentInputs,
-            stalled: flow.release.stalled,
-          }),
+    releaseCause:
+      notCreated !== undefined
+        ? releaseNotCreatedWords(notCreated)
+        : failure === undefined
+          ? undefined
+          : `${failure.tag} ${failedHow(failure)}`,
     environments,
     slots,
     release,

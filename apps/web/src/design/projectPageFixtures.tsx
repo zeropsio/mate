@@ -13,8 +13,8 @@ import type {
   FlowPullRequest,
   FlowReleaseRow,
   GroupFlow,
-  ReleaseFailure,
 } from "@t3tools/client-runtime/zerops";
+import { releaseNotCreatedWords } from "@t3tools/client-runtime/zerops/flow";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
@@ -299,7 +299,8 @@ interface LineInput {
   /** What the stage `main` feeds runs and is taking. */
   readonly stage?: CardStage;
   readonly repos: ReadonlyArray<ReturnType<typeof lineRepo>>;
-  readonly failure?: ReleaseFailure;
+  /** Why its last release did not go live, as production's page says it. */
+  readonly cause?: string;
 }
 
 const HEAD = sha("head");
@@ -342,13 +343,7 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
       onMain(24, "Everyone gets the bot, which guides their sign-in", "pia-r", 8 * DAY + 60),
     ],
     repos: [lineRepo("bot", "acme/relay-bot", IN_SYNC)],
-    failure: {
-      tag: "v0.1.5",
-      kind: "refused",
-      at: ago(8),
-      error: "production has no db yet",
-      services: [],
-    },
+    cause: releaseNotCreatedWords({ tag: "v0.1.5", missing: ["db"] }),
   },
   "line-busy": {
     releases: [
@@ -733,7 +728,7 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
     changesUnknown: PAGE_PARAMS.has("reading") ? "Reading its changes…" : undefined,
     repos: line?.repos ?? (released ? REPOS : []),
     copies: lineCopies(line?.repos, { orgName: "Acme", now: NOW }),
-    releaseFailure: line?.failure,
+    releaseCause: line?.cause,
     environments,
     slots,
     release:
@@ -864,7 +859,6 @@ export function HarnessLineMine<T>({
           ],
           release: {
             view: nextReleaseView({ release: facts.release, ready }),
-            failure: undefined,
             ready,
           },
           putLive: undefined,
