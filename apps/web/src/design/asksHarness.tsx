@@ -32,6 +32,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { MateFace } from "~/components/zerops/primitives";
+import { GithubConnectPickerView } from "~/components/zerops/github/GithubConnectPicker";
 import { MirrorAskCard } from "~/components/zerops/mirror/MirrorAskCard";
 import { mirrorAskState } from "~/components/zerops/mirror/mirrorAsk.logic";
 import { OriginAskCard } from "~/components/zerops/origin/OriginAskCard";
@@ -45,6 +46,7 @@ import {
   vaultAskView,
 } from "~/components/zerops/vault/vaultRequest.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
+import type { GitMirrorApps } from "~/zerops/useGitMirrorApps";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -524,6 +526,61 @@ const MIRROR = {
   remote: "https://github.com/acme/shop",
 };
 
+const MIRROR_APPS: GitMirrorApps = {
+  kind: "ready",
+  apps: [
+    {
+      appId: 41,
+      name: "Acme Mate",
+      slug: "acme-mate",
+      owner: "acme",
+      ownerType: "Organization",
+      botLogin: "acme-mate[bot]",
+      setUpBy: "u-dana",
+      setUpAt: "2026-11-02T09:00:00Z",
+      public: true,
+      installUrl: "https://github.com/apps/acme-mate/installations/new",
+      appUrl: "https://github.com/apps/acme-mate",
+      installTrip: true,
+      unanswered: 0,
+    },
+  ],
+  installations: [
+    {
+      installationId: 7001,
+      appId: 41,
+      account: "acme",
+      accountType: "Organization",
+      standing: "accepted",
+      addedBy: "u-ales",
+      manageUrl: "https://github.com/organizations/acme/settings/installations/7001",
+      repositories: [
+        { id: 1, fullName: "acme/shop", private: true, defaultBranch: "main", usedBy: null },
+        {
+          id: 2,
+          fullName: "acme/api",
+          private: true,
+          defaultBranch: "main",
+          usedBy: { application: "app-store", repo: "api" },
+        },
+      ],
+    },
+    {
+      installationId: 7002,
+      appId: 41,
+      account: "octo-org",
+      accountType: "Organization",
+      standing: "accepted",
+      addedBy: "u-dana",
+      manageUrl: "https://github.com/organizations/octo-org/settings/installations/7002",
+      repositories: [
+        { id: 3, fullName: "octo-org/site", private: false, defaultBranch: "main", usedBy: null },
+      ],
+    },
+  ],
+};
+const PEOPLE: Readonly<Record<string, string>> = { "u-ales": "Aleš", "u-dana": "Dana K." };
+
 function Mirror({ density }: { readonly density: AskDensity }) {
   const [state, setState] = useState<MirrorState>("waiting");
   const answered = state === "done" || state === "notNow";
@@ -541,6 +598,26 @@ function Mirror({ density }: { readonly density: AskDensity }) {
         onNotNow={NOTHING}
         onRetry={NOTHING}
         onShowInConversation={density === "compact" ? NOTHING : undefined}
+        picker={
+          <GithubConnectPickerView
+            actions={{ install: NOTHING, leaving: NOTHING }}
+            admin
+            apps={MIRROR_APPS}
+            authority={null}
+            density="compact"
+            entry={{ name: MIRROR.repo, mainHead: null, updatedAt: "2026-11-09T10:00:00Z" }}
+            fresh={new Set()}
+            nameOf={(id) => PEOPLE[id]}
+            orgName="Acme"
+            press={null}
+            project="app-shop"
+            projectName="Shop"
+            projectNameOf={(id) => (id === "app-store" ? "Store" : undefined)}
+            repo={MIRROR.repo}
+            usedApps={[]}
+            viewerId="u-ales"
+          />
+        }
         reason={MIRROR.reason}
         remoteUrl={state === "done" ? MIRROR.remote : null}
         repo={MIRROR.repo}
