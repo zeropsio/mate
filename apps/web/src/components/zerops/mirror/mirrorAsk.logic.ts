@@ -49,6 +49,39 @@ export function mirrorAskPlaces(key: string): ReadonlyArray<MirrorAskPlace> {
   });
 }
 
+/**
+ * The thread's open mirror asks as one string — a line each: its request and repository, oldest
+ * first — so the conversation's watch draws nothing new for a change elsewhere in the thread.
+ */
+export function mirrorOpenAsksKey(
+  activities: ReadonlyArray<OrchestrationThreadActivity> | undefined,
+): string {
+  return (activities ?? [])
+    .flatMap((activity) => {
+      if (activity.kind !== MIRROR_ASK_ACTIVITY_KIND) return [];
+      const payload = activity.payload as MirrorAskActivityPayload;
+      return payload.state === "open" ? [`${payload.requestId}\t${payload.repo}`] : [];
+    })
+    .join("\n");
+}
+
+/** The open asks back from their string. */
+export function mirrorOpenAsks(
+  key: string,
+): ReadonlyArray<{ readonly requestId: string; readonly repo: string }> {
+  if (key === "") return [];
+  return key.split("\n").map((line) => {
+    const [requestId = "", repo = ""] = line.split("\t");
+    return { requestId, repo };
+  });
+}
+
+/** The repository an install trip came back for (`connect-seen`: `<project>|<repo>|<ids>`). */
+export function seenRepo(value: string | null): string | null {
+  const repo = value?.split("|")[1];
+  return repo === undefined || repo === "" ? null : repo;
+}
+
 /** What the card reads of an ask, and who answered it when: a person's Zerops user id. */
 export interface MirrorAskRecord {
   readonly requestId: string;
@@ -160,18 +193,6 @@ export function mirrorAskState(input: {
       if (input.refused !== null) return { kind: "othersToAnswer", words: input.refused };
       return { kind: "waiting" };
   }
-}
-
-/**
- * What the engine is still to hear of an open ask: connected, at the remote's address, once HQ
- * shows it — from the card's picker, or anywhere else — and nothing was said here yet.
- */
-export function mirrorAskAnswer(
-  state: MirrorAskActivityPayload["state"],
-  pending: MirrorAskPending,
-  remote: string | null,
-): string | null {
-  return state === "open" && pending === null ? remote : null;
 }
 
 /**
