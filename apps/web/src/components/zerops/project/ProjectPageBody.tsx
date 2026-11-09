@@ -167,7 +167,12 @@ export function ProjectPageBody<T>({
             props={props}
             waiting={new Set(waits.map(({ wait }) => wait.mate.projectId))}
           />
-          <ProjectChanges entry={entry} facts={facts} props={props} />
+          <ProjectChanges
+            entry={entry}
+            facts={facts}
+            props={props}
+            waiting={waitingChangeKeys(entry, waits)}
+          />
           {open.access ? (
             <DetailSection
               label="Who has access"
@@ -241,6 +246,22 @@ function AddMateButton({
       <TooltipTrigger render={<span />}>{button}</TooltipTrigger>
       <TooltipPopup side="bottom">{why}</TooltipPopup>
     </Tooltip>
+  );
+}
+
+/** A change by its repository and number. */
+const changeKey = (pull: Pick<FlowPullRequest, "repository" | "number">) =>
+  `${pull.repository}#${String(pull.number)}`;
+
+/** The changes Waiting on you lists, each Mate's that wait for the person's review. */
+function waitingChangeKeys<T>(
+  entry: ProjectsFlowGroup<T>,
+  waits: ReadonlyArray<CardWait>,
+): ReadonlySet<string> {
+  return new Set(
+    waits.flatMap(({ wait }) =>
+      wait.kind === "review" ? waitingChanges(entry.flow, wait.mate.projectId).map(changeKey) : [],
+    ),
   );
 }
 
@@ -646,21 +667,24 @@ function ComingMate<T>({
 }
 
 /**
- * The project's recent changes, open first, then merged by where each went; *All history* opens
- * its releases in place, each with the changes it put live.
+ * The project's recent changes, open first, then merged by where each went — less those Waiting
+ * on you lists; *All history* opens its releases in place, each with the changes it put live.
  */
 function ProjectChanges<T>({
   entry,
   props,
   facts,
+  waiting,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly facts: ProjectPageFacts;
+  /** The changes Waiting on you lists for review (`changeKey`): said there, not here. */
+  readonly waiting: ReadonlySet<string>;
 }) {
   const [history, setHistory] = useState(false);
   const openChange = useOpenChange();
-  const { changes } = facts;
+  const changes = facts.changes.filter((change) => !waiting.has(changeKey(change.pull)));
   const mateName = (projectId: string) =>
     entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
   const faceOf = (projectId: string) => {
