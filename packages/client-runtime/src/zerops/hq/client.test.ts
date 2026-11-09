@@ -816,8 +816,6 @@ describe("Git token refusals", () => {
       "A file in this repository's history is larger than 100 MiB. HQ takes files up to 100 MiB, as GitHub does.",
     app_ambiguous:
       "More than one of the organization's GitHub apps reaches this repository. Pick the account to connect through, then try again.",
-    repository_in_use:
-      "Another repository in this organization is already connected to this GitHub repository. Disconnect it there, or pick another repository.",
   } satisfies Record<HqRemoteRefusalReason, string>;
   it.each(Object.entries(remoteCases))(
     "Every repository connection refusal explains %s and the next step",

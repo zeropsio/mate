@@ -3,7 +3,7 @@
  * followed through its operation's own record until HQ's repository record shows the outcome.
  * Only the request id is kept here, per account, so the picker and the project page's row read the
  * same press: closing the dialog mid-connect leaves the row on the same step, and a refusal
- * (`repository_in_use`) stays on the row in HQ's words until dismissed or pressed again.
+ * (`remote_taken`) stays on the row in HQ's words until dismissed or pressed again.
  *
  * Every wait ends: an answer whose outcome the record does not show within `RECORD_DEADLINE_MS`
  * reads as unconfirmed, with what to check.

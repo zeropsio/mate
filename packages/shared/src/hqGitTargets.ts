@@ -37,7 +37,6 @@ export const HqRemoteRefusalReason = Schema.Literals([
   "needs_owner_seal",
   "object_too_large",
   "app_ambiguous",
-  "repository_in_use",
 ]);
 export type HqRemoteRefusalReason = typeof HqRemoteRefusalReason.Type;
 export const HqGitEnvironmentRefusalReason = Schema.Literals([
@@ -120,8 +119,6 @@ const REMOTE_WORDS: Record<HqRemoteRefusalReason, string> = {
     "A file in this repository's history is larger than 100 MiB. HQ takes files up to 100 MiB, as GitHub does.",
   app_ambiguous:
     "More than one of the organization's GitHub apps reaches this repository. Pick the account to connect through, then try again.",
-  repository_in_use:
-    "Another repository in this organization is already connected to this GitHub repository. Disconnect it there, or pick another repository.",
 };
 /** The same explanation reaches HTTP clients and internal Git consumers. */
 export function remoteRefusalWords(
@@ -129,9 +126,6 @@ export function remoteRefusalWords(
 ): string {
   if (refusal.reason === "remote_taken" && refusal.applicationName) {
     return `${refusal.repository ?? "This repository"} is already connected to ${refusal.applicationName}. Disconnect it under Repositories on ${refusal.applicationName}'s page, or use another repository.`;
-  }
-  if (refusal.reason === "repository_in_use" && refusal.applicationName) {
-    return `${refusal.repository ?? "This GitHub repository"} is already connected in ${refusal.applicationName}. Disconnect it there, or pick another repository.`;
   }
   if (refusal.reason === "in_use" && refusal.environments?.length) {
     return `Git environments ${refusal.environments.join(", ")} still use this connection. Remove them before disconnecting it.`;
