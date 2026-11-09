@@ -16,6 +16,7 @@ import {
   broughtBy,
   cardChanges,
   mateChangesForReview,
+  placeLabel,
   type CardChange,
   type PlaceLine,
 } from "../projects/projectCard.logic";
@@ -63,10 +64,15 @@ export function waitingChanges(
   return mateChangesForReview(flow, mateProjectId);
 }
 
+/** One address of the project's page: its host, and the place that serves it. */
+export interface PageAddress extends GroupFlowAddress {
+  readonly host: string;
+  /** The place it belongs to, `Production` or a stage by its name (`placeLabel`). */
+  readonly place: string;
+}
+
 /** Every address the project's places serve at, production first, each once. */
-export function pageAddresses(
-  lines: ReadonlyArray<PlaceLine>,
-): ReadonlyArray<GroupFlowAddress & { readonly host: string }> {
+export function pageAddresses(lines: ReadonlyArray<PlaceLine>): ReadonlyArray<PageAddress> {
   const seen = new Set<string>();
   return linesProductionFirst(lines).flatMap((line) =>
     line.nothingDeployed === true
@@ -74,7 +80,7 @@ export function pageAddresses(
       : line.addresses.flatMap((address) => {
           if (seen.has(address.url)) return [];
           seen.add(address.url);
-          return [{ ...address, host: hostOf(address.url) }];
+          return [{ ...address, host: hostOf(address.url), place: placeLabel(line) }];
         }),
   );
 }
