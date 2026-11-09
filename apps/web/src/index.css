@@ -17,6 +17,71 @@
   }
 }
 
+/* The overview, a project's page and a place's page are one place at three depths: going among
+   them (`pageTransitions.ts`, the router's `pages` transition) cross-fades the page's content and
+   nothing else. The window itself is left out of the transition, so the left menu and the frame
+   are drawn live throughout and not a pixel of them changes; the page's ground stays under the
+   fade, so nothing shows through it. The trail above a page's title is one element across the
+   pages while it is in view (`pages-trail`): the steps two pages share hold still while the last
+   one changes. Left scrolled away, it belongs to its page and comes with it. */
+@media (prefers-reduced-motion: no-preference) {
+  html:active-view-transition-type(pages) {
+    view-transition-name: none;
+  }
+
+  html:active-view-transition-type(pages) [data-slot="sidebar-inset"] {
+    view-transition-name: zerops-page;
+  }
+
+  html:active-view-transition-type(pages-trail) .page-crumbs {
+    view-transition-name: zerops-page-crumbs;
+  }
+
+  /* The menu stays pressable while the page fades. */
+  html:active-view-transition-type(pages)::view-transition {
+    pointer-events: none;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-group(zerops-page) {
+    background: var(--background);
+    animation-duration: 180ms;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-old(zerops-page) {
+    animation: zerops-page-out 120ms ease-out both;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-new(zerops-page) {
+    animation: zerops-page-in 180ms ease-out both;
+  }
+
+  /* The trail's two drawings fade over the same 180 ms, so what both hold never dims; each keeps
+     its own size at the row's start, so a longer trail is never a stretched one. */
+  html:active-view-transition-type(pages)::view-transition-group(zerops-page-crumbs) {
+    animation-duration: 180ms;
+    animation-timing-function: ease-out;
+  }
+
+  html:active-view-transition-type(pages)::view-transition-old(zerops-page-crumbs),
+  html:active-view-transition-type(pages)::view-transition-new(zerops-page-crumbs) {
+    height: 100%;
+    object-fit: none;
+    object-position: left top;
+  }
+}
+
+@keyframes zerops-page-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes zerops-page-in {
+  from {
+    opacity: 0;
+  }
+}
+
 /* On mobile, morph the expanded hero composer into the compact docked
    composer while it moves; the rest of the app remains visually stationary. */
 html[data-mobile-composer-route-transition="true"]::view-transition-old(root),
