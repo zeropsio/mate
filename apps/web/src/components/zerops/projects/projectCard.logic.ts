@@ -993,7 +993,7 @@ export function cardChanges(input: {
       const on = (shas: ReadonlyArray<string> | undefined) =>
         stage !== undefined &&
         (shas ?? []).some((sha) => holds(sha, pull, landed, stage.mainHeads));
-      // Every change to the setup repository: its files go to no place and no release.
+      // Every change to the setup repository, as `broughtBy` leaves them out of a release.
       const where: MergedChangeWhere =
         pull.kind === "recipe"
           ? { kind: "setup" }
@@ -1020,6 +1020,27 @@ export function cardChanges(input: {
 
 /** A release as production's panel reads it: newest first, as the flow lists them. */
 type PanelRelease = Pick<FlowReleaseRow, "tag" | "taggedAt" | "standing" | "rollBack">;
+
+/**
+ * The changes the release production runs brought: the app's own, merged after the one before it
+ * was made. The group's setup (its import files) is no change a release ships.
+ */
+export function broughtBy(
+  merged: ReadonlyArray<FlowPullRequest>,
+  releases: ReadonlyArray<PanelRelease>,
+): ReadonlyArray<FlowPullRequest> {
+  const at = releases.findIndex((release) => release.standing === "live");
+  const live = releases[at];
+  if (live === undefined) return [];
+  const before = releases[at + 1];
+  return merged.filter(
+    (pull) =>
+      pull.kind === "code" &&
+      pull.mergedAt !== undefined &&
+      pull.mergedAt <= live.taggedAt &&
+      (before === undefined || pull.mergedAt > before.taggedAt),
+  );
+}
 
 /** The release production goes back to: the newest one before what it runs that may be rolled back to. */
 export function rollBackTarget(releases: ReadonlyArray<PanelRelease>): string | undefined {

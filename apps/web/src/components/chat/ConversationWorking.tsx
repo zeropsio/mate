@@ -798,9 +798,10 @@ function Instruments({
                   />
                 ))}
               </ul>
-              <InlineButton className="mt-2 ms-9" onClick={onOpenAgents}>
-                Open the helpers panel
-              </InlineButton>
+              {/* An inline button takes its line's size: the line is a row's, 13 px on 20. */}
+              <p className="m-0 mt-2 ms-9 text-line">
+                <InlineButton onClick={onOpenAgents}>Open the helpers panel</InlineButton>
+              </p>
             </InstrumentDetail>
           ) : null}
         </Arriving>

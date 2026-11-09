@@ -33,6 +33,8 @@ import {
   type GroupRowTone,
   type ZeropsGroup,
   type ZeropsProject,
+  firstDeployLine,
+  firstDeployTone,
   stageFirstDeploy,
   type FirstDeploy,
 } from "@t3tools/client-runtime/zerops";
@@ -40,6 +42,8 @@ import { stopView, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { useNavigate } from "@tanstack/react-router";
+import { ChevronRightIcon } from "lucide-react";
 import { useCallback, useContext, useId, useMemo } from "react";
 
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -344,6 +348,138 @@ const EMPTY_STOPS: ReadonlyArray<EnvironmentRow> = [];
 
 /** A stop whose project the flow has no listing for: not read, never "nothing". */
 export const UNREAD_DEPLOYMENT: Shown<Deployment> = { state: "unread", waitingFor: null };
+
+/** A section with nothing in it yet, and the way to put something there. */
+/** A stop's version column shares its page's runtime answer, including a failure or wait. */
+export function StopLine(props: {
+  readonly environment: EnvironmentRow;
+  readonly groupId: string;
+  readonly notice: string | null;
+  readonly firstDeploy?: FirstDeploy | undefined;
+}) {
+  if (props.environment.target.kind === "git")
+    return <GitStopLine environment={props.environment} groupId={props.groupId} />;
+  return <ZeropsStopLine {...props} />;
+}
+function GitStopLine({
+  environment,
+  groupId,
+}: {
+  readonly environment: EnvironmentRow;
+  readonly groupId: string;
+}) {
+  const navigate = useNavigate();
+  return (
+    <button
+      className="py-2 text-sm font-medium"
+      data-zerops-environment-id={environment.id}
+      type="button"
+      onClick={() => {
+        void navigate({
+          to: "/group/$groupId/$projectId",
+          params: { groupId, projectId: environment.id },
+        });
+      }}
+    >
+      {environmentTitle(environment.tier, environment.name)}
+    </button>
+  );
+}
+function ZeropsStopLine({
+  environment,
+  firstDeploy,
+  groupId,
+  notice,
+}: {
+  readonly environment: EnvironmentRow;
+  readonly groupId: string;
+  /**
+   * Said in place of the stop while the grant withholds its project: its
+   * tier stays, and its name, what it runs and its page do not (DESIGN §3.4).
+   */
+  readonly notice: string | null;
+  /** A stage that runs nothing: where its first deploy stands, said as its cell says it. */
+  readonly firstDeploy?: FirstDeploy | undefined;
+}) {
+  const navigate = useNavigate();
+  const projectId = environment.target.kind === "zerops" ? environment.target.projectId : undefined;
+  const deployments = useStopDeploymentsShown(
+    useMemo(() => (projectId === undefined ? [] : [projectId]), [projectId]),
+  );
+  // The platform's answer, said in the words its card and Sites say a place in (`stopRowSays`).
+  const deployment = projectId === undefined ? undefined : deployments.get(projectId);
+  const says = stopRowSays(
+    environment.tier,
+    stopView({ deployment: deployment ?? UNREAD_DEPLOYMENT, row: environment, nowMs: 0 }),
+  );
+  // Nothing known to run and a first deploy asked for: the line its cell and its page say.
+  const settled = says.tone === "good" || says.tone === "pending" || says.tone === "bad";
+  const firstWord = settled ? undefined : firstDeployLine(firstDeploy);
+  const word = firstWord ?? says.word;
+  const dotTone =
+    firstWord === undefined
+      ? says.tone === undefined
+        ? undefined
+        : (STOP_DOT_TONE[says.tone] ?? "off")
+      : firstDeployTone(firstDeploy);
+  const title = environmentTitle(environment.tier, environment.name);
+  const open = useCallback(() => {
+    void navigate({
+      to: "/group/$groupId/$projectId",
+      params: { groupId, projectId: environment.id },
+    });
+  }, [environment.id, groupId, navigate]);
+  if (notice !== null) {
+    return (
+      <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
+        <span className="shrink-0 text-sm font-medium text-foreground">
+          {environmentTitle(environment.tier, environment.tier)}
+        </span>
+        <span className="truncate text-xs text-muted-foreground">{notice}</span>
+        {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
+      </li>
+    );
+  }
+  return (
+    <li>
+      <button
+        // Fixed tracks, not a right-ragged flex: a version and a state that
+        // start at a different x on every row cannot be read down the column.
+        // The state's track holds its longest word whole: the run's column said "Nothing depl…".
+        className="grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_6rem_10.5rem_1rem] items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
+        data-zerops-environment-id={environment.id}
+        onClick={open}
+        type="button"
+      >
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">{title}</span>
+        <span className="truncate text-end font-mono text-xs text-muted-foreground tabular-nums">
+          {says.version}
+        </span>
+        {/* Never a wordless dot on its own: a colour that has to be learnt is
+            a colour nobody reads, and a screen reader gets nothing from it. */}
+        {/* The dot carries the state; the word supports it. Unsized, it
+            inherited 16px and came out larger than the name it annotates. */}
+        {dotTone === undefined ? (
+          <span className="text-xs text-muted-foreground">{word}</span>
+        ) : (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            <Badge dot tone={STATUS_BADGE_TONE[dotTone]}>
+              {word}
+            </Badge>
+          </span>
+        )}
+        <ChevronRightIcon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground/60" />
+      </button>
+      {/* An application of several parts: how many, and each that differs from the version. */}
+      {environment.parts === undefined ? null : (
+        <span className="block truncate px-2 pb-2 text-xs text-muted-foreground">
+          {environment.parts}
+        </span>
+      )}
+      {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
+    </li>
+  );
+}
 
 /**
  * A detail page whose flow is not read yet: `standIn`, in the box of what the page opens with, while
