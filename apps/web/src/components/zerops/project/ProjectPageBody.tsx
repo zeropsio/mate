@@ -311,18 +311,10 @@ function ProjectWaits<T>({
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const openChange = useOpenChange();
   if (waits.length === 0) return null;
-  // As many as the rows list: each Mate's changes waiting for review, one where none is read yet.
-  const count = waits.reduce(
-    (total, { wait }) =>
-      total +
-      (wait.kind === "review"
-        ? Math.max(1, waitingChanges(entry.flow, wait.mate.projectId).length)
-        : 1),
-    0,
-  );
+  // One per thing to act on, as the menu's badge counts: a Mate's changes are one.
   return (
     <section aria-labelledby="pp-waits" className="pp-group" data-zerops-surface="project-waits">
-      <SectionLabel count={count} id="pp-waits">
+      <SectionLabel count={waits.length} id="pp-waits">
         Waiting on you
       </SectionLabel>
       <div className="pp-card pp-list">

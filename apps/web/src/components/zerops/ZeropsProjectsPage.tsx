@@ -2678,7 +2678,8 @@ export function ZeropsProjectsContent({
           onShow={onShow}
           ownsMates={roleOffered.newProject}
           show={search.show}
-          waiting={flowGroups.filter((entry) => filterFacts.waits.has(entry.group.groupId)).length}
+          // The things that wait on the viewer, the menu's badge's number at the same moment.
+          waiting={waiting.items.length}
         />
       ) : null}
       {project === undefined && search.show !== undefined && keptGroups.length === 0 ? (

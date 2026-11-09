@@ -47,6 +47,7 @@ import {
   projectReleaseWait,
   projectWaits,
 } from "~/components/zerops/projects/projectCard.logic";
+import { OverviewFilters } from "~/components/zerops/projects/OverviewFilters";
 import { SidebarChiefRow } from "~/components/zerops/chief/SidebarChiefRow";
 import {
   ZeropsProjectsFlow,
@@ -617,6 +618,15 @@ function HarnessPage() {
               <h1 className="text-xl font-medium text-foreground">Overview</h1>
               <Button variant="secondary">New project</Button>
             </div>
+          ) : null}
+          {PAGE === null ? (
+            <OverviewFilters
+              mine={PROJECTS.filter(({ entry }) => [...entry.mates.values()].some(mineOf)).length}
+              onShow={() => {}}
+              ownsMates
+              show={undefined}
+              waiting={ALL_WAITS.length}
+            />
           ) : null}
           {ARRIVAL === null ? null : (
             <ArrivalWelcome
