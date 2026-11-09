@@ -2,7 +2,7 @@
  * A place — production or a stage — on one line, the one drawing of a place on every page and
  * panel (`placeLineView`): dot · name · a pill where not calm · version · since · address ↗.
  *
- * - `compact` (overview card, Mate panels): its name opens the place's page.
+ * - `compact` (overview card, Mate panels): its name opens the place's page; since-when is left out.
  * - `row` (the project page): the whole line opens the place's page, a chevron at its end.
  * - `header` (the place's own page, beside its title): no name; the state word said even when calm.
  */
@@ -14,7 +14,7 @@ import { Badge } from "~/components/ui/badge";
 import { formatElapsed } from "~/components/ui/progress.logic";
 import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
-import type { PlaceLine as PlaceLineData } from "../projects/projectCard.logic";
+import { SINCE_WORD, type PlaceLine as PlaceLineData } from "../projects/projectCard.logic";
 import { placeLineView } from "./PlaceLine.logic";
 
 export type PlaceLineDensity = "compact" | "row" | "header";
@@ -37,6 +37,14 @@ export function PlaceLine({
   readonly trailing?: ReactNode;
 }) {
   const view = placeLineView(line);
+  // A compact line (a card, a panel) leaves since-when out, so its address stays whole.
+  const facts =
+    density === "compact"
+      ? view.facts.filter((fact) => !fact.startsWith(`${SINCE_WORD} `))
+      : view.facts;
+  // A compact line that is not calm gives its address's room to why: "Down · app and db failed"
+  // reads whole, where the address would cut both. The place's page still carries it.
+  const address = density === "compact" && view.pill !== undefined ? undefined : view.address;
   const projectId = line.projectId;
   const opens = groupId !== undefined && projectId !== undefined;
   const header = density === "header";
@@ -74,25 +82,25 @@ export function PlaceLine({
           {view.version}
         </span>
       )}
-      {view.facts.map((fact, index) => (
+      {facts.map((fact, index) => (
         <Fragment key={`${String(index)}:${fact}`}>
           {index === 0 && view.version === undefined ? null : <Sep />}
           <span className="min-w-0 shrink-2 truncate text-muted-foreground">{fact}</span>
         </Fragment>
       ))}
       {line.clock === undefined ? null : <PlaceClock since={line.clock.since} />}
-      {view.address === undefined ? null : (
+      {address === undefined ? null : (
         <>
           <Sep />
           <a
-            aria-label={`Open ${view.title} at ${view.address.host}`}
+            aria-label={`Open ${view.title} at ${address.host}`}
             className="relative z-10 inline-flex min-w-0 shrink items-center gap-0.5 rounded-sm text-muted-foreground outline-none underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
             data-zerops-place-address=""
-            href={view.address.url}
+            href={address.url}
             rel="noreferrer"
             target="_blank"
           >
-            <span className="truncate">{view.address.host}</span>
+            <span className="truncate">{address.host}</span>
             <ArrowUpRightIcon aria-hidden="true" className="size-3 shrink-0" />
           </a>
         </>
@@ -101,7 +109,7 @@ export function PlaceLine({
   );
   const dot = (
     <Badge
-      aria-label={view.pill?.word ?? view.state ?? view.facts[0] ?? view.title}
+      aria-label={view.pill?.word ?? view.state ?? facts[0] ?? view.title}
       dot
       tone={view.tone}
     />

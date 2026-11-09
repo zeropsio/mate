@@ -122,7 +122,7 @@ it("a pending Mate's project card shows its shared birth phase and actions", asy
           props={{
             ...FLOW_PROPS,
             renderComingBirth: (projectId: string) =>
-              projectId === "vera-dev"
+              projectId === "vale-dev"
                 ? {
                     line: "Project created · Quota reached.",
                     menu: <button onClick={onContinue}>Continue</button>,
@@ -488,7 +488,7 @@ it("a Mate's row shows each part by its real hostname: a door to its preview, el
     await act(async () =>
       root.render(
         <MateRow
-          name="Odin"
+          name="Orrin"
           face={null}
           time={null}
           onOpen={undefined}
@@ -529,8 +529,8 @@ it("a Mate's row shows each part by its real hostname: a door to its preview, el
       ...container.querySelectorAll('[data-zerops-surface="card-mate-parts"] > *'),
     ].map((chip) => [chip.textContent, chip.getAttribute("href"), chip.getAttribute("aria-label")]);
     expect(chips).toEqual([
-      ["apistage", "https://apistage.example.app", "Open Odin's apistage"],
-      ["matedev", "https://matedev.example.app", "Open Odin's matedev"],
+      ["apistage", "https://apistage.example.app", "Open Orrin's apistage"],
+      ["matedev", "https://matedev.example.app", "Open Orrin's matedev"],
       ["runnerstage", null, null],
     ]);
   } finally {

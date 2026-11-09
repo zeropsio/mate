@@ -94,11 +94,11 @@ export function placeStatus(input: {
       : `follows ${input.source}`;
   const parts: Array<string | undefined> = [];
   if (view.tone === "good" && input.tier === "production") {
-    const by = version?.taggedBy === undefined ? "" : ` by ${version.taggedBy}`;
+    // Who released it is Live now's to say, by name; the header keeps to the state.
     parts.push(
       "Running",
       version?.label,
-      input.releasedAge === undefined ? undefined : `released ${input.releasedAge}${by}`,
+      input.releasedAge === undefined ? undefined : `released ${input.releasedAge}`,
     );
   } else if (view.tone === "good") {
     parts.push(
