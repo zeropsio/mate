@@ -14,7 +14,7 @@ import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
  * `index.html`, and no route imports this module.
  */
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import { StrictMode, type ReactNode } from "react";
+import { StrictMode, useState, type ReactNode } from "react";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -32,6 +32,7 @@ import {
   releaseRow,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type EnvironmentServiceState,
+  type FlowPullRequest,
   type FlowRelease,
   type MovedCommits,
   type ReleaseDeployFailure,
@@ -60,6 +61,9 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { ZeropsGroupPane } from "~/components/zerops/ProjectPage";
 import { ZeropsStopPane } from "~/components/zerops/PlacePage";
+import { MateFace } from "~/components/zerops/primitives";
+import type { CardReady } from "~/components/zerops/projects/projectCard.logic";
+import type { MateTintId } from "@t3tools/shared/brand";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import { PlaceAccessSummary } from "~/components/zerops/projects/ProjectAccessTable";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
@@ -89,9 +93,10 @@ const ROUTES = [
 
 const NAMES = { mateNames: new Map([["p-theo", "Theo"]]) };
 
-const crumbs = (group: string) => [
-  { label: "Projects", onClick: () => {} },
+const trail = (group: string, here: string) => [
+  { label: "Overview", onClick: () => {} },
   { label: group, onClick: () => {} },
+  { label: here },
 ];
 
 const sha = (seed: string) => seed.padEnd(40, "0").slice(0, 40);
@@ -185,6 +190,66 @@ const RELEASE_NONE: ReleaseOffer = {
 
 /** Opening a commit is what grew the row and dragged the node down the rail. */
 const NOW = Date.now();
+
+/** The Mates whose changes a place's page lists, by their projects, as the menu draws them. */
+const MATES: Readonly<Record<string, { readonly name: string; readonly tint: MateTintId }>> = {
+  "p-juno": { name: "Juno", tint: "sky" },
+  "p-raya": { name: "Raya", tint: "olive" },
+};
+
+const mateFace = (mateProjectId: string) => {
+  const mate = MATES[mateProjectId];
+  return mate === undefined ? undefined : <MateFace size={20} state="idle" tint={mate.tint} />;
+};
+
+/** A Mate's change `hoursAgo` old: merged, or still open and ready to merge. */
+function change(
+  number: number,
+  title: string,
+  mateProjectId: string,
+  hoursAgo: number,
+  merged: boolean,
+): FlowPullRequest {
+  const at = new Date(NOW - hoursAgo * 3_600_000).toISOString();
+  return {
+    repository: "appdev",
+    number,
+    title,
+    kind: "code",
+    mateProjectId,
+    url: undefined,
+    mergeability: "mergeable",
+    behind: false,
+    merged,
+    mergedAt: merged ? at : undefined,
+    headSha: sha(String(number)),
+    baseBranch: "main",
+    line: `appdev #${String(number)}`,
+    updatedAt: at,
+  };
+}
+
+/** Two changes merged since production's release, waiting for the next one. */
+const MERGED_WAITING = [
+  change(27, "Connect calendars, notes and boards in one step", "p-juno", 22, true),
+  change(26, "A hidden browser for web work", "p-raya", 26, true),
+];
+
+/** What production's next release carries, as `readyOfFlow` reads it. */
+const READY_TWO: CardReady = {
+  count: 2,
+  changeCount: 2,
+  atLeast: false,
+  stage: undefined,
+  from: undefined,
+  failed: false,
+};
+
+/** Two open changes on their way to a stage: one ready to merge. */
+const STAGE_OPEN = [
+  change(31, "Steer a bot while it answers", "p-juno", 13, false),
+  { ...change(32, "Settings as a centred window", "p-raya", 17, false), ready: false },
+];
 
 /** One service of a stop: what it runs, and how HQ records its deploy of that commit went. */
 function service(
@@ -432,8 +497,28 @@ const ACME_SERVICES = [
 ];
 
 /** Beviro's releases under Acme's names: medusa is the shop, nextstore the storefront. */
-const ACME_RELEASES: ReadonlyArray<FlowRelease> = BEVIRO_RELEASES.map((release) => ({
+/** What Acme's releases put live, as HQ records each release's changes. */
+const ACME_BROUGHT = [
+  "Every person gets a Mate of their own",
+  "Connect calendars, notes, boards and whiteboards from the chat",
+  "Behaviour settings for every bot",
+  "Hand tasks to your other bots",
+  "Retry the desktop setup at start",
+  "Two columns, live chat and a chosen model",
+];
+
+const ACME_RELEASES: ReadonlyArray<FlowRelease> = BEVIRO_RELEASES.map((release, index) => ({
   ...release,
+  history: {
+    ranges: [],
+    changes: ACME_BROUGHT.slice(index % 3, (index % 3) + 6 - (index % 3)).map((title, at) => ({
+      repo: "appdev",
+      number: 20 - index * 6 - at,
+      title,
+    })),
+    commitCount: 6,
+    outsideCommitCount: 0,
+  },
   line: release.line.replace("medusa", "shop").replace("nextstore", "storefront"),
   entries: release.entries.map((entry) => ({
     ...entry,
@@ -677,15 +762,19 @@ interface StopFixture {
   readonly platformServices?: ReadonlyArray<ZeropsServiceRow>;
   /** Who reaches the place, as its page draws them. */
   readonly access?: ReactNode;
-  /** Whether the place's vault is open beside (or under) its page. */
-  readonly vault?: boolean;
+  /** Whether the place offers its vault drawer; `"open"` draws it open. */
+  readonly vault?: boolean | "open";
+  /** The changes that go next: merged ones waiting for a release, or a stage's open ones. */
+  readonly next?: ReadonlyArray<FlowPullRequest>;
+  /** What waits for production's next release. */
+  readonly ready?: CardReady;
+  /** Who made the live release. */
+  readonly liveBy?: string;
 }
 
 /** Acme production's vault, its values the vault fixture's. */
 const HARNESS_VAULT = {
   orgId: "harness",
-  open: true,
-  onOpenChange: () => {},
   body: (
     <VaultPanelBody
       actor="environment"
@@ -767,6 +856,7 @@ function platformService(id: string): StopService["service"] {
  * derive them, so a fixture differs only in what it reads.
  */
 function StopState({ fixture }: { readonly fixture: StopFixture }) {
+  const [vaultOpen, setVaultOpen] = useState(fixture.vault === "open");
   const production = fixture.tier === "production";
   const name = production ? "production" : "stage";
   const group = fixture.group ?? "Shop";
@@ -824,7 +914,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       addService={{ running: () => false, onAdd: () => {} }}
       deployAgain={{ running: () => false, onDeployAgain: () => {} }}
       carried={production ? fixture.carried : undefined}
-      crumbs={crumbs(group)}
+      trail={trail(group, production ? "Production" : "Stage")}
       deployed={new Map(stop.version.sha === undefined ? [] : [[name, stop.version.sha]])}
       enablingServiceId={null}
       groupId={group.toLowerCase()}
@@ -872,7 +962,19 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       platformServices={fixture.platformServices}
       usageRead
       access={fixture.access}
-      vault={fixture.vault === true ? HARNESS_VAULT : undefined}
+      vault={
+        fixture.vault === undefined || fixture.vault === false
+          ? undefined
+          : { ...HARNESS_VAULT, open: vaultOpen, onOpenChange: setVaultOpen }
+      }
+      releasing={fixture.releasing}
+      deployFailed={failedDeploys.length > 0}
+      ready={fixture.ready}
+      nextChanges={fixture.next}
+      faces={mateFace}
+      mateName={(mateProjectId) => MATES[mateProjectId]?.name}
+      onOpenPull={() => {}}
+      liveBy={fixture.liveBy}
     />
   );
 }
@@ -1444,6 +1546,10 @@ function Harness() {
                   />
                 ),
                 vault: true,
+                release: RELEASE_WAITING,
+                ready: READY_TWO,
+                next: MERGED_WAITING,
+                liveBy: "Dana K.",
               }}
             />
           </div>
@@ -1545,7 +1651,7 @@ function Harness() {
 
       <State
         label="A stage at the head of main"
-        note="It runs main's newest commit, which no release names: the verdict says the commit and for how long, each row says head of main under it, and the database beside it has no row."
+        note="It runs main's newest commit: the header says the commit and for how long. Two open changes wait to be merged to it, one ready."
       >
         <StopState
           fixture={{
@@ -1557,6 +1663,8 @@ function Harness() {
             ],
             deployment: STAGE_RUNNING,
             routes: ROUTES,
+            next: STAGE_OPEN,
+            vault: true,
           }}
         />
       </State>
