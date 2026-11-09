@@ -99,7 +99,6 @@ import {
   useThreadShells,
 } from "../state/entities";
 import { environmentServerConfigsAtom, primaryServerKeybindingsAtom } from "../state/server";
-import { hqDownSinceAtom } from "../state/zerops";
 import { vcsEnvironment } from "../state/vcs";
 import { threadEnvironment } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
@@ -202,7 +201,7 @@ import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
 import { useListingPatience } from "../zerops/useListingPatience";
-import { hqOutage } from "../zerops/hqNavigation";
+import { useHqOutage } from "../zerops/hqNavigation";
 import { useAccountDataOptional } from "../zerops/ZeropsAccountData";
 import { useNowMs } from "../zerops/useNowMs";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
@@ -1437,13 +1436,11 @@ export default function Sidebar() {
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
-  // HQ not answering: the menu draws the structure it last read, says since when and how old that
-  // is (SPEC §6.2.3); the Mates' conversations go on without HQ.
-  const zeropsHqOutage = hqOutage(
+  // HQ away: the menu draws the structure it last read and, past HQ's budget, says since when
+  // (SPEC §6.2.3); the Mates' conversations go on without HQ.
+  const zeropsHqOutage = useHqOutage(
     useAtomValue(shownCanonicalHqListNavigationAtom),
-    useAtomValue(hqDownSinceAtom),
     timestampFormat,
-    zeropsNowMs,
   );
   const zeropsRetry = useAccountDataOptional()?.retry;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);

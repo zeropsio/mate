@@ -1,7 +1,6 @@
 import { Checkbox } from "~/components/ui/checkbox";
 import {
   canonicalAppEnvironments,
-  canonicalHqNavigation,
   hqEnvironmentOffers,
   listedProject,
   type CanonicalAppEnvironmentsRead,
@@ -69,11 +68,9 @@ type GitEnvironment = Omit<GitDeliveryEnvironment, "target"> & {
 export function GitStopDetailPage({
   appId,
   environment,
-  live,
 }: {
   readonly appId: string;
   readonly environment: GitEnvironment;
-  readonly live: boolean;
 }) {
   const operations = useGitTargetOperations(appId);
   const detail = useHqAppDetail(appId);
@@ -105,7 +102,6 @@ export function GitStopDetailPage({
           ? undefined
           : (repo) => operations.actions!.runAgain(environment.id, repo)
       }
-      live={live && detail.live && operations.live}
     />
   );
 }
@@ -118,7 +114,6 @@ export function GitStopDetail({
   staged = false,
   onRemove,
   onRunAgain,
-  live = true,
 }: {
   readonly environment: GitEnvironment;
   readonly delivery?: GitDelivery | undefined;
@@ -129,7 +124,6 @@ export function GitStopDetail({
   readonly can?: HqOffers | undefined;
   readonly onRemove?: ((loseUnresolvedHistory?: true) => Promise<void>) | undefined;
   readonly onRunAgain?: ((repo: string) => Promise<void>) | undefined;
-  readonly live?: boolean;
 }) {
   const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -171,9 +165,7 @@ export function GitStopDetail({
           )}
           {notice === undefined ? null : <p className="rv-note">{notice}</p>}
           <div className="flex flex-wrap gap-2 empty:hidden">
-            {onRunAgain !== undefined &&
-            hqOffer(can, "redeploy", { current: live, unavailableSince: live ? null : 0 }).kind ===
-              "allowed"
+            {onRunAgain !== undefined && hqOffer(can, "redeploy").kind === "allowed"
               ? delivery?.repositories.map((repo) => (
                   <Button
                     key={repo.repo}
@@ -247,7 +239,6 @@ export function GitStopDetail({
             repos={repos}
             can={can}
             onRemove={onRemove}
-            live={live}
           />
         </div>
       </div>
@@ -262,7 +253,6 @@ export function GitEnvironmentRemoval({
   repos,
   can,
   onRemove,
-  live = true,
   label = "Remove environment",
 }: {
   readonly environment: {
@@ -274,7 +264,6 @@ export function GitEnvironmentRemoval({
   readonly repos?: ReadonlyArray<RepoListEntry> | undefined;
   readonly can?: HqOffers | undefined;
   readonly onRemove?: ((loseUnresolvedHistory?: true) => Promise<void>) | undefined;
-  readonly live?: boolean;
   readonly label?: string;
 }) {
   const [historyLoss, setHistoryLoss] = useState(false);
@@ -289,11 +278,7 @@ export function GitEnvironmentRemoval({
   const targetKnown =
     environment.tier !== "production" || (targets !== undefined && targets.length > 0);
   const remove =
-    onRemove !== undefined &&
-    hqOffer(can, "remove_git_environment", {
-      current: live,
-      unavailableSince: live ? null : 0,
-    }).kind === "allowed";
+    onRemove !== undefined && hqOffer(can, "remove_git_environment").kind === "allowed";
   return (
     <>
       {remove ? (
@@ -443,7 +428,6 @@ function GitProductionRemoval({
       delivery={gitDeliveryOf(environment, { repos: detail.repos, releases: detail.releases })}
       repos={detail.repos}
       can={can}
-      live={operations.live && detail.live}
       label="Remove production"
       onRemove={
         operations.actions === undefined
@@ -465,7 +449,6 @@ function ZeropsProductionRemoval({
 }) {
   const orgId = useAccountOrgId();
   const hqProjectId = orgId === null ? null : hqProjectIdOf(orgId);
-  const navigation = useProjection(canonicalHqNavigation, orgId, NO_PROJECT);
   const target = environment.target;
   const project = useProjection(
     listedProject,
@@ -477,11 +460,7 @@ function ZeropsProductionRemoval({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
   const can = useEnvironmentOffers(appId, environment.id);
-  const allowed =
-    hqOffer(can, "remove_production", {
-      current: navigation?.live === true,
-      unavailableSince: navigation?.live === true ? null : 0,
-    }).kind === "allowed";
+  const allowed = hqOffer(can, "remove_production").kind === "allowed";
   if (
     !allowed ||
     operations === null ||

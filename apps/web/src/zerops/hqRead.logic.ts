@@ -1,23 +1,22 @@
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import type { HqNavigationView } from "../state/zerops";
-import { hqDown } from "../state/zerops";
 
 /**
  * Whether HQ's navigation of the organization has said what it will (unknown is not empty, but it
- * ends): its catchup ended, or HQ stopped answering. Until then, HQ's list can contradict an empty
- * answer.
+ * ends): its catchup ended, or HQ refused or kept failing its first answer. Until then, HQ's list
+ * can contradict an empty answer.
  */
 export function hqNavigationSettled(input: {
   readonly organizationId: string | null;
-  readonly navigation: Pick<
-    HqNavigationView,
-    "orgId" | "read" | "live" | "reconnecting" | "capped" | "refusal"
-  >;
+  readonly navigation: Pick<HqNavigationView, "orgId" | "read" | "retrying" | "capped" | "refusal">;
 }): boolean {
   if (input.organizationId === null) return true;
   return (
     input.navigation.orgId === input.organizationId &&
-    (input.navigation.read === "read" || hqDown(input.navigation))
+    (input.navigation.read === "read" ||
+      input.navigation.refusal !== null ||
+      input.navigation.capped ||
+      input.navigation.retrying)
   );
 }
 

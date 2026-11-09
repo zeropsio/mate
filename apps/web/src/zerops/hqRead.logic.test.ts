@@ -40,18 +40,17 @@ describe("the active organization's HQ navigation settlement", () => {
     navigation: {
       orgId: "org-a",
       read: "reading",
-      live: false,
-      reconnecting: false,
+      retrying: false,
       capped: false,
       refusal: null,
     },
   } as const;
   it.each([
     ["HQ has not answered", {}, false],
-    ["HQ's catchup ended", { navigation: { ...base.navigation, read: "read", live: true } }, true],
+    ["HQ's catchup ended", { navigation: { ...base.navigation, read: "read" } }, true],
     [
       "HQ stream failed before its catchup",
-      { navigation: { ...base.navigation, reconnecting: true } },
+      { navigation: { ...base.navigation, retrying: true } },
       true,
     ],
     [
@@ -62,7 +61,7 @@ describe("the active organization's HQ navigation settlement", () => {
     ["HQ's retries capped", { navigation: { ...base.navigation, capped: true } }, true],
     [
       "another org's navigation",
-      { navigation: { ...base.navigation, orgId: "org-b", read: "read", live: true } },
+      { navigation: { ...base.navigation, orgId: "org-b", read: "read" } },
       false,
     ],
     ["local mode has no HQ source", { organizationId: null }, true],

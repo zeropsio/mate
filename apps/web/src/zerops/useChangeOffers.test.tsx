@@ -1,7 +1,6 @@
 /**
  * What a person is offered of an application, decided from their live Zerops roles over HQ's
- * structure: refused in the rule's words, unavailable since HQ stopped answering, and nothing
- * said before the roles are read.
+ * structure: refused in the rule's words, and nothing said before the roles are read.
  */
 import { accountReadsAtom, type AccountStore } from "@t3tools/client-runtime/data";
 import { liveProjects, membershipInputs } from "@t3tools/client-runtime/data/fixtures";
@@ -61,8 +60,6 @@ interface Hq {
   /** The organization the structure was read for. */
   readonly organizationId?: string;
   readonly structure: HqStructure | null;
-  readonly current?: boolean;
-  readonly unavailableSince?: number | null;
   /** The person's role in the organization and their own on each project; unread where absent. */
   readonly roles?: Roles | undefined;
 }
@@ -105,7 +102,7 @@ function answerOf<T>(hq: Hq, use: () => T): T {
   const orgId = hq.organizationId ?? "org-acme";
   const { store } = mountHqNavigation(registry, orgId, {
     ...(hq.structure === null ? {} : { structure: hq.structure }),
-    live: hq.current ?? true,
+    live: true,
   });
   if (hq.roles !== undefined) answerRoles(store, orgId, hq.roles);
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -228,15 +225,6 @@ describe("useChangeOffers", () => {
       "HQ has not said yet.",
     ]);
   });
-
-  it("offers nothing while HQ does not answer, and says since when", () => {
-    const offers = answerOf(
-      { ...STREAMED, current: false, unavailableSince: Date.parse("2026-10-04T10:05:00.000Z") },
-      useChangeOffers,
-    )("app-shop");
-    expect([offers?.read, offers?.merge, offers?.readRefused]).toEqual([false, false, false]);
-    expect(offers?.why.merge).toMatch(/^HQ unavailable since .+\.$/u);
-  });
 });
 
 describe("useKeepDeployKeyOffer", () => {
@@ -247,8 +235,5 @@ describe("useKeepDeployKeyOffer", () => {
       false,
       undefined,
     ]);
-    expect(answerOf({ ...STREAMED, current: false }, useKeepDeployKeyOffer)("p-stage")).toBe(
-      undefined,
-    );
   });
 });

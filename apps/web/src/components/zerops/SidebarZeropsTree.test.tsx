@@ -2533,44 +2533,6 @@ describe("production and the stages are the project's places, behind its globe",
     expect(envTagOf(html)).toBeUndefined();
   });
 
-  // HQ declares which project is the stage and which production, and their releases: while its
-  // link is paused, what is said of them is what it last said, never current.
-  it.each([
-    [true, ""],
-    [false, "Last known: "],
-  ])("with HQ answering %s, its places say %j before their state", (live, prefix) => {
-    const registry = AtomRegistry.make();
-    registry.set(zeropsSessionAtom, {
-      status: "signed-in",
-      organizationStatus: "selected",
-      activeOrganization: organization,
-    });
-    mountHqNavigation(registry, organization.organizationId, {
-      structure: { apps: [], ungrouped: [] },
-      live,
-    });
-    const mounted = mount(
-      <RegistryContext.Provider value={registry}>
-        <SidebarZeropsTree
-          candidates={[CRM_DEV, up(CRM_STAGE), up(CRM_PROD)]}
-          complete
-          onBrowseProjects={() => {}}
-          onSelect={() => {}}
-          getFlow={() => flow()}
-        />
-      </RegistryContext.Provider>,
-    );
-    expect(placesOf(mounted).map(({ word }) => word)).toEqual([
-      `${prefix}Running`,
-      `${prefix}Running`,
-    ]);
-    expect(foundStops()?.map(({ word }) => word)).toEqual([
-      `${prefix}Stage main, healthy`,
-      `${prefix}Production v2.4.0, healthy`,
-    ]);
-    registry.dispose();
-  });
-
   it("says what waits for production on its Release tag alone: production stays healthy and calm", () => {
     const waiting = flow({
       environments: new Map([["crm-prod", released("v2.4.0")]]),
@@ -5655,7 +5617,7 @@ describe("A: sign-in, session and organizations", () => {
             if (
               sentOrg !== undefined &&
               store.state().streams.get(`zerops:${sentOrg}`)?.phase === "live" &&
-              view.live
+              view.link.kind === "live"
             ) {
               stop();
               resolve();
@@ -5887,7 +5849,7 @@ describe("B: navigation protocol", () => {
             const view = hqNavigation.derive(readsOfState(store.state()), orgId);
             if (
               view.structure?.apps[0]?.name === "Shop" &&
-              view.live &&
+              view.link.kind === "live" &&
               (!current || view.coreBuild === "current")
             ) {
               stop();

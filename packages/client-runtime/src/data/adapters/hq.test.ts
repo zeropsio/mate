@@ -706,12 +706,12 @@ describe("hqNavigationLink", () => {
       yield* settle;
       for (const input of graceOver(store.state())) store.dispatch(input);
       const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
-      expect(view()).toMatchObject({ live: false, reconnecting: true });
+      expect(view()).toMatchObject({ link: { kind: "unreachable" } });
       expect(appName(store, "shop")).toBe("Shop");
       yield* TestClock.adjust(20_000);
       yield* settle;
       // Still unconfirmed, HQ is slow on a socket that holds: the navigation is not asked again.
-      expect(view()).toMatchObject({ live: false, reconnecting: true, slow: true });
+      expect(view()).toMatchObject({ link: { kind: "unreachable" }, slow: true });
       expect(fixture.opens()).toBe(2);
       expect(streamOf(store.state(), linkKeys.hq(ORG)).fault).toBeNull();
       yield* Fiber.interrupt(fiber);
@@ -727,17 +727,16 @@ describe("hqNavigationLink", () => {
         const { fiber } = yield* live(store, fixture);
         const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
         const before = view();
-        expect(before).toMatchObject({ live: true, reconnecting: false });
+        expect(before).toMatchObject({ link: { kind: "live" } });
         yield* fixture.endSegment;
         yield* settle;
         expect(fixture.opens()).toBe(2);
-        expect(view()).toMatchObject({ live: true, reconnecting: false });
-        expect(view().downSince).toBeUndefined();
+        expect(view()).toMatchObject({ link: { kind: "live" } });
         expect(view().structure).toEqual(before.structure);
         yield* fixture.send(ready(3));
         yield* settle;
         expect(phase(store, hqAppsScope(ORG))).toBe("live");
-        expect(view()).toMatchObject({ live: true, reconnecting: false });
+        expect(view()).toMatchObject({ link: { kind: "live" } });
         yield* Fiber.interrupt(fiber);
       }),
   );
@@ -1636,22 +1635,22 @@ describe("a slow HQ", () => {
         const { fiber } = yield* run(store, fixture);
         const view = () => hqNavigation.derive(readsOfState(store.state()), ORG);
         // Within its first answer's patience, a wait is not worth saying.
-        expect(view()).toMatchObject({ live: false, slow: false });
+        expect(view()).toMatchObject({ link: { kind: "unreachable" }, slow: false });
         yield* TestClock.adjust(20_000);
         yield* fixture.send({ type: "ping" });
         yield* settle;
         for (const input of graceOver(store.state())) store.dispatch(input);
         expect(view()).toMatchObject({
-          live: false,
+          link: { kind: "unreachable" },
           slow: true,
-          reconnecting: false,
+          retrying: false,
           capped: false,
           refusal: null,
         });
         yield* fixture.send(navigation("scope-reset", 1, []));
         yield* fixture.send(ready(1));
         yield* settle;
-        expect(view()).toMatchObject({ live: true, slow: false });
+        expect(view()).toMatchObject({ link: { kind: "live" }, slow: false });
         yield* Fiber.interrupt(fiber);
       }),
   );
@@ -1958,7 +1957,7 @@ describe("an HQ session", () => {
       yield* fixture.send({ ...ready(1, "redeployed"), core: { build: "new-core", protocol: 2 } });
       yield* settle;
       expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
-        live: true,
+        link: { kind: "live" },
         refusal: null,
         coreBuild: "new-core",
         structure: { apps: [{ name: "Returned" }] },
@@ -2240,8 +2239,7 @@ describe("outage scenarios at the HQ input", () => {
           expect(
             snapshot.structure?.apps.flatMap((app) => app.projects.map((row) => row.name)).sort(),
           ).toEqual(["Ada", "Bea"]);
-          expect(snapshot.live).toBe(true);
-          expect(snapshot.reconnecting).toBe(false);
+          expect(snapshot.link.kind).toBe("live");
         }
       } finally {
         stop();
@@ -2260,7 +2258,7 @@ describe("outage scenarios at the HQ input", () => {
         yield* fixture.drop(classifyHqClose(4401));
         yield* settle;
         // Observe the renewal before HQ answers: its grace must hide the outage.
-        expect(view()).toMatchObject({ live: true, reconnecting: false, refusal: null });
+        expect(view()).toMatchObject({ link: { kind: "live" }, refusal: null });
         yield* supervisor.signal("resume");
         yield* settle;
         expect(fixture.opens()).toBe(ended + 2);
@@ -2269,7 +2267,7 @@ describe("outage scenarios at the HQ input", () => {
         ).toEqual(["ada"]);
         yield* fixture.send(ready(3));
         yield* settle;
-        expect(view()).toMatchObject({ live: true, reconnecting: false, refusal: null });
+        expect(view()).toMatchObject({ link: { kind: "live" }, refusal: null });
         expect(view().structure?.apps[0]?.name).toBe("Shop");
       }
       yield* Fiber.interrupt(fiber);
@@ -2290,7 +2288,7 @@ describe("outage scenarios at the HQ input", () => {
           yield* fixture.drop(classifyHqClose(1011));
           yield* settle;
           for (const input of graceOver(store.state())) store.dispatch(input);
-          expect(view()).toMatchObject({ live: false, reconnecting: true });
+          expect(view()).toMatchObject({ link: { kind: "unreachable" } });
           expect(view().structure?.apps[0]?.name).toBe(previous);
           yield* supervisor.signal("resume");
           yield* settle;
@@ -2301,7 +2299,7 @@ describe("outage scenarios at the HQ input", () => {
           );
           yield* fixture.send(ready(4 + index));
           yield* settle;
-          expect(view()).toMatchObject({ live: true, reconnecting: false });
+          expect(view()).toMatchObject({ link: { kind: "live" } });
           expect(view().structure?.apps.map(({ name }) => name)).toEqual([name]);
           expect(view().structure?.apps.some(({ name }) => name === previous)).toBe(false);
           previous = name;
@@ -2344,8 +2342,7 @@ describe("outage scenarios at the HQ input", () => {
       yield* settle;
       for (const input of graceOver(store.state())) store.dispatch(input);
       expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
-        live: false,
-        reconnecting: true,
+        link: { kind: "unreachable" },
         slow: true,
       });
       expect(fixture.opens()).toBe(2);
@@ -2491,8 +2488,7 @@ describe("outage scenarios at the HQ input", () => {
       yield* settle;
       for (const input of graceOver(store.state())) store.dispatch(input);
       expect(hqNavigation.derive(readsOfState(store.state()), ORG)).toMatchObject({
-        live: false,
-        reconnecting: true,
+        link: { kind: "unreachable" },
       });
       // Hold the record through the whole capped retry interval, not only the first failure.
       yield* TestClock.adjust(120_000);
@@ -2525,7 +2521,7 @@ describe("outage scenarios at the HQ input", () => {
       expect(fixture.opens()).toBe(2);
       yield* fixture.send(ready(3));
       yield* settle;
-      expect(view()).toMatchObject({ live: true, refusal: null });
+      expect(view()).toMatchObject({ link: { kind: "live" }, refusal: null });
       expect(appName(store, "shop")).toBe("Shop");
       yield* Fiber.interrupt(fiber);
     }),

@@ -311,16 +311,13 @@ const gitChoice = () =>
     (button) => button.textContent === "Use a branch in your Git repository instead…",
   );
 
-function gitAuthority(can: HqOffers | undefined, current = true) {
-  const add = hqOffer(can, "add_git_environment", {
-    current,
-    unavailableSince: current ? null : 0,
-  });
+function gitAuthority(can: HqOffers | undefined) {
+  const add = hqOffer(can, "add_git_environment");
   return {
     repos: [],
     takenNames: [],
     offered: { add: add.kind === "allowed", connect: false, replace: false },
-    unavailableReason: hqOfferWords(add, { at: () => "12:00" }),
+    unavailableReason: hqOfferWords(add),
     setup: {
       connect: async () => ({ ok: false as const, reason: "refused" }),
       preview: async () => [],
@@ -334,23 +331,15 @@ it.each([
   {
     situation: "a developer cannot add a Git production",
     can: { add_git_environment: { allow: false, reason: "not_structure_writer" } as const },
-    current: true,
     reason: "Only an owner or admin of the organization can do this.",
   },
   {
     situation: "HQ has not answered Git production setup",
     can: undefined,
-    current: true,
     reason: "HQ has not said yet.",
   },
-  {
-    situation: "HQ stopped answering Git production setup",
-    can: { add_git_environment: { allow: true } as const },
-    current: false,
-    reason: "HQ unavailable since 12:00.",
-  },
-])("says why the Git choice is unavailable when $situation", ({ can, current, reason }) => {
-  const html = render({ role: "prod", git: gitAuthority(can, current) });
+])("says why the Git choice is unavailable when $situation", ({ can, reason }) => {
+  const html = render({ role: "prod", git: gitAuthority(can) });
   expect(html).toContain(reason);
   expect(gitChoice()?.hasAttribute("disabled")).toBe(true);
 });

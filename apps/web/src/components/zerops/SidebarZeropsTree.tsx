@@ -175,7 +175,7 @@ import {
 } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
-import { appTasksWaitingAtom, hqDown, hqPlacementsAtom } from "~/state/zerops";
+import { appTasksWaitingAtom, hqPlacementsAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -262,7 +262,6 @@ import {
 } from "./SidebarProjects.logic";
 import {
   buildingOf,
-  asLastKnown,
   chipDot,
   chipFace,
   drawnChip,
@@ -753,7 +752,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const structureView = useAtomValue(shownCanonicalHqListNavigationAtom);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const accountOrgId = useAccountOrgId();
-  const hqStale = structureView.structure !== null && hqDown(structureView);
   // Whose each Mate is, as HQ says it (invariant 11).
   const personFacts = useAtomValue(menuPersonFactsAtom);
   const placements = useAtomValue(hqPlacementsAtom);
@@ -1403,17 +1401,13 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       stagesBeingCreated: projectFlow.creatingStages.length > 0,
       releases,
     });
-    // Where each stop is and how its releases went is HQ's word: while its link is paused, last known.
-    const shownChip = (view: ChipView) => {
-      const chip = drawnChip(view);
-      return chip !== undefined && hqStale ? asLastKnown(chip) : chip;
-    };
-    const prodChip = group === undefined ? undefined : shownChip(chipsRead.prod);
-    const stageChipDrawn = group === undefined ? undefined : shownChip(chipsRead.stage);
+    // Where each stop is and how its releases went is HQ's word, as last read (`hqLink`).
+    const prodChip = group === undefined ? undefined : drawnChip(chipsRead.prod);
+    const stageChipDrawn = group === undefined ? undefined : drawnChip(chipsRead.stage);
     // Each stage as a place of its own says it: its dot and words in the jump box, its section in
     // the globe's popover.
     const stageChips = stages.map(({ stop, serving }) =>
-      shownChip(stageStopChip({ stop, serving, releases })),
+      drawnChip(stageStopChip({ stop, serving, releases })),
     );
     const stopDeployedAt = (projectId: string) => {
       const activated = deployActivatedAt(stopDeployments(projectId));
@@ -2531,8 +2525,8 @@ function bringUnfoldedIntoView(rows: HTMLElement): void {
 /**
  * How current the menu is while HQ is not answering it (`hqOutage`, SPEC §6.2.3), in the header
  * row: a spinner while HQ's first read catches up; a spinner and its words while HQ is slow on a
- * connection that holds, with nothing to try again; in words once what HQ said is no longer current
- * ("HQ is not reachable — showing what it last said") or it never answered ("HQ unavailable") —
+ * connection that holds, with nothing to try again; in words once HQ has been away past its budget
+ * ("HQ has been restarting since … — showing what it last said") or it never answered ("HQ unavailable") —
  * the whole line in its tooltip, and *Try again* on a press where it is offered. Never a line above
  * the list: the owner, 2026-10-05, of one that pushed the menu down and back on every reconnect.
  */

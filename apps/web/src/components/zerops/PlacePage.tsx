@@ -277,7 +277,6 @@ export function ZeropsStopDetailPage({
       <GitStopDetailPage
         appId={groupId}
         environment={{ ...environment, target: environment.target }}
-        live={navigation?.live ?? false}
       />
       {note !== null ? <Note>{note}</Note> : null}
     </DetailShell>

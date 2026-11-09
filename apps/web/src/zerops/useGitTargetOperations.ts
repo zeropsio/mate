@@ -20,7 +20,6 @@ export function useGitTargetOperations(appId: string) {
   return {
     orgId,
     can: app?.can,
-    live: navigation?.live ?? false,
     /**
      * Records and sends a remote write under `requestId` without waiting for its end: the press
      * follows it through its operation's record (`useRepoPress`).

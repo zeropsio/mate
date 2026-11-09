@@ -1284,7 +1284,6 @@ export function OpenCommandPaletteDialog(props: {
     );
     return {
       mates: new Map(Object.entries(hqMates.mates)),
-      current: hqMates.live,
       connected: (environmentId) => connected.has(environmentId),
       linkable,
       visibilityByProject: mateVisibilities,

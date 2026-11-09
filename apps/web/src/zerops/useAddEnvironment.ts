@@ -16,7 +16,7 @@ import {
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useCallback, useContext, useMemo } from "react";
 
-import { hqDown, hqNavigationAtom } from "../state/zerops";
+import { hqNavigationAtom } from "../state/zerops";
 import {
   addsEnvironmentInPlace,
   environmentOffersOf,
@@ -116,11 +116,7 @@ export function useEnvironmentOffers(): (
   const navigation = useAtomValue(hqNavigationAtom);
   return useCallback(
     (groupId) =>
-      environmentOffersOf(
-        navigation.structure?.apps.find((app) => app.id === groupId)?.can,
-        // Since when HQ stopped answering is words only; nothing is offered meanwhile.
-        { current: navigation.live, unavailableSince: hqDown(navigation) ? 0 : null },
-      ),
+      environmentOffersOf(navigation.structure?.apps.find((app) => app.id === groupId)?.can),
     [navigation],
   );
 }

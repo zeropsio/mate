@@ -1,13 +1,14 @@
 /**
  * What the person may do with an application (`can`, `@t3tools/shared/hqOffers`), decided from
  * their live Zerops roles: its changes' verbs, a deploy asked again, and each environment's deploy
- * key. Drawn here, never decided; HQ decides the write again at the press. While HQ does not
- * answer, every one of them is unavailable since then; before the roles are read, none is known.
+ * key. Drawn here, never decided; HQ decides the write again at the press, and answers at once
+ * while it is away (`hqAwayAnswer`). Before the roles are read, none is known.
  */
-import type { HqOfferState } from "@t3tools/shared/hqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import { hqOffer, type HqOfferState } from "@t3tools/shared/hqOffers";
 import { useCallback } from "react";
 
-import { useHqOffers } from "./useHqOffers";
+import { useHqStructure } from "./useHqOffers";
 
 type ChangeVerb = "read" | "comment" | "merge" | "close";
 
@@ -31,17 +32,17 @@ export type ZeropsChangeOffers = { readonly [V in ChangeVerb]: boolean } & {
 export type ZeropsChangeOffersOf = (appId: string) => ZeropsChangeOffers | undefined;
 
 export function useChangeOffers(): ZeropsChangeOffersOf {
-  const { structure, state, words } = useHqOffers();
+  const structure = useHqStructure();
   return useCallback(
     (appId) => {
       const app = structure?.apps.find((candidate) => candidate.id === appId);
       if (app === undefined) return undefined;
       const states = Object.fromEntries(
-        Object.entries(VERBS).map(([verb, hqVerb]) => [verb, state(app.can, hqVerb)]),
+        Object.entries(VERBS).map(([verb, hqVerb]) => [verb, hqOffer(app.can, hqVerb)]),
       ) as { readonly [V in ChangeVerb]: HqOfferState };
       const why: { [V in ChangeVerb]?: string } = {};
       for (const verb of Object.keys(VERBS) as ReadonlyArray<ChangeVerb>) {
-        const reason = words(states[verb]);
+        const reason = hqOfferWords(states[verb]);
         if (reason !== undefined) why[verb] = reason;
       }
       return {
@@ -53,7 +54,7 @@ export function useChangeOffers(): ZeropsChangeOffersOf {
         readRefused: states.read.kind === "refused",
       };
     },
-    [state, structure, words],
+    [structure],
   );
 }
 
@@ -62,7 +63,7 @@ export function useChangeOffers(): ZeropsChangeOffersOf {
  * project's id; `undefined` while HQ has not said, or does not answer.
  */
 export function useKeepDeployKeyOffer(): (projectId: string) => boolean | undefined {
-  const { structure, state } = useHqOffers();
+  const structure = useHqStructure();
   return useCallback(
     (projectId) => {
       const environment = structure?.apps
@@ -71,23 +72,23 @@ export function useKeepDeployKeyOffer(): (projectId: string) => boolean | undefi
           (candidate) =>
             candidate.target.kind === "zerops" && candidate.target.projectId === projectId,
         );
-      const offer = state(environment?.can, "keep_deploy_token");
+      const offer = hqOffer(environment?.can, "keep_deploy_token");
       return offer.kind === "allowed" ? true : offer.kind === "refused" ? false : undefined;
     },
-    [state, structure],
+    [structure],
   );
 }
 
 /** A native environment's own deployment verdict, never a sibling project's grant. */
 export function useEnvironmentDeployOffer(): (projectId: string) => boolean {
-  const { structure, state } = useHqOffers();
+  const structure = useHqStructure();
   return useCallback(
     (projectId) => {
       const environment = structure?.apps
         .flatMap((app) => app.environments ?? [])
         .find((row) => row.target.kind === "zerops" && row.target.projectId === projectId);
-      return state(environment?.can, "redeploy").kind === "allowed";
+      return hqOffer(environment?.can, "redeploy").kind === "allowed";
     },
-    [state, structure],
+    [structure],
   );
 }

@@ -48,7 +48,7 @@ import {
 import { useViewerWaits } from "~/zerops/useSidebarWaiting";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
-import { hqDown, hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
+import { hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
 import {
   applyFirstBuildVerdict,
@@ -211,7 +211,8 @@ import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useHqOffers, useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { configuredHq } from "~/zerops/accountHq";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
@@ -1008,7 +1009,7 @@ export function ZeropsProjectsContent({
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
   const { open: sharedBirths, readyProjectIds } = useSharedBirthState();
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
-  const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure.live;
+  const hqKnown = useAtomValue(hqPlacementsAtom) !== null;
   const groupTree = useProjectsInventory(
     candidates,
     projectOrder,
@@ -1679,14 +1680,12 @@ export function ZeropsProjectsContent({
     activeOrganization?.id,
     creationRequest?.groupId ?? null,
   );
-  const hqOffers = useHqOffers();
   // Why Add a Mate stands off, where that is known before the press (`newMateGate`): HQ refusing
   // the person a Mate here, or the project's setup files not ready for another.
   const addMateGate = useNewMateGate();
   const addMateWhy = (groupId: string): string | null => {
     const offer = addMateOffer(groupId);
-    if (offer.kind === "refused" || offer.kind === "unavailable")
-      return hqOffers.words(offer) ?? null;
+    if (offer.kind === "refused") return hqOfferWords(offer) ?? null;
     const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
     if (entry === undefined) return null;
     return addMateGate({
@@ -2129,7 +2128,7 @@ export function ZeropsProjectsContent({
   const arrivalSettled =
     signInSettled({
       recordRead: hqOrganization !== null,
-      hqUnavailable: hqStructure.refusal !== null || hqDown(hqStructure),
+      hqUnavailable: hqStructure.refusal !== null || hqStructure.capped,
     }) &&
     candidates.every(
       (candidate) => !hasMate(candidate) || personFacts[candidate.project.id] !== undefined,

@@ -413,10 +413,10 @@ export const NOT_READ_HQ: HqNavigationRead = {
   people: {},
   read: "unread",
   refusal: null,
+  link: { kind: "unreachable", since: null },
+  retrying: false,
   capped: false,
   slow: false,
-  live: false,
-  reconnecting: false,
 };
 
 /** HQ's navigation of the organization the mounted account shows; not read without one. */
@@ -428,7 +428,7 @@ export const shownHqNavigationAtom = Atom.make(
   },
 ).pipe(Atom.withLabel("data:shown-hq-navigation"));
 
-const NO_MATES: HqMatesRead = { mates: {}, live: false };
+const NO_MATES: HqMatesRead = { mates: {} };
 
 /** The Mates HQ relays for the organization the mounted account shows; none without one. */
 export const shownHqMatesAtom = Atom.make((get): HqMatesRead => {
@@ -691,10 +691,7 @@ const mateKey = (orgId: string, projectId: string) => ({ orgId, projectId });
 export const hqMateOverviewAtom = projectReader(hqMateOverview, mateKey, null);
 export const hqMateRefusalAtom = projectReader(hqMateRefusal, mateKey, null);
 export const hqMateAnsweredAtom = projectReader(hqMateAnswered, mateKey, false);
-export const hqMatePresenceAtom = projectReader(hqMatePresence, mateKey, {
-  presence: null,
-  live: false,
-});
+export const hqMatePresenceAtom = projectReader(hqMatePresence, mateKey, null);
 export const hqMateLoginsAtom = projectReader(hqMateLogins, mateKey, undefined);
 export const hqMateReadyAtom = projectReader(hqMateReady, mateKey, undefined);
 export const mateHealthAtom = projectReader(mateHealth, mateKey, {

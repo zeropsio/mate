@@ -302,8 +302,8 @@ export const NO_ROUTE_NAVIGATION = Atom.make<CanonicalHqNavigationRead>({
   slow: false,
   updateRequired: false,
   coreBuild: undefined,
-  live: false,
-  reconnecting: false,
+  link: { kind: "unreachable", since: null },
+  retrying: false,
 });
 
 /**

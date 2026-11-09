@@ -128,7 +128,10 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
   return useMemo(() => (api === null ? null : { address: hq.address, api }), [api, hq]);
 }
 
-/** Where an HQ stands, as its stream last said it (`hqStandingAtom`). */
+/**
+ * Where an HQ stands, as its stream last said it (`hqStandingAtom`): HQ away changes none of it;
+ * only the menu's header says HQ is away (`hqLink`).
+ */
 export type HqStanding =
   | { readonly kind: "unknown" }
   /**
@@ -140,8 +143,6 @@ export type HqStanding =
       readonly build?: string;
       readonly parts?: HqParts;
     }
-  /** Not answering as the official HQ since `since` (wall ms): the last known state stays shown. */
-  | { readonly kind: "unavailable"; readonly since: number }
   /**
    * Answering, and refusing this person's sign-in: no outage anybody else shares, so no time it
    * began; the menu's outage line carries HQ's own reason.

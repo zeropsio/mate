@@ -20,7 +20,6 @@ const remembered: MateMemory = { [ENV]: NAMED };
 const view = (mates: HqMatesView["mates"]): HqMatesView => ({
   organizationId: "org",
   mates,
-  current: true,
 });
 
 describe("the project an environment belongs to", () => {

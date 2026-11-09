@@ -24,11 +24,6 @@ describe("hqCardView — the headline", () => {
   it.each<[string, Partial<HqCardInput>, ReturnType<typeof hqCardView>["state"]]>([
     ["before HQ's health is read", { standing: { kind: "unknown" } }, null],
     ["HQ answering as the official HQ", {}, { kind: "healthy", tone: "ok", word: "Running" }],
-    [
-      "HQ not answering as the official HQ",
-      { standing: { kind: "unavailable", since: 7 } },
-      { kind: "down", tone: "failed", word: "Unavailable since t7" },
-    ],
     // A refusal is HQ answering this person, not an outage anybody else shares.
     [
       "HQ refusing this person's sign-in",
@@ -243,11 +238,6 @@ describe("hqCardView — the Core HQ runs and its last backup", () => {
       },
       { core: "2026-10-03 08:05 UTC · ba9876543210", backup: null },
     ],
-    [
-      "an admin's, HQ not answering",
-      { standing: { kind: "unavailable", since: 7 } },
-      { core: null, backup: null },
-    ],
     ["a developer's", { admin: false }, { core: null, backup: null }],
   ])("%s", (_name, overrides, rows) => {
     const view = hqCardView(input(overrides));
@@ -258,7 +248,6 @@ describe("hqCardView — the Core HQ runs and its last backup", () => {
 describe("hqCardView — whether the card opens", () => {
   it.each<[string, Partial<HqCardInput>, boolean]>([
     ["an admin's, HQ's health read", {}, true],
-    ["an admin's, HQ not answering", { standing: { kind: "unavailable", since: 7 } }, true],
     ["an admin's, before HQ's health is read", { standing: { kind: "unknown" } }, false],
     ["a developer's: the line and what HQ holds", { admin: false }, false],
   ])("%s", (_name, overrides, opens) => {
@@ -277,7 +266,6 @@ describe("hqCardView — the Core on the header line, the day it was committed",
       "Version b6e65699e0.20261003T120000",
     ],
     ["an admin's, a Core HQ names no build of", runs(""), null],
-    ["an admin's, HQ not answering", { standing: { kind: "unavailable", since: 7 } }, null],
     ["a developer's", { admin: false }, null],
   ])("%s", (_name, overrides, coreDay) => {
     expect(hqCardView(input(overrides)).coreDay).toBe(coreDay);
@@ -289,26 +277,26 @@ describe("hqCardView — the Core on the header line, the day it was committed",
 describe("the HQ line before HQ's navigation is read", () => {
   const UNAVAILABLE = "HQ is unavailable. Restore its connection or retry.";
   it.each([
-    { case: "on its way", refusal: null, capped: false, reconnecting: false, trouble: null },
+    { case: "on its way", refusal: null, capped: false, retrying: false, trouble: null },
     {
       case: "refused",
       refusal: "forbidden",
       capped: false,
-      reconnecting: false,
+      retrying: false,
       trouble: "HQ read refused: forbidden",
     },
-    { case: "capped", refusal: null, capped: true, reconnecting: false, trouble: UNAVAILABLE },
+    { case: "capped", refusal: null, capped: true, retrying: false, trouble: UNAVAILABLE },
     {
       case: "reconnecting",
       refusal: null,
       capped: false,
-      reconnecting: true,
+      retrying: true,
       trouble: UNAVAILABLE,
     },
   ])(
     "names a refusal or an outage, never a read still on its way: $case",
-    ({ refusal, capped, reconnecting, trouble }) => {
-      expect(hqNavigationTrouble({ refusal, capped, reconnecting })).toBe(trouble);
+    ({ refusal, capped, retrying, trouble }) => {
+      expect(hqNavigationTrouble({ refusal, capped, retrying })).toBe(trouble);
     },
   );
 });

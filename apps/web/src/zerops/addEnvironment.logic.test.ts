@@ -3,7 +3,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   addsEnvironmentInPlace,
   environmentOffersOf,
-  finishOffered,
   questionFactsOf,
 } from "./addEnvironment.logic";
 
@@ -58,71 +57,34 @@ describe("questionFactsOf", () => {
 });
 
 // The tiers HQ offers this person to add to an application, from its `can` record as streamed:
-// a refusal, an unknown verb and an HQ that stopped answering offer nothing.
+// a refusal and an unknown verb offer nothing.
 describe("environmentOffersOf", () => {
-  const LIVE = { current: true, unavailableSince: null };
   const ALLOW = { allow: true } as const;
   const SLOT_TAKEN = { allow: false, reason: "slot_taken" } as const;
   it.each([
     {
       case: "both offered",
       can: { add_stage: ALLOW, add_production: ALLOW },
-      hq: LIVE,
       want: { stage: true, production: true },
     },
     {
       case: "the stage's place taken",
       can: { add_stage: SLOT_TAKEN, add_production: ALLOW },
-      hq: LIVE,
       want: { stage: false, production: true },
     },
     {
       case: "an HQ that says neither",
       can: {},
-      hq: LIVE,
       want: { stage: false, production: false },
     },
-    {
-      case: "an HQ that stopped answering",
-      can: { add_stage: ALLOW, add_production: ALLOW },
-      hq: { current: false, unavailableSince: 1_000 },
-      want: { stage: false, production: false },
-    },
-    { case: "an application HQ has not said", can: undefined, hq: LIVE, want: null },
-  ])("$case", ({ can, hq, want }) => {
-    expect(environmentOffersOf(can, hq)).toEqual(want);
-  });
-});
-
-// Whether HQ offers this person finishing a half-made environment: its project's own `can.finish`,
-// apart from adding a new one.
-describe("finishOffered", () => {
-  const LIVE = { current: true, unavailableSince: null };
-  it.each([
-    { case: "HQ offers it", can: { finish: { allow: true } as const }, hq: LIVE, want: true },
-    {
-      case: "HQ refuses it",
-      can: { finish: { allow: false, reason: "not_project_admin" } as const },
-      hq: LIVE,
-      want: false,
-    },
-    { case: "HQ has not said", can: undefined, hq: LIVE, want: false },
-    {
-      case: "HQ stopped answering",
-      can: { finish: { allow: true } as const },
-      hq: { current: false, unavailableSince: 1_000 },
-      want: false,
-    },
-  ])("$case: $want", ({ can, hq, want }) => {
-    expect(finishOffered(can, hq)).toBe(want);
+    { case: "an application HQ has not said", can: undefined, want: null },
+  ])("$case", ({ can, want }) => {
+    expect(environmentOffersOf(can)).toEqual(want);
   });
 });
 
 it("HQ's Git target verb reaches the shared Add gate without a recipe", () => {
-  const offers = environmentOffersOf(
-    { add_git_environment: { allow: true } as const },
-    { current: true, unavailableSince: null },
-  );
+  const offers = environmentOffersOf({ add_git_environment: { allow: true } as const });
   expect(offers).toEqual({
     stage: true,
     production: true,

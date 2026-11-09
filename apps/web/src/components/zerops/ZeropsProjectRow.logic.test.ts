@@ -1137,16 +1137,11 @@ describe("releaseRowTone", () => {
 describe("mateRowCan — a row's verbs, which HQ's offers on a Mate never take away", () => {
   const held = (kind: HqOfferState["kind"]): HqMateOfferStates => {
     const offer: HqOfferState =
-      kind === "refused"
-        ? { kind, reason: "not_project_admin" }
-        : kind === "unavailable"
-          ? { kind, since: 1 }
-          : { kind };
+      kind === "refused" ? { kind, reason: "not_project_admin" } : { kind };
     return { held: true, edit: offer, detach: offer };
   };
   it.each<[string, HqMateOfferStates | undefined]>([
     ["offered", held("allowed")],
-    ["while HQ does not answer: the door and Zerops decide", held("unavailable")],
     ["refused its record: its visibility, not HQ, says whether it opens", held("refused")],
     ["not said: an HQ from before its offers", held("unknown")],
     ["before HQ's structure is known", undefined],
@@ -1159,12 +1154,11 @@ describe("mateRowCan — a row's verbs, which HQ's offers on a Mate never take a
   });
 
   // Set up Mate on a plain project writes its Mate's record at HQ first: only where HQ offers it
-  // (`create_mate_record`), never on what it has not said or while it does not answer.
+  // (`create_mate_record`), never on what it has not said.
   it.each<[HqOfferState, boolean]>([
     [{ kind: "allowed" }, true],
     [{ kind: "refused", reason: "not_project_admin" }, false],
     [{ kind: "unknown" }, false],
-    [{ kind: "unavailable", since: 1 }, false],
   ])("brings a Mate into a plain project where HQ's word is %j: %s", (createRecord, want) => {
     expect(mateRowCan({ held: false, createRecord }).setUpPlainProject).toBe(want);
   });

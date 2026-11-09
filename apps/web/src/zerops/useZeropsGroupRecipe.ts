@@ -24,7 +24,6 @@
  * of the tier: that is not "no recipe", and a Mate is never made empty for it.
  */
 
-import { useAtomValue } from "@effect/atom-react";
 import type { HqAppDetailRead } from "@t3tools/client-runtime/data";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import {
@@ -34,7 +33,6 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { useCallback, useState } from "react";
 
-import { hqDown, hqNavigationAtom } from "../state/zerops";
 import { useHqAppDetail } from "./useHqAppDetail";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 
@@ -94,7 +92,6 @@ export function useZeropsGroupRecipe(input: {
   readonly enabled: boolean;
 }): GroupRecipe {
   const { appId, enabled, tier } = input;
-  const navigation = useAtomValue(hqNavigationAtom);
   const appRead = useHqAppDetail(enabled ? (appId ?? null) : null);
   const [retrying, setRetrying] = useState<HqAppDetailRead | undefined>(undefined);
   const retry = useAccountDataOptional()?.retry;
@@ -115,11 +112,9 @@ export function useZeropsGroupRecipe(input: {
         : said === undefined && appRead.read !== "read"
           ? LOADING
           : answerOf(said, tier);
-  const down = hqDown(navigation);
   return {
     ...answer,
-    tier: down ? undefined : answer.tier,
-    loading: down || answer.state === "loading",
+    loading: answer.state === "loading",
     rereading: retrying !== undefined && retrying === appRead,
     reread,
   };

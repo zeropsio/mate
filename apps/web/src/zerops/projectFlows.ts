@@ -14,7 +14,8 @@ import {
   projectApplications,
 } from "@t3tools/client-runtime/data";
 import type { CanonicalHqEnvironment } from "@t3tools/client-runtime/zerops/hq";
-import { HQ_REMOTE_WRITE_VERB } from "@t3tools/shared/hqOffers";
+import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import {
   flowReleaseOf,
   gitProductionRuns,
@@ -60,7 +61,7 @@ import {
   type ReleaseLive,
   type ReleasePlan,
 } from "@t3tools/client-runtime/data";
-import { releaseGateOf, useOfferReading } from "./appOffers";
+import { releaseGateOf } from "./appOffers";
 import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useReleaseComparisons } from "./useReleaseComparisons";
 import { useProjection, useProjectsServices } from "./ZeropsAccountData";
@@ -472,16 +473,15 @@ export function useProjectFlows(
   // A Mate's changes, linked at the organization's official address: the flows stand on them
   // wherever HQ answers.
   // HQ's rule for this person releasing each group, in its words.
-  const offers = useOfferReading();
   const permissions = useMemo(
     () =>
       new Map(
         appIds.map((groupId) => [
           groupId,
-          releaseGateOf(offers, told?.find(({ id }) => id === groupId)?.can),
+          releaseGateOf(told?.find(({ id }) => id === groupId)?.can),
         ]),
       ),
-    [appIds, told, offers],
+    [appIds, told],
   );
   const gitLive = useMemo(() => {
     const values = new Map<
@@ -493,7 +493,7 @@ export function useProjectFlows(
       const attachment = canonical.flows.get(appId)?.release.git?.attachment;
       if (attachment?.target.kind !== "git") continue;
       const flow = canonical.flows.get(appId);
-      const replacement = offers.state(app?.can, HQ_REMOTE_WRITE_VERB);
+      const replacement = hqOffer(app?.can, HQ_REMOTE_WRITE_VERB);
       values.set(appId, {
         attachment: { ...attachment, target: attachment.target },
         delivery: flow?.release.git?.delivery,
@@ -503,12 +503,12 @@ export function useProjectFlows(
             ? { allowed: true }
             : {
                 allowed: false,
-                reason: offers.words(replacement) ?? "HQ has not offered token replacement.",
+                reason: hqOfferWords(replacement) ?? "HQ has not offered token replacement.",
               },
       });
     }
     return values;
-  }, [appIds, told, offers, canonical.flows]);
+  }, [appIds, told, canonical.flows]);
 
   // What a release of each group would put live: what HQ compares from what production runs to each
   // runtime's `main` (`releaseReads`) — asked only for a surface that shows it, and only once the

@@ -29,7 +29,7 @@ export const environmentSetup: Projection<
   derive: (read, { orgId, projectIds }) => {
     const navigation = canonicalHqNavigation.derive(read, orgId);
     const { structure } = navigation;
-    if (structure === null || !navigation.live) return [];
+    if (structure === null) return [];
     const placement = placementsOf(
       zeropsStructure(structure),
       new Map(),
@@ -80,19 +80,12 @@ export const environmentSetup: Projection<
       registry: registryFromHq(structure),
       environments,
       mayKey: (projectId) =>
-        hqOffer(environmentCan.get(projectId), "keep_deploy_token", {
-          current: true,
-          unavailableSince: null,
-        }).kind === "allowed",
+        hqOffer(environmentCan.get(projectId), "keep_deploy_token").kind === "allowed",
       pressing: (projectId) =>
         birthProjects.has(projectId) || Object.hasOwn(navigation.presses, projectId),
     }).map((entry) => ({
       ...entry,
-      finish:
-        hqOffer(projectCan.get(entry.projectId), "finish", {
-          current: navigation.live,
-          unavailableSince: null,
-        }).kind === "allowed",
+      finish: hqOffer(projectCan.get(entry.projectId), "finish").kind === "allowed",
     }));
   },
 };

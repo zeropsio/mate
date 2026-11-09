@@ -202,9 +202,7 @@ describe("Projects compact flow", () => {
         recipeTiers: flow.recipeTiers,
         offered: {
           stage: false,
-          production:
-            hqOffer(can, "add_production", { current: true, unavailableSince: null }).kind ===
-            "allowed",
+          production: hqOffer(can, "add_production").kind === "allowed",
         },
         productionRuns: "unknown",
         waiting: { count: 0, atLeast: false },

@@ -54,12 +54,12 @@ export const projectApplications: Projection<
     const freshness = scopeFreshness(read, scope);
     return {
       ids: read.members(scope).ids.filter((id) => read.fact("hqApp", id).kind === "known"),
-      read: freshness.complete && freshness.live,
-      // A slow HQ on a connection that holds is working, not unanswered.
+      read: freshness.complete,
+      // HQ's refusal, or no first answer from it (a slow HQ on a connection that holds is working,
+      // not unanswered). HQ away after it answered is no failure: what it said stands (`hqLink`).
       unavailable:
-        !freshness.live &&
-        !scopeSlow(read, scope) &&
-        (freshness.complete || freshness.reconnecting || freshness.unavailableReason !== undefined),
+        freshness.unavailableReason !== undefined ||
+        (!freshness.complete && freshness.reconnecting && !scopeSlow(read, scope)),
     };
   },
   equals: sameValue,
@@ -82,10 +82,7 @@ export const projectSummary: Projection<
     const app = read.fact("hqApp", appId);
     const listed = read.members(hqAppsScope(orgId)).ids.includes(appId);
     return {
-      contents:
-        listed && app.kind === "known" && scopeFreshness(read, hqAppsScope(orgId)).live
-          ? app.value.contents
-          : undefined,
+      contents: listed && app.kind === "known" ? app.value.contents : undefined,
       changesRefused:
         listed &&
         app.kind === "known" &&
@@ -224,7 +221,6 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
               releases: detail.releases,
               repos: detail.repos,
               preflight: detail.preflight,
-              live: scopeFreshness(read, hqAppsScope(orgId)).live,
             },
           });
     const changes =
@@ -236,11 +232,8 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
             hqAddress,
           );
     const link = read.stream(linkKeys.hq(orgId));
-    const unavailable =
-      link.phase === "refused" ||
-      link.phase === "recovering" ||
-      link.phase === "reauthenticating" ||
-      link.phase === "unsupported";
+    // HQ's own answer only: HQ away keeps what it said, and a write meanwhile is answered at once.
+    const unavailable = link.phase === "refused" || link.phase === "unsupported";
     let acceptedRelease: string | undefined;
     for (const requestId of read.index("accepted-release", appId)) {
       const accepted = acceptedReleaseOf(read.operation(requestId));
