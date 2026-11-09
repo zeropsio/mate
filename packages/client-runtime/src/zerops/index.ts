@@ -340,6 +340,7 @@ export {
   type GroupEnvironmentService,
   type GroupStopProject,
   type GroupStops,
+  type ReleaseCreationFailure,
   type ReleaseDeployFailure,
   type ReleaseDeploys,
 } from "./groupDeploys.ts";
