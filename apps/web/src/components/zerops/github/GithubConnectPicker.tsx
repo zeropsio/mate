@@ -10,7 +10,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { OperationStopped } from "@t3tools/client-runtime/data";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
-import type { HqRemoteProbe, RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useNavigate, useRouter } from "@tanstack/react-router";
@@ -23,47 +23,53 @@ import { DialogFooter, DialogPanel } from "~/components/ui/dialog";
 import { Input } from "~/components/ui/input";
 import { Spinner } from "~/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
-import { cn } from "~/lib/utils";
+import { cn, randomUUID } from "~/lib/utils";
 import { useProjectFlows } from "~/zerops/projectFlows";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import {
   type GitMirrorAppEntry,
   type GitMirrorApps,
+  type GitMirrorInstallAction,
   useGitMirrorApps,
 } from "~/zerops/useGitMirrorApps";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { OutLink } from "../../settings/automationParts";
-import {
-  githubName,
-  mirrorAuthorityLine,
-  mirrorGateLine,
-  remoteSyncedAt,
-  type RepoPress,
-} from "../gitMirror.logic";
+import { hostWords, mirrorAuthorityLine, mirrorGateLine, remoteSyncedAt } from "../gitMirror.logic";
 import {
   connectProgress,
   explainerWords,
   freshNames,
   heldRepository,
+  installWay,
   newRepositoryUrl,
   openingAccount,
   openingApp,
   type PickerAccount,
   pickerAccounts,
   pickerRepositories,
+  readAfterReturn,
   rememberLeaving,
   rememberSeen,
   returnWithSeen,
   SEEN_PARAM,
   seenBefore,
+  type PickerRepository,
+  unansweredCount,
   unsealedWords,
   usedAppIds,
   waitingAccounts,
 } from "./githubConnect.logic";
 import { GithubTokenFields, tokenAddressReady } from "./GithubTokenFields";
-import { holdPress, releasePress, useRepoPress } from "./repoPress";
+import {
+  dropPress,
+  type HeldPress,
+  holdPress,
+  type PressState,
+  pressShown,
+  useRepoPress,
+} from "./repoPress";
 
 export interface GithubConnectPickerProps {
   /** The HQ application the code repository is in. */
@@ -100,17 +106,26 @@ export function GithubConnectPicker({
   );
   const flow = useProjectFlows(useMemo(() => [project], [project])).flows.get(project);
   const repos = flow?.codeRepos ?? flow?.repos;
+  const entry = repos?.find((each) => each.name === repo);
   const git = useGitTargetOperations(project);
   const mirror = useGitMirrorApps(true);
-  const press = useRepoPress(project, repo);
+  const press = useRepoPress(orgId, project, repo, entry);
   const navigate = useNavigate();
   const router = useRouter();
   // Back from GitHub, what came back is told apart from what was there before the person left.
   const [before, setBefore] = useState(() => {
     // Back from an install trip to a page that keeps its address (a conversation).
-    rememberSeen(new URL(window.location.href).searchParams.get(SEEN_PARAM));
+    const here = new URL(window.location.href).searchParams;
+    rememberSeen(here.get(SEEN_PARAM), here.get("github"));
     return seenBefore(project, repo);
   });
+  // Back from GitHub, HQ is asked once for what GitHub now says; after that, only on Look again.
+  const again = mirror.again;
+  useEffect(() => {
+    if (seenBefore(project, repo)?.fresh !== true) return;
+    readAfterReturn(project, repo);
+    again();
+  }, [again, project, repo]);
   const writes = hqOffer(git.can, HQ_REMOTE_WRITE_VERB, {
     current: git.live,
     unavailableSince: git.live ? null : 0,
@@ -119,41 +134,30 @@ export function GithubConnectPicker({
     rememberLeaving(project, repo, apps);
     setBefore(seenBefore(project, repo));
   };
-  // A trip to GitHub in another tab (a new repository, the app's access) re-reads on return.
-  useEffect(() => {
-    const again = mirror.again;
-    window.addEventListener("focus", again);
-    return () => window.removeEventListener("focus", again);
-  }, [mirror.again]);
-  const viaApp = git.actions?.viaApp;
+  const send = git.send;
   const connect = git.actions?.connect;
   return (
     <GithubConnectPickerView
-      admin={roleAtLeast(session?.activeOrganization?.roleCode, "ADMIN")}
-      apps={apps}
-      authority={mirrorAuthorityLine(writes)}
-      density={density}
-      entry={repos?.find((entry) => entry.name === repo)}
-      fresh={freshNames(apps, before)}
-      nameOf={nameOf}
-      orgName={session?.activeOrganization?.name}
-      press={press}
-      project={project}
-      projectName={projectNameOf(project) ?? repo}
-      projectNameOf={projectNameOf}
-      repo={repo}
-      usedApps={usedAppIds(repos, repo)}
-      viewerId={session?.user?.id ?? null}
       actions={{
-        ...(viaApp === undefined
+        ...(send === undefined
           ? {}
           : {
-              connectViaApp: async (repository, appId) => {
-                holdPress(project, repo, "connecting");
+              connectViaApp: async (repository, app) => {
+                const held: HeldPress = {
+                  kind: "connect",
+                  requestId: randomUUID(),
+                  target: repository,
+                  via: "app",
+                  appName: app.name,
+                };
+                holdPress(orgId, project, repo, held);
                 try {
-                  await viaApp(repo, repository, appId);
-                } finally {
-                  releasePress(project, repo, "connecting");
+                  await send.viaApp(repo, repository, app.appId, held.requestId!);
+                  return null;
+                } catch (cause) {
+                  // Never recorded: nothing follows it, so the picker says what stopped it.
+                  dropPress(orgId, project, repo, held);
+                  return refusalWords(cause);
                 }
               },
             }),
@@ -161,15 +165,28 @@ export function GithubConnectPicker({
           ? {}
           : {
               connectToken: async (url, token) => {
-                holdPress(project, repo, "connecting");
+                const held: HeldPress = {
+                  kind: "connect",
+                  requestId: null,
+                  target: url,
+                  via: "token",
+                  appName: null,
+                };
+                holdPress(orgId, project, repo, held);
                 try {
-                  return await connect(repo, url, token);
-                } finally {
-                  releasePress(project, repo, "connecting");
+                  const answer = await connect(repo, url, token);
+                  if (!answer.ok) dropPress(orgId, project, repo, held);
+                  return answer.ok ? null : answer.reason;
+                } catch (cause) {
+                  dropPress(orgId, project, repo, held);
+                  return cause instanceof OperationStopped ||
+                    (cause instanceof HqError && cause.code === "git_probe_refused")
+                    ? cause.message
+                    : "HQ couldn't confirm the connection. Check the repository's row before trying again.";
                 }
               },
             }),
-        install: (appId) => {
+        install: async (appId) => {
           leave();
           // Back from GitHub's install page, the project's page opens this dialog again.
           const back = returnWithSeen(
@@ -178,32 +195,60 @@ export function GithubConnectPicker({
                 to: "/group/$groupId/flow",
                 params: { groupId: project },
                 search: { mirror: project, repo },
-              }).href,
+              }).publicHref,
             project,
             repo,
             apps,
           );
-          mirror.install(appId, back);
+          return mirror.install(appId, back);
         },
+        again,
         leaving: leave,
+        dismiss: () => {
+          if (press.kind !== "none") dropPress(orgId, project, repo, press.press);
+        },
         openSettings: () => {
           void navigate({ to: "/settings/automation" });
         },
         ...(onConnected === undefined ? {} : { onConnected }),
       }}
+      admin={roleAtLeast(session?.activeOrganization?.roleCode, "ADMIN")}
+      apps={apps}
+      authority={mirrorAuthorityLine(writes)}
+      density={density}
+      entry={entry}
+      fresh={freshNames(apps, before)}
+      installing={mirror.installing}
+      nameOf={nameOf}
+      orgName={session?.activeOrganization?.name}
+      press={press}
+      project={project}
+      projectName={projectNameOf(project) ?? repo}
+      projectNameOf={projectNameOf}
+      repo={repo}
+      returned={before?.returned ?? null}
+      usedApps={usedAppIds(repos, repo)}
+      viewerId={session?.user?.id ?? null}
     />
   );
 }
 
 export interface GithubConnectActions {
-  /** Connects through the org app `appId`; resolves once HQ's record shows the remote. */
-  readonly connectViaApp?: (repository: string, appId: number) => Promise<void>;
-  /** Verifies a token and connects with it; resolves with the remote's answer. */
-  readonly connectToken?: (url: string, token: string) => Promise<HqRemoteProbe>;
-  /** Leaves for GitHub's install page of `appId`, coming back to this dialog. */
-  readonly install: (appId: number) => void;
+  /**
+   * Sends a connect through the org app; the press follows it through its operation's record.
+   * Resolves with what stopped it where it could not be sent, else `null`.
+   */
+  readonly connectViaApp?: (repository: string, app: GitMirrorAppEntry) => Promise<string | null>;
+  /** Verifies a token and connects with it; resolves with the remote's refusal, else `null`. */
+  readonly connectToken?: (url: string, token: string) => Promise<string | null>;
+  /** Leaves through HQ's install trip for `appId`; resolves `false` where HQ refused. */
+  readonly install: (appId: number) => Promise<boolean>;
+  /** Asks HQ again what the organization's apps reach. */
+  readonly again: () => void;
   /** The person opens GitHub in another tab: what is there now is remembered. */
   readonly leaving: () => void;
+  /** Lets a refused or unconfirmed press go. */
+  readonly dismiss: () => void;
   readonly openSettings?: () => void;
   readonly onConnected?: () => void;
 }
@@ -212,12 +257,9 @@ type Step = "pick" | "explain" | "token";
 
 /** A connect this picker sent: where to, and how. */
 interface Sent {
-  readonly repository: string;
-  readonly via:
-    | { readonly kind: "app"; readonly app: GitMirrorAppEntry }
-    | { readonly kind: "token" };
-  /** HQ answered; its record now leads. */
-  readonly answered: boolean;
+  /** `owner/name` through an app; the address with a token. */
+  readonly target: string;
+  readonly app: GitMirrorAppEntry | null;
 }
 
 export interface GithubConnectPickerViewProps {
@@ -238,7 +280,12 @@ export interface GithubConnectPickerViewProps {
   readonly authority: string | null;
   /** Repository names (lowercased) that came back from GitHub since the person left. */
   readonly fresh: ReadonlySet<string>;
-  readonly press: RepoPress;
+  /** What GitHub said on the way back from its install page. */
+  readonly returned: "requested" | "waiting" | null;
+  /** The repository's held press, followed through its operation. */
+  readonly press: PressState;
+  /** This person's install trip: asked, or refused in HQ's words. */
+  readonly installing: GitMirrorInstallAction;
   readonly density: "full" | "compact";
   readonly actions: GithubConnectActions;
   /** Where it opens: a fixture's step, account, pick or sent connect. */
@@ -252,7 +299,7 @@ export interface GithubConnectPickerViewProps {
 }
 
 export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
-  const { apps, repo, entry, viewerId, usedApps, fresh, actions, initial, density } = props;
+  const { apps, repo, entry, viewerId, usedApps, fresh, actions, initial, density, press } = props;
   const ready = apps.kind === "ready" ? apps : null;
   const accounts = useMemo(
     () => (ready === null ? [] : pickerAccounts(ready, viewerId, usedApps)),
@@ -268,6 +315,10 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
+  // The install trip pressed and not refused: one press leaves once.
+  const [leavingFor, setLeavingFor] = useState<number | null>(null);
+  const [tried, setTried] = useState(false);
+  const [pageOpened, setPageOpened] = useState(false);
   const account =
     accounts.find((each) => each.account === chosenAccount) ??
     accounts.find((each) => each.account === openingAccount(accounts, { repo, held, fresh })) ??
@@ -294,19 +345,43 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
       : chosenRepository === null
         ? suggested
         : null;
+  const pickedRow = rows.find((row) => row.repository.fullName === picked) ?? null;
+  // A press under way leads, wherever it was sent from (the dialog closed and opened again).
+  const working = press.kind === "working" && press.press.kind === "connect" ? press.press : null;
+  const target: Sent | null =
+    working !== null && working.target !== null
+      ? {
+          target: working.target,
+          app:
+            working.via === "app"
+              ? (ready?.apps.find((app) => app.name === working.appName) ?? sent?.app ?? null)
+              : null,
+        }
+      : sent;
+  // The record's remote is read only once it is the one being connected.
+  const reached =
+    target !== null &&
+    pressShown(
+      {
+        kind: "connect",
+        requestId: null,
+        target: target.target,
+        via: target.app === null ? "token" : "app",
+        appName: null,
+      },
+      entry,
+    );
   const progress =
-    sent === null
+    target === null || press.kind === "refused" || press.kind === "unconfirmed"
       ? null
-      : connectProgress({
-          answered: sent.answered,
-          entry:
-            entry?.remote != null &&
-            (sent.via.kind === "token" ||
-              githubName(entry.remote.url)?.toLowerCase() === sent.repository.toLowerCase())
-              ? entry
-              : undefined,
-          syncedAt: entry === undefined ? undefined : remoteSyncedAt(entry),
-        });
+      : working !== null || !reached
+        ? "connect"
+        : connectProgress({
+            answered: true,
+            entry,
+            syncedAt: entry === undefined ? undefined : remoteSyncedAt(entry),
+          });
+  const pressWords = press.kind === "refused" || press.kind === "unconfirmed" ? press.words : null;
 
   const pick = (account: PickerAccount, fullName: string) => {
     setAccount(account.account);
@@ -314,53 +389,56 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
     setRefusal(null);
   };
   const connectApp = async () => {
-    if (account === null || picked === null || actions.connectViaApp === undefined) return;
-    const target = { repository: picked, via: { kind: "app", app: account.app } } as const;
+    if (pickedRow === null || actions.connectViaApp === undefined || working !== null) return;
     setRefusal(null);
-    setSent({ ...target, answered: false });
-    try {
-      await actions.connectViaApp(picked, account.app.appId);
-      setSent({ ...target, answered: true });
-    } catch (cause) {
+    setSent({ target: pickedRow.repository.fullName, app: pickedRow.app });
+    const stopped = await actions.connectViaApp(pickedRow.repository.fullName, pickedRow.app);
+    if (stopped !== null) {
       setSent(null);
-      setRefusal(refusalWords(cause));
+      setRefusal(stopped);
     }
   };
   const connectToken = async () => {
-    if (actions.connectToken === undefined || token === "") return;
+    if (actions.connectToken === undefined || token === "" || working !== null) return;
     const candidate = token;
     setToken("");
     setRefusal(null);
-    const target = { repository: githubName(url) ?? url, via: { kind: "token" } } as const;
-    setSent({ ...target, answered: false });
-    try {
-      const answer = await actions.connectToken(url, candidate);
-      if (answer.ok) setSent({ ...target, answered: true });
-      else {
-        setSent(null);
-        setRefusal(answer.reason);
-      }
-    } catch (cause) {
+    setSent({ target: url, app: null });
+    const stopped = await actions.connectToken(url, candidate);
+    if (stopped !== null) {
       setSent(null);
-      setRefusal(
-        cause instanceof OperationStopped ||
-          (cause instanceof HqError && cause.code === "git_probe_refused")
-          ? cause.message
-          : "HQ couldn't confirm the connection. Check the repository's row before trying again.",
-      );
+      setRefusal(stopped);
     }
   };
 
   let body: React.ReactNode;
   let foot: React.ReactNode;
-  if (sent !== null && progress !== null) {
-    ({ body, foot } = progressStep({ ...props, sent, progress }));
+  if (target !== null && progress !== null) {
+    ({ body, foot } = progressStep({ ...props, sent: target, progress }));
   } else if (step === "explain") {
     ({ body, foot } = explainStep({
       ...props,
       explainApp,
       setExplainApp,
       onBack: () => setStep("pick"),
+      pending: leavingFor !== null || props.installing.kind === "working",
+      installRefusal:
+        tried && leavingFor === null && props.installing.kind === "refused"
+          ? props.installing.words
+          : null,
+      onTrip: (app) => {
+        if (leavingFor !== null) return;
+        setLeavingFor(app.appId);
+        setTried(true);
+        void actions.install(app.appId).then((left) => {
+          if (!left) setLeavingFor(null);
+        });
+      },
+      pageOpened,
+      onPage: () => {
+        actions.leaving();
+        setPageOpened(true);
+      },
     }));
   } else if (step === "token") {
     const canVerify =
@@ -378,7 +456,7 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
           token={token}
           url={url}
         />
-        <Refusal words={refusal ?? props.authority} />
+        <Refusal words={refusal ?? pressWords ?? props.authority} />
       </>
     );
     foot = (
@@ -398,10 +476,14 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
       account,
       rows,
       picked,
+      pickedRow,
       search,
       setSearch,
-      refusal,
-      onPick: pick,
+      refusal: refusal ?? pressWords,
+      onPick: (account, fullName) => {
+        pick(account, fullName);
+        if (pressWords !== null) actions.dismiss();
+      },
       onAccount: (next) => {
         setAccount(next);
         setPicked(null);
@@ -412,7 +494,7 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
       onConnect: () => void connectApp(),
     }));
   }
-  const key = sent === null ? step : "progress";
+  const key = target !== null && progress !== null ? "progress" : step;
   if (density === "compact")
     return (
       <div className="grid gap-3" data-github-connect="">
@@ -510,6 +592,7 @@ function pickStep(
     readonly account: PickerAccount | null;
     readonly rows: ReturnType<typeof pickerRepositories>;
     readonly picked: string | null;
+    readonly pickedRow: PickerRepository | null;
     readonly search: string;
     readonly setSearch: (search: string) => void;
     readonly refusal: string | null;
@@ -544,33 +627,74 @@ function pickStep(
   const pickable = accounts.some(
     (each) =>
       each.mine ||
-      each.installation.repositories.some(
-        (repository) =>
+      each.reach.some(
+        ({ repository }) =>
           repository.usedBy === null ||
           (repository.usedBy.application === input.project && repository.usedBy.repo === repo),
       ),
   );
   const waiting = waitingAccounts(apps);
-  const waitingNote =
-    waiting.length === 0 ? null : (
-      <p className="text-xs text-muted-foreground">
-        {waiting.join(", ")} {waiting.length === 1 ? "waits" : "wait"} for an Owner or Admin's OK in
-        Settings › GitHub.
+  const unanswered = unansweredCount(apps);
+  const lookAgain = (
+    <InlineButton onClick={actions.again} tone="muted">
+      Look again
+    </InlineButton>
+  );
+  const returnedNote =
+    input.returned === null ? null : (
+      <p className="rounded-md bg-status-busy-surface px-3 py-2 text-sm text-status-busy-text">
+        {input.returned === "requested"
+          ? "GitHub asked an owner of the account to approve the app. Its repositories show here once they do."
+          : "What you added on GitHub waits for an Owner or Admin's OK in Settings › GitHub."}
       </p>
     );
+  const notes = (
+    <>
+      {unanswered === 0 ? null : (
+        <p className="text-xs text-muted-foreground">
+          GitHub didn't answer about{" "}
+          {unanswered === 1 ? "one account" : `${String(unanswered)} accounts`} the organization's
+          apps are installed on, so {unanswered === 1 ? "its" : "their"} repositories aren't listed.{" "}
+          {lookAgain}
+        </p>
+      )}
+      {waiting.length === 0 ? null : (
+        <p className="text-xs text-muted-foreground">
+          {waiting.join(", ")} {waiting.length === 1 ? "waits" : "wait"} for an Owner or Admin's OK
+          in Settings › GitHub.
+        </p>
+      )}
+    </>
+  );
   if (!pickable) {
+    // GitHub not answering about an account is not the account missing: look again first.
+    const silent = unanswered > 0;
     return {
       body: (
         <>
+          {returnedNote}
           <p className="text-sm text-muted-foreground">Your GitHub accounts</p>
           <div className="grid justify-items-start gap-3 rounded-lg border border-dashed border-input p-4">
             <p className="text-sm">
-              None of your GitHub accounts is added yet. Add the account that owns {repo}'s
-              repository, or the one where you'll create it.
+              {silent
+                ? `GitHub didn't answer about ${unanswered === 1 ? "one account" : `${String(unanswered)} accounts`} the organization's apps are installed on. Yours may be among them.`
+                : `None of your GitHub accounts is added yet. Add the account that owns ${repo}'s repository, or the one where you'll create it.`}
             </p>
-            <Button disabled={input.authority !== null} onClick={input.onAdd} size="sm">
-              {addLabel}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {silent ? (
+                <Button onClick={actions.again} size="sm">
+                  Look again
+                </Button>
+              ) : null}
+              <Button
+                disabled={input.authority !== null}
+                onClick={input.onAdd}
+                size="sm"
+                variant={silent ? "secondary" : "primary"}
+              >
+                {addLabel}
+              </Button>
+            </div>
           </div>
           {accounts.length === 0 ? null : (
             <div className="grid gap-2">
@@ -605,8 +729,7 @@ function pickStep(
               ))}
             </div>
           )}
-          {waitingNote}
-          <Refusal words={input.authority} />
+          <Refusal words={input.authority ?? input.refusal} />
         </>
       ),
       foot: tokenLink,
@@ -620,10 +743,11 @@ function pickStep(
           row.repository.fullName.toLowerCase().includes(input.search.trim().toLowerCase()),
         );
   const pickedName = picked?.split("/")[1];
-  const unsealed = account !== null && account.app.setUpBy === null;
+  const unsealed = input.pickedRow !== null && input.pickedRow.app.setUpBy === null;
   return {
     body: (
       <>
+        {returnedNote}
         {freshHere === 0 || account === null ? null : (
           <p className="rounded-md bg-status-ok-surface px-3 py-2 text-sm text-status-ok-text">
             {account.account} is added ·{" "}
@@ -694,13 +818,19 @@ function pickStep(
                 <OutLink href={newRepositoryUrl(account.account, repo)}>
                   New repository on GitHub
                 </OutLink>
-              </span>
+              </span>{" "}
+              · {lookAgain}
             </p>
           </>
         )}
-        {waitingNote}
+        {notes}
         <Refusal
-          words={input.authority ?? (unsealed ? unsealedWords(account.app) : input.refusal)}
+          words={
+            input.authority ??
+            (unsealed && input.pickedRow !== null
+              ? unsealedWords(input.pickedRow.app)
+              : input.refusal)
+          }
         />
       </>
     ),
@@ -724,6 +854,30 @@ function pickStep(
   };
 }
 
+/**
+ * Arrow keys move the choice through a radio list, past the rows that can't be picked; Tab leaves
+ * the list from the chosen row.
+ */
+function radioKeys(event: React.KeyboardEvent<HTMLElement>) {
+  const step =
+    event.key === "ArrowDown" || event.key === "ArrowRight"
+      ? 1
+      : event.key === "ArrowUp" || event.key === "ArrowLeft"
+        ? -1
+        : 0;
+  if (step === 0) return;
+  event.preventDefault();
+  const radios = [
+    ...(event.currentTarget
+      .closest('[role="radiogroup"]')
+      ?.querySelectorAll<HTMLElement>('[role="radio"]:not([aria-disabled="true"])') ?? []),
+  ];
+  const at = radios.indexOf(event.currentTarget);
+  const next = radios[(at + step + radios.length) % radios.length];
+  next?.focus();
+  next?.click();
+}
+
 function RepositoryList({
   account,
   rows,
@@ -745,6 +899,7 @@ function RepositoryList({
         const name = row.repository.fullName;
         const checked = picked === name;
         const disabled = row.taken !== null;
+        const first = rows.find((each) => each.taken === null) === row;
         const words = [
           row.repository.private ? "Private" : "Public",
           row.current ? "connected now" : null,
@@ -766,7 +921,9 @@ function RepositoryList({
             onClick={() => {
               if (!disabled) onPick(account, name);
             }}
+            onKeyDown={radioKeys}
             role="radio"
+            tabIndex={!disabled && (checked || (picked === null && first)) ? 0 : -1}
             type="button"
           >
             <span
@@ -808,6 +965,14 @@ function explainStep(
     readonly explainApp: number | null;
     readonly setExplainApp: (appId: number) => void;
     readonly onBack: () => void;
+    /** The trip is asked for: the press waits. */
+    readonly pending: boolean;
+    /** HQ refused the trip, in its words. */
+    readonly installRefusal: string | null;
+    readonly onTrip: (app: GitMirrorAppEntry) => void;
+    /** GitHub's own install page was opened in another tab. */
+    readonly pageOpened: boolean;
+    readonly onPage: () => void;
   },
 ): { body: React.ReactNode; foot: React.ReactNode } {
   const { apps, admin, orgName, nameOf, actions, repo, viewerId, usedApps } = input;
@@ -848,6 +1013,7 @@ function explainStep(
   const chosenId = input.explainApp ?? openingApp(list, viewerId, usedApps);
   const chosen = list.find((app) => app.appId === chosenId) ?? null;
   const words = chosen === null ? null : explainerWords(chosen, nameOf, viewerId);
+  const way = chosen === null ? null : installWay(chosen);
   return {
     body: (
       <>
@@ -872,7 +1038,15 @@ function explainStep(
                     onClick={() => {
                       if (!disabled) input.setExplainApp(app.appId);
                     }}
+                    onKeyDown={radioKeys}
                     role="radio"
+                    tabIndex={
+                      !disabled &&
+                      (checked ||
+                        (chosenId === null && list.find((one) => one.setUpBy !== null) === app))
+                        ? 0
+                        : -1
+                    }
                     type="button"
                   >
                     <span
@@ -925,12 +1099,23 @@ function explainStep(
               </ExplainStep>
               <ExplainStep n={3}>GitHub brings you back here.</ExplainStep>
             </ol>
-            {admin ? null : (
+            {way?.kind === "page" ? (
               <p className="text-xs text-muted-foreground">
                 What you add waits for an Owner or Admin's OK in Settings › GitHub.
+                {input.pageOpened ? (
+                  <>
+                    {" "}
+                    Back from GitHub?{" "}
+                    <InlineButton onClick={actions.again} tone="muted">
+                      Look again
+                    </InlineButton>
+                  </>
+                ) : null}
               </p>
-            )}
-            {chosen.setUpBy === null ? <Refusal words={unsealedWords(chosen)} /> : null}
+            ) : null}
+            <Refusal
+              words={chosen.setUpBy === null ? unsealedWords(chosen) : input.installRefusal}
+            />
           </>
         )}
       </>
@@ -938,15 +1123,23 @@ function explainStep(
     foot: (
       <>
         {back}
-        <Button
-          disabled={chosen === null || chosen.setUpBy === null}
-          onClick={() => {
-            if (chosen !== null) actions.install(chosen.appId);
-          }}
-          size="sm"
-        >
-          Continue on GitHub
-        </Button>
+        {chosen === null || way === null || chosen.setUpBy === null ? (
+          <Button disabled size="sm">
+            Continue on GitHub
+          </Button>
+        ) : way.kind === "page" ? (
+          <Button
+            onClick={input.onPage}
+            render={<a href={way.url} rel="noreferrer" target="_blank" />}
+            size="sm"
+          >
+            Continue on GitHub ↗
+          </Button>
+        ) : (
+          <Button disabled={input.pending} onClick={() => input.onTrip(chosen)} size="sm">
+            {input.pending ? "Opening GitHub…" : "Continue on GitHub"}
+          </Button>
+        )}
       </>
     ),
   };
@@ -979,11 +1172,12 @@ function progressStep(
   },
 ): { body: React.ReactNode; foot: React.ReactNode } {
   const { sent, progress, repo, entry, actions } = input;
-  const href = sent.via.kind === "app" ? `https://github.com/${sent.repository}` : sent.repository;
+  const href = sent.app === null ? sent.target : `https://github.com/${sent.target}`;
+  const shownAs = sent.app === null ? sent.target.replace(/^https:\/\//u, "") : sent.target;
   if (progress === "done") {
     const gate = mirrorGateLine(
       entry?.remote,
-      sent.via.kind === "app" ? { name: sent.via.app.name, appId: sent.via.app.appId } : null,
+      sent.app === null ? null : { name: sent.app.name, appId: sent.app.appId },
     );
     return {
       body: (
@@ -995,8 +1189,8 @@ function progressStep(
           </p>
           <p className="text-lg font-medium">{repo} is on GitHub</p>
           <p className="text-sm text-muted-foreground">
-            <span className="font-mono text-foreground">{sent.repository}</span> has {repo}'s main.
-            Mate's next change opens there for review.
+            <span className="font-mono text-foreground">{shownAs}</span> has {repo}'s main. Mate's
+            next change opens there for review.
           </p>
           {gate === undefined || entry?.remote?.governance === "governed" ? null : (
             <p className="text-xs text-muted-foreground">{gate}</p>
@@ -1010,7 +1204,7 @@ function progressStep(
             size="sm"
             variant="secondary"
           >
-            Open on GitHub
+            {sent.app === null ? `Open on ${hostWords(sent.target)}` : "Open on GitHub"}
           </Button>
           {actions.onConnected === undefined ? null : (
             <Button onClick={actions.onConnected} size="sm">
@@ -1024,19 +1218,17 @@ function progressStep(
   const steps: ReadonlyArray<readonly [ConnectStepName, string]> = [
     [
       "connect",
-      sent.via.kind === "app"
-        ? `Connecting through ${sent.via.app.name}`
-        : "Connecting with the token",
+      sent.app === null ? "Connecting with the token" : `Connecting through ${sent.app.name}`,
     ],
     ["push", "Pushing main"],
-    ...(sent.via.kind === "app" ? ([["rules", "Checking GitHub's rules on main"]] as const) : []),
+    ...(sent.app === null ? [] : ([["rules", "Checking GitHub's rules on main"]] as const)),
   ];
   const at = steps.findIndex(([name]) => name === progress);
   return {
     body: (
       <>
         <p className="rounded-lg bg-muted px-3.5 py-2.5 text-sm">
-          {repo} → <span className="font-mono">{sent.repository}</span>
+          {repo} → <span className="font-mono">{shownAs}</span>
         </p>
         <ol aria-live="polite" className="grid gap-2.5">
           {steps.map(([name, words], index) => (

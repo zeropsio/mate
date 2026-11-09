@@ -18,8 +18,32 @@ export function useGitTargetOperations(appId: string) {
     unobserved: "HQ isn't answering. Check the original operation when it returns.",
   };
   return {
+    orgId,
     can: app?.can,
     live: navigation?.live ?? false,
+    /**
+     * Records and sends a remote write under `requestId` without waiting for its end: the press
+     * follows it through its operation's record (`useRepoPress`).
+     */
+    send:
+      scope === null || operations === null
+        ? undefined
+        : {
+            disconnect: (repo: string, requestId: string) =>
+              operations.submit({ kind: "disconnect-git-remote", ...scope, repo }, requestId),
+            viaApp: (repo: string, repository: string, githubAppId: number, requestId: string) =>
+              operations.submit(
+                {
+                  kind: "connect-git-remote-via-app",
+                  orgId: scope.orgId,
+                  appId,
+                  repo,
+                  repository,
+                  githubAppId,
+                },
+                requestId,
+              ),
+          },
     actions:
       scope === null || operations === null
         ? undefined

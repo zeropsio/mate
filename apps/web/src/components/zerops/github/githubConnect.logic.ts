@@ -15,19 +15,33 @@ import type {
 
 import { githubName, remoteGithubAppId } from "../gitMirror.logic";
 
-/** One GitHub account the picker offers, through the one app its repositories are listed from. */
+/** A repository an account's installation reaches, and the app it goes through there. */
+export interface PickerReach {
+  readonly repository: GitMirrorRepository;
+  readonly installation: GitMirrorInstallation;
+  readonly app: GitMirrorAppEntry;
+}
+
+/**
+ * One GitHub account the picker offers: the app it leads with (whose access page "Not listed?"
+ * opens) and every repository any of its installations reaches, each through its own app.
+ */
 export interface PickerAccount {
   readonly account: string;
   readonly installation: GitMirrorInstallation;
   readonly app: GitMirrorAppEntry;
-  /** Added by the person looking. */
+  readonly reach: ReadonlyArray<PickerReach>;
+  /** One of its installations was added by the person looking. */
   readonly mine: boolean;
+  /** Who added it: the person looking where they did, else its leading installation's adder. */
+  readonly addedBy: string | null;
 }
 
 /**
  * The accounts with an accepted installation of any of the organization's apps, yours first. An
- * account with two apps is listed once, through the app the project's other repositories already
- * go through, else one you set up, else the oldest.
+ * account two apps reach is listed once; a repository both reach goes through the app ranked
+ * first: a confirmed app before one nobody confirmed, then the app the project's other
+ * repositories go through, then one you set up, then the oldest.
  */
 export function pickerAccounts(
   apps: Extract<GitMirrorApps, { readonly kind: "ready" }>,
@@ -35,29 +49,63 @@ export function pickerAccounts(
   usedAppIds: ReadonlyArray<number>,
 ): ReadonlyArray<PickerAccount> {
   const rank = (app: GitMirrorAppEntry) => {
+    const confirmed = app.setUpBy === null ? 1_000 : 0;
     const used = usedAppIds.indexOf(app.appId);
-    if (used >= 0) return used;
-    if (viewerId !== null && app.setUpBy === viewerId) return usedAppIds.length;
-    return usedAppIds.length + 1 + apps.apps.indexOf(app);
+    if (used >= 0) return confirmed + used;
+    if (viewerId !== null && app.setUpBy === viewerId) return confirmed + usedAppIds.length;
+    return confirmed + usedAppIds.length + 1 + apps.apps.indexOf(app);
   };
-  const byAccount = new Map<string, PickerAccount>();
+  const byAccount = new Map<
+    string,
+    Array<{ readonly installation: GitMirrorInstallation; readonly app: GitMirrorAppEntry }>
+  >();
   for (const installation of apps.installations) {
     if (installation.standing !== "accepted") continue;
     const app = apps.apps.find((each) => each.appId === installation.appId);
     if (app === undefined) continue;
     const key = installation.account.toLowerCase();
-    const held = byAccount.get(key);
-    if (held !== undefined && rank(held.app) <= rank(app)) continue;
-    byAccount.set(key, {
-      account: installation.account,
-      installation,
-      app,
-      mine: viewerId !== null && installation.addedBy === viewerId,
-    });
+    byAccount.set(key, [...(byAccount.get(key) ?? []), { installation, app }]);
   }
-  return [...byAccount.values()].toSorted(
+  const accounts = [...byAccount.values()].flatMap((held): ReadonlyArray<PickerAccount> => {
+    const ranked = held.toSorted((a, b) => rank(a.app) - rank(b.app));
+    const lead = ranked[0];
+    if (lead === undefined) return [];
+    const reach = new Map<string, PickerReach>();
+    for (const { installation, app } of ranked)
+      for (const repository of installation.repositories) {
+        const key = repository.fullName.toLowerCase();
+        if (!reach.has(key)) reach.set(key, { repository, installation, app });
+      }
+    const mine = viewerId !== null && held.some((each) => each.installation.addedBy === viewerId);
+    return [
+      {
+        account: lead.installation.account,
+        installation: lead.installation,
+        app: lead.app,
+        reach: [...reach.values()],
+        mine,
+        addedBy: mine ? viewerId : lead.installation.addedBy,
+      },
+    ];
+  });
+  return accounts.toSorted(
     (a, b) => Number(b.mine) - Number(a.mine) || a.account.localeCompare(b.account),
   );
+}
+
+/** Accounts GitHub didn't answer about, across the organization's apps. */
+export const unansweredCount = (apps: Extract<GitMirrorApps, { readonly kind: "ready" }>) =>
+  apps.apps.reduce((sum, app) => sum + app.unanswered, 0);
+
+/**
+ * How a press installs `app` on another account: an Owner or Admin through HQ's trip, which comes
+ * back accepted; anyone else on GitHub's own page, where what they add waits for an Owner or
+ * Admin's OK.
+ */
+export function installWay(
+  app: GitMirrorAppEntry,
+): { readonly kind: "trip" } | { readonly kind: "page"; readonly url: string } {
+  return app.installTrip ? { kind: "trip" } : { kind: "page", url: app.installUrl };
 }
 
 /** Accounts whose installation waits for an Owner or Admin's OK. */
@@ -98,6 +146,9 @@ export function heldRepository(entry: RepoListEntry | undefined): string | null 
 /** One repository as the picker lists it. */
 export interface PickerRepository {
   readonly repository: GitMirrorRepository;
+  /** The app it is connected through, and its installation. */
+  readonly app: GitMirrorAppEntry;
+  readonly installation: GitMirrorInstallation;
   /** Why it can't be picked: "Notes · appdev uses it"; `null` where it can. */
   readonly taken: string | null;
   readonly suggested: boolean;
@@ -124,8 +175,8 @@ export function pickerRepositories(input: {
     repository.fullName.split("/")[1]?.toLowerCase() === repo.toLowerCase();
   const isHeld = (repository: GitMirrorRepository) =>
     held !== null && repository.fullName.toLowerCase() === held.toLowerCase();
-  const anyHeld = account.installation.repositories.some(isHeld);
-  const rows = account.installation.repositories.map((repository): PickerRepository => {
+  const anyHeld = account.reach.some((each) => isHeld(each.repository));
+  const rows = account.reach.map(({ repository, app, installation }): PickerRepository => {
     const usedBy = repository.usedBy;
     const mine = usedBy !== null && usedBy.application === project && usedBy.repo === repo;
     const taken =
@@ -136,6 +187,8 @@ export function pickerRepositories(input: {
           : `${projectNameOf(usedBy.application) ?? "Another project"} · ${usedBy.repo} uses it`;
     return {
       repository,
+      app,
+      installation,
       taken,
       suggested: taken === null && (anyHeld ? isHeld(repository) : named(repository)),
       current: mine || isHeld(repository),
@@ -158,7 +211,7 @@ export function openingAccount(
   },
 ): string | null {
   const has = (test: (repository: GitMirrorRepository) => boolean) =>
-    accounts.find((each) => each.installation.repositories.some(test))?.account;
+    accounts.find((each) => each.reach.some((reached) => test(reached.repository)))?.account;
   return (
     (input.held === null
       ? undefined
@@ -251,6 +304,15 @@ export interface SeenBefore {
   readonly installations: ReadonlySet<number>;
   /** Lowercased `owner/name`s; `null` after an install trip. */
   readonly names: ReadonlySet<string> | null;
+  /**
+   * What GitHub said on the way back (HQ's `github=`): it asked an owner of the account to approve
+   * the app first, or installed it where nobody here started it, so it waits for an OK.
+   */
+  readonly returned?: "requested" | "waiting";
+  /** Back from GitHub and not yet read again: the picker asks HQ once. */
+  readonly fresh?: boolean;
+  /** The address parameter it was read from: read once, however often the picker opens. */
+  readonly from?: string;
 }
 
 const seen = new Map<string, SeenBefore>();
@@ -288,12 +350,17 @@ export function returnWithSeen(
   return url.toString();
 }
 
-/** Notes the installations an install trip carried back (`SEEN_PARAM`); anything else is ignored. */
-export function rememberSeen(value: string | null | undefined): void {
+/**
+ * Notes the installations an install trip carried back (`SEEN_PARAM`) and what GitHub said of it
+ * (HQ's `github=`); anything else is ignored.
+ */
+export function rememberSeen(value: string | null | undefined, github?: unknown): void {
   const [project, repo, ids, ...rest] = (value ?? "").split("|");
   if (project === undefined || repo === undefined || ids === undefined || rest.length > 0) return;
   if (project === "" || repo === "") return;
+  if (seen.get(seenKey(project, repo))?.from === value) return;
   seen.set(seenKey(project, repo), {
+    from: value ?? "",
     installations: new Set(
       ids
         .split(",")
@@ -301,7 +368,15 @@ export function rememberSeen(value: string | null | undefined): void {
         .filter((id) => Number.isSafeInteger(id) && id > 0),
     ),
     names: null,
+    fresh: true,
+    ...(github === "requested" || github === "waiting" ? { returned: github } : {}),
   });
+}
+
+/** The picker read HQ again after the return: it asks no more. */
+export function readAfterReturn(project: string, repo: string): void {
+  const held = seen.get(seenKey(project, repo));
+  if (held?.fresh === true) seen.set(seenKey(project, repo), { ...held, fresh: false });
 }
 
 export const seenBefore = (project: string, repo: string): SeenBefore | null =>

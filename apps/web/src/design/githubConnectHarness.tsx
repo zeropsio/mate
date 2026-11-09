@@ -4,8 +4,8 @@
  * token running out, disconnecting) and the connect dialog in each of its steps.
  *
  * Served by the dev server at `/design-github.html` (`?theme=dark`; `?dialog=` one of `today`,
- * `two-apps`, `back`, `explain`, `explain-two`, `no-app`, `token`, `connecting`, `pushing`,
- * `rules`, `done` opens the dialog in that step). Open it at the owner's 1786 × 1000.
+ * `two-apps`, `back`, `explain`, `explain-two` (as a member), `no-app`, `token`, `unanswered`,
+ * `requested`, `refused`, `connecting`, `pushing`, `rules`, `done` opens the dialog in that step). Open it at the owner's 1786 × 1000.
  *
  * Fixtures only. Nothing here ships — `design-github.html` is not `index.html`, and no route
  * imports this module.
@@ -200,7 +200,7 @@ const ROWS: ReadonlyArray<RepoListEntry> = [
 ];
 
 const ACTIONS = {
-  disconnect: never,
+  sendDisconnect: never,
   replaceToken: never,
   unfollow: never,
   deleteRepository: never,
@@ -219,6 +219,7 @@ function Rows() {
         now={NOW}
         onConnect={nothing}
         onSetUpGithub={nothing}
+        orgId="org-acme"
         orgName="Acme Org"
         pressOf={(repo) => (repo === "gone" ? "disconnecting" : null)}
         project="tea"
@@ -242,13 +243,17 @@ const PICKER: Omit<GithubConnectPickerViewProps, "apps"> = {
   projectNameOf: (id) => PROJECTS[id],
   authority: null,
   fresh: new Set(),
-  press: null,
+  returned: null,
+  press: { kind: "none" },
+  installing: { kind: "idle" },
   density: "full",
   actions: {
     connectViaApp: never,
     connectToken: never,
-    install: nothing,
+    install: never,
+    again: nothing,
     leaving: nothing,
+    dismiss: nothing,
     openSettings: nothing,
     onConnected: nothing,
   },
@@ -263,7 +268,25 @@ const connected = (synced: string | null, governance?: "no_ruleset"): RepoListEn
     }),
     mirror: { syncedAt: synced, divergedSince: null },
   });
-const SENT = { repository: "octo-dev/tea-shop", via: { kind: "app", app: OCTO_MATE } } as const;
+const SENT = { target: "octo-dev/tea-shop", app: OCTO_MATE } as const;
+const PRESS = {
+  kind: "connect",
+  requestId: "request-1",
+  target: "octo-dev/tea-shop",
+  via: "app",
+  appName: OCTO_MATE.name,
+} as const;
+/** The same organization as a member sees it: GitHub's own install page, never HQ's trip. */
+const AS_MEMBER: GitMirrorApps =
+  TWO_APPS.kind === "ready"
+    ? { ...TWO_APPS, apps: TWO_APPS.apps.map((app) => ({ ...app, installTrip: false })) }
+    : TWO_APPS;
+/** GitHub didn't answer about the account the viewer added. */
+const SILENT: GitMirrorApps = {
+  kind: "ready",
+  apps: [ACME_MATE, { ...OCTO_MATE, unanswered: 1 }],
+  installations: OTHERS,
+};
 
 function pickerFor(dialog: string): GithubConnectPickerViewProps | null {
   switch (dialog) {
@@ -280,33 +303,52 @@ function pickerFor(dialog: string): GithubConnectPickerViewProps | null {
     case "explain":
       return { ...PICKER, apps: TODAY, initial: { step: "explain" } };
     case "explain-two":
-      return { ...PICKER, apps: TWO_APPS, admin: false, initial: { step: "explain" } };
+      return { ...PICKER, apps: AS_MEMBER, admin: false, initial: { step: "explain" } };
+    case "unanswered":
+      return { ...PICKER, apps: SILENT };
+    case "requested":
+      return { ...PICKER, apps: TWO_APPS, returned: "requested" };
+    case "refused":
+      return {
+        ...PICKER,
+        apps: TWO_APPS,
+        press: {
+          kind: "refused",
+          press: PRESS,
+          words:
+            "octo-dev/tea-shop is already connected in Demo Shop. Disconnect it there, or pick another repository.",
+        },
+      };
     case "no-app":
       return { ...PICKER, apps: NO_APP, initial: { step: "explain" } };
     case "token":
       return { ...PICKER, apps: TWO_APPS, initial: { step: "token" } };
     case "connecting":
-      return { ...PICKER, apps: TWO_APPS, initial: { sent: { ...SENT, answered: false } } };
+      return {
+        ...PICKER,
+        apps: TWO_APPS,
+        press: { kind: "working", press: PRESS, answered: false },
+      };
     case "pushing":
       return {
         ...PICKER,
         apps: TWO_APPS,
         entry: connected(null),
-        initial: { sent: { ...SENT, answered: true } },
+        initial: { sent: SENT },
       };
     case "rules":
       return {
         ...PICKER,
         apps: TWO_APPS,
         entry: connected(ago(0)),
-        initial: { sent: { ...SENT, answered: true } },
+        initial: { sent: SENT },
       };
     case "done":
       return {
         ...PICKER,
         apps: TWO_APPS,
         entry: connected(ago(0), "no_ruleset"),
-        initial: { sent: { ...SENT, answered: true } },
+        initial: { sent: SENT },
       };
     default:
       return null;

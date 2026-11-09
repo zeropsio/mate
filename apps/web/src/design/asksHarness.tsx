@@ -600,7 +600,12 @@ function Mirror({ density }: { readonly density: AskDensity }) {
         onShowInConversation={density === "compact" ? NOTHING : undefined}
         picker={
           <GithubConnectPickerView
-            actions={{ install: NOTHING, leaving: NOTHING }}
+            actions={{
+              install: async () => false,
+              again: NOTHING,
+              leaving: NOTHING,
+              dismiss: NOTHING,
+            }}
             admin
             apps={MIRROR_APPS}
             authority={null}
@@ -609,11 +614,13 @@ function Mirror({ density }: { readonly density: AskDensity }) {
             fresh={new Set()}
             nameOf={(id) => PEOPLE[id]}
             orgName="Acme"
-            press={null}
+            installing={{ kind: "idle" }}
+            press={{ kind: "none" }}
             project="app-shop"
             projectName="Shop"
             projectNameOf={(id) => (id === "app-store" ? "Store" : undefined)}
             repo={MIRROR.repo}
+            returned={null}
             usedApps={[]}
             viewerId="u-ales"
           />

@@ -13,7 +13,7 @@ function GroupFlowPage() {
   const [connectReturned] = useState(() => {
     if (mirror !== groupId) return null;
     // What was there before the trip, so the picker tells what GitHub added.
-    rememberSeen(search["connect-seen"]);
+    rememberSeen(search["connect-seen"], search.github);
     return { repo };
   });
   const navigate = Route.useNavigate();
