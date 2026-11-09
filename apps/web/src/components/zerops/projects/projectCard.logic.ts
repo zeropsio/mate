@@ -45,11 +45,14 @@ import {
   type MateRowView,
 } from "../SidebarMateRow.logic";
 import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
-import type {
-  WaitingChange,
-  WaitingItem,
-  WaitingMate,
-  WaitingRelease,
+import {
+  WAITING_VERBS,
+  waitingPhrase,
+  type WaitingChange,
+  type WaitingItem,
+  type WaitingMate,
+  type WaitingRelease,
+  type WaitingVerb,
 } from "../SidebarWaiting.logic";
 import { mergedChangeWords, openChangeWords, releaseIsLive } from "../system/ChangeRow.logic";
 import { releaseOfLanding, type HistoryReleaseInput } from "./projectHistory.logic";
@@ -72,8 +75,6 @@ export type ProjectWait =
       readonly mate: WaitingMate;
       /** The newest of its changes waiting, which *Review* opens. */
       readonly change: WaitingChange | undefined;
-      /** How many of its changes wait for review, as the rows list them (`mateChangesForReview`). */
-      readonly count: number;
     };
 
 /**
@@ -84,8 +85,8 @@ export type ProjectWait =
  */
 export function projectWaits(input: {
   readonly items: ReadonlyArray<WaitingItem>;
-  /** The project's flow: its Mates, and the changes that wait for review. */
-  readonly flow: Pick<GroupFlow, "mates" | "pullRequests">;
+  /** The project's flow: its Mates. */
+  readonly flow: Pick<GroupFlow, "mates">;
 }): ReadonlyArray<ProjectWait> {
   const mates = new Set(input.flow.mates.map((mate) => mate.projectId));
   const asks: Array<ProjectWait> = [];
@@ -93,13 +94,7 @@ export function projectWaits(input: {
   for (const item of input.items) {
     if (item.kind === "release" || !mates.has(item.mate.projectId)) continue;
     if (item.kind === "change")
-      reviews.push({
-        kind: "review",
-        key: item.key,
-        mate: item.mate,
-        change: item.mate.change,
-        count: mateChangesForReview(input.flow, item.mate.projectId).length,
-      });
+      reviews.push({ kind: "review", key: item.key, mate: item.mate, change: item.mate.change });
     else asks.push({ kind: "ask", key: item.key, ask: item.kind, mate: item.mate });
   }
   return [...asks, ...reviews];
@@ -115,45 +110,42 @@ export function projectReleaseWait(
   return undefined;
 }
 
-/** The verb a wait offers, one each. */
-export type ProjectWaitVerb = "Answer" | "See plan" | "Ask to fix it" | "Review" | "Sign in";
+/** A project wait as the one list's item, for its words (`waitingPhrase`, `WAITING_VERBS`). */
+function waitingItemOf(wait: ProjectWait): WaitingItem {
+  return wait.kind === "review"
+    ? { kind: "change", key: wait.key, mate: wait.mate }
+    : { kind: wait.ask, key: wait.key, mate: wait.mate };
+}
 
-/** A wait in words: what waits, in a sentence, and its one verb. */
+/**
+ * A wait in words: the one list's phrase (`waitingPhrase`), the menu's own leading words, then what
+ * it is about — the question, the error, its one change's title — and its kind's one verb.
+ */
 export function projectWaitWords(wait: ProjectWait): {
   readonly text: string;
-  readonly verb: ProjectWaitVerb;
+  readonly verb: WaitingVerb;
 } {
-  const { name, text } = wait.mate;
-  if (wait.kind === "review")
-    return {
-      text:
-        wait.count > 1
-          ? `${String(wait.count)} changes from ${name} to review`
-          : wait.change === undefined
-            ? `A change from ${name} to review`
-            : `${name}'s change: ${wait.change.title}`,
-      verb: "Review",
-    };
-  switch (wait.ask) {
-    case "question":
-      return {
-        text: text === undefined ? `${name} asks you` : `${name} asks: ${text}`,
-        verb: "Answer",
-      };
-    case "plan":
-      return { text: `${name} has a plan for you to approve`, verb: "See plan" };
-    case "failed":
-      return { text: `${name} stopped on an error`, verb: "Ask to fix it" };
-    case "sign-in":
-      return { text: `${name} waits for your sign-in`, verb: "Sign in" };
-  }
+  const item = waitingItemOf(wait);
+  const phrase = waitingPhrase(item);
+  const about =
+    wait.kind === "review"
+      ? (wait.mate.changes ?? 1) > 1
+        ? undefined
+        : wait.change?.title
+      : wait.ask === "question" || wait.ask === "failed"
+        ? wait.mate.text
+        : undefined;
+  return {
+    text: about === undefined ? phrase : `${phrase}: ${about}`,
+    verb: WAITING_VERBS[item.kind],
+  };
 }
 
 /** A wait's verb named for a screen reader: whose, and in which project. */
 export function projectWaitLabel(wait: ProjectWait, project: string): string {
   const { name } = wait.mate;
   if (wait.kind === "review")
-    return `Review ${name}'s ${wait.count > 1 ? "changes" : "change"} in ${project}`;
+    return `Review ${name}'s ${(wait.mate.changes ?? 1) > 1 ? "changes" : "change"} in ${project}`;
   switch (wait.ask) {
     case "question":
       return `Answer ${name} in ${project}`;

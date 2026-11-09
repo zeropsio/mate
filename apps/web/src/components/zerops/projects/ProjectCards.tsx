@@ -33,7 +33,7 @@ import {
   type PlaceLine as PlaceLineData,
 } from "./projectCard.logic";
 import { comingMateLine, stopLine } from "./projectsView.logic";
-import { nextReleaseTitle } from "../system/NextRelease.logic";
+import { releaseWaitWords } from "../system/NextRelease.logic";
 import { PlaceLine } from "../system/PlaceLine";
 import { SectionAction, SectionLabel } from "../system/SectionLabel";
 import type {
@@ -503,7 +503,10 @@ function ProjectCard<T>({
           {
             key: "release",
             face: <PackageIcon className="size-4" />,
-            text: nextReleaseTitle(ready),
+            text: releaseWaitWords(
+              { groupId: group.groupId, name: group.name, ahead: ready?.count },
+              ready,
+            ),
             verb: drawn(releaseDoor) ? releaseDoor : null,
           },
         ]),

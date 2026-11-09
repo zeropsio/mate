@@ -30,6 +30,7 @@ import {
   cardReady,
   mateChangeForReview,
   placeLines,
+  projectWaitWords,
   type CardChange,
   type PlaceLine as PlaceLineData,
   type ProjectWait,
@@ -326,7 +327,7 @@ function ProjectWaits<T>({
                   face={face}
                   key={wait.key}
                   line={changeRowLine(wait.mate.name, ASK_LINE[wait.ask])}
-                  title={wait.mate.text ?? ASK_TITLE[wait.ask](wait.mate.name)}
+                  title={projectWaitWords(wait).text}
                   verb={
                     <Button
                       onClick={(event) => {
@@ -335,7 +336,7 @@ function ProjectWaits<T>({
                       size="sm"
                       variant="secondary"
                     >
-                      {ASK_VERB[wait.ask]}
+                      {projectWaitWords(wait).verb}
                     </Button>
                   }
                 />
@@ -352,7 +353,7 @@ function ProjectWaits<T>({
                   line={changeRowLine(wait.mate.name, "Ready for your review")}
                   onOpen={onVerb}
                   open
-                  title={wait.change?.title ?? `A change from ${wait.mate.name}`}
+                  title={projectWaitWords(wait).text}
                 />
               );
             return (
@@ -395,18 +396,6 @@ const ASK_LINE: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], string> = {
   plan: "Has a plan for you",
   failed: "Stopped on an error",
   "sign-in": "Waiting for your sign-in",
-};
-const ASK_TITLE: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], (name: string) => string> = {
-  question: (name) => `${name} asks you`,
-  plan: (name) => `${name} has a plan for you`,
-  failed: (name) => `${name} stopped on an error`,
-  "sign-in": (name) => `${name} waits for your sign-in`,
-};
-const ASK_VERB: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], string> = {
-  question: "Answer",
-  plan: "See plan",
-  failed: "Ask to fix it",
-  "sign-in": "Sign in",
 };
 
 /**

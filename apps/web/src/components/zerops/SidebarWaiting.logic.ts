@@ -5,7 +5,11 @@
  * release is offered. Every surface that counts or says what waits reads this list and these
  * words: the menu's badge and rail, the overview's tab, a project's card and page.
  */
-import { changesCountWords } from "@t3tools/client-runtime/zerops";
+import {
+  changesCountWords,
+  REVIEW_LABEL,
+  REVIEW_RELEASE_LABEL,
+} from "@t3tools/client-runtime/zerops";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -97,12 +101,14 @@ export function waitingItemsOf(input: {
 /** What waits, in its leading words: the menu's line, a card's and a page's say these first. */
 export function waitingPhrase(item: WaitingItem): string {
   if (item.kind === "release") return `Release ${item.release.name}`;
-  const { name } = item.mate;
+  const { name, changes } = item.mate;
   switch (item.kind) {
     case "plan":
       return `Approve ${name}'s plan`;
     case "change":
-      return `Review ${name}'s change`;
+      return changes !== undefined && changes > 1
+        ? `Review ${name}'s ${String(changes)} changes`
+        : `Review ${name}'s change`;
     case "failed":
       return `Help ${name}`;
     case "question":
@@ -111,6 +117,18 @@ export function waitingPhrase(item: WaitingItem): string {
       return `Sign ${name} in`;
   }
 }
+
+/** The one verb a wait offers, by its kind, on every surface that offers one. */
+export const WAITING_VERBS = {
+  change: REVIEW_LABEL,
+  plan: "See plan",
+  question: "Answer",
+  failed: "Ask to fix it",
+  release: REVIEW_RELEASE_LABEL,
+  "sign-in": "Sign in",
+} as const satisfies Record<WaitingItem["kind"], string>;
+
+export type WaitingVerb = (typeof WAITING_VERBS)[WaitingItem["kind"]];
 
 /** The row's line: the first two things, and how many more wait. */
 export function waitingSummary(items: ReadonlyArray<WaitingItem>): {

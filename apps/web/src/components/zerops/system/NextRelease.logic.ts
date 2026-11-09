@@ -15,6 +15,7 @@ import {
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 
 import type { CardReady } from "../projects/projectCard.logic";
+import { waitingPhrase, type WaitingRelease } from "../SidebarWaiting.logic";
 import { mainStageOf } from "../review/reviewReads";
 
 export type NextReleaseView =
@@ -48,6 +49,14 @@ export function nextReleaseTitle(ready: CardReady | undefined): string {
       ? plural(ready.count, ready.atLeast, "change", "changes")
       : plural(ready.changeCount, false, "change", "changes");
   return `${changes} ready for production`;
+}
+
+/**
+ * A project's release as what waits on the viewer, on its card: the one list's phrase
+ * (`waitingPhrase`), then what it carries.
+ */
+export function releaseWaitWords(release: WaitingRelease, ready: CardReady | undefined): string {
+  return `${waitingPhrase({ kind: "release", key: release.groupId, release })}: ${nextReleaseTitle(ready)}`;
 }
 
 /** What stands muted after the title: its commits where they are counted apart, where it is now. */
