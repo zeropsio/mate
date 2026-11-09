@@ -176,16 +176,19 @@ const CLOCK = new Intl.DateTimeFormat(undefined, {
 });
 
 /** "since 10:42" today, "since Tue" this week, "since Sep 18" before; nothing for a bad date. */
+/** How a place's since-when fact starts ("since Tue"): a compact place line leaves it out. */
+export const SINCE_WORD = "since";
+
 export function sinceWords(at: string | undefined, nowMs: number): string | undefined {
   if (at === undefined) return undefined;
   const then = Date.parse(at);
   if (Number.isNaN(then)) return undefined;
   const day = new Date(then);
   const today = new Date(nowMs);
-  if (day.toDateString() === today.toDateString()) return `since ${CLOCK.format(day)}`;
+  if (day.toDateString() === today.toDateString()) return `${SINCE_WORD} ${CLOCK.format(day)}`;
   const days = (nowMs - then) / 86_400_000;
-  if (days >= 0 && days < 6) return `since ${WEEKDAY.format(day)}`;
-  return `since ${DAY.format(day)}`;
+  if (days >= 0 && days < 6) return `${SINCE_WORD} ${WEEKDAY.format(day)}`;
+  return `${SINCE_WORD} ${DAY.format(day)}`;
 }
 
 const joined = (names: ReadonlyArray<string>): string =>

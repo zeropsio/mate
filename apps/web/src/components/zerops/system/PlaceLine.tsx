@@ -2,7 +2,7 @@
  * A place — production or a stage — on one line, the one drawing of a place on every page and
  * panel (`placeLineView`): dot · name · a pill where not calm · version · since · address ↗.
  *
- * - `compact` (overview card, Mate panels): its name opens the place's page.
+ * - `compact` (overview card, Mate panels): its name opens the place's page; since-when is left out.
  * - `row` (the project page): the whole line opens the place's page, a chevron at its end.
  * - `header` (the place's own page, beside its title): no name; the state word said even when calm.
  */
@@ -14,7 +14,7 @@ import { Badge } from "~/components/ui/badge";
 import { formatElapsed } from "~/components/ui/progress.logic";
 import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
-import type { PlaceLine as PlaceLineData } from "../projects/projectCard.logic";
+import { SINCE_WORD, type PlaceLine as PlaceLineData } from "../projects/projectCard.logic";
 import { placeLineView } from "./PlaceLine.logic";
 
 export type PlaceLineDensity = "compact" | "row" | "header";
@@ -37,6 +37,11 @@ export function PlaceLine({
   readonly trailing?: ReactNode;
 }) {
   const view = placeLineView(line);
+  // A compact line (a card, a panel) leaves since-when out, so its address stays whole.
+  const facts =
+    density === "compact"
+      ? view.facts.filter((fact) => !fact.startsWith(`${SINCE_WORD} `))
+      : view.facts;
   const projectId = line.projectId;
   const opens = groupId !== undefined && projectId !== undefined;
   const header = density === "header";
@@ -74,7 +79,7 @@ export function PlaceLine({
           {view.version}
         </span>
       )}
-      {view.facts.map((fact, index) => (
+      {facts.map((fact, index) => (
         <Fragment key={`${String(index)}:${fact}`}>
           {index === 0 && view.version === undefined ? null : <Sep />}
           <span className="min-w-0 text-muted-foreground">{fact}</span>
@@ -101,7 +106,7 @@ export function PlaceLine({
   );
   const dot = (
     <Badge
-      aria-label={view.pill?.word ?? view.state ?? view.facts[0] ?? view.title}
+      aria-label={view.pill?.word ?? view.state ?? facts[0] ?? view.title}
       dot
       tone={view.tone}
     />
