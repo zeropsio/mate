@@ -186,7 +186,11 @@ function Harness() {
                 setOpen(false);
               }}
               onOpenKeySettings={() => setLanded("/settings/automation")}
-              people={{ kind: "ready", userRoles: [] }}
+              people={
+                params.get("people") === "failed"
+                  ? { kind: "failed", again: () => {} }
+                  : { kind: "ready", userRoles: [] }
+              }
               propose={(names) => ROLLS.find((roll) => !names.includes(roll)) ?? "Juno"}
               sources={sources}
               takenBotNames={{ names: TAKEN, complete: true }}
