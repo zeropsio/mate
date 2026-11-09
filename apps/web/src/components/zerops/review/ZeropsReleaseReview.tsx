@@ -1080,7 +1080,7 @@ export function ReleaseReadingView({
       kindLabel={name ?? ""}
       onClose={onClose}
       primary={{ label: "Release", enabled: false, safe: false, onPress: () => undefined }}
-      subtitle={<span aria-hidden="true" className="rv-pskel mt-1 w-56" />}
+      subtitle={<span aria-hidden="true" className="rv-pskel my-1 w-56" />}
       title="Release"
       titleId={titleId}
       verdict={{
