@@ -179,11 +179,6 @@ export function cannotTellWhatRuns(services: ReadonlyArray<string>): string {
   return `Can't tell what ${serviceNames(services)} ${services.length === 1 ? "runs" : "run"}`;
 }
 
-/** Services a release redeploys while it releases: what they ran is going, and they deploy. */
-export function servicesDeploying(services: ReadonlyArray<string>): string {
-  return `${serviceNames(services)} ${services.length === 1 ? "is" : "are"} deploying`;
-}
-
 /** `app`, `app and api`, `app, api and web`. */
 export function serviceNames(services: ReadonlyArray<string>): string {
   return services.length < 2

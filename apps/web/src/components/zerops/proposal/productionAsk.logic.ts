@@ -6,6 +6,7 @@
  * HQ's plan, the flow's releases, the operation that creates and HQ's decision record — never
  * remembered by a card, so a reload draws the same.
  */
+import type { ServiceCreation } from "@t3tools/client-runtime/data";
 import type { ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
 import { formatRunClock } from "@t3tools/client-runtime/zerops";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
@@ -63,6 +64,34 @@ export type ServiceCreateRun =
   /** Every process of it finished: they exist, before HQ's plan is read again. */
   | { readonly kind: "created" }
   | { readonly kind: "failed"; readonly words: string };
+
+/**
+ * A create this tab runs, from its operation's record (`serviceCreation`): the one reading every
+ * surface that follows a create says it by. `sending` covers the press before the operation has a
+ * record.
+ */
+export function serviceCreateRunOf(creation: ServiceCreation, sending: boolean): ServiceCreateRun {
+  const { progress } = creation;
+  if (progress.stage === "unknown")
+    return sending ? { kind: "working", sinceMs: undefined } : { kind: "none" };
+  if (
+    progress.stage === "submitting" ||
+    progress.stage === "accepted" ||
+    progress.stage === "reflected" ||
+    (progress.stage === "uncertain" && progress.next === "asking-owner")
+  )
+    return { kind: "working", sinceMs: creation.acceptedAtMs };
+  if (progress.stage === "done" && progress.outcome === "succeeded") return { kind: "created" };
+  return {
+    kind: "failed",
+    words:
+      serviceCreateTrouble({
+        stage: progress.stage,
+        ...("outcome" in progress ? { outcome: progress.outcome } : {}),
+        ...("reason" in progress ? { reason: progress.reason } : {}),
+      }) ?? "Zerops did not create it.",
+  };
+}
 
 export interface ServiceCreateRow {
   readonly label: string;

@@ -13,6 +13,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   ReleaseReviewView,
+  ReleaseVersionField,
   RollbackReviewView,
   type ReleaseReviewViewProps,
   type RollbackReviewViewProps,
@@ -85,43 +86,22 @@ describe("ReleaseReviewView", () => {
     expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(true);
   });
 
-  it("shows each ordered production operation, its exact creation settings and billed consequence before enabled approval", () => {
-    const page = new Window().document;
-    page.body.innerHTML = render({ servicePlan: CREATION_PLAN });
-    const operations = [...page.querySelectorAll("section")].find(
-      (section) => section.querySelector("h3")?.textContent === "Production operations",
-    );
-    const rows = [...(operations?.querySelectorAll("ol > li") ?? [])];
-    expect(rows.map((row) => row.querySelector("p")?.textContent)).toEqual([
-      "Create worker",
-      "Deploy worker",
-    ]);
-    expect([...rows[1]!.querySelectorAll("p")].map((line) => line.textContent)).toEqual([
-      "Deploy worker",
-      "dddddddddddddddddddddddddddddddddddddddd",
-    ]);
-    const creation = operations?.querySelector("[data-zerops-surface=release-import]");
-    expect(creation?.querySelector("pre")?.textContent).toBe(
-      "services:\n  - hostname: worker\n    type: nodejs@22\n    minContainers: 2\n",
-    );
-    expect(creation?.querySelector(".rv-note")?.textContent).toBe(
-      "Adds one billed service; Zerops charges their resources by these settings. Release runs it before it deploys.",
-    );
-    expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(false);
-  });
-
   it.each([
-    { who: "who may release", run: async () => {}, actions: ["Create in production", "Copy YAML"] },
-    { who: "who may not", run: undefined, actions: ["Copy YAML"] },
+    { who: "who may release", run: () => {}, actions: ["Create it now"] },
+    { who: "who may not", run: undefined, actions: [] },
   ])(
     "the import that creates production's missing services is run from the review by whoever may release: $who",
     ({ run, actions }) => {
       const page = new Window().document;
-      page.body.innerHTML = render({ servicePlan: CREATION_PLAN, onImportServices: run });
-      const creation = page.querySelector("[data-zerops-surface=release-import]");
-      expect([...(creation?.querySelectorAll("button") ?? [])].map((b) => b.textContent)).toEqual(
-        actions,
-      );
+      page.body.innerHTML = render({
+        servicePlan: CREATION_PLAN,
+        creation: { run: { kind: "none" }, created: [], onCreate: run },
+      });
+      const creation = page.querySelector("[data-release-step=create]");
+      expect(creation?.textContent).toContain("Create worker");
+      expect(
+        [...(creation?.querySelectorAll("[data-release-create]") ?? [])].map((b) => b.textContent),
+      ).toEqual(actions);
     },
   );
 
@@ -129,7 +109,7 @@ describe("ReleaseReviewView", () => {
     {
       state: "pending",
       props: { servicePlanPending: true },
-      message: "Reading production operations…",
+      message: "Reading what production needs…",
       actions: [],
     },
     {
@@ -146,13 +126,13 @@ describe("ReleaseReviewView", () => {
     ({ props, message, actions }) => {
       const page = new Window().document;
       page.body.innerHTML = render({ servicePlan: CREATION_PLAN, ...props });
-      const operations = [...page.querySelectorAll("section")].find(
-        (section) => section.querySelector("h3")?.textContent === "Production operations",
-      );
-      expect(operations?.textContent).toContain(message);
-      expect(operations?.querySelector("ol")).toBeNull();
+      const foot = page.querySelector(".rv-foot");
+      expect(foot?.textContent).toContain(message.replace(/\.$/u, ""));
+      expect(page.querySelector("[data-release-step]")).toBeNull();
       expect(
-        [...(operations?.querySelectorAll("button") ?? [])].map((button) => button.textContent),
+        [...(foot?.querySelectorAll("[data-review-note-action]") ?? [])].map(
+          (button) => button.textContent,
+        ),
       ).toEqual(actions);
       expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(true);
     },
@@ -172,11 +152,9 @@ describe("ReleaseReviewView", () => {
     });
     const page = new Window().document;
     page.body.innerHTML = markup;
-    const primary = page.querySelector("[data-review-primary]");
-    expect(primary?.textContent).toContain("Open app-abcd-3000.prg1.zerops.app");
-    expect(page.querySelector("[data-review-secondary]")?.textContent).toBe(
-      "Put it on your domain",
-    );
+    const live = page.querySelector("[data-release-step=live]");
+    expect(live?.textContent).toContain("Open app-abcd-3000.prg1.zerops.app");
+    expect(live?.textContent).toContain("Put it on your domain");
   });
 
   // The run: released, "Close" stood alone on a line of its own under Open and the domain, beside
@@ -211,7 +189,7 @@ describe("ReleaseReviewView", () => {
       services: ["app"],
       untold: ["app", "web"],
     });
-    expect(markup).toContain("app is deploying.");
+    expect(markup.replace(/<[^>]*>/gu, "")).toContain("Deploying app");
     expect(markup).toContain("Can&#x27;t tell what web runs.");
     expect(markup).not.toContain("Can&#x27;t tell what app runs.");
   });
@@ -229,9 +207,7 @@ describe("ReleaseReviewView", () => {
     };
     const page = new Window().document;
     page.body.innerHTML = render({ version, replaces: { kind: "first" } });
-    const section = [...page.querySelectorAll("section")].find(
-      (each) => each.querySelector("h3")?.textContent === "Version",
-    );
+    const section = page.querySelector("[data-zerops-surface=release-version]");
     expect(section?.textContent).toContain("v0.1.0");
     expect(section?.querySelector("input")).toBeNull();
     expect(section?.textContent).not.toContain("package.json");
@@ -239,21 +215,6 @@ describe("ReleaseReviewView", () => {
     expect(
       [...(section?.querySelectorAll("button") ?? [])].map((each) => each.textContent),
     ).toEqual(["Change"]);
-  });
-
-  // The live check of 0.15.144: released v0.1.1, the review still said "Production now: Runs
-  // v0.1.0 since 21:44" — the old release, at the new one's time.
-  it("says what production ran before the release only until production runs the release", () => {
-    const production = {
-      at: "2026-10-16T09:16:00Z",
-      parts: [{ hostname: "app", version: "v0.1.56" }],
-      addresses: [{ service: "app", url: "https://app-abcd-3000.prg1.zerops.app" }],
-    };
-    expect(render({ production })).toContain("Production now");
-    expect(render({ production, outcome: { kind: "releasing" } })).toContain("Production now");
-    expect(
-      render({ production, outcome: { kind: "released", at: "2026-10-16T19:46:00Z" } }),
-    ).not.toContain("Production now");
   });
 
   // The live check of 0.15.144: a later release offered "Use v1.0.0 · Set in the code, in
@@ -266,44 +227,12 @@ describe("ReleaseReviewView", () => {
       suggestions: [{ tag: "v1.0.0", source: "app/package.json" }],
       nextPatch: "v0.1.57",
     };
-    const markup = render({ version });
+    const markup = renderToStaticMarkup(
+      <ReleaseVersionField disabled={false} error={undefined} version={version} />,
+    );
     expect(markup).toContain("Your code names v1.0.0.");
     expect(markup).toContain("Use it");
     expect(markup).not.toContain("package.json");
-  });
-
-  // The onboarding run: at the press the Version block went and the foot rose 110 px under the
-  // pointer, then Where came and it dropped 76 px.
-  it("keeps its Version, not to be changed, from the press until Where takes its place", () => {
-    const version = {
-      value: "0.1.57",
-      onChange: () => {},
-      tags: ["v0.1.56"],
-      suggestions: [],
-      nextPatch: "v0.1.57",
-    };
-    const sections = (markup: string) => {
-      const page = new Window().document;
-      page.body.innerHTML = markup;
-      return {
-        titles: [...page.querySelectorAll("h3")].map((title) => title.textContent),
-        locked: page.querySelector('input[aria-label="Version"]')?.hasAttribute("disabled"),
-      };
-    };
-    expect(
-      sections(
-        render({ version, outcome: { kind: "releasing" }, press: { kind: "running" } as const }),
-      ),
-    ).toMatchObject({ titles: expect.arrayContaining(["Version"]), locked: true });
-    const answered = sections(
-      render({
-        version,
-        outcome: { kind: "releasing" },
-        press: { kind: "done", deploys: DEPLOYS },
-      }),
-    );
-    expect(answered.titles).toContain("Where");
-    expect(answered.titles).not.toContain("Version");
   });
 
   // The onboarding run: the panel opened on "0 changes, the first release · Can't release now"
@@ -314,7 +243,7 @@ describe("ReleaseReviewView", () => {
       replaces: { kind: "first" },
     });
     expect(markup).toContain("The first release");
-    expect(markup).toContain("Checking what goes out");
+    expect(markup).toContain("Reading what production needs…");
     expect(markup).not.toContain("0 changes");
     expect(markup).not.toContain("Can&#x27;t release now");
   });
@@ -470,6 +399,18 @@ describe("a review's deploy answer belongs to its service in Where", () => {
               press: { kind: "done", deploys: DEPLOYS },
               outcome: { kind: "releasing" },
               untold: ["app"],
+              progress: {
+                creation: undefined,
+                deploys: [
+                  {
+                    service: "app",
+                    state: "building",
+                    reason: undefined,
+                    at: undefined,
+                    endedAt: null,
+                  },
+                ],
+              },
             })
           : renderRollback({
               press: { kind: "done", deploys: DEPLOYS },
@@ -478,9 +419,13 @@ describe("a review's deploy answer belongs to its service in Where", () => {
             });
       const document = new Window().document;
       document.body.innerHTML = markup;
-      const job = document.querySelector('[data-zerops-job-state="building"]');
-      expect(job?.closest("section")?.querySelector("h3")?.textContent).toBe("Where");
-      expect(document.querySelectorAll("[data-zerops-job-state]")).toHaveLength(1);
+      // A release says it on its service's step; a roll back in Where.
+      const said = kind === "release" ? '[data-step-mark="busy"]' : "[data-zerops-job-state]";
+      const job = document.querySelector(said);
+      expect(job?.closest("section")?.querySelector("h3")?.textContent).toBe(
+        kind === "release" ? "What happens in production" : "Where",
+      );
+      expect(document.querySelectorAll(said)).toHaveLength(1);
       expect(document.body.textContent).not.toContain("96e2309");
       expect(document.body.textContent).not.toContain("app is deploying");
       expect(document.body.textContent).not.toContain("Can't tell what app runs");
@@ -524,7 +469,6 @@ it("a failed rollback comparison offers Compare again", () => {
 
 describe("a release's code in the Git browser", () => {
   const SHA = "7e1c0d2".padEnd(40, "0");
-  const API = "5b8a903".padEnd(40, "0");
   /** Every link into the Git browser: its words and its address. */
   const gitLinks = (markup: string) => {
     const document = new Window().document;
@@ -557,34 +501,6 @@ describe("a release's code in the Git browser", () => {
       gitLinks(renderRollback({ appId: "shop", onOpenChange: () => {}, comingBack: list })),
     ).toEqual(opened);
   });
-
-  it.each([
-    [
-      "one service",
-      [{ service: "app", repository: "app", sha: SHA }],
-      [["Browse files", `/git?appId=shop&repo=app&rev=${SHA}&view=code`]],
-    ],
-    [
-      "several, each by its name",
-      [
-        { service: "api", repository: "api", sha: API },
-        { service: "app", repository: "app", sha: SHA },
-      ],
-      [
-        ["api", `/git?appId=shop&repo=api&rev=${API}&view=code`],
-        ["app", `/git?appId=shop&repo=app&rev=${SHA}&view=code`],
-      ],
-    ],
-  ] as const)(
-    "Production now browses the code production runs, never naming its hash: %s",
-    (_case, productionCode, links) => {
-      const markup = render({ appId: "shop", productionCode });
-      expect(gitLinks(markup)).toEqual(links);
-      const document = new Window().document;
-      document.body.innerHTML = markup;
-      expect(document.body.textContent).not.toContain("7e1c0d2");
-    },
-  );
 
   it("a roll back browses the code each service goes back to", () => {
     const markup = renderRollback({
