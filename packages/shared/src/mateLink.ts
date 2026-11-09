@@ -39,6 +39,7 @@ import {
   IsoDateTime,
   MateAttention,
   MateHealth,
+  MatePersona,
   MateTask,
   MateTaskMessage,
   MateTaskReport,
@@ -495,6 +496,11 @@ export const MateSelf = Schema.Struct({
   name: Schema.String,
   face: Schema.String,
   standupRequestedBy: Schema.NullOr(Schema.String),
+  /**
+   * The persona chosen when it was made, kept with its stand-up ask: its server takes it at its
+   * stand-up when it holds none. Absent from an older HQ and where none was chosen.
+   */
+  standupPersona: Schema.optionalKey(MatePersona),
   automated: Schema.optionalKey(Schema.Boolean),
   ...MateChanges.fields,
   chief: Schema.NullOr(Schema.Struct({ projectId: Schema.String })),

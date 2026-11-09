@@ -1,6 +1,11 @@
 import { ObserveCredential } from "./observeCredential.ts";
 import { type HqProblem, HqRefusal } from "@t3tools/shared/hqProblems";
-import { HqRepoStorage, type HqRepoCapRequest, type KeptGitAnswer } from "@t3tools/contracts";
+import {
+  HqRepoStorage,
+  type HqRepoCapRequest,
+  type KeptGitAnswer,
+  type MatePersona,
+} from "@t3tools/contracts";
 import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
@@ -126,6 +131,11 @@ export interface HqNewMate extends HqMateRecord {
    * organization's API key. Set at its making, never changed; an older HQ ignores it.
    */
   readonly automated?: true;
+  /**
+   * The persona its stand-up runs with: its server takes it at its stand-up when it holds none.
+   * HQ keeps it only with a stand-up ask; an older HQ ignores it.
+   */
+  readonly standupPersona?: MatePersona;
 }
 
 /**

@@ -12,6 +12,7 @@ import type {
   ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
+import type { MatePersona } from "@t3tools/contracts";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
@@ -59,6 +60,8 @@ export interface EnvironmentCreationChoice {
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
   /** A Mate made automated (*Add automated Mates*): it takes tasks on the organization's key. */
   readonly automated?: true;
+  /** How a Mate works with its person from its stand-up (`NewMatePersona`). */
+  readonly persona?: MatePersona;
 }
 
 export interface ZeropsEnvironmentCreationFormProps {
@@ -131,13 +134,14 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
       groupName={groupName}
       onCancel={onCancel}
       onDoorAction={onDoorAction}
-      onCreate={({ name, recipe, face, userRoles }) => {
+      onCreate={({ name, recipe, face, userRoles, persona }) => {
         onCreate({
           name,
           withAgent: true,
           recipe,
           face,
           ...(userRoles === undefined ? {} : { userRoles }),
+          ...(persona === undefined ? {} : { persona }),
         });
       }}
       access={props.access}

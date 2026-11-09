@@ -603,6 +603,9 @@ export function makeHqExecutor(ports: {
               ...(intent.chief === true ? { chief: true as const } : {}),
               ...(intent.standUp === undefined ? {} : { standUp: intent.standUp }),
               ...(intent.automated === true ? { automated: true as const } : {}),
+              ...(intent.standupPersona === undefined
+                ? {}
+                : { standupPersona: intent.standupPersona }),
             }),
           ),
           ({ id }) => answered(requestId, id, { birthId: id }),

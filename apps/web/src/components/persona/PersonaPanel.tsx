@@ -8,7 +8,7 @@
  * does; `PersonaPanel` feeds it from the Mate's settings and HQ and writes through the Mate's
  * `updateSettings`, so what it shows is always what the server echoed back.
  */
-import type { EnvironmentId, MatePersona, MatePersonaTemplateRef } from "@t3tools/contracts";
+import type { EnvironmentId, MatePersona } from "@t3tools/contracts";
 import { MATE_PERSONA_INSTRUCTIONS_MAX_LENGTH } from "@t3tools/contracts";
 import { PREMADE_PERSONA_TEMPLATES } from "@t3tools/shared/personaTemplates";
 import {
@@ -20,19 +20,9 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
   Building2Icon,
-  CompassIcon,
   DramaIcon,
   EllipsisIcon,
-  GraduationCapIcon,
-  LightbulbIcon,
-  MessagesSquareIcon,
-  PaletteIcon,
   PenLineIcon,
-  ScanSearchIcon,
-  ShieldCheckIcon,
-  SirenIcon,
-  SquareTerminalIcon,
-  ZapIcon,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -50,6 +40,7 @@ import { serverEnvironment } from "~/state/server";
 import { useServerConfigs } from "~/state/entities";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useOrgPersonaTemplates, usePersonaTemplateWriter } from "~/zerops/usePersonaTemplates";
+import { personaIcon } from "./personaIcon";
 import { RightPanelPageEdge } from "~/components/RightPanelPage";
 import { ZeropsMateUpdateControl } from "~/components/zerops/ZeropsMateUpdateControl";
 
@@ -355,27 +346,6 @@ type PersonaView =
       /** The template tile it opened from, which takes focus back when it closes. */
       readonly from: string | null;
     };
-
-const PREMADE_ICONS: Readonly<Record<string, LucideIcon>> = {
-  guide: CompassIcon,
-  explainer: MessagesSquareIcon,
-  "creative-partner": LightbulbIcon,
-  direct: SquareTerminalIcon,
-  prototyper: ZapIcon,
-  "careful-engineer": ShieldCheckIcon,
-  reviewer: ScanSearchIcon,
-  designer: PaletteIcon,
-  "on-call": SirenIcon,
-  teacher: GraduationCapIcon,
-};
-
-/** A persona's mark: its Zerops template's own, the organization's, or the pen of one written by hand. */
-const personaIcon = (template: MatePersonaTemplateRef | undefined): LucideIcon =>
-  template === undefined
-    ? PenLineIcon
-    : template.source === "org"
-      ? Building2Icon
-      : (PREMADE_ICONS[template.id] ?? DramaIcon);
 
 export function PersonaPanelBody(props: {
   readonly mate: MateName;
