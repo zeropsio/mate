@@ -352,7 +352,10 @@ function Harness() {
             width={560}
           >
             <NextRelease onStage ready={READY} release={offer({})} />
-            <NextRelease ready={READY} release={offer({ releasing: true })} />
+            <NextRelease
+              ready={READY}
+              release={offer({ releasing: true, inFlight: "v0.1.4", tag: "v0.1.5" })}
+            />
             <NextRelease ready={{ ...READY, failed: true }} release={offer({})} />
             <NextRelease ready={undefined} release={offer({ offered: false })} />
           </Surface>

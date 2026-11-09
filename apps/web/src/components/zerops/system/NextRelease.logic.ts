@@ -65,14 +65,15 @@ function readyFacts(ready: CardReady | undefined, onStage: boolean | undefined):
 
 /**
  * The next release's state. `release`: whether the flow offers one, one is on its way, and the tag
- * it would cut (`ReleaseOffer`); `ready`: `cardReady(flow)`; `onStage`: whether the stage runs
+ * on its way to production (`ReleaseOffer.inFlight`, HQ's `release.inFlight` — never the next
+ * patch it would suggest); `ready`: `cardReady(flow)`; `onStage`: whether the stage runs
  * every change it carries (`undefined` while unread, or where there is no stage).
  */
 export function nextReleaseView(input: {
   readonly release: {
     readonly offered: boolean;
     readonly releasing: boolean;
-    readonly tag: string | undefined;
+    readonly inFlight?: string | undefined;
   };
   readonly ready: CardReady | undefined;
   readonly onStage?: boolean | undefined;
@@ -82,7 +83,9 @@ export function nextReleaseView(input: {
     return {
       kind: "releasing",
       title:
-        release.tag === undefined ? flowVerbLabel("release", true) : `Putting ${release.tag} live`,
+        release.inFlight === undefined
+          ? flowVerbLabel("release", true)
+          : `Putting ${release.inFlight} live`,
       verb: "See progress",
     };
   if (!release.offered) return { kind: "none" };
