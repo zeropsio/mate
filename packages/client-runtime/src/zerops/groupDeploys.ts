@@ -41,6 +41,7 @@ import {
   canonicalEnvironmentsOf,
   type UnreadEnvironment,
   jobFailed,
+  jobInFlight,
   jobsByService,
 } from "./hq/environments.ts";
 import { recipeTierRepositories, recipeTierServices } from "./recipeTier.ts";
@@ -78,6 +79,22 @@ export interface ReleaseCreationFailure {
   readonly services: ReadonlyArray<string>;
 }
 
+/**
+ * A release's creation of the services its production lacks, as HQ's `delta` job of it stands:
+ * what the release's review follows from the press, before any of its deploys starts.
+ */
+export interface ReleaseCreation {
+  readonly tag: string;
+  readonly state: "creating" | "created" | "failed";
+  /** HQ's words for a creation that failed, where they say something (`creationReason`). */
+  readonly reason: string | undefined;
+  /** The services it creates, as HQ names them; `undefined` from an HQ that names none. */
+  readonly services: ReadonlyArray<string> | undefined;
+  /** When HQ began it, and when it ended; ISO 8601. */
+  readonly at: string;
+  readonly endedAt: string | null;
+}
+
 /** What one environment's row is built from, before the row itself. */
 export interface GroupEnvironmentRowInput {
   readonly git?: GitDelivery | undefined;
@@ -104,6 +121,8 @@ export interface GroupEnvironmentRowInput {
   readonly releaseFailures?: ReadonlyArray<ReleaseDeployFailure>;
   /** The releases whose services HQ could not create here first (`ReleaseCreationFailure`). */
   readonly creationFailures?: ReadonlyArray<ReleaseCreationFailure>;
+  /** Each release's creation of services here, newest first, in whatever state HQ lists it. */
+  readonly releaseCreations?: ReadonlyArray<ReleaseCreation>;
   /** HQ bringing it up (`HqEnvironment.birth`). */
   readonly birth?: EnvironmentBirth | null | undefined;
   /** The services HQ stopped because its tier no longer declares them (`HqEnvironment.tierStops`). */
@@ -311,6 +330,33 @@ export function canonicalEnvironmentRowInputsOf(input: {
                   ]
                 : [],
             );
+      const releaseCreations =
+        environment.tier !== "production"
+          ? []
+          : environment.jobs.flatMap((job): ReadonlyArray<ReleaseCreation> => {
+              if (job.kind !== "delta" || job.cause !== "release" || job.ref === null) return [];
+              // One HQ skipped or replaced created nothing and failed at nothing: it says nothing.
+              const state =
+                job.state === "live"
+                  ? "created"
+                  : jobInFlight(job)
+                    ? "creating"
+                    : jobFailed(job) || job.state === "unresolved"
+                      ? "failed"
+                      : undefined;
+              return state === undefined
+                ? []
+                : [
+                    {
+                      tag: job.ref,
+                      state,
+                      reason: creationReason(job.reason),
+                      services: job.services,
+                      at: job.at,
+                      endedAt: job.endedAt,
+                    },
+                  ];
+            });
       return {
         id: environment.id,
         target: environment.target,
@@ -331,6 +377,7 @@ export function canonicalEnvironmentRowInputsOf(input: {
         ...(environment.release === undefined ? {} : { release: environment.release }),
         ...(releaseFailures.length === 0 ? {} : { releaseFailures }),
         ...(creationFailures.length === 0 ? {} : { creationFailures }),
+        ...(releaseCreations.length === 0 ? {} : { releaseCreations }),
         ...(environment.tierStops === undefined ? {} : { tierStops: environment.tierStops }),
         birth: environment.birth,
       };
