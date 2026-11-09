@@ -456,6 +456,7 @@ export function ProjectPageAside({ groupId }: { readonly groupId: string }) {
               now={NOW}
               onConnect={nothing}
               onSetUpGithub={nothing}
+              orgId="org-acme"
               orgName="Acme"
               project={groupId}
               projectName={groupId}

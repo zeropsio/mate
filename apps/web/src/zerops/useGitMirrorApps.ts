@@ -5,7 +5,10 @@
  * A repository connects through one app; an account may have more than one app installed on it,
  * so the picker reads installations, each naming its app.
  */
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
+
 import { appName, installationStanding } from "../components/settings/automationSettings.logic";
+import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 import { useGithubApp } from "./useTaskSourceSettings";
 
 export interface GitMirrorRepository {
@@ -56,7 +59,11 @@ export interface GitMirrorAppEntry {
   readonly public: boolean | null;
   readonly installUrl: string;
   readonly appUrl: string;
-  /** Whether HQ starts install trips for it (and so learns who added an account). */
+  /**
+   * Whether this person installs it through HQ's trip, which only an Owner or Admin may start (and
+   * whose installation comes back accepted); anyone else installs it on GitHub's own page, and
+   * what they add waits for an Owner or Admin's OK.
+   */
   readonly installTrip: boolean;
   /** Installations GitHub did not answer about. */
   readonly unanswered: number;
@@ -73,13 +80,31 @@ export type GitMirrorApps =
   /** HQ's answer could not be read: nothing is said of apps that may be there. */
   | { readonly kind: "unknown" };
 
+/** Where this person's last install trip stands: asked, or refused in HQ's words. */
+export type GitMirrorInstallAction =
+  | { readonly kind: "idle" }
+  | { readonly kind: "working" }
+  | { readonly kind: "refused"; readonly words: string };
+
 export function useGitMirrorApps(shown = true): {
   readonly apps: GitMirrorApps | null;
   readonly again: () => void;
-  /** Leaves for GitHub's install page of `appId` through HQ's trip, coming back to `returnTo`. */
-  readonly install: (appId: number, returnTo?: string) => void;
+  /**
+   * Leaves for GitHub's install page of `appId` through HQ's trip, coming back to `returnTo`;
+   * resolves `false` where HQ refused or did not answer — its words are `installing`'s.
+   */
+  readonly install: (appId: number, returnTo?: string) => Promise<boolean>;
+  readonly installing: GitMirrorInstallAction;
 } {
   const { read, again, install } = useGithubApp(shown);
+  const admin = roleAtLeast(useZeropsSessionOptional()?.activeOrganization?.roleCode, "ADMIN");
+  const action = read.action;
+  const installing: GitMirrorInstallAction =
+    action.kind === "working" && action.verb === "github-install"
+      ? { kind: "working" }
+      : action.kind === "failed" || action.kind === "unresolved"
+        ? { kind: "refused", words: action.words }
+        : { kind: "idle" };
   const setting = read.setting;
   let apps: GitMirrorApps | null;
   if (setting.state === "unread" || setting.state === "reading") apps = null;
@@ -98,7 +123,7 @@ export function useGitMirrorApps(shown = true): {
         public: app.public,
         installUrl: app.installUrl,
         appUrl: app.appUrl,
-        installTrip: true,
+        installTrip: admin,
         unanswered: app.installations.filter((one) => one.state === "unknown").length,
       })),
       installations: setting.held.apps.flatMap((app) =>
@@ -127,10 +152,12 @@ export function useGitMirrorApps(shown = true): {
   return {
     apps,
     again,
-    install: (appId, returnTo = window.location.href) => {
-      void install(appId, returnTo).then((url) => {
-        if (url !== null) window.location.assign(url);
-      });
+    install: async (appId, returnTo = window.location.href) => {
+      const url = await install(appId, returnTo);
+      if (url === null) return false;
+      window.location.assign(url);
+      return true;
     },
+    installing,
   };
 }

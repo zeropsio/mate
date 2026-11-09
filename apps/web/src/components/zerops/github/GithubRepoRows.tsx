@@ -12,17 +12,17 @@ import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useNavigate } from "@tanstack/react-router";
 import { GitBranchIcon, MoreHorizontalIcon } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { GitHubIcon } from "~/components/Icons";
 import { Badge } from "~/components/ui/badge";
-import { Button } from "~/components/ui/button";
+import { Button, InlineButton } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "~/components/ui/menu";
 import { Popover, PopoverPopup } from "~/components/ui/popover";
 import { Spinner } from "~/components/ui/spinner";
-import { cn } from "~/lib/utils";
+import { cn, randomUUID } from "~/lib/utils";
 import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -37,11 +37,12 @@ import {
   type RepoStateApps,
 } from "../gitMirror.logic";
 import { GithubTokenFields } from "./GithubTokenFields";
-import { holdPress, releasePress, useRepoPress } from "./repoPress";
+import { dropPress, holdPress, type HeldPress, useRepoPress } from "./repoPress";
 
 /** What a row's presses do, from the account's operations; absent ones are not offered. */
 export interface RepoRowActions {
-  readonly disconnect?: (repo: string) => Promise<void>;
+  /** Sends a disconnect under `requestId`; the row follows it through its operation's record. */
+  readonly sendDisconnect?: (repo: string, requestId: string) => Promise<unknown>;
   readonly replaceToken?: (repo: string, token: string) => Promise<HqRemoteProbe>;
   readonly unfollow?: (repo: string) => Promise<void>;
   readonly deleteRepository?: (repo: string) => Promise<void>;
@@ -79,7 +80,10 @@ export function ProjectRepositories({
   return (
     <>
       <RepoRowsView
-        actions={git.actions ?? {}}
+        actions={{
+          ...git.actions,
+          ...(git.send === undefined ? {} : { sendDisconnect: git.send.disconnect }),
+        }}
         admin={roleAtLeast(session?.activeOrganization?.roleCode, "ADMIN")}
         apps={mirror.apps?.kind === "ready" ? mirror.apps : null}
         authority={mirrorAuthorityLine(writes)}
@@ -91,6 +95,7 @@ export function ProjectRepositories({
         onSetUpGithub={() => {
           void navigate({ to: "/settings/automation" });
         }}
+        orgId={git.orgId}
         orgName={session?.activeOrganization?.name}
         project={groupId}
         projectName={groupName}
@@ -110,6 +115,8 @@ export function ProjectRepositories({
 }
 
 export interface RepoRowsViewProps {
+  /** The account's organization, which a held press belongs to. */
+  readonly orgId: string | null;
   readonly project: string;
   readonly projectName: string;
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
@@ -150,11 +157,21 @@ export function RepoRowsView(props: RepoRowsViewProps) {
 
 type Panel = "fix" | "disconnect" | "token" | "unfollow" | "delete" | null;
 
+/** Each popover's accessible name. */
+const PANEL_LABELS: Record<Exclude<Panel, null>, (repo: string) => string> = {
+  fix: () => "How to fix diverged mains",
+  disconnect: (repo) => `Disconnect ${repo}`,
+  token: (repo) => `Replace the token for ${repo}`,
+  unfollow: (repo) => `Stop following for ${repo}`,
+  delete: (repo) => `Delete ${repo} from Mate`,
+};
+
 function RepoRow({
   entry,
   project,
   projectName,
   apps,
+  orgId,
   orgName,
   now,
   authority,
@@ -165,58 +182,69 @@ function RepoRow({
   onSetUpGithub,
   pressOf,
 }: RepoRowsViewProps & { readonly entry: RepoListEntry }) {
-  const held = useRepoPress(project, entry.name);
+  const pressState = useRepoPress(orgId, project, entry.name, entry);
+  const held: RepoPress =
+    pressState.kind === "working"
+      ? pressState.press.kind === "connect"
+        ? "connecting"
+        : "disconnecting"
+      : null;
   const press = pressOf?.(entry.name) ?? held;
   const state = repoState(entry, { apps, orgName, now, press });
   const [panel, setPanel] = useState<Panel>(null);
   const [answer, setAnswer] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const inFlight = useRef(false);
   const anchor = useRef<HTMLDivElement>(null);
+  // Where focus goes back to when the popover closes: the press that opened it.
+  const opener = useRef<HTMLElement | null>(null);
+  const open = (next: Exclude<Panel, null>, from: HTMLElement | null) => {
+    opener.current = from ?? more.current;
+    setPanel(next);
+  };
+  const more = useRef<HTMLButtonElement>(null);
   const writes = authority === null;
   const remote = entry.remote;
-  // Sent and answered, the row says *Disconnecting…* until HQ's record no longer names the remote.
-  useEffect(() => {
-    if (held === "disconnecting" && remote == null && !inFlight.current)
-      releasePress(project, entry.name, "disconnecting");
-  }, [entry.name, held, project, remote]);
 
-  const disconnect = async () => {
-    if (actions.disconnect === undefined) return;
+  const disconnect = () => {
+    if (actions.sendDisconnect === undefined) return;
     setPanel(null);
     setAnswer(null);
-    inFlight.current = true;
-    holdPress(project, entry.name, "disconnecting");
-    try {
-      await actions.disconnect(entry.name);
-      inFlight.current = false;
-      if (remote == null) releasePress(project, entry.name, "disconnecting");
-    } catch (cause) {
-      inFlight.current = false;
-      releasePress(project, entry.name, "disconnecting");
+    const held: HeldPress = {
+      kind: "disconnect",
+      requestId: randomUUID(),
+      target: null,
+      via: null,
+      appName: null,
+    };
+    holdPress(orgId, project, entry.name, held);
+    actions.sendDisconnect(entry.name, held.requestId!).catch((cause: unknown) => {
+      // Never recorded: the operation has nothing to say, so the row says what stopped it.
+      dropPress(orgId, project, entry.name, held);
       setAnswer(
         stoppedWords(
           cause,
           "HQ couldn't confirm the disconnect. Check the row before trying again.",
         ),
       );
-    }
+    });
   };
+  // A refusal or an outcome HQ couldn't confirm stays on the row, in HQ's words, until dismissed.
+  const said =
+    pressState.kind === "refused" || pressState.kind === "unconfirmed"
+      ? {
+          words: pressState.words,
+          dismiss: () => dropPress(orgId, project, entry.name, pressState.press),
+        }
+      : answer === null
+        ? null
+        : { words: answer, dismiss: () => setAnswer(null) };
 
-  const fix = fixButton(state, {
-    writes,
-    admin,
-    onConnect: () => onConnect(entry.name),
-    onFix: () => setPanel("fix"),
-    onToken: () => setPanel("token"),
-    onSetUpGithub,
-  });
   const tokenRemote = remote != null && remote.via !== "app";
   const items = {
     open: state.destination,
     change: writes && press === null && (remote != null || entry.follows !== undefined),
     token: writes && press === null && tokenRemote && actions.replaceToken !== undefined,
-    disconnect: writes && press === null && remote != null && actions.disconnect !== undefined,
+    disconnect: writes && press === null && remote != null && actions.sendDisconnect !== undefined,
     unfollow:
       writes && remote == null && entry.follows !== undefined && actions.unfollow !== undefined,
     delete: entry.canDelete?.allow === true && actions.deleteRepository !== undefined,
@@ -251,18 +279,30 @@ function RepoRow({
           )}
         </p>
         <StateLine state={state} />
-        {answer === null ? null : (
+        {said === null ? null : (
           <p className="text-xs text-destructive-foreground" role="status">
-            {answer}
+            {said.words}{" "}
+            <InlineButton onClick={said.dismiss} tone="muted">
+              Dismiss
+            </InlineButton>
           </p>
         )}
       </div>
       <div className="flex items-center gap-1" ref={anchor}>
-        {fix}
+        <FixButton
+          state={state}
+          writes={writes}
+          admin={admin}
+          onConnect={() => onConnect(entry.name)}
+          onFix={(from) => open("fix", from)}
+          onToken={(from) => open("token", from)}
+          onSetUpGithub={onSetUpGithub}
+        />
         {menu ? (
           <Menu>
             <MenuTrigger
               aria-label={`More for ${entry.name}`}
+              ref={more}
               render={<Button size="icon-sm" variant="ghost" />}
             >
               <MoreHorizontalIcon aria-hidden="true" />
@@ -277,20 +317,20 @@ function RepoRow({
                 <MenuItem onClick={() => onConnect(entry.name)}>Change repository…</MenuItem>
               ) : null}
               {items.token ? (
-                <MenuItem onClick={() => setPanel("token")}>Replace token…</MenuItem>
+                <MenuItem onClick={() => open("token", null)}>Replace token…</MenuItem>
               ) : null}
               {items.disconnect ? (
-                <MenuItem onClick={() => setPanel("disconnect")}>Disconnect…</MenuItem>
+                <MenuItem onClick={() => open("disconnect", null)}>Disconnect…</MenuItem>
               ) : null}
               {items.unfollow ? (
-                <MenuItem onClick={() => setPanel("unfollow")}>Stop following…</MenuItem>
+                <MenuItem onClick={() => open("unfollow", null)}>Stop following…</MenuItem>
               ) : null}
               {items.delete ? (
                 <>
                   {items.open !== null || items.change || items.disconnect || items.unfollow ? (
                     <MenuSeparator />
                   ) : null}
-                  <MenuItem onClick={() => setPanel("delete")} variant="destructive">
+                  <MenuItem onClick={() => open("delete", null)} variant="destructive">
                     Delete from Mate…
                   </MenuItem>
                 </>
@@ -305,14 +345,20 @@ function RepoRow({
         }}
         open={panel !== null}
       >
-        <PopoverPopup align="end" anchor={anchor} width="md">
+        <PopoverPopup
+          align="end"
+          anchor={anchor}
+          aria-label={panel === null ? undefined : PANEL_LABELS[panel](entry.name)}
+          finalFocus={opener}
+          width="md"
+        >
           {panel === "fix" ? (
             <HowToFix />
           ) : panel === "disconnect" && remote != null ? (
             <Confirm
               action="Disconnect"
               onCancel={() => setPanel(null)}
-              onConfirm={dependencies.length > 0 ? undefined : () => void disconnect()}
+              onConfirm={dependencies.length > 0 ? undefined : disconnect}
               title={`Disconnect ${entry.name} from ${state.destination?.label ?? "its remote"}?`}
             >
               {dependencies.length > 0
@@ -422,19 +468,21 @@ function StateLine({ state }: { readonly state: RepoState }) {
 }
 
 /** The row's one button: the fix its state offers this person, or nothing. */
-function fixButton(
-  state: RepoState,
-  input: {
-    readonly writes: boolean;
-    readonly admin: boolean;
-    readonly onConnect: () => void;
-    readonly onFix: () => void;
-    readonly onToken: () => void;
-    readonly onSetUpGithub: () => void;
-  },
-) {
-  const press = (label: string, onClick: () => void) => (
-    <Button onClick={onClick} size="sm" variant="secondary">
+function FixButton({
+  state,
+  ...input
+}: {
+  readonly state: RepoState;
+} & {
+  readonly writes: boolean;
+  readonly admin: boolean;
+  readonly onConnect: () => void;
+  readonly onFix: (from: HTMLElement) => void;
+  readonly onToken: (from: HTMLElement) => void;
+  readonly onSetUpGithub: () => void;
+}) {
+  const press = (label: string, onClick: (from: HTMLElement) => void) => (
+    <Button onClick={(event) => onClick(event.currentTarget)} size="sm" variant="secondary">
       {label}
     </Button>
   );

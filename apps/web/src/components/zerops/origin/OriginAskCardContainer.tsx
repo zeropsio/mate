@@ -203,7 +203,8 @@ function AskCard({
               onOpenAutomation: () => void navigate({ to: "/settings/automation" }),
               admin,
               onInstall: () => {
-                if (app?.kind === "connected" && app.appId !== undefined) github.install(app.appId);
+                if (app?.kind === "connected" && app.appId !== undefined)
+                  void github.install(app.appId);
               },
             }
       }

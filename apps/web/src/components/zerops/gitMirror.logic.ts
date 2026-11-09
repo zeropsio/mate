@@ -223,13 +223,16 @@ export function repoState(
     };
   if (remote.via === "app" && remote.invalidSince !== null) {
     const stopped = `Stopped ${shortDay(remote.invalidSince)}`;
-    if (apps === null)
+    // `null`: an app HQ no longer holds — said from the start, whatever the app list says.
+    if (remote.githubAppId === null)
       return {
         destination,
-        line: `${stopped} · GitHub refused the app's access`,
+        line: `${stopped} · the GitHub app it went through is no longer in ${org}`,
         tone: "warn",
         fix: "reconnect",
       };
+    // The list unread or unreadable: why is not told yet, rather than told wrong.
+    if (apps === null) return { destination, line: stopped, tone: "warn", fix: "reconnect" };
     if (apps.apps.length === 0)
       return {
         destination,
@@ -237,16 +240,14 @@ export function repoState(
         tone: "warn",
         fix: "set-up-github",
       };
-    // `null`: an app HQ no longer holds; absent from an HQ before several apps, whose only app it is.
+    // Absent from an HQ before several apps, whose only app it is.
     const id = remote.githubAppId;
     const app =
       id === undefined
         ? apps.apps.length === 1
           ? apps.apps[0]
           : undefined
-        : id === null
-          ? undefined
-          : apps.apps.find((each) => each.appId === id);
+        : apps.apps.find((each) => each.appId === id);
     if (app === undefined)
       return {
         destination,
@@ -374,12 +375,15 @@ export function mirrorAuthorityLine(offer: HqOfferState): string | null {
 /**
  * `?mirror=<appId>&repo=<name>` on a project's page: the connect dialog the person left for
  * GitHub's install page from, opened again over it for that repository once HQ's trip brings them
- * back (HQ adds `github=`), with the installations there before they left (`connect-seen`).
+ * back, with the installations there before they left (`connect-seen`) and what GitHub said:
+ * it asked an owner of the account to approve (`github=requested`), or what was added waits for an
+ * Owner or Admin's OK (`github=waiting`).
  */
 export function parseMirrorSearch(raw: Record<string, unknown>): {
   readonly mirror?: string;
   readonly repo?: string;
   readonly "connect-seen"?: string;
+  readonly github?: "requested" | "waiting";
 } {
   if (typeof raw.mirror !== "string" || raw.mirror.length === 0) return {};
   const seen = raw["connect-seen"];
@@ -387,5 +391,6 @@ export function parseMirrorSearch(raw: Record<string, unknown>): {
     mirror: raw.mirror,
     ...(typeof raw.repo === "string" && raw.repo.length > 0 ? { repo: raw.repo } : {}),
     ...(typeof seen === "string" ? { "connect-seen": seen } : {}),
+    ...(raw.github === "requested" || raw.github === "waiting" ? { github: raw.github } : {}),
   };
 }
