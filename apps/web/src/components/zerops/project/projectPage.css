@@ -1,10 +1,11 @@
 /* A project's own page: its header, then a main column for what changes day to day and a side
-   column for what is set up once. Side by side once both have room, the side column under the
-   main one below that. A heading hugs its rows; groups stand three times further apart. */
+   column for what is set up once, the place page's frame. Side by side once both have room, the
+   side column under the main one below that. A label hugs its card; sections stand three times
+   further apart. */
 .pp {
   display: grid;
   min-width: 0;
-  gap: 20px;
+  gap: 32px;
 }
 
 .pp-head {
@@ -35,29 +36,56 @@
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 24px 20px;
+  gap: 30px 40px;
 }
 
 @container flow (min-width: 980px) {
   .pp-cols {
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-columns: minmax(0, 1fr) 392px;
   }
 }
 
+/* The label's own line box holds 7 px over and under its words: these gaps read as 36 and 32. */
 .pp-main,
-.pp-side {
+.pp-side,
+.pp-setup {
   display: grid;
   min-width: 0;
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
-  gap: 24px;
+  gap: 30px;
 }
 
-/* One group of the main column: its label hugging its card. */
+.pp-side,
+.pp-setup {
+  gap: 26px;
+}
+
+/* One section: its label hugging its card. */
 .pp-group {
   display: grid;
   min-width: 0;
-  gap: 6px;
+  gap: 4px;
+}
+
+/* The project's state beside its title, where it is not calm: "Not live yet" on a hollow dot. */
+.pp-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.pp-state::before {
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+  border-radius: 999px;
+  content: "";
 }
 
 /* A card of the page: the overview card's ground and edge, so a project reads as one thing on
@@ -69,7 +97,7 @@
   --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
   display: grid;
   min-width: 0;
-  border-radius: 16px;
+  border-radius: 14px;
   background: var(--ov-ground);
   box-shadow:
     0 0 0 1px color-mix(in oklab, var(--foreground) 6.5%, transparent),
@@ -97,6 +125,10 @@
 .pp-place {
   gap: 10px;
   padding: 12px 16px;
+}
+
+.pp-place + .pp-place {
+  margin-top: 4px;
 }
 
 .pp-brought {
@@ -131,14 +163,6 @@
 .pp-more {
   display: flex;
   padding: 0 8px 0 38px;
-}
-
-/* The side column: a card a setup, each under its label. */
-.pp-setup {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 26px;
 }
 
 /* A side card: what one setup is, its label above it. */
@@ -199,60 +223,72 @@
   font-variant-numeric: tabular-nums;
 }
 
-.pp-addresses {
-  display: grid;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+/* Going live, on a project not live yet: what it gives, its one verb; a stage, optional, under it. */
+.pp-golive {
+  overflow: hidden;
 }
 
-.pp-addresses > li {
+.pp-golive-hero {
   display: flex;
   min-width: 0;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-/* Whose address it is, where more than one place serves: quiet, at the row's end. */
-.pp-site-place {
-  flex: none;
-  color: var(--muted-foreground);
-  font-size: var(--text-xs);
-}
-
-/* An address opened beside the page: its host, then the arrow that says it leaves. */
-.pp-site {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
   align-items: center;
+  gap: 18px;
+  padding: 20px;
+}
+
+.pp-golive-icon {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+
+.pp-golive-text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
   gap: 4px;
+}
+
+.pp-golive-title {
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.pp-golive-why {
+  color: var(--muted-foreground);
+  font-size: 13.5px;
+  line-height: 1.45;
+  text-wrap: pretty;
+}
+
+.pp-golive-stage {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--ov-rule);
   color: var(--muted-foreground);
   font-size: var(--text-line);
   line-height: 20px;
-  text-underline-offset: 2px;
 }
 
-.pp-site:hover {
+.pp-golive-stage strong {
   color: var(--foreground);
-  text-decoration: underline;
+  font-weight: 500;
 }
 
-.pp-detail {
-  padding: 12px;
-}
-
-/* Who has access, opened here: the table's own section stands on this card, named by its label. */
-.pp-detail > .ov-sec {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
-}
-
-.pp-detail > .ov-sec > .ov-sec-name {
-  display: none;
+.pp-golive > .pp-golive-run {
+  padding: 0 20px 16px;
 }
 
 /* A project page's History: a row per release — its version, Live on the one production runs,
@@ -423,4 +459,60 @@ button.pp-hist-head:hover {
 
 .pp-hist-note {
   padding: 2px 8px 6px;
+}
+
+.pp-addresses {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pp-addresses > li {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Whose address it is, where more than one place serves: quiet, at the row's end. */
+.pp-site-place {
+  flex: none;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+/* An address opened beside the page: its host, then the arrow that says it leaves. */
+.pp-site {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: var(--text-line);
+  line-height: 20px;
+  text-underline-offset: 2px;
+}
+
+.pp-site:hover {
+  color: var(--foreground);
+  text-decoration: underline;
+}
+
+.pp-detail {
+  padding: 12px;
+}
+
+/* Who has access, opened here: the table's own section stands on this card, named by its label. */
+.pp-detail > .ov-sec {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.pp-detail > .ov-sec > .ov-sec-name {
+  display: none;
 }
