@@ -1,7 +1,7 @@
 /**
  * A Mate's Zerops and Code pages, in the states they reach, at the panel's two common widths.
  *
- * Served by the dev server at `/design-panels.html` (`?theme=dark`, `?panel=code|zerops|both`,
+ * Served by the dev server at `/design-panels.html` (`?theme=dark`, `?panel=code|zerops|both|launcher`,
  * `?w=420|540`, `?s=<scenario>`; `?w=1351` is the panel maximized at 1786 px). The panels take their reads as props (their surfaces hold the hooks), so this needs
  * no session: invented projects, Mates and services only.
  *
@@ -39,6 +39,7 @@ import {
 } from "~/components/CodePage";
 import type { DiffChoice } from "~/components/DiffPanel.logic";
 import { DiffPanelLoadingState } from "~/components/DiffPanelShell";
+import { RightPanelEmptyState, surfaceActions } from "~/components/RightPanelTabs";
 import {
   ServiceBrowserLinkContext,
   type ServicePreviewResolver,
@@ -65,6 +66,11 @@ import { ZeropsAgentAuthCard } from "~/components/zerops/ZeropsAgentAuthCard";
 import { MateUpdateLine } from "~/components/zerops/MateUpdateLine";
 import { ZeropsMateVerb } from "~/components/zerops/ZeropsMateCard";
 import { GitCommitsFold } from "~/components/zerops/ZeropsGitBlockCommits";
+import {
+  RIGHT_PANEL_KINDS,
+  type RightPanelAvailability,
+  type RightPanelKind,
+} from "~/rightPanelKinds";
 import type { AppRouter } from "~/router";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
@@ -837,7 +843,38 @@ function Frame({
   );
 }
 
+/** Every page a conversation in a Zerops project can open, one of them not offered here. */
+const LAUNCHER = surfaceActions({
+  availability: {
+    ...(Object.fromEntries(RIGHT_PANEL_KINDS.map((kind) => [kind, "available"])) as Record<
+      RightPanelKind,
+      RightPanelAvailability
+    >),
+    overview: "hidden",
+    mac: "unavailable",
+  },
+  liveAgentCount: 2,
+  onAdd: () => {},
+  onAddTerminal: () => {},
+});
+
+/** The empty panel: "Open a page", at the panel's widths. */
+function HarnessLauncher() {
+  return (
+    <main className="min-h-screen bg-muted/40 p-6 text-foreground">
+      <div className="flex flex-wrap items-start gap-6">
+        {widths.map((width) => (
+          <Frame key={width} label={`Open a page · ${String(width)} px`} width={width}>
+            <RightPanelEmptyState actions={LAUNCHER} />
+          </Frame>
+        ))}
+      </div>
+    </main>
+  );
+}
+
 function HarnessPage() {
+  if (shownPanel === "launcher") return <HarnessLauncher />;
   return (
     <main className="min-h-screen bg-muted/40 p-6 text-foreground">
       <div className="flex flex-col gap-10">

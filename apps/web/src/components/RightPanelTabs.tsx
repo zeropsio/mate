@@ -271,12 +271,33 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): SurfaceLaun
   }
 }
 
+/** The launcher's cards for what a conversation can open, each with its mark and its presses. */
+export function surfaceActions(input: {
+  readonly availability: Record<RightPanelKind, RightPanelAvailability>;
+  readonly onAdd: (kind: Exclude<RightPanelKind, "file" | "terminal">) => void;
+  readonly onAddAt?: ((kind: Exclude<RightPanelKind, "file" | "terminal">) => void) | undefined;
+  readonly onAddTerminal: () => void;
+  readonly liveAgentCount: number;
+}): SurfaceAction[] {
+  return launcherActions(input.availability).map((action) => {
+    const kind = action.kind;
+    return {
+      ...action,
+      icon: surfaceLauncherIcon(kind),
+      onClick: kind === "terminal" ? input.onAddTerminal : () => input.onAdd(kind),
+      onAlias:
+        kind === "terminal" ? input.onAddTerminal : () => (input.onAddAt ?? input.onAdd)(kind),
+      badgeCount: kind === "agents" ? input.liveAgentCount : 0,
+    };
+  });
+}
+
 /**
  * Renders the empty panel as a keyboard-first card launcher. A surface's
  * letter opens it outside typing contexts, while unavailable surfaces remain
  * visible with a one-line reason.
  */
-function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
+export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
   // Only an arrow key scrolls the lit card into view: a hovered one is
@@ -388,7 +409,9 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
   const cardShellClass =
     "flex w-full min-w-0 flex-col items-start gap-1 rounded-lg border border-border/80 bg-card p-3 text-left @[22rem]:p-3.5 dark:border-transparent dark:shadow-none dark:inset-ring-1 dark:inset-ring-white/5";
   const highlightedCardClass = "bg-accent/60 dark:inset-ring-white/20";
-  const cardTextClass = "text-muted-foreground text-xs leading-relaxed";
+  // Two lines held under every name, whether its words need one or two: every card is one height,
+  // and none grows when a neighbour's words wrap.
+  const cardTextClass = "min-h-[2lh] text-muted-foreground text-xs leading-relaxed";
 
   return (
     <div
@@ -411,7 +434,9 @@ function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] }) {
           <h3 className="font-medium text-foreground text-sm">Open a page</h3>
           <p className="mt-1 text-muted-foreground text-xs">Choose what to show beside the chat.</p>
         </div>
-        <div className="grid grid-cols-1 gap-2 @[24rem]:grid-cols-2">
+        {/* Rows of one height, the tallest card's: words that need a third line in a narrow panel
+            raise every card with them. */}
+        <div className="grid auto-rows-fr grid-cols-1 gap-2 @[24rem]:grid-cols-2">
           {props.actions.map((action) =>
             action.available ? (
               <button
@@ -638,17 +663,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     return () => document.removeEventListener("keydown", handler, true);
   }, []);
 
-  const addSurfaceActions: SurfaceAction[] = launcherActions(props.availability).map((action) => {
-    const kind = action.kind;
-    return {
-      ...action,
-      icon: surfaceLauncherIcon(kind),
-      onClick: kind === "terminal" ? props.onAddTerminal : () => props.onAdd(kind),
-      onAlias:
-        kind === "terminal" ? props.onAddTerminal : () => (props.onAddAt ?? props.onAdd)(kind),
-      badgeCount: kind === "agents" ? props.liveAgentCount : 0,
-    };
-  });
+  const addSurfaceActions = surfaceActions(props);
 
   const handleAddSurfaceMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const action = surfaceShortcutActionForKey(addSurfaceActions, event.nativeEvent);
