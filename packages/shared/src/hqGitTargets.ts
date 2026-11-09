@@ -36,6 +36,8 @@ export const HqRemoteRefusalReason = Schema.Literals([
   "app_unavailable",
   "needs_owner_seal",
   "object_too_large",
+  "app_ambiguous",
+  "repository_in_use",
 ]);
 export type HqRemoteRefusalReason = typeof HqRemoteRefusalReason.Type;
 export const HqGitEnvironmentRefusalReason = Schema.Literals([
@@ -109,13 +111,17 @@ const REMOTE_WORDS: Record<HqRemoteRefusalReason, string> = {
   bad_branch: "This branch name is not valid. Enter a valid Git branch name.",
   key_unavailable: "HQ cannot open the saved token. Replace it with a new token.",
   app_not_installed:
-    "The organization's GitHub app isn't installed on this repository. Add the repository to the app on GitHub, then try again.",
+    "No GitHub app in this organization is installed on this repository. Add the repository to an app's account on GitHub, then try again.",
   app_unavailable:
-    "GitHub didn't let the organization's GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
+    "GitHub didn't let the GitHub app act on this repository just now. Check the app's installation on GitHub, then try again.",
   needs_owner_seal:
-    "The organization's GitHub app needs to be made again by an Owner or Admin before Mate uses it. They do it in Settings › Automation › GitHub.",
+    "This GitHub app needs an Owner or Admin to confirm it before Mate uses it. They do it in Settings › GitHub.",
   object_too_large:
     "A file in this repository's history is larger than 100 MiB. HQ takes files up to 100 MiB, as GitHub does.",
+  app_ambiguous:
+    "More than one of the organization's GitHub apps reaches this repository. Pick the account to connect through, then try again.",
+  repository_in_use:
+    "Another repository in this organization is already connected to this GitHub repository. Disconnect it there, or pick another repository.",
 };
 /** The same explanation reaches HTTP clients and internal Git consumers. */
 export function remoteRefusalWords(
@@ -123,6 +129,9 @@ export function remoteRefusalWords(
 ): string {
   if (refusal.reason === "remote_taken" && refusal.applicationName) {
     return `${refusal.repository ?? "This repository"} is already connected to ${refusal.applicationName}. Disconnect it under Repositories on ${refusal.applicationName}'s page, or use another repository.`;
+  }
+  if (refusal.reason === "repository_in_use" && refusal.applicationName) {
+    return `${refusal.repository ?? "This GitHub repository"} is already connected in ${refusal.applicationName}. Disconnect it there, or pick another repository.`;
   }
   if (refusal.reason === "in_use" && refusal.environments?.length) {
     return `Git environments ${refusal.environments.join(", ")} still use this connection. Remove them before disconnecting it.`;

@@ -1,7 +1,7 @@
 /**
- * A repository mirrored to GitHub through the organization's GitHub app, with no token: HQ's
- * answer starts it, and its repository record — the remote at that repository, reached through the
- * app — is what ends it, so the mirror dialog says *Saving…* until the record shows it. And one
+ * A repository mirrored to GitHub through one of the organization's GitHub apps, with no token:
+ * HQ's answer starts it, and its repository record — the remote at that repository, reached through
+ * that app — is what ends it, so the mirror dialog says *Saving…* until the record shows it. And one
  * whose code HQ keeps while it follows a GitHub repository, with no token: HQ's answer ends it.
  * Stopping that follow ends once the repository's record no longer follows one. Deleting a
  * repository ends once the application's repository list no longer names it.
@@ -20,6 +20,8 @@ declare module "../model.ts" {
       readonly repo: string;
       /** The GitHub repository the app is installed on: `owner/name`. */
       readonly repository: string;
+      /** The organization's app to go through; absent: the one whose installation reaches it. */
+      readonly githubAppId?: number;
     };
     readonly "follow-github-repository": {
       readonly orgId: string;
@@ -74,7 +76,8 @@ export const connectGitRemoteViaApp: OperationKind<"connect-git-remote-via-app">
       return (
         remote != null &&
         remote.via === "app" &&
-        githubFullName(remote.url) === intent.repository.toLowerCase()
+        githubFullName(remote.url) === intent.repository.toLowerCase() &&
+        (intent.githubAppId === undefined || remote.githubAppId === intent.githubAppId)
       );
     },
   ),
