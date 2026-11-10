@@ -23,6 +23,7 @@ import {
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
+import { NO_ACCESS } from "~/zerops/hqRead.logic";
 import { environmentTitle } from "../place/place.logic";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
@@ -537,8 +538,7 @@ export function changeReadVerdict(input: {
     return verdict("attention", "This change could not be read", read.reason);
   if (input.failure !== undefined)
     return verdict("attention", "This change could not be read", input.failure);
-  if (input.projectKnown === false)
-    return verdict("attention", "This change's project isn't known here");
+  if (input.projectKnown === false) return verdict("attention", NO_ACCESS.title, NO_ACCESS.why);
   return verdict("quiet", "Waiting for the organization's HQ");
 }
 

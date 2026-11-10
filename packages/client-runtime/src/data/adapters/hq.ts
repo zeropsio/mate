@@ -504,10 +504,10 @@ export function hqNavigationLink(options: {
                     )?.(decoded, value) ?? revision,
                 } as Row);
             }
-          const removals: RemovalInput[] = message.removals.flatMap(({ key: recordKey, reason }) =>
+          const removals: RemovalInput[] = message.removals.flatMap(({ key: recordKey }) =>
             entry.registered.families.flatMap(({ spec }) => {
               const id = spec.hq!.idOf(recordKey, entry.registered.owner);
-              return id === null ? [] : [{ family: spec.family, id, reason }];
+              return id === null ? [] : [{ family: spec.family, id }];
             }),
           );
           store.dispatch({

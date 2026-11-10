@@ -1,36 +1,14 @@
 import { describe, expect, it } from "vite-plus/test";
-import { hqNavigationSettled, NO_ZEROPS_ACCESS_LINE, unreadFlowWords } from "./hqRead.logic";
+import { hqNavigationSettled, NO_ACCESS, unreadFlowWords } from "./hqRead.logic";
 
 describe("an unread HQ project's words", () => {
   it.each([
     ["still reading", false, false, undefined, null],
-    [
-      "HQ's current structure lacks it",
-      true,
-      false,
-      undefined,
-      "This project isn't here any more.",
-    ],
+    ["HQ's current structure lacks it", true, false, undefined, NO_ACCESS],
     ["HQ does not answer", false, true, "HQ isn't answering.", "HQ isn't answering."],
     ["its flow has not landed", true, true, undefined, null],
   ] as const)("%s", (_case, groupsRead, groupKnown, failure, words) => {
-    expect(unreadFlowWords({ groupsRead, groupKnown, failure, orgRole: "OWNER" })).toBe(words);
-  });
-
-  // HQ lists only the projects Zerops gives the viewer; a role below read-only sees only those it
-  // grants, so a project missing from the list is not proof that it is gone.
-  it.each([
-    ["a member whose Zerops role covers no project of it", "NO_ACCESS", NO_ZEROPS_ACCESS_LINE],
-    [
-      "a member whose Zerops role reads every project",
-      "READ_ONLY",
-      "This project isn't here any more.",
-    ],
-    ["a member whose role is not read yet", undefined, null],
-  ] as const)("%s", (_case, orgRole, words) => {
-    expect(
-      unreadFlowWords({ groupsRead: true, groupKnown: false, failure: undefined, orgRole }),
-    ).toBe(words);
+    expect(unreadFlowWords({ groupsRead, groupKnown, failure })).toBe(words);
   });
 });
 

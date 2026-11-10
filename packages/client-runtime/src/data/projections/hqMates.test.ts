@@ -318,7 +318,7 @@ describe("keyed HQ Mate readers", () => {
       scopes: [{ scope, generation: 1 }],
       reset: false,
       rows: [],
-      removals: [{ family: "placement", id: "a", reason: "no-access" }],
+      removals: [{ family: "placement", id: "a" }],
     });
     expect(registry.get(overview)).toBeNull();
     expect(registry.get(store.data.project(hqMates, "org")).mates).toEqual({});

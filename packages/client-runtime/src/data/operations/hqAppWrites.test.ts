@@ -156,7 +156,7 @@ describe("HQ application verbs", () => {
           scopes: [{ scope: hqAppsScope(orgId), generation: 0 }],
           reset: false,
           rows: [],
-          removals: [{ family: "hqApp", id: appId, reason: "deleted" }],
+          removals: [{ family: "hqApp", id: appId }],
         });
         yield* operations.retry("request");
         expect(operationProgress.derive(readsOfState(store.state()), "request")).toMatchObject({
@@ -281,7 +281,7 @@ it.effect.each(["keep", "delete"] as const)(
         scopes: [{ scope, generation: 0 }],
         reset: false,
         rows: [],
-        removals: [{ family: "hqKeptGit", id: appId, reason: "no-access" }],
+        removals: [{ family: "hqKeptGit", id: appId }],
       });
       yield* operations.retry("kept-git");
       yield* operations.submit(intent, "kept-git");

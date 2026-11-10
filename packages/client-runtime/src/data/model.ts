@@ -282,6 +282,10 @@ export type PublicRead<T> =
       readonly label?: string;
     };
 
+/** HQ removed it for this person: a deletion and a lost grant read the same. */
+export const removedForViewer = (fact: PublicRead<unknown>): boolean =>
+  fact.kind === "withheld" && fact.reason === "denied";
+
 /** The keys a reduction publishes: one per fact, membership, index and stream. */
 export type ReadKey =
   | `${Family}:${string}`

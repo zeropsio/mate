@@ -46,7 +46,7 @@ const progress = (store: ReturnType<typeof account>, id: string) =>
   operationProgress.derive(readsOfState(store.state()), id);
 
 describe("Mate deletion cleanup receipts", () => {
-  it.effect.each(["deleted", "denied", "omitted"] as const)(
+  it.effect.each(["denied", "omitted"] as const)(
     "lost HQ completion needs its exact original receipt, not placement $0",
     (evidence) =>
       Effect.gen(function* () {
@@ -84,13 +84,6 @@ describe("Mate deletion cleanup receipts", () => {
         yield* operations.submit(COMPLETE, "complete");
         if (evidence === "omitted")
           seedHqNavigation(store, ORG, { structure: { apps: [], ungrouped: [] } });
-        else if (evidence === "deleted")
-          store.dispatch({
-            kind: "proven-deletion",
-            family: "placement",
-            id: "p1",
-            evidence: "HQ released this project",
-          });
         else store.dispatch({ kind: "access", family: "placement", id: "p1", access: "denied" });
         yield* operations.retry("complete");
         expect(progress(store, "complete").stage).toBe("uncertain");

@@ -248,7 +248,7 @@ describe("who lives in each environment, derived", () => {
       scopes: [{ scope, generation: reloaded.state().streams.get(scope)?.generation ?? 0 }],
       reset: false,
       rows: [],
-      removals: [{ family: "placement", id: PROJECT.id, reason: "deleted" }],
+      removals: [{ family: "placement", id: PROJECT.id }],
     });
     expect(
       appAtomRegistry.get(zeropsMatesAtom).has(FEN),
@@ -279,7 +279,7 @@ describe("who lives in each environment, derived", () => {
       scopes: [{ scope, generation: store.state().streams.get(scope)?.generation ?? 0 }],
       reset: false,
       rows: [],
-      removals: [{ family: "placement", id: PROJECT.id, reason: "deleted" }],
+      removals: [{ family: "placement", id: PROJECT.id }],
     });
     expect(appAtomRegistry.get(zeropsMatesAtom).has(FEN)).toBe(false);
   });

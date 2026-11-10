@@ -160,11 +160,10 @@ export interface DeliveryScope {
   readonly generation: number;
 }
 
-/** A record its source removed explicitly, and why: the one way a delivered record leaves. */
+/** A record its source removed explicitly: the one way a delivered record leaves. */
 export interface RemovalInput {
   readonly family: Family;
   readonly id: string;
-  readonly reason: "deleted" | "no-access";
 }
 
 export type RuntimeDirective =
@@ -746,23 +745,11 @@ function reduceDelivery(
       next = withMembership(next, scope, { ...membership, coverage: "partial" });
     }
   for (const removal of input.removals)
-    next =
-      removal.reason === "deleted"
-        ? reduceEvidence(
-            next,
-            {
-              kind: "proven-deletion",
-              family: removal.family,
-              id: removal.id,
-              evidence: `${input.via === "hq-stream" ? "HQ" : "Its source"} removed it as deleted`,
-            },
-            changed,
-          )
-        : reduceEvidence(
-            next,
-            { kind: "access", family: removal.family, id: removal.id, access: "denied" },
-            changed,
-          );
+    next = reduceEvidence(
+      next,
+      { kind: "access", family: removal.family, id: removal.id, access: "denied" },
+      changed,
+    );
   return next;
 }
 

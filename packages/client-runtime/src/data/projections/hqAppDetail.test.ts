@@ -102,7 +102,7 @@ const withheld = apply(read, [
     scopes: [{ scope: SCOPE, generation: 1 }],
     reset: false,
     rows: [],
-    removals: [{ family: "hqAppDetail", id: "shop/repos", reason: "no-access" }],
+    removals: [{ family: "hqAppDetail", id: "shop/repos" }],
   },
 ]);
 
@@ -159,7 +159,7 @@ describe("hqAppDetail", () => {
         scopes: [{ scope: SCOPE, generation: 1 }],
         reset: false,
         rows: [],
-        removals: [{ family: "hqAppDetail", id: "shop/problems", reason: "deleted" }],
+        removals: [{ family: "hqAppDetail", id: "shop/problems" }],
       },
     ]);
     expect(detail(cleared).problems).toBeUndefined();

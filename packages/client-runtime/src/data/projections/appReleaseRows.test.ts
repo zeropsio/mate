@@ -102,7 +102,7 @@ describe("release source coverage", () => {
           scopes: [{ scope, generation: 1 }],
           reset: false,
           rows: [],
-          removals: [{ family: "hqAppDetail", id: "shop/releases", reason: "no-access" }],
+          removals: [{ family: "hqAppDetail", id: "shop/releases" }],
         },
       ],
       deliver([release]),

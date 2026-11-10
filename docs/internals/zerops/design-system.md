@@ -61,6 +61,8 @@ One word for each thing:
 - **planning** — HQ deciding which deploys a merge or release asks for. Until HQ has, a surface says **Waiting for
   planning**, never that nothing will deploy. Source words: rollout, plan lock.
 - **setup**, **setup files** — never recipe or import files.
+- **No access** — a project HQ does not list for this person, explained under it as **Deleted or access removed**.
+  HQ never says which of the two it was, so no surface does.
 - **Read access**, **Full access** — sentence case, each explained once where it is chosen.
 - **Owner**, **Admin**, **Developer**, **Guest** — the roles, as the invite names them; the menu's foot says
   "{organization} · {role}" for every role. A Zerops role no preset names reads by what it reaches (**Works on every

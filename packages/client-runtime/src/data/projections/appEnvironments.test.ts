@@ -46,7 +46,7 @@ const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
   inputs.reduce((next, input) => reduceAccount(next, input).state, state);
 const deliver = (
   rows: ReadonlyArray<Row>,
-  removals: ReadonlyArray<{ family: "hqApp"; id: string; reason: "deleted" | "no-access" }> = [],
+  removals: ReadonlyArray<{ family: "hqApp"; id: string }> = [],
 ): Extract<AccountInput, { readonly kind: "delivery" }> => ({
   kind: "delivery",
   via: "hq-stream",
@@ -84,7 +84,7 @@ const refused = apply(told, [
     },
   },
 ]);
-const removed = apply(told, [deliver([], [{ family: "hqApp", id: "shop", reason: "no-access" }])]);
+const removed = apply(told, [deliver([], [{ family: "hqApp", id: "shop" }])]);
 
 const of = (state: AccountState, appId: string) =>
   appEnvironments.derive(readsOfState(state), { orgId: ORG, appId });

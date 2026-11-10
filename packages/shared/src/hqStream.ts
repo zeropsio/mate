@@ -94,7 +94,7 @@ export const HqCursor = Schema.Struct({
 export type HqCursor = typeof HqCursor.Type;
 export const HqRemoval = Schema.Struct({
   key: Schema.String,
-  reason: Schema.Literals(["deleted", "no-access"]),
+  reason: Schema.Literal("no-access"),
 });
 export type HqRemoval = typeof HqRemoval.Type;
 export const HqValue = Schema.Struct({ key: Schema.String, value: Schema.Unknown });

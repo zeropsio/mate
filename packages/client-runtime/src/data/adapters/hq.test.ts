@@ -1009,7 +1009,7 @@ describe("hqNavigationLink", () => {
       });
       expect(phase(store, hqMateScope(ORG, "ada"))).toBe("live");
       yield* fixture.send(
-        navigation("scope-values", 4, [], [{ key: "project:ada", reason: "deleted" }]),
+        navigation("scope-values", 4, [], [{ key: "project:ada", reason: "no-access" }]),
       );
       yield* settle;
       yield* settle;
