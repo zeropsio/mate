@@ -63,13 +63,22 @@ export function calmLineSettle<T>(calm: CalmLine<T>, at: number): CalmLine<T> {
 
 /**
  * The run's clock as it may show: never less than it showed — a wait's end
- * reaching the clock a render before the time it waited would step it back —
- * unless the run it counts is another (`run` differs from the last shown).
+ * reaching the clock a render before the time it waited would step it back,
+ * and so would its engine's start, heard seconds after the send it counted
+ * from — unless the run it counts is another (`run`, its start, differs from
+ * the last shown by more than a send's start told again by the server).
  */
 export function calmClockMs(
   last: { readonly run: string; readonly ms: number } | null,
   run: string,
   ms: number,
 ): number {
-  return last !== null && last.run === run ? Math.max(last.ms, ms) : ms;
+  return last !== null && sameRun(last.run, run) ? Math.max(last.ms, ms) : ms;
+}
+
+/** How far apart the tab's own stamp of a send and the server's of it may stand. */
+const RESTAMPED_MS = 10_000;
+
+function sameRun(last: string, run: string): boolean {
+  return last === run || Math.abs(Date.parse(last) - Date.parse(run)) < RESTAMPED_MS;
 }

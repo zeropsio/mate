@@ -481,14 +481,18 @@ function workedMs(status: RunStatus): number {
 
 /**
  * A live run's clock at `now`: the time its worked line will say (run 2: it read 0:31 at a Stop the
- * card then said took 28s). Its engine's runs where it has them — before its run starts it stands
- * at nothing, between runs where the last one ended — else the span since the send, less waits; it
- * stands where a wait on the person or on its helpers began.
+ * card then said took 28s). Its engine's runs where it has them — between runs it stands where the
+ * last one ended — else the span since the send, less waits; it stands where a wait on the person
+ * or on its helpers began. Before its engine says its first run started it counts from the send:
+ * it stood at 0:00 for 6.5 s while the Mate's session opened (2026-11-10), and the start, once
+ * heard, never steps it back (`calmClockMs`).
  */
 export function runClockMs(status: RunStatus, now: number): number {
   const at = status.waitingSince === null ? now : Date.parse(status.waitingSince);
-  if (status.ran === undefined) return at - Date.parse(status.startedAt) - status.waitedMs;
+  const sinceSent = at - Date.parse(status.startedAt) - status.waitedMs;
+  if (status.ran === undefined) return sinceSent;
   const { ms, since, personMs } = status.ran;
+  if (since === null && ms === 0) return Number.isFinite(sinceSent) ? Math.max(0, sinceSent) : 0;
   return ms + (since === null ? 0 : Math.max(0, at - since)) - personMs;
 }
 

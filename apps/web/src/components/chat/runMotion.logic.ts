@@ -1,14 +1,15 @@
 /**
  * How a run's card moves (pass 39, the owner: "the non-animated height
- * expansions, the sometimes weirdly acting scroll processes"). One curve for
- * every move the card makes on its own — its room growing or shrinking as
- * lines arrive and leave, its scroll following its foot: each frame takes a
- * share of what is left, so it starts fast and lands soft (a strong ease-out),
- * is retargeted from wherever it stands when something else arrives, and
- * never passes its target.
+ * expansions, the sometimes weirdly acting scroll processes"). Its room
+ * growing or shrinking as lines arrive and leave goes by a travel
+ * (`travelTiming`): every box and row one change moves shares its time and
+ * its curve. A scroll following its foot goes by `approach`: each frame takes
+ * a share of what is left, so it starts fast and lands soft (a strong
+ * ease-out), is retargeted from wherever it stands when something else
+ * arrives, and never passes its target.
  */
 
-/** The room's time constant: from a line's arrival to standing still in about 220 ms. */
+/** A fold's time constant: from its start to standing still in about 220 ms. */
 export const ROOM_TAU_MS = 45;
 
 /** The scroll following its foot glides on the same curve. */
@@ -24,7 +25,7 @@ export const MAX_SPEED_PX_PER_MS = 1.6;
 /** The longest frame a move's speed counts: a frame and a fifth at 60 Hz. */
 const ON_TIME_FRAME_MS = 20;
 
-/** The duration-based height ease finishes after a frame this late (`stepHeight`). */
+/** A height ease by its time finishes after a frame this late (`stepHeight`, `travelElapsed`). */
 export const LONG_GONE_MS = 250;
 
 /** Closer than this to its target, a move stands at it. */
@@ -53,45 +54,55 @@ export function approach(
 }
 
 /**
- * The speed a frame gives the eases of one card, each way: a landed line's
- * room and the slot squeezing the history each took their own 32 px, and
- * the history moved up to 53 px in one frame (the p43 review), so eases the
- * same way share it. Growing and shrinking each have their own: a landing's
- * history grows by what its slot gives, on one curve each, and the card's
- * height stays (one budget for both grew it 50 px and back, the p43
- * verification). `at` is the frame it was given for.
+ * The fastest an edge of a run's card travels: 10 px a frame at 60 Hz, 12 on a
+ * frame a fifth late — a thought gaining two lines grew its box 40 px in one
+ * frame, a command's body 82 (2026-11-10).
  */
-export interface EaseBudget {
-  at: number;
-  grow: number;
-  shrink: number;
+export const TRAVEL_MAX_SPEED_PX_PER_MS = 0.6;
+
+/** How long a travel takes, and how steep it starts (`travelProgress`). */
+export interface TravelTiming {
+  readonly durationMs: number;
+  /** Its speed at the start, as a multiple of its mean: 3 a cubic ease-out, 1 a line. */
+  readonly steepness: number;
 }
 
 /**
- * What of `step` an ease takes in the frame at `now`, `dtMs` after its last:
- * the first ease heard in a frame gives the budget that frame's speed each
- * way, and each takes from what is left its way. An unseen move stands at its target.
+ * How a change of a run's card travels, by how far its farthest edge goes:
+ * 150 ms for a line, 200 for a few, 260 past that, on an ease-out whose start
+ * is held at `TRAVEL_MAX_SPEED_PX_PER_MS` — a long way starts level and eases
+ * out, never a leap in its first frame.
  */
-export function spendStep(
-  budget: EaseBudget,
-  now: number,
-  dtMs: number,
-  step: number,
-  outOfSight = false,
-): number {
-  if (outOfSight) return step;
-  if (budget.at !== now) {
-    budget.at = now;
-    budget.grow = budget.shrink = MAX_SPEED_PX_PER_MS * Math.min(dtMs, ON_TIME_FRAME_MS);
-  }
-  if (step >= 0) {
-    const taken = Math.min(step, budget.grow);
-    budget.grow -= taken;
-    return taken;
-  }
-  const taken = Math.min(-step, budget.shrink);
-  budget.shrink -= taken;
-  return -taken;
+export function travelTiming(farthestPx: number): TravelTiming {
+  const px = Math.abs(farthestPx);
+  const durationMs = px <= 30 ? 150 : px <= 60 ? 200 : 260;
+  const steepness =
+    px === 0 ? 3 : Math.max(1, Math.min(3, (TRAVEL_MAX_SPEED_PX_PER_MS * durationMs) / px));
+  return { durationMs, steepness };
+}
+
+/**
+ * The share of its way a travel has gone at the share `time` of its duration:
+ * level at `steepness` first, then a cubic ease-out to rest. Every box and row
+ * a change moves goes by this one share, so what moves together stays
+ * together and no edge passes its place or comes back.
+ */
+export function travelProgress(time: number, steepness: number): number {
+  if (time <= 0) return 0;
+  if (time >= 1) return 1;
+  const level = (3 - steepness) / (2 * steepness);
+  if (time <= level) return steepness * time;
+  return 1 - ((steepness - 1) / 2) * ((1 - time) / (1 - level)) ** 3;
+}
+
+/**
+ * A travel's time `dtMs` after it stood at `elapsedMs`: a frame that comes
+ * late counts as one on time, so the travel takes longer and nothing jumps;
+ * one that comes long after (a tab out of sight) ends it — nobody watched.
+ */
+export function travelElapsed(elapsedMs: number, dtMs: number): number {
+  if (dtMs >= LONG_GONE_MS) return Number.POSITIVE_INFINITY;
+  return elapsedMs + Math.max(0, Math.min(dtMs, ON_TIME_FRAME_MS));
 }
 
 /**
@@ -158,17 +169,16 @@ export function movesAsPerson({
 /**
  * How a run's scroll keeps to its foot as what it holds or its box changed:
  * it `stays` where it is — scrolled up by the person, or a glide in flight
- * carries it, re-aimed at the foot each frame; it `waits` a frame while the card around it eases taller, which
- * gives it the room it needs; it `puts` itself at its foot in the same frame,
- * so its end never leaves its foot — a height that eases (a line landing, a
- * bubble growing as its words stream) already moves on the room's curve, and
- * gliding after it left the newest line cut for 200 ms (R12-17); it `glides`
- * only after lines that grew at once in a run watched live, nothing easing
- * them (a picture's bytes arriving).
+ * carries it, re-aimed at the foot each frame; it `puts` itself at its foot in
+ * the same frame, so its end never leaves its foot — a height that travels (a
+ * line landing, the slot under it growing, the card around it) moves on the
+ * travel's curve, and waiting a frame for it left the newest line cut for
+ * that frame, then jumped (2026-11-10: 40 and 82 px); it `glides` only after
+ * lines that grew at once in a run watched live, nothing easing them (a
+ * picture's bytes arriving).
  */
 export function keepsFoot({
   follows,
-  heldAbove,
   grew,
   below,
   eases,
@@ -176,22 +186,19 @@ export function keepsFoot({
   gliding,
 }: {
   readonly follows: boolean;
-  /** A box holding it eases this moment: its height is that ease's. */
-  readonly heldAbove: boolean;
   /** Its lines grew since it last kept to its foot. */
   readonly grew: boolean;
   /** Its foot stands below where it is. */
   readonly below: boolean;
   /** Its room eases as lines join it: a live run, watched. */
   readonly eases: boolean;
-  /** A box of its card eases this moment: its own, or the live slot squeezing it. */
+  /** A box of its card eases this moment: its own, the live slot beside it, the card around it. */
   readonly roomEases: boolean;
   /** A glide to its foot is in flight. */
   readonly gliding: boolean;
-}): "stays" | "waits" | "puts" | "glides" {
+}): "stays" | "puts" | "glides" {
   // A glide in flight re-aims at the foot every frame: a put would jump it there.
   if (!follows || gliding) return "stays";
-  if (heldAbove) return "waits";
   if (roomEases) return "puts";
   return grew && below && eases ? "glides" : "puts";
 }
