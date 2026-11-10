@@ -218,7 +218,12 @@ function ComboboxItem({
 function ComboboxEmpty({ className, ...props }: ComboboxPrimitive.Empty.Props) {
   return (
     <ComboboxPrimitive.Empty
-      className={cn("not-empty:p-2 text-center text-muted-foreground text-sm", className)}
+      // `sm:text-sm` beside the base size: a caller's own unprefixed size replaces only the
+      // phone's, and desktop keeps 14 px.
+      className={cn(
+        "not-empty:p-2 text-center text-muted-foreground text-sm sm:text-sm",
+        className,
+      )}
       data-slot="combobox-empty"
       {...props}
     />
