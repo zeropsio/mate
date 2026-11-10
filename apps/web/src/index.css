@@ -7008,7 +7008,10 @@ code {
   height: var(--ov-row-height, auto);
   align-items: start;
   justify-content: start;
-  padding: 0 20px 6px;
+  /* One pixel over the cards, taken back by the margin: a card's outline is drawn outside its box,
+     and a row that scrolls sideways cuts whatever stands past its own top edge. */
+  margin-top: -1px;
+  padding: 1px 20px 6px;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
@@ -7552,6 +7555,13 @@ a.ov-card-site:hover {
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A line that holds a change holds its Review pill, whose outline is drawn outside its own box:
+   the line must not be what cuts it (top, bottom and, at the line's end, right). The change's title
+   cuts itself. */
+.ov-mate-l2:has(> .ov-mate-change) {
+  overflow: visible;
 }
 
 .ov-mate-l2[data-tone="ink"] {

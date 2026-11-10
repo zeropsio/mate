@@ -444,6 +444,97 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
+    describe("Decision: what wears an outline shows it whole; nothing that cuts stands flush against it.", () => {
+      describe("B: overview cards", () => {
+        scenarioSuite((it) => {
+          // The owner (2026-11-10): every project card on the overview had lost its top edge, and
+          // the Review pill on a Mate's line its top, bottom and right: each outline is drawn
+          // outside its own box, inside a box that hides what overflows it.
+          // witness: apps/web/src/index.css | padding: 1px 20px 6px; → padding: 0 20px 6px;
+          it.effect(
+            "a project's card on the overview shows its whole outline: the row that scrolls keeps room above it",
+            () =>
+              Effect.gen(function* () {
+                const s = yield* menuScenario();
+                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+                yield* s.given.project("Ada", { mate: true, app: "Shop" });
+                yield* s.given.signedIn;
+                const seen = yield* Effect.promise(async () => {
+                  await s.page.goto(`${s.web.origin}/zerops`);
+                  await s.page.waitForFunction(() =>
+                    [
+                      ...document.querySelectorAll('[data-zerops-surface="project-cards"] article'),
+                    ].some((card) => card.getBoundingClientRect().height > 0),
+                  );
+                  await waitForStillFrames(s.page);
+                  return s.page.evaluate(() => {
+                    const hides = (value: string) => value !== "visible";
+                    const cut: string[] = [];
+                    let outlined = 0;
+                    for (const element of document.querySelectorAll<HTMLElement>(
+                      '[data-zerops-surface="project-cards"] *',
+                    )) {
+                      // An outline drawn as a shadow one pixel past the box.
+                      if (!/0px 0px 0px 1px/.test(getComputedStyle(element).boxShadow)) continue;
+                      const box = element.getBoundingClientRect();
+                      if (box.width < 8 || box.height < 8) continue;
+                      outlined += 1;
+                      // The nearest box that hides what overflows it decides what is cut.
+                      for (
+                        let parent = element.parentElement;
+                        parent !== null && parent !== document.body;
+                        parent = parent.parentElement
+                      ) {
+                        const style = getComputedStyle(parent);
+                        if (!hides(style.overflowX) && !hides(style.overflowY)) continue;
+                        const edge = parent.getBoundingClientRect();
+                        const sides = [
+                          hides(style.overflowY) &&
+                          box.top - 1 < edge.top &&
+                          box.top >= edge.top - 0.5
+                            ? "top"
+                            : null,
+                          hides(style.overflowY) &&
+                          box.bottom + 1 > edge.bottom &&
+                          box.bottom <= edge.bottom + 0.5
+                            ? "bottom"
+                            : null,
+                          hides(style.overflowX) &&
+                          box.left - 1 < edge.left &&
+                          box.left >= edge.left - 0.5
+                            ? "left"
+                            : null,
+                          hides(style.overflowX) &&
+                          box.right + 1 > edge.right &&
+                          box.right <= edge.right + 0.5
+                            ? "right"
+                            : null,
+                        ].filter((side) => side !== null);
+                        if (sides.length > 0)
+                          cut.push(
+                            `${element.className || element.tagName} in ${parent.className || parent.tagName}: ${sides.join(", ")}`,
+                          );
+                        break;
+                      }
+                    }
+                    return { outlined, cut };
+                  });
+                });
+                expect(
+                  seen.outlined,
+                  `ASSERTION: the card wears an outline: ${quoted(seen)}`,
+                ).toBeGreaterThan(0);
+                expect(
+                  seen.cut,
+                  `ASSERTION: no outline stands flush against a box that hides it: ${quoted(seen)}`,
+                ).toEqual([]);
+                yield* s.then.noExternalNetwork;
+              }),
+          );
+        });
+      });
+    });
+
     // The live audit, 2026-10-28: Noola's Odin row put seven parts' chips on its name's line, its
     // name went to 0 px and the chips and its time ran over the card into Mate Web's row.
     describe("Decision: a Mate row's parts wrap inside its card, and its name never gives way.", () => {
