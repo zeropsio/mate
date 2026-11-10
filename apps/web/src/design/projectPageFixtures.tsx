@@ -161,6 +161,9 @@ const MATES: Readonly<Record<string, { readonly name: string; readonly tint: Mat
   "wren-b": { name: "Wren", tint: "amber" },
   "fen-b": { name: "Fen", tint: "coral" },
   "kara-l": { name: "Kara", tint: "coral" },
+  "milo-k": { name: "Milo", tint: "violet" },
+  "kai-k": { name: "Kai", tint: "sky" },
+  "nell-k": { name: "Nell", tint: "coral" },
 };
 
 /** A change a Mate landed `minutes` ago, mirrored to GitHub's pull request `github`. */
@@ -357,7 +360,8 @@ const stageRuns = (runs: string, deploying: ReadonlyArray<string> = []): CardSta
 
 /**
  * The line's states: calm with a stage; stuck on a release that did not go live; ten times the
- * activity; sixty changes from twelve Mates; not live yet; live without a stage.
+ * activity; three Mates and a release waiting; sixty changes from twelve Mates; not live yet; live
+ * without a stage.
  */
 const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
   "line-calm": {
@@ -416,6 +420,21 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
       lineRepo("shop", "acme/tea-house", { syncedAt: null, divergedSince: null }),
       lineRepo("api", "acme/tea-house-api", IN_SYNC),
     ],
+  },
+  // Three Mates, a release waiting: four merged since the live release, one on its way to the stage.
+  "line-three": {
+    releases: [
+      shipped("v0.4.2", 3 * DAY, { standing: "live", by: "dana" }),
+      shipped("v0.4.1", 10 * DAY),
+    ],
+    merged: [
+      onMain(10, "Undo send for ten seconds", "nell-k", 25),
+      onMain(9, "Attachments open beside the letter", "milo-k", 5 * 60),
+      onMain(8, "A quieter inbox on weekends", "kai-k", 22 * 60),
+      onMain(7, "Drafts kept across devices", "milo-k", 2 * DAY),
+    ],
+    stage: stageRuns(sha("c9"), [HEAD]),
+    repos: [lineRepo("mail", "acme/kite-mail", IN_SYNC)],
   },
   // Sixty changes from twelve Mates: thirty-four merged since the live release, two on their way
   // to the stage. The page holds the newest forty, open first.

@@ -568,8 +568,8 @@ function conflicting(number: number, title: string, mateProjectId: string) {
 /**
  * The line's states: (calm) a stage and a production, one change ready; (stuck) a release that did
  * not go live; (busy) ten times the activity and three more places; (notlive) no production yet;
- * (nostage) live without a stage; (crowd) sixty changes from twelve Mates, for the line in full
- * (`&picture=full`). `line-mine` draws the busy one compact, for one Mate.
+ * (nostage) live without a stage; for the line in full (`&picture=full`), (three) three Mates and a
+ * release waiting, and (crowd) sixty changes from twelve Mates. `line-mine` draws the busy one compact, for one Mate.
  */
 function lineProjects(): ReadonlyArray<Project> {
   const busy = project({
@@ -661,7 +661,41 @@ function lineProjects(): ReadonlyArray<Project> {
     chip: { label: "prod", state: "ok", version: "v3.1.0" },
     since: ago(60 * 24 * 4),
   });
+  const three = project({
+    id: "line-three",
+    name: "Kite Mail",
+    mates: [
+      mate("milo-k", "Milo", "violet"),
+      mate("kai-k", "Kai", "sky"),
+      mate("nell-k", "Nell", "coral"),
+    ],
+    pullRequests: [
+      toReview(14, "Schedule a letter for later", "milo-k"),
+      conflicting(12, "Search by sender", "nell-k"),
+      inReview(13, "Snooze a thread until Monday", "kai-k"),
+      inReview(11, "Labels in colour", "nell-k"),
+    ],
+    notLive: 4,
+    production: {
+      kind: "ready-to-release",
+      stop: stop("three-prod", "production", {
+        version: version("v0.4.2"),
+        addresses: [{ service: "app", url: "https://kitemail.example" }],
+      }),
+      line: "",
+      candidate: { tag: "v0.4.3", waiting: 4 },
+    },
+    stages: [
+      stop("three-stage", "stage", {
+        state: "deploying",
+        addresses: [{ service: "app", url: "https://app-kitemail-stage.prg1.zerops.app" }],
+      }),
+    ],
+    chip: { label: "prod", state: "ok", version: "v0.4.2" },
+    since: ago(60 * 24 * 3),
+  });
   return [
+    three,
     crowd,
     project({
       id: "line-calm",
