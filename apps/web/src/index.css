@@ -10220,6 +10220,20 @@ button.ov-change {
 .run-now-fact:first-of-type {
   margin-left: 12px;
 }
+/* On a phone the facts rarely fit beside the time, and wrapped one by one each stood on a line of
+   its own, hung 8 px in by its margin. There the line wraps as a row of things 8 px apart: the
+   facts take the second line together, on the words' own edge. */
+@media (max-width: 39.999rem) {
+  .run-now[data-run-now="worked"] .run-now-words {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+  }
+  .run-now[data-run-now="worked"] .run-now-fact {
+    margin-left: 0;
+  }
+}
 .run-now-clock {
   font-size: 13px;
   line-height: 20px;
@@ -10940,6 +10954,18 @@ button.run-bar:focus-visible {
   padding: 15px 15px 0;
 }
 
+/* On a phone the card keeps the composer's lines as it does on a desk: its frame on the composer's
+   frame, its words on the composer's words, which stand 12 px inside the frame there, not 16
+   (`rowInset`, MessagesTimeline). */
+@media (max-width: 39.999rem) {
+  .run-tray-top,
+  .run-tray-middle,
+  .run-tray-whole,
+  .run-tray-ghost {
+    padding-inline: 11px;
+  }
+}
+
 /* ==== end of the run's card ==== */
 
 /* ==== Pass 16 · the run's result ==== */
@@ -11053,6 +11079,18 @@ button.run-bar:focus-visible {
 .run-result-open:hover {
   background: var(--color-accent);
   color: var(--color-foreground);
+}
+/* Under a finger the arrow takes 40 px around its 24: the rows stand 28 to 40 px apart, so two
+   arrows' presses never reach each other's glyph. */
+@media (pointer: coarse) {
+  .run-result-open {
+    position: relative;
+  }
+  .run-result-open::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
 }
 .run-result-open:focus-visible,
 .run-result-tile:focus-visible {
@@ -11295,6 +11333,38 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   }
 }
 
+/* What the chat is about gives way to the line's end, down to nothing: on a phone it either
+   reads (some eight letters of it) or is not drawn, never a letter and an ellipsis. Its room
+   stays its own, so nothing on the line moves as it goes. */
+@media (max-width: 39.999rem) {
+  .conversation-subject {
+    container: conversation-subject / inline-size;
+  }
+
+  @container conversation-subject (max-width: 5.5rem) {
+    .conversation-subject > * {
+      visibility: hidden;
+    }
+  }
+}
+
+/* A phone's line holds the Mate, what waits on the person, the menu and the panel's toggle. Sites
+   stands on it only while the Mate's name is alone there: a Review, a task's state or a crew
+   takes its room, and the menu's row and the panel's Browser still lead to every address. */
+@media (max-width: 39.999rem) {
+  [data-chat-header]:has(
+      [data-conversation-strip]
+        :is(
+          .chat-header-review,
+          [data-zerops-surface="mate-task-session"],
+          [data-conversation-crew]
+        )
+    )
+    [data-header-sites] {
+    display: none;
+  }
+}
+
 /* The crewmate's pill is its menu's trigger, which the header fills like any
    other; it is clear instead, pressed or not: the band under it is its
    ground. */
@@ -11481,6 +11551,24 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   }
 }
 
+/* Under a finger the round Send and Stop take a 44 px press around their 32 to 36, as the kit's
+   buttons do. */
+@media (pointer: coarse) {
+  [data-chat-composer-form] [data-composer-primary] {
+    position: relative;
+  }
+
+  [data-chat-composer-form] [data-composer-primary]::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2.75rem;
+    height: 2.75rem;
+    translate: -50% -50%;
+  }
+}
+
 /* C4: the one control's menu — the models, and beside them the model's
    effort, its other choices and the access. Both columns share one height,
    capped by the room above the composer; the choices scroll on their own
@@ -11517,6 +11605,11 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   .composer-model-menu > [data-model-picker-content] {
     flex: none;
     height: 21.625rem;
+  }
+
+  /* 16 px in the search, so a phone does not zoom the page on its focus. */
+  .composer-model-menu [data-model-picker-content] input {
+    font-size: 1rem;
   }
 }
 

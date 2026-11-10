@@ -304,6 +304,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   const updateSettings = useUpdateClientSettings();
 
   const focusSearchInput = useCallback(() => {
+    // Under a finger the search takes the caret only when it is tapped: focused for the person, it
+    // raised the phone's keyboard over the list they opened the menu to pick from.
+    if (window.matchMedia("(pointer: coarse)").matches) return;
     searchInputRef.current?.focus({ preventScroll: true });
   }, []);
 

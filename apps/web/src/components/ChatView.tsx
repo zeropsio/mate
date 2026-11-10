@@ -307,7 +307,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import { isEditableFocused } from "../lib/editableFocus";
 import { undoLatestThreadAction } from "../hooks/showUndoToast";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
-import { ArrowDownIcon, PaperclipIcon } from "lucide-react";
+import { ArrowDownIcon, PaperclipIcon, XIcon } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -8238,6 +8238,7 @@ function ConversationView(props: ChatViewProps) {
     return <NoActiveThreadState />;
   }
 
+  const rightPanelCoversHeader = shouldUseRightPanelSheet && isMobileViewport;
   const panelToggleControls = (
     <PanelLayoutControls
       terminalAvailable={activeProject !== null}
@@ -8592,7 +8593,9 @@ function ConversationView(props: ChatViewProps) {
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
           className="relative bg-background"
         >
-          {!rightPanelOpen ? panelLayoutControls : null}
+          {/* A phone's sheet covers the whole header, so the header stays as it is under it: its
+              toggle and its actions stand where they stood as the sheet comes and goes. */}
+          {!rightPanelOpen || rightPanelCoversHeader ? panelLayoutControls : null}
           <ChatHeader
             activeThreadEnvironmentId={activeThread.environmentId}
             activeThreadId={activeThread.id}
@@ -8611,7 +8614,9 @@ function ConversationView(props: ChatViewProps) {
             }
             keybindings={keybindings}
             availableEditors={availableEditors}
-            rightPanelOpen={rightPanelOpen}
+            rightPanelOpen={rightPanelOpen && !rightPanelCoversHeader}
+            terminalOpen={terminalUiState.terminalOpen}
+            onToggleTerminal={activeProject !== null ? toggleTerminalVisibility : undefined}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onStartFresh={startFreshConversation}
@@ -8817,7 +8822,7 @@ function ConversationView(props: ChatViewProps) {
                     or a key focused it) lets the focus go with it. */}
                 <button
                   aria-label="Scroll to end"
-                  className="pointer-events-auto flex size-8 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-popover text-foreground shadow-lg/8 transition-[opacity,translate,scale,background-color] duration-200 ease-out hover:bg-accent active:scale-95 not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0"
+                  className="pointer-events-auto relative flex size-8 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-popover text-foreground shadow-lg/8 transition-[opacity,translate,scale,background-color] duration-200 ease-out hover:bg-accent active:scale-95 not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0 pointer-coarse:after:absolute pointer-coarse:after:size-11"
                   data-shown={showScrollToBottom ? "" : undefined}
                   inert={!showScrollToBottom}
                   onClick={() => {
@@ -9240,7 +9245,24 @@ function ConversationView(props: ChatViewProps) {
             // (pr-3 in the tab bar plus this pixel equals the absolute
             // right inset plus mr-px), so the cluster does not creep when
             // the sheet opens.
-            layoutControls={<div className="mr-px flex items-center">{panelToggleControls}</div>}
+            layoutControls={
+              <div className="mr-px flex items-center">
+                {isMobileViewport ? (
+                  // A phone's sheet covers the conversation whole: its way back is a close, where
+                  // the toggle that opened it stood.
+                  <Button
+                    aria-label="Close panel"
+                    onClick={closePreviewPanel}
+                    size="icon-md"
+                    variant="ghost"
+                  >
+                    <XIcon />
+                  </Button>
+                ) : (
+                  panelToggleControls
+                )}
+              </div>
+            }
             surfaces={rightPanelState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             pendingSurfaceIds={pendingFileSurfaceIds}

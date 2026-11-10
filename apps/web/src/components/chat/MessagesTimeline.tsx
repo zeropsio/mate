@@ -2326,7 +2326,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   onLoad={onListLoad}
                   {...(draftRows.length > 0 ? { style: { visibility: "hidden" as const } } : {})}
                   className={cn(
-                    "timeline-legend-list scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
+                    "timeline-legend-list scrollbar-gutter-both max-sm:scrollbar-none h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
                     topFadeEnabled && "conversation-scroll-fade",
                   )}
                   ListHeaderComponent={
@@ -2734,7 +2734,9 @@ type TimelineRow = MessagesTimelineRow;
  * the rhythm says: a part 24 px under the person's bubble or the card's
  * edge, a turn 64 px under them. The answer's prose adds its own: 3 px of
  * leading above its first line (21 + 3), and under its last line 3 px of
- * leading and its 28 px copy line (33 + 31).
+ * leading and its 28 px copy line (33 + 31). A phone's screen is a third of a desk's tall: a turn
+ * opens under 48 px there, twice a part's room still, and a seam right under a seam (a day nobody
+ * spoke on) under a part's, so a week of silence is a few lines and not a screen of nothing.
  */
 const GAP_CLASS: Record<RowGap, string> = {
   none: "",
@@ -2743,8 +2745,9 @@ const GAP_CLASS: Record<RowGap, string> = {
   block: "pt-5",
   part: "pt-6",
   "part-words": "pt-5.25",
-  turn: "pt-16",
-  "turn-after-words": "pt-8.25",
+  turn: "pt-12 sm:pt-16",
+  "turn-after-words": "pt-4.25 sm:pt-8.25",
+  "turn-seam": "pt-6 sm:pt-16",
 };
 
 /**
@@ -2767,7 +2770,8 @@ function rowInset(row: TimelineRow): string {
   // A line with no card keeps the card's geometry in a frame nobody sees, so
   // opening it draws the card around the line without moving it.
   if (row.kind === "work-line") return "run-tray-ghost";
-  return "px-4.25";
+  // The composer's text edge: 13 px inside its frame on a phone, 17 from sm up.
+  return "px-3.25 sm:px-4.25";
 }
 
 /**

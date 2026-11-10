@@ -157,13 +157,12 @@ export function VaultRow(props: VaultRowProps) {
     >
       <button
         aria-expanded={open}
-        // A phone's row is two lines: the name, then its key under it, so neither is cut to a
-        // sliver beside the value.
-        className="flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset max-sm:h-14"
+        // On a phone a value's name stands over its key: side by side, both were cut mid-word.
+        className="flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset max-sm:h-auto max-sm:min-h-11 max-sm:py-2"
         onClick={props.onToggle}
         type="button"
       >
-        <span className="flex min-w-0 shrink items-center gap-2 max-sm:flex-col max-sm:items-start max-sm:gap-0">
+        <span className="flex min-w-0 shrink items-center gap-2 max-sm:flex-col max-sm:items-start max-sm:gap-0.5">
           <span className="truncate text-line text-foreground max-sm:max-w-full">
             {props.label}
           </span>

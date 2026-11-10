@@ -27,7 +27,13 @@ import { MateAddressExternalLink, openMateAddress } from "../zerops/MateAddresse
 
 /** The Sites button, the same whichever panel it opens. */
 const sitesButton = (
-  <Button aria-label="Open the Mate's sites" data-chat-header-ghost size="sm" variant="ghost" />
+  <Button
+    aria-label="Open the Mate's sites"
+    data-chat-header-ghost
+    data-header-sites=""
+    size="sm"
+    variant="ghost"
+  />
 );
 const sitesWords = (
   <>
@@ -73,7 +79,10 @@ export function ChatHeaderLinks({
   page,
   sites,
   mateProjectId,
+  projectInMenu = false,
 }: {
+  /** A phone's header carries the project's page in its menu (`ChatHeader`): no door, no room. */
+  readonly projectInMenu?: boolean;
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   /** Whether the Mate's project has its own page; absent where no Mate of a project lives here. */
@@ -127,6 +136,7 @@ export function ChatHeaderLinks({
         void navigate({ to: "/group/$groupId/flow", params: { groupId } });
       }}
       page={page}
+      projectInMenu={projectInMenu}
       sites={sitesControl}
     />
   );
@@ -140,7 +150,9 @@ export function HeaderLinksView({
   page,
   sites,
   onOpenProject,
+  projectInMenu = false,
 }: {
+  readonly projectInMenu?: boolean;
   readonly page: MateProjectPage | undefined;
   readonly sites: ReactNode;
   readonly onOpenProject: (groupId: string) => void;
@@ -148,9 +160,11 @@ export function HeaderLinksView({
   if (page?.kind === "unknown") {
     return (
       <HeldLink>
-        <Button data-chat-header-ghost size="sm" variant="ghost">
-          {projectWords}
-        </Button>
+        {projectInMenu ? null : (
+          <Button data-chat-header-ghost size="sm" variant="ghost">
+            {projectWords}
+          </Button>
+        )}
         <Button data-chat-header-ghost size="sm" variant="ghost">
           {sitesWords}
         </Button>
@@ -161,12 +175,14 @@ export function HeaderLinksView({
   const { groupId } = page;
   return (
     <>
-      <ProjectPageLink
-        onOpen={() => {
-          onOpenProject(groupId);
-        }}
-        projectName={page.projectName}
-      />
+      {projectInMenu ? null : (
+        <ProjectPageLink
+          onOpen={() => {
+            onOpenProject(groupId);
+          }}
+          projectName={page.projectName}
+        />
+      )}
       {sites ?? (
         <HeldLink>
           <Button data-chat-header-ghost size="sm" variant="ghost">
