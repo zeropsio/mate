@@ -5658,6 +5658,15 @@ function RunScroll({
     setAside(aside.slice(0, aside.length - back.length));
     setFrom(from - back.reduce((lines, stretch) => lines + stretch.lines, 0));
   };
+  // The view may come to stand over lines set aside with no scroll heard — its
+  // node put back on the page at its start, its box shown again after "Hide
+  // work": asked as its box changes size, while it does not follow its foot
+  // (following, it is put back there) and is on the page at all.
+  const drawEarlierHere = useEffectEvent(() => {
+    const element = scrollRef.current;
+    if (element === null || followRef.current.follows || element.clientHeight === 0) return;
+    drawEarlier(positionOf(element));
+  });
   // Lines far above the view are set aside (`stretchesAside`): asked as the
   // scroll moves and as its lines or its box change size, answered at once
   // while they do not reach that far. Never while anything of the card moves
@@ -5818,6 +5827,7 @@ function RunScroll({
       forgetPadding(element);
       follow.keep();
       redraw();
+      drawEarlierHere();
       setLinesAside();
     });
     observer.observe(list);
