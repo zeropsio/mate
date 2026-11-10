@@ -765,9 +765,13 @@ export function ThemeLibrary({
     // tooltip briefly showing while crossing between a card's two circles is
     // accepted — scoping the group tighter makes the handoffs feel sluggish.
     <TooltipProvider>
+      {/* A card is at least 16rem wide; on a phone 9.5rem, so two stand side by side. */}
       <div
-        className="mx-auto grid w-full max-w-[56rem] gap-2 px-3 sm:px-4"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 16rem), 1fr))" }}
+        className="mx-auto grid w-full max-w-[56rem] gap-2 px-3 max-sm:[--theme-card-min:9.5rem] sm:px-4"
+        style={{
+          gridTemplateColumns:
+            "repeat(auto-fit, minmax(min(100%, var(--theme-card-min, 16rem)), 1fr))",
+        }}
       >
         {STANDARD_THEME_CARDS.map((standardTheme) => (
           <ThemeLibraryCard
