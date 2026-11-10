@@ -3,6 +3,7 @@ import { type ComponentProps, type ReactNode, useLayoutEffect, useRef } from "re
 
 import { Command, CommandFooter, CommandInput, CommandPanel } from "./ui/command";
 import { Kbd, KbdGroup } from "./ui/kbd";
+import { cn } from "~/lib/utils";
 
 type CommandPaletteContentProps = Omit<ComponentProps<typeof Command>, "children"> & {
   readonly children: ReactNode;
@@ -67,9 +68,18 @@ export function CommandPaletteContent({
         >
           {children}
         </CommandPanel>
-        <CommandFooter className="max-sm:flex-col max-sm:items-start">
+        <CommandFooter
+          className={cn(
+            "max-sm:flex-col max-sm:items-start",
+            // Nothing but a keyboard's keys in it: no bar at all under a finger.
+            footerKeys === undefined &&
+              (footerTrailing === undefined || footerTrailing === null) &&
+              "pointer-coarse:hidden",
+          )}
+        >
           {footerKeys ?? (
-            <div className="flex items-center gap-3">
+            // A keyboard's own keys mean nothing under a finger.
+            <div className="flex items-center gap-3 pointer-coarse:hidden">
               <KbdGroup>
                 <Kbd>
                   <ArrowUpIcon />
