@@ -224,7 +224,6 @@ import {
 import {
   chatOpensAt,
   cutEdges,
-  earlierShown,
   followAfter,
   NOTHING_OPENED,
   footTop,
@@ -244,10 +243,15 @@ import {
   operationNowWords,
   reachesEarlier,
   stretchesAside,
-  stretchesBack,
+  windowAside,
+  windowEarlier,
+  windowOver,
+  logWindow,
+  roomAside,
   KEPT_ABOVE_PX,
   SET_ASIDE_PAST_PX,
   type AsideStretch,
+  type LogWindow,
   runCardShows,
   chooseLiveRunFold,
   runFoldOf,
@@ -3947,6 +3951,28 @@ function bubbleHeights(root: HTMLElement | null): ReadonlyMap<string, number> {
   return heights;
 }
 
+/** Where `row` stands among its scroll's lines: from their start, wherever the scroll stands. */
+function topAmongLines(scroll: HTMLElement, row: Element): number {
+  return row.getBoundingClientRect().top - scroll.getBoundingClientRect().top + scroll.scrollTop;
+}
+
+/** The first of the log's rows that reaches into its view, and where it stands among its lines. */
+function rowInView(
+  scroll: HTMLElement | null,
+  list: HTMLElement | null,
+): { readonly key: string; readonly top: number } | null {
+  if (scroll === null || list === null || typeof scroll.getBoundingClientRect !== "function") {
+    return null;
+  }
+  const viewTop = scroll.getBoundingClientRect().top;
+  for (const row of list.children) {
+    const key = (row as HTMLElement).dataset.runKey;
+    if (key === undefined || row.getBoundingClientRect().bottom <= viewTop) continue;
+    return { key, top: topAmongLines(scroll, row) };
+  }
+  return null;
+}
+
 /** The row drawn for the chat's line `key` under `root`, if one is. */
 function rowByKey(root: HTMLElement | null, key: string): HTMLElement | null {
   if (typeof root?.querySelectorAll !== "function") return null;
@@ -5294,12 +5320,17 @@ function RunScroll({
   }, []);
   // Where the chat starts: its newest lines when it opens. What arrives after
   // only ever joins at the end, so the window grows and never slides.
-  const [from, setFrom] = useState(() => (opensAtStart ? 0 : chatOpensAt(lines.length)));
-  // The lines set aside over the first one drawn, far above the view
-  // (`stretchesAside`), newest last, and the room they took: kept over the
-  // first line drawn, so nothing drawn moves and the scroll is as long.
-  const [aside, setAside] = useState<ReadonlyArray<AsideStretch>>(NO_STRETCHES);
-  const spacer = useMemo(() => aside.reduce((sum, stretch) => sum + stretch.height, 0), [aside]);
+  // With it, the lines set aside over the first one drawn, far above the view
+  // (`stretchesAside`), and the room they took: kept over the first line
+  // drawn, so nothing drawn moves and the scroll is as long. Lines joining or
+  // leaving before the first one drawn leave the same lines drawn
+  // (`windowOver`).
+  const [held, setHeld] = useState<LogWindow>(() =>
+    logWindow(lines, opensAtStart ? 0 : chatOpensAt(lines.length), NO_STRETCHES),
+  );
+  const win = windowOver(held, lines);
+  const { from, aside } = win;
+  const spacer = useMemo(() => roomAside(aside), [aside]);
   // The rows it draws: its lines from the first one drawn, each run of calls in one card.
   const shown = gatherCalls(
     (from > 0 ? lines.slice(from) : lines).map((line) =>
@@ -5378,7 +5409,7 @@ function RunScroll({
       root: element,
       selector: `[data-run-scroll] > ol, ${EASED_BOXES}`,
       // Earlier lines drawn over the ones in view take their room at once:
-      // where the person reads is kept by the scroll (`keepFromFootRef`).
+      // where the person reads is kept by the scroll (`keptRowRef`).
       eases: () => easesRef.current && shownRef.current && !drawingEarlierRef.current,
       // Its own box grows by a travel as a line joins it, uncovering the line
       // at its foot while the slot under it rides its edge. What it holds
@@ -5648,32 +5679,27 @@ function RunScroll({
       if (motion.keep === keep) motion.keep = null;
     };
   }, [follow, motionRef]);
-  // How far above its foot the scroll stood before earlier lines were drawn
-  // over the ones in view.
-  const keepFromFootRef = useRef<number | null>(null);
+  // A drawn row in view, and where it stood among the scroll's lines, before
+  // earlier lines were drawn over it: what keeps it there after.
+  const keptRowRef = useRef<{ readonly key: string; readonly top: number } | null>(null);
   const drawEarlier = (position: RunScrollPosition) => {
+    // Off the page (its work hidden) nothing is near its view.
+    if (position.clientHeight === 0) return;
     // How far under the first drawn line the view stands: the room of the lines set aside is not it.
     const above = position.scrollTop - spacer;
     if (!reachesEarlier({ scrollTop: above }, from)) return;
     drawingEarlierRef.current = true;
-    keepFromFootRef.current = position.scrollHeight - position.scrollTop;
+    keptRowRef.current = rowInView(scrollRef.current, listRef.current);
     // The lines set aside come back first, the newest stretch of them: as tall
     // as they stood, so the scroll is as long. Then the ones never drawn.
-    const back = stretchesBack(aside, above);
-    if (back.length === 0) {
-      setFrom(earlierShown(from).next);
-      return;
-    }
-    setAside(aside.slice(0, aside.length - back.length));
-    setFrom(from - back.reduce((lines, stretch) => lines + stretch.lines, 0));
+    setHeld(windowEarlier(win, lines, above));
   };
   // The view may come to stand over lines set aside with no scroll heard — its
-  // node put back on the page at its start, its box shown again after "Hide
-  // work": asked as its box changes size, while it does not follow its foot
-  // (following, it is put back there) and is on the page at all.
+  // box shown again after "Hide work": asked as its box changes size, while
+  // it does not follow its foot (following, it is put back there).
   const drawEarlierHere = useEffectEvent(() => {
     const element = scrollRef.current;
-    if (element === null || followRef.current.follows || element.clientHeight === 0) return;
+    if (element === null || followRef.current.follows) return;
     drawEarlier(positionOf(element));
   });
   // Lines far above the view are set aside (`stretchesAside`): asked as the
@@ -5685,8 +5711,10 @@ function RunScroll({
     const element = scrollRef.current;
     const list = listRef.current;
     if (element === null || list === null || drawingEarlierRef.current) return;
-    // Drawn outside a page (a test's renderer), it has no rows to read.
+    // Drawn outside a page (a test's renderer), it has no rows to read; off
+    // the page (its work hidden), no row has a place.
     if (typeof list.getBoundingClientRect !== "function" || list.children === undefined) return;
+    if (element.clientHeight === 0) return;
     const above = element.scrollTop - spacer;
     if (!(above >= KEPT_ABOVE_PX + SET_ASIDE_PAST_PX) || follow.moving()) return;
     const selection = typeof getSelection === "function" ? getSelection() : null;
@@ -5719,8 +5747,7 @@ function RunScroll({
     if (stretches.length === 0) return;
     // They take no room they did not take: nothing eases for it.
     drawingEarlierRef.current = true;
-    setAside([...aside, ...stretches]);
-    setFrom(from + stretches.reduce((lines, stretch) => lines + stretch.lines, 0));
+    setHeld(windowAside(win, lines, stretches));
   });
   // It opens at its foot — or its start — before the first paint.
   const opensAtStartRef = useRef(opensAtStart);
@@ -5730,18 +5757,43 @@ function RunScroll({
     follow.putAt(element, opensAtStartRef.current ? 0 : footTop(positionOf(element)));
     markEdges(element);
   }, [follow]);
-  // Earlier lines drawn above the ones in view keep those where they stood;
-  // a chat too short to scroll draws them at once, as nothing reaches them.
+  // Lines joined or left before the first one drawn: the window over them is
+  // held from here on, and the scroll moves up by the room of the lines set
+  // aside that are gone, so the drawn ones stand where they stood — from
+  // where it last stood, as the browser has clamped it to its shorter lines
+  // by the time it is read here.
+  useLayoutEffect(() => {
+    if (win === held) return;
+    setHeld(win);
+    const element = scrollRef.current;
+    const gone = roomAside(held.aside) - roomAside(win.aside);
+    if (element === null || !(gone > 0.5)) return;
+    const { stood } = followRef.current;
+    follow.putAt(element, Math.max(0, (Number.isFinite(stood) ? stood : element.scrollTop) - gone));
+  }, [win, held, follow]);
+  // Earlier lines drawn above the ones in view keep those where they stood:
+  // the scroll moves by what the row read before moved among its lines, and
+  // not at all when the lines set aside came back as tall as they stood — a
+  // write cuts the person's own scroll short. A chat too short to scroll
+  // draws them at once, as nothing reaches them: never off the page (its work
+  // hidden), where it has no height to be short of.
+  const drawEarlierYet = useEffectEvent(() => {
+    drawingEarlierRef.current = true;
+    setHeld(windowEarlier(win, lines, 0));
+  });
   useLayoutEffect(() => {
     const element = scrollRef.current;
-    const keep = keepFromFootRef.current;
-    keepFromFootRef.current = null;
+    const kept = keptRowRef.current;
+    keptRowRef.current = null;
     if (element === null) return;
-    if (keep !== null) follow.putAt(element, positionOf(element).scrollHeight - keep);
+    const row = kept === null ? null : rowByKey(listRef.current, kept.key);
+    if (kept !== null && row !== null) {
+      const moved = topAmongLines(element, row) - kept.top;
+      if (Math.abs(moved) > 0.5) follow.putAt(element, element.scrollTop + moved);
+    }
     drawingEarlierRef.current = false;
-    if (from > 0 && element.scrollHeight <= element.clientHeight) {
-      drawingEarlierRef.current = true;
-      setFrom(earlierShown(from).next);
+    if (from > 0 && element.clientHeight > 0 && element.scrollHeight <= element.clientHeight) {
+      drawEarlierYet();
     }
     markEdges(element);
   }, [from, follow]);
