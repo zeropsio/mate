@@ -669,6 +669,11 @@ describe("slotOpenDeployLine — the one deploy that stands open in the live slo
     },
     { name: "never another kind", lines: [deploy("s1", { kind: "subdomain" })], open: null },
     {
+      name: "a stand-up, on its services, as a deploy on its card",
+      lines: [deploy("u1", { kind: "standup" })],
+      open: "operation:u1",
+    },
+    {
       name: "a batch: one line, like any call",
       lines: [deploy("b1", { batch: true, subject: "apidev, webdev" })],
       open: "operation:b1",

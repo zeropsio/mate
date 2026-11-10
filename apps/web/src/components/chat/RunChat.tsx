@@ -200,6 +200,7 @@ import {
   showsCardInSlot,
   slotOpenDeployLine,
 } from "./operationBar.logic";
+import { standupBar, type StandupBarModel } from "./standupBar.logic";
 import { opensOnto, stepOutput } from "./opens.logic";
 import { showHelper } from "./helperFocus";
 import { ElapsedSince, LimitContinue } from "./ConversationRows";
@@ -2104,6 +2105,7 @@ function StandupBubble({
     <OperationBubble
       lines={detailLines(operation, reading?.rows.length ?? null)}
       operation={operation}
+      standing={reading === null || reading.rows.length === 0 ? undefined : standupBar(reading)}
       undone={undone}
     />
   );
@@ -2121,6 +2123,12 @@ interface OperationLineProps {
   readonly noResult?: "stale" | "closed" | undefined;
   /** How much it opens to: its services' lines, its card's parts (`detailLines`). */
   readonly lines?: number;
+  /**
+   * A stand-up's own instrument while its call runs: a segment a service, what they do and how
+   * many are up (`standupBar`), the same reading the band under the card draws once its call
+   * returned. None for any other operation, or before any service is read.
+   */
+  readonly standing?: StandupBarModel | undefined;
 }
 
 /**
@@ -2163,6 +2171,7 @@ function OperationLine({
   undone = false,
   noResult,
   lines: given,
+  standing,
   regions,
 }: OperationLineProps & {
   /** What its card read of the platform: null where nothing reads it here. */
@@ -2181,9 +2190,14 @@ function OperationLine({
   const topology = useZeropsTopology(ctx.activeThreadEnvironmentId);
   const devServerUrl = devServerUrlFor(operation, topology);
   const lines = inBand ? 0 : (given ?? detailLines(operation, null, observed, devServerUrl));
-  // In the slot the newest running deploy stands open on what its card read, and lands so.
+  // In the slot the newest running deploy stands open on what its card read, and lands so. A
+  // stand-up stands open on its services the same way: each one's state is its progress, and a
+  // line with a bar alone said nothing of it for the minutes its builds take.
   const disclosure = useDisclosure(
-    inSlot && line !== null && line === standsOpen && showsCardInSlot(observed),
+    inSlot &&
+      line !== null &&
+      line === standsOpen &&
+      (operation.kind === "standup" ? lines > 0 : showsCardInSlot(observed)),
     "open",
     true,
     inBand,
@@ -2195,10 +2209,16 @@ function OperationLine({
   // A batch's bar keeps a segment per service; a deploy's follows its pipeline.
   const live =
     running && inSlot
-      ? liveOperationBar(
-          operation,
-          operation.batch === true ? undefined : regions?.observed?.pipeline,
-        )
+      ? standing !== undefined
+        ? {
+            segments: standing.segments,
+            word:
+              standing.figure === null ? standing.words : `${standing.words} · ${standing.figure}`,
+          }
+        : liveOperationBar(
+            operation,
+            operation.batch === true ? undefined : regions?.observed?.pipeline,
+          )
       : null;
   // Settled, a bar only where it says what the line does not (`settledOperationBar`).
   const settled = settledOperationBar(operation, undone, inSlot ? "slot" : "log");
