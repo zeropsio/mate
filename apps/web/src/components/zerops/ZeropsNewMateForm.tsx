@@ -323,7 +323,8 @@ export function ZeropsNewMateForm({
         <p
           aria-live="polite"
           className={cn(
-            "me-auto min-h-4 self-center text-line leading-4",
+            // On a phone the footer stacks from its foot: the line stands over the button it is about.
+            "me-auto min-h-4 self-center text-line leading-4 max-sm:order-1 max-sm:me-0",
             error === undefined ? "text-muted-foreground" : "text-status-failed-text",
           )}
           id={`${id}-line`}

@@ -198,7 +198,11 @@ export function UsageAutomatedBudget() {
         of this month's <span className="tabular-nums text-foreground">{budget.budget}</span> budget
         {budget.reached ? ": they take no more tasks this month" : ""}.
       </span>
-      <Link className="text-primary underline-offset-2 hover:underline" to="/settings/automation">
+      {/* A finger's 40 px around the word on a touch screen. */}
+      <Link
+        className="relative text-primary underline-offset-2 hover:underline pointer-coarse:after:absolute pointer-coarse:after:-inset-3"
+        to="/settings/automation"
+      >
         Change
       </Link>
     </p>

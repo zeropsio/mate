@@ -8479,6 +8479,87 @@ a.ov-chip-who:focus-visible {
   text-align: center;
 }
 
+/* On a phone the team is rows, not cards: a 40 px face, the name with the role beside it, the
+   address under them, and the whole row one press. The search takes its own line under the
+   heading, sharing it with Invite. */
+@media (max-width: 39.999rem) {
+  [data-slot="section-header"]:has(.tm-team-search) {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  [data-slot="section-header"] > span:has(> .tm-team-search) {
+    flex-basis: 100%;
+    gap: 8px;
+  }
+
+  .tm-team-search {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+
+  .tm-team .tm-cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin-inline: -12px;
+  }
+
+  .tm-team .tm-card {
+    border-radius: 12px;
+    background: transparent;
+    text-align: left;
+  }
+
+  .tm-team .tm-card-body {
+    grid-template-columns: 40px minmax(0, auto) minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 0;
+    justify-items: start;
+    align-content: center;
+    align-items: center;
+    min-height: 56px;
+    padding: 8px 12px;
+  }
+
+  .tm-team .tm-card-face {
+    grid-row: 1 / span 2;
+    align-self: start;
+    margin-bottom: 0;
+  }
+
+  .tm-team .tm-card-face > .person-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
+
+  .tm-team .tm-card-name {
+    grid-column: 2;
+  }
+
+  .tm-team .tm-card-badges {
+    grid-column: 3;
+    flex-wrap: nowrap;
+    margin: 0 0 0 -4px;
+  }
+
+  .tm-team .tm-badge {
+    font-size: var(--text-caption);
+    letter-spacing: 0.04em;
+  }
+
+  .tm-team .tm-card-mail {
+    grid-column: 2 / -1;
+  }
+
+  .tm-team .tm-card-foot {
+    justify-items: start;
+    margin-top: -4px;
+    padding: 0 12px 10px 64px;
+  }
+}
+
 /* A person's page and the invitation start where the team's own column does, so going in and
    back never moves the content sideways. */
 .tm-page {
@@ -8525,6 +8606,15 @@ a.ov-chip-who:focus-visible {
 /* Beside an action, a block's line keeps clear of it. */
 .tm-block-head .tm-block-desc {
   max-width: 52ch;
+}
+
+/* On a phone the action stands under what it is about, at the column's start. */
+@media (max-width: 39.999rem) {
+  .tm-block-head {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 12px;
+    justify-items: start;
+  }
 }
 
 .tm-access {
@@ -8576,6 +8666,20 @@ a.ov-chip-who:focus-visible {
   transition:
     background-color 150ms var(--ease-out-strong),
     border-color 150ms var(--ease-out-strong);
+}
+
+/* On a phone the choices stack: each one's line reads whole instead of five words deep. */
+@media (max-width: 39.999rem) {
+  .tm-role-cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .tm-role-card {
+    gap: 2px;
+    min-height: 0;
+    padding: 12px 16px;
+  }
 }
 
 .tm-role-card:not(:disabled):hover {
@@ -8709,6 +8813,26 @@ label.tm-advanced-row:not([data-disabled]) {
   width: 176px;
 }
 
+/* On a phone a row's select goes under its words, as wide as the row; a switch stays beside. */
+@media (max-width: 39.999rem) {
+  .tm-advanced {
+    padding: 0 16px;
+  }
+
+  .tm-advanced-row {
+    column-gap: 16px;
+  }
+
+  .tm-advanced-row:has(> .tm-advanced-control) {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 8px;
+  }
+
+  .tm-advanced-control {
+    width: auto;
+  }
+}
+
 .tm-project-face {
   display: inline-flex;
   align-items: center;
@@ -8761,6 +8885,18 @@ label.tm-advanced-row:not([data-disabled]) {
   cursor: pointer;
 }
 
+/* On a phone a level is a finger's target: the row's whole height, not its 18 px word. */
+@media (max-width: 39.999rem) {
+  .tm-pick-row {
+    min-height: 44px;
+    padding-block: 0;
+  }
+
+  .tm-pick-level {
+    min-height: 44px;
+  }
+}
+
 .tm-rule {
   height: 1px;
   background: var(--ov-rule);
@@ -8807,6 +8943,12 @@ label.tm-advanced-row:not([data-disabled]) {
   border-radius: 8px;
   cursor: pointer;
   transition: background-color 150ms var(--ease-out-strong);
+}
+
+@media (max-width: 39.999rem) {
+  .tm-invite-project {
+    min-height: 44px;
+  }
 }
 
 .tm-invite-project:hover {
@@ -13891,6 +14033,45 @@ a.message-file:focus-visible {
 
 /* ==== end of motion across switches ==== */
 
+/* ==== Settings on a phone ==== */
+
+/* A setting's row: its name and what it does; a switch or a button stays on the name's line; a
+   select, a field or a slider takes the row's width under the description. */
+@media (max-width: 39.999rem) {
+  [data-settings-row] > [data-slot="row"] > [data-slot="row-control"] {
+    align-self: flex-start;
+  }
+
+  [data-settings-row]
+    > [data-slot="row"]
+    > [data-slot="row-control"]:has(
+      [data-slot="select-trigger"],
+      [data-slot="input-control"],
+      [data-slot="number-field"],
+      input[type="range"]
+    ) {
+    flex-basis: 100%;
+  }
+
+  /* Under one another, the selects are one height whatever size their desktop row picked. */
+  [data-settings-row] [data-slot="row-control"] [data-slot="select-trigger"] {
+    min-height: calc(var(--spacing) * 9);
+  }
+
+  /* A section's heading reads whole: tools too wide to share its line go under it, at its end. */
+  :where([data-settings-page-scroll]) [data-slot="section-header"] {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  /* The desktop's 10 and 11 px notes (a count, a table's head, a sample's label) are 12 px here. */
+  [data-settings-page-scroll] :is(.text-2xs, .text-3xs, .text-\[10px\], .text-\[11px\]) {
+    font-size: var(--text-caption);
+  }
+}
+
+/* ==== end of settings on a phone ==== */
+
 /* ==== Pass 23 · the arrival ==== */
 
 /* A Mate's arrival and its empty conversation (`MateEmptyStateView`), the "Arrival" board's
@@ -14544,6 +14725,13 @@ a.message-file:focus-visible {
 
 .arrival-input::placeholder {
   color: var(--placeholder);
+}
+
+/* Below 640 px a typed field is 16 px: a smaller one makes iOS zoom the page onto it. */
+@media (max-width: 39.999rem) {
+  .arrival-input {
+    font-size: 16px;
+  }
 }
 
 .arrival-input:focus {
