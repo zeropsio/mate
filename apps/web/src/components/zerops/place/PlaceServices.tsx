@@ -399,7 +399,8 @@ export function PlaceAddressCard({
               <ArrowUpRightIcon aria-hidden="true" className="size-3.5 shrink-0" />
             </span>
             <span className="shrink-0 text-caption text-muted-foreground/80">
-              {subdomain ? `${route.service} · Zerops subdomain` : route.service}
+              <span className="real-name">{route.service}</span>
+              {subdomain ? " · Zerops subdomain" : null}
             </span>
           </a>
         );
