@@ -28,6 +28,7 @@ const slot = (overrides: Partial<LiveSlot> = {}): LiveSlot => ({
   quietSince: null,
   pending: [],
   lastPlopAt: null,
+  burst: null,
   ...overrides,
 });
 

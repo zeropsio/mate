@@ -870,6 +870,43 @@ export function cardHeadLine(line: NowLine): NowLine {
 }
 
 /**
+ * Under a live card's head while its log is hidden (the board, 2026-11-10):
+ * what happens now, in one line — a command by its title, any other call in
+ * its own words, a thought by its first words (`thought`), so the folded card
+ * still says what the working row would. Null where the head's own words say
+ * it already: a wait on the person, a pause, a stop.
+ */
+export function underHeadWords(line: NowLine, thought: string | null): string | null {
+  switch (line.kind) {
+    case "step":
+      return line.step.kind === "command" && line.step.words !== null
+        ? `Running a command: ${line.step.words}`
+        : stepNowWords(line.step);
+    case "operation":
+      return operationNowWords(line.operation);
+    case "several":
+      return severalCallsWords(line.calls);
+    case "thinking":
+      return thought ?? "Thinking";
+    case "writing":
+      return "Writing";
+    case "condensing":
+      return "Condensing the context";
+    default:
+      return null;
+  }
+}
+
+/** A thought's first words, as one line: its first paragraph, its marks dropped. */
+export function thoughtOpening(text: string): string | null {
+  const first = text
+    .split(/\n\s*\n/u)
+    .map((paragraph) => paragraph.trim())
+    .find((paragraph) => paragraph.length > 0);
+  return first === undefined ? null : thoughtRunText(first);
+}
+
+/**
  * What a screen reader hears of the live slot: the words of what its first
  * line shows, so they change when the slot does and never between (a probe
  * read them flip to "Thinking" for 200 ms while a step still stood).
