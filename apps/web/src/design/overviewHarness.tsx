@@ -73,6 +73,8 @@ import { VAULT_FIXTURE, vaultFixtureImpact } from "~/components/zerops/vault/vau
 import type { WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
 import { overviewOrder } from "~/components/zerops/projects/projectsView.logic";
 import { Button } from "~/components/ui/button";
+import type { SharedBirth } from "@t3tools/client-runtime/data";
+import { sharedBirthPresentation } from "~/zerops/sharedBirths";
 
 const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
@@ -289,6 +291,26 @@ const JUNO_ASKS = mate("juno", "Juno", "sky", {
     dot: "attention",
   },
 });
+
+/** A Mate whose creation stopped at HQ on a role the viewer does not hold (`?page=line-once`). */
+const STUCK_BIRTH: SharedBirth = {
+  id: "birth-sol",
+  appId: "line-once",
+  appName: "Kite Post",
+  face: "",
+  projectId: null,
+  importProcessId: null,
+  placement: "unplaced",
+  intent: undefined,
+  progress: {
+    phase: "creating-project",
+    next: { kind: "blocked" },
+    reason: "Cannot manage role 'OWNER' - your role 'ADMIN' has insufficient privileges.",
+  },
+  canContinue: false,
+  continuePermission: "maker",
+  canDelete: true,
+};
 
 const PROJECTS: ReadonlyArray<Project> = [
   // (a) Setting up: its first Mate on its way, nothing runs.
@@ -666,6 +688,45 @@ function lineProjects(): ReadonlyArray<Project> {
       since: ago(60 * 24 * 8),
     }),
     busy,
+    // One merged change waits, one Mate works, one Mate's creation stopped at HQ.
+    project({
+      id: "line-once",
+      name: "Kite Post",
+      mates: [
+        working("juno-k", "Juno", "sky", "Postcards arrive in the order they were sent", "2m"),
+        mate("ravi-k", "Ravi", "olive", { time: "3d" }),
+      ],
+      coming: [
+        {
+          projectId: STUCK_BIRTH.id,
+          name: "Sol",
+          previews: [],
+          waiting: false,
+          talked: false,
+          coming: { face: { tint: "coral", shape: undefined } as never, failed: true },
+        },
+      ],
+      notLive: 1,
+      production: {
+        kind: "ready-to-release",
+        stop: stop("once-prod", "production", {
+          version: version("v0.1.7"),
+          addresses: [
+            { service: "app", url: "https://kitepost.example" },
+            { service: "api", url: "https://api-kitepost-4d1a.prg1.zerops.app" },
+          ],
+        }),
+        line: "",
+        candidate: { tag: "v0.1.8", waiting: 1 },
+      },
+      stages: [
+        stop("once-stage", "stage", {
+          addresses: [{ service: "app", url: "https://app-kitepost-9b3c.prg1.zerops.app" }],
+        }),
+      ],
+      chip: { label: "prod", state: "ok", version: "v0.1.7" },
+      since: ago(60 * 24 * 3),
+    }),
     project({
       id: "line-notlive",
       name: "Swarm Lab",
@@ -1006,6 +1067,25 @@ function HarnessPage() {
                   />
                 );
               }}
+              renderComingBirth={(projectId) =>
+                projectId !== STUCK_BIRTH.id
+                  ? undefined
+                  : {
+                      line: sharedBirthPresentation(STUCK_BIRTH).line,
+                      menu: (
+                        <ZeropsProjectMenu
+                          actions={[
+                            {
+                              id: "delete",
+                              label: "Delete",
+                              onSelect: () => acted.push("birth-delete"),
+                            },
+                          ]}
+                          label="More for Sol"
+                        />
+                      ),
+                    }
+              }
               mateTint={(entry) => entry.tint}
               renderMateFace={(entry) => <MateFace size={16} state="idle" tint={entry.tint} />}
               renderReleaseVerb={(entry) =>
