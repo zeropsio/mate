@@ -10258,6 +10258,15 @@ button.ov-change {
 /* The record while the run goes on: once it holds its height, the history
    and the slot share it, so the card's outer box stands still — a slot that
    grows takes its room from the history, never from the page. */
+/* The room the working row takes is the card's own to read (its cap, below):
+   said to nothing under it. Inherited, each change of it — every frame of the
+   working row's travel — restyled every row of the log: at 300 rows, 0.4 s of
+   style a second (2026-11-10). */
+@property --run-slot-room {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
 [data-run-chat][data-run-live] {
   display: flex;
   /* On a short page the slot alone can pass the cap: the card holds it whole. */

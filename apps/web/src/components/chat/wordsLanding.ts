@@ -26,6 +26,25 @@ const headsStood = new WeakMap<HTMLElement, { readonly top: number; readonly at:
 /** How long after its box left the answer may still land on it: the same commit, give or take. */
 const LANDS_WITHIN_MS = 1000;
 
+/** The live cards whose turn goes on, each with how it is read as painted. */
+const painted = new Map<HTMLElement, () => void>();
+
+/**
+ * A live card, `root`, is read as painted (`read`) for as long as its turn
+ * goes on: before each commit that asks (`AsPainted`). Returns the undo.
+ */
+export function watchPainted(root: HTMLElement, read: () => void): () => void {
+  painted.set(root, read);
+  return () => {
+    if (painted.get(root) === read) painted.delete(root);
+  };
+}
+
+/** Reads every watched card as the page stands now: called before a commit changes it. */
+export function readPainted(): void {
+  for (const read of painted.values()) read();
+}
+
 /** A live card's head was painted at `top`, a screen y: what a landing holds it at. */
 export function headStood(head: HTMLElement, top: number): void {
   headsStood.set(head, { top, at: performance.now() });

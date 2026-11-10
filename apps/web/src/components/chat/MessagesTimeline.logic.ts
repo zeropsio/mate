@@ -3726,7 +3726,7 @@ function sameFold(a: FoldsFrom | undefined, b: FoldsFrom | undefined): boolean {
  * Whether a record's item draws the same as the one on screen: messages by
  * identity (a streamed message is a new object), the rest by what it holds.
  */
-function sameRecordItem(a: RecordItem, b: RecordItem): boolean {
+export function sameRecordItem(a: RecordItem, b: RecordItem): boolean {
   if (a === b) return true;
   if (a.kind !== b.kind || a.key !== b.key || a.at !== b.at) return false;
   switch (a.kind) {
