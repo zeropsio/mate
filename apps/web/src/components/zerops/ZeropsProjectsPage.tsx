@@ -233,6 +233,7 @@ import { ZeropsReleaseVerb } from "./ZeropsReleaseVerb";
 import { environmentRoleLabel, environmentRoleTag, groupNameUnread } from "./ZeropsGroupTree.logic";
 import {
   ZeropsProjectsFlow,
+  type MateLayout,
   type ProjectPageSlot,
   type ProjectsFlowGroup,
 } from "./projects/ZeropsProjectsFlow";
@@ -2330,7 +2331,7 @@ export function ZeropsProjectsContent({
       review,
       quiet,
     }: {
-      readonly layout: "card" | "row";
+      readonly layout: MateLayout;
       readonly parts: ReadonlyArray<MatePart>;
       readonly review?: FlowPullRequest | undefined;
       readonly quiet?: boolean | undefined;
@@ -2392,10 +2393,11 @@ export function ZeropsProjectsContent({
       );
 
     // On its project's card: read as its menu row reads it — one face, one line 2, one time.
-    if (layout === "row") {
+    if (layout === "row" || layout === "page-card") {
       return (
         <OverviewCardMate
           candidate={candidate}
+          card={layout === "page-card"}
           change={review}
           coming={comingOf(candidate)}
           // A Mate whose container has something to say first says it: coming up, a failed

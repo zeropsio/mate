@@ -894,8 +894,29 @@ function harnessWaits<T>(entry: ProjectsFlowGroup<T>): ReadonlyArray<CardWait> {
             onVerb: nothing,
           },
         ]
-      : [];
-  const reviews = entry.flow.mates.flatMap((mate): ReadonlyArray<CardWait> => {
+      : // The Mates states (`?page=mates-…`): the viewer's Mate that asks stands here, so its
+        // card below is quiet, as on a real page.
+        entry.group.groupId.startsWith("mates-")
+        ? entry.flow.mates
+            .filter((mate) => mate.waiting)
+            .map((mate) => ({
+              wait: {
+                kind: "ask" as const,
+                key: `ask:${mate.projectId}`,
+                ask: "question" as const,
+                mate: {
+                  ...waiting(mate.projectId, mate.name, "olive"),
+                  kind: "question" as const,
+                  text: "Should a gift box cost the same in every size, or go by its weight?",
+                },
+              },
+              face: face("olive"),
+              onVerb: nothing,
+            }))
+        : [];
+  // There a change in review is a colleague's Mate's: its own card carries its Review.
+  const reviewers = entry.group.groupId.startsWith("mates-") ? [] : entry.flow.mates;
+  const reviews = reviewers.flatMap((mate): ReadonlyArray<CardWait> => {
     const count = mateChangesForReview(entry.flow, mate.projectId).length;
     const tint = MATES[mate.projectId]?.tint ?? "slate";
     return count === 0
