@@ -226,7 +226,7 @@ const RADIO_ITEM_VARIANT: Record<MenuRadioItemVariant, string> = {
   segment:
     // Each as wide as its words, the room left shared out: "Creation date"
     // never cut to fit beside "Name".
-    "flex min-h-6 flex-auto items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-xs data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
+    "flex min-h-6 flex-auto items-center justify-center whitespace-nowrap rounded-md px-2 font-medium text-muted-foreground text-xs pointer-coarse:min-h-8 data-checked:bg-popover data-checked:text-foreground data-checked:shadow-xs data-checked:ring-1 data-checked:ring-border data-highlighted:text-foreground",
 };
 
 function MenuRadioItem({
