@@ -59,6 +59,8 @@ export interface StopVerdict {
   readonly verb:
     | { readonly kind: "release"; readonly tag: string }
     | { readonly kind: "run-again" }
+    /** The stop's deploy key renewed, by a person who may (`keyGap.mayRenew`). */
+    | { readonly kind: "renew-key" }
     | null;
   /**
    * The way out is the next release's review, which the page offers in its own card: the panel
@@ -183,7 +185,14 @@ export function stopVerdict(input: {
    * longer working — and the Zerops project whose Full access mints one; `undefined` while it
    * works.
    */
-  readonly keyGap: { readonly kind: "missing" | "invalid"; readonly project: string } | undefined;
+  readonly keyGap:
+    | {
+        readonly kind: "missing" | "invalid";
+        readonly project: string;
+        /** Whether the viewer may renew it from the page; anyone else is told who does. */
+        readonly mayRenew?: boolean | undefined;
+      }
+    | undefined;
   /** A stage that runs nothing: where its first deploy stands (`GroupFlowStop.firstDeploy`). */
   readonly firstDeploy?: FirstDeploy | undefined;
   /** The release that put nothing live for want of a service (`releaseNotCreated`). */
@@ -210,12 +219,22 @@ export function stopVerdict(input: {
   // nothing is asked again.
   if (input.keyGap !== undefined) {
     const { kind, project } = input.keyGap;
-    return {
-      tone: "failed",
-      text: kind === "missing" ? "It has no deploy key yet." : "Its deploy key no longer works.",
-      detail: `Someone with Full access to the ${project} project in Zerops mints ${kind === "missing" ? "one" : "a new one"} here.`,
-      verb: null,
-    };
+    const text =
+      kind === "missing" ? "It has no deploy key yet." : "Its deploy key no longer works.";
+    // Who may renews it from the sentence itself; anyone else is told who does, and offered nothing.
+    return input.keyGap.mayRenew === true
+      ? {
+          tone: "failed",
+          text,
+          detail: `Renewing makes ${kind === "missing" ? "one" : "a new one"} for this project only.`,
+          verb: { kind: "renew-key" },
+        }
+      : {
+          tone: "failed",
+          text,
+          detail: `Someone with Full access to the ${project} project in Zerops mints ${kind === "missing" ? "one" : "a new one"}.`,
+          verb: null,
+        };
   }
   // One failure, said once, cause first: the release, what it lacked, and what still serves. HQ's
   // refusal of each deploy that followed says nothing more, so no part is named.

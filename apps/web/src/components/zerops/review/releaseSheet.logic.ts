@@ -22,6 +22,8 @@ import {
 } from "@t3tools/client-runtime/zerops/hq";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
+import { NOT_RENEWING, type KeyRenewal } from "~/zerops/renewDeployKey.logic";
+
 import { namesWords } from "../../ask/ask.logic";
 import { plannedServiceWords, type ServiceCreateRun } from "../proposal/productionAsk.logic";
 import { sinceWords } from "./ZeropsReview.logic";
@@ -128,10 +130,7 @@ export interface ReleaseSheetStep {
   readonly deployKey?: DeployKeyTrouble | undefined;
 }
 
-/** The renewal of production's deploy key this sheet runs, as its operation says it stands. */
-export type KeyRenewal =
-  | { readonly kind: "none" | "working" | "renewed" }
-  | { readonly kind: "failed"; readonly words: string };
+export type { KeyRenewal };
 
 export interface ReleaseSheetStepsInput {
   readonly tag: string;
@@ -204,6 +203,8 @@ export function releaseNoteSaid(input: {
   readonly note: string | undefined;
   /** HQ's reason on the step that stopped (`releaseStopReason`). */
   readonly stopped: string | undefined;
+  /** The step no longer says that reason (its key is renewed): the note names no reason then. */
+  readonly reasonGone?: boolean | undefined;
   readonly environmentName: string | undefined;
 }): string | undefined {
   if (input.note === undefined) return undefined;
@@ -211,7 +212,7 @@ export function releaseNoteSaid(input: {
   const once =
     same === undefined || same === ""
       ? input.note
-      : input.note.split(`: ${same}`).join(" for the same reason");
+      : input.note.split(`: ${same}`).join(input.reasonGone === true ? "" : " for the same reason");
   const left = once === same || once === `${same ?? ""}.` ? "" : once;
   return left.trim() === "" ? undefined : inProductionWords(left, input.environmentName);
 }
@@ -603,8 +604,6 @@ const idle = (step: ReleaseSheetStep): ReleaseSheetStep => ({
   action: undefined,
   deployKey: undefined,
 });
-
-const NOT_RENEWING: KeyRenewal = { kind: "none" };
 
 /**
  * The steps once production's key is renewed from the sheet: the step it stopped at says so. The

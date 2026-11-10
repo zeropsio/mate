@@ -87,6 +87,7 @@ import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 
 import { SidebarProvider } from "~/components/ui/sidebar";
+import type { KeyRenewal } from "~/zerops/renewDeployKey.logic";
 import "../index.css";
 
 const ROUTES = [
@@ -835,6 +836,8 @@ interface StopFixture {
   readonly keyHeld?: boolean;
   /** Whether the person may keep the stop's deploy key. */
   readonly mayKeep?: boolean;
+  /** The key's renewal offered from the verdict, and where a run of it stands. */
+  readonly renewKey?: KeyRenewal;
   readonly history?: ZeropsHistoryState;
   /** A production's releases, newest first. */
   readonly releases?: ReadonlyArray<FlowRelease>;
@@ -1059,6 +1062,9 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       stop={stop}
       tags={TAGS}
       trouble={null}
+      renewKey={
+        fixture.renewKey === undefined ? undefined : { run: fixture.renewKey, onRenew: () => {} }
+      }
       verdict={stopVerdict({
         tier: fixture.tier,
         view,
@@ -1071,12 +1077,15 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
         releasedAge: fixture.releasedAge,
         since: view.activatedAt === null ? undefined : "2h ago",
         atMainHead: !production && sameCommit(view.version?.sha, mainHead),
-        keyGap: stopKeyGap({
-          keyHeld: fixture.keyHeld ?? true,
-          keyInvalid: fixture.keyInvalid ?? false,
-          mayKeep: fixture.mayKeep,
-          project: stop.name,
-        }),
+        keyGap: keyGapOf(
+          stopKeyGap({
+            keyHeld: fixture.keyHeld ?? true,
+            keyInvalid: fixture.keyInvalid ?? false,
+            mayKeep: fixture.mayKeep,
+            project: stop.name,
+          }),
+          fixture.renewKey !== undefined,
+        ),
         notCreated,
       })}
       view={view}
@@ -1106,6 +1115,10 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
     />
   );
 }
+
+/** The key's gap as the page hands it to the verdict: with whether the viewer may renew it. */
+const keyGapOf = (gap: ReturnType<typeof stopKeyGap>, mayRenew: boolean) =>
+  gap === undefined ? undefined : { ...gap, mayRenew };
 
 function State({
   label,
@@ -1381,6 +1394,42 @@ function Harness() {
           }}
         />
       </State>
+
+      {(
+        [
+          ["for one who may renew it", { kind: "none" }],
+          ["being renewed", { kind: "working" }],
+          ["renewed, before HQ says so", { kind: "renewed" }],
+          [
+            "whose renewal failed",
+            {
+              kind: "failed",
+              words:
+                "Zerops did not confirm the new key; check production's access tokens in Zerops, then renew again.",
+            },
+          ],
+        ] as const
+      ).map(([words, run]) => (
+        <State
+          key={words}
+          label={`A production whose deploy key no longer works, ${words}`}
+          note="The verdict offers the renewal the release sheet offers, to one with admin access to the project: its button, busy while it runs, its failure under it, and Key renewed until HQ reports the key works."
+        >
+          <StopState
+            fixture={{
+              tier: "production",
+              services: [
+                service("api", "b21d904c", undefined),
+                service("app", "5c3ea18b", undefined),
+              ],
+              deployment: STAGE_RUNNING,
+              routes: ROUTES,
+              keyInvalid: true,
+              renewKey: run,
+            }}
+          />
+        </State>
+      ))}
 
       <State
         label="A stage with no deploy key yet, for one who may not mint it"

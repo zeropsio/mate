@@ -77,12 +77,9 @@ import { useFixMates } from "~/zerops/fixMates";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
-import {
-  releaseRequestOf,
-  type HqAppDetailRead,
-  type OperationEnd,
-} from "@t3tools/client-runtime/data";
-import { useProjectCapabilities } from "~/zerops/usePlatformCapabilities";
+import { releaseRequestOf, type HqAppDetailRead } from "@t3tools/client-runtime/data";
+import { NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
+import { useRenewDeployKey } from "~/zerops/useRenewDeployKey";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
@@ -614,42 +611,17 @@ function ReleaseData({
           }
         };
 
-  // Production's deploy key, renewed from the sheet where it is what stopped the release: the
-  // person's client mints one for production's project alone and HQ keeps it (`keep-deploy-key`).
-  // Zerops makes it only for someone with admin access to that project.
-  const administers = useProjectCapabilities(productionProjectId);
-  const [renewal, setRenewal] = useState<KeyRenewal>(NOT_RENEWING);
-  const renewKey =
-    operations === null ||
-    orgId === null ||
-    productionProjectId === undefined ||
-    production === undefined ||
-    (administers.projectAccessKnown && !administers.administer)
+  // Production's deploy key, renewed from the sheet where it is what stopped the release.
+  const renewKey = useRenewDeployKey(
+    productionProjectId === undefined || production === undefined
       ? undefined
-      : async () => {
-          if (renewal.kind === "working") return;
-          setRenewal({ kind: "working" });
-          try {
-            const requestId = randomUUID();
-            await operations.submit(
-              {
-                kind: "keep-deploy-key",
-                orgId,
-                appId: flow.groupId,
-                projectId: productionProjectId,
-                environmentName: production.environment,
-              },
-              requestId,
-            );
-            const trouble = keyRenewTrouble(await operations.untilEnd(requestId, orgId));
-            setRenewal(trouble === null ? { kind: "renewed" } : { kind: "failed", words: trouble });
-          } catch (cause) {
-            setRenewal({
-              kind: "failed",
-              words: cause instanceof Error ? cause.message : "It could not be carried out.",
-            });
-          }
-        };
+      : {
+          appId: flow.groupId,
+          projectId: productionProjectId,
+          name: production.environment,
+          place: "production",
+        },
+  );
 
   const [pressedAt, setPressedAt] = useState<string>();
   const release = async () => {
@@ -794,19 +766,11 @@ function ReleaseData({
         setHeldPlan(undefined);
         setTypedVersion(undefined);
         setPressedAt(undefined);
-        setRenewal(NOT_RENEWING);
+        renewKey.reset();
       }}
       environmentName={production?.environment}
       entries={flow.release.entries.length}
-      keyRenewal={{
-        run: renewal,
-        onRenew:
-          renewKey === undefined
-            ? undefined
-            : () => {
-                void renewKey();
-              },
-      }}
+      keyRenewal={renewKey}
       git={
         flow.release.git === undefined
           ? undefined
@@ -869,21 +833,6 @@ function ReleaseData({
 }
 
 const NOTHING_CREATED: ReadonlyArray<ReleaseCreateOperation> = [];
-const NOT_RENEWING: KeyRenewal = { kind: "none" };
-
-/** What the person is told of a key's renewal that did not end with HQ keeping it; `null` once it does. */
-function keyRenewTrouble(end: NonNullable<OperationEnd>): string | null {
-  switch (end.stage) {
-    case "done":
-      return end.outcome === "succeeded" ? null : (end.reason ?? "HQ did not keep the new key.");
-    case "refused":
-      return end.reason;
-    case "unsent":
-      return end.reason ?? "Zerops did not make the key. Try again.";
-    default:
-      return "The renewal could not be followed. Check production on the project's page before trying again.";
-  }
-}
 const NO_JOBS: ReadonlyArray<{ readonly service: string; readonly job: HqJob }> = [];
 const NO_ANSWERED: ReadonlyArray<{
   readonly service: string;
@@ -1502,6 +1451,8 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
   const answerNote = releaseNoteSaid({
     note: answer === undefined ? undefined : deployAnswerSaid(answer).note,
     stopped: releaseStopReason(props.progress),
+    // The key renewed, its sentence stands nowhere: the note says only what HQ could not do.
+    reasonGone: renewal.kind === "renewed",
     environmentName: props.environmentName,
   });
   const shown = allRows ? rows : rows.slice(0, ROWS_SHOWN);

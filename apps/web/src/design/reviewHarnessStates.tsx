@@ -1329,7 +1329,11 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
       [
         "release-key-renew-failed",
         "the renewal failed, in its own words",
-        { kind: "failed", words: "Zerops did not make the key: the request timed out." },
+        {
+          kind: "failed",
+          words:
+            "Zerops did not confirm the new key; check production's access tokens in Zerops, then renew again.",
+        },
         true,
       ],
       ["release-key-not-admin", "not this person's key to renew", { kind: "none" }, false],
