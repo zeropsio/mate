@@ -1,40 +1,15 @@
 /**
  * An environment's vault on its own page (stage, prod): no Mate there to tell, so the person
- * restarts what a change needs from the vault itself. It is a drawer the header's Vault opens over
- * the page, closed by default: open beside the page it took a third of the screen on every visit
- * (the owner, 2026-11-09).
+ * restarts what a change needs from the vault itself. It is a drawer the place's Vault door opens
+ * over the page (`PlaceDoors`), closed by default: open beside the page it took a third of the
+ * screen on every visit (the owner, 2026-11-09).
  */
-import { KeyRound } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
 
 import { PreviewPanelShell } from "../../RightPanelShell";
-import { Button } from "../../ui/button";
 import { Sheet, SheetPopup } from "../../ui/sheet";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import type { PlaceVault } from "./placeVault.logic";
 import { ProjectVaultPanel } from "./VaultPanelContainer";
-
-/** The page's verb that opens its vault drawer. */
-export function StopVaultToggle({
-  open,
-  onOpenChange,
-}: {
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}) {
-  return (
-    <Button
-      aria-expanded={open}
-      aria-haspopup="dialog"
-      onClick={() => onOpenChange(!open)}
-      size="sm"
-      variant="secondary"
-    >
-      <KeyRound aria-hidden="true" />
-      Vault
-    </Button>
-  );
-}
 
 /** The environment's vault in a drawer over its page, from the right edge. */
 export function StopVaultDrawer({
@@ -78,43 +53,6 @@ export function StopVaultDrawer({
         </PreviewPanelShell>
       </SheetPopup>
     </Sheet>
-  );
-}
-
-/**
- * A place's vault from its line on another page (an overview card, the project page): a quiet icon
- * at the line's end, shown while the line is hovered or holds focus (and always where nothing
- * hovers). It is always there and keeps its room, so nothing moves as it shows. The line's parent
- * names the hover with `group/place`.
- */
-export function PlaceVaultButton({
-  name,
-  onOpen,
-}: {
-  /** The place as its line names it (`Production`). */
-  readonly name: string;
-  readonly onOpen: () => void;
-}) {
-  return (
-    // Its row's height is the line's: the icon's extra height overhangs it.
-    <span className="-my-1 flex shrink-0 opacity-0 transition-opacity duration-150 ease-out group-focus-within/place:opacity-100 group-hover/place:opacity-100 motion-reduce:transition-none [@media(hover:none)]:opacity-100">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              aria-haspopup="dialog"
-              aria-label={`Vault · ${name}`}
-              onClick={onOpen}
-              size="icon-sm"
-              variant="ghost"
-            />
-          }
-        >
-          <KeyRound aria-hidden="true" />
-        </TooltipTrigger>
-        <TooltipPopup side="top">Vault</TooltipPopup>
-      </Tooltip>
-    </span>
   );
 }
 

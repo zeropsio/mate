@@ -14,7 +14,7 @@ import * as Option from "effect/Option";
 import { useAccountDataOptional, useProjection } from "~/zerops/accountData";
 import { useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
-import { StopVaultDrawer, StopVaultToggle } from "./vault/StopVault";
+import { StopVaultDrawer } from "./vault/StopVault";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 /**
@@ -130,6 +130,7 @@ import {
   type StopDeployAgain,
 } from "./place/PlaceServices";
 import { PlaceAccessCard } from "./place/PlaceAccess";
+import { PlaceDoors } from "./place/PlaceDoors";
 import { PlaceNextCard, PlaceNextRelease } from "./place/PlaceNext";
 import { usePlaceServiceMap } from "./place/usePlaceServiceMap";
 import {
@@ -1269,9 +1270,21 @@ export function ZeropsStopPane({
     <DetailShell
       actions={
         <>
-          {vault === undefined ? null : (
-            <StopVaultToggle onOpenChange={vault.onOpenChange} open={vault.open} />
-          )}
+          {/* The place's two doors, as its line has them wherever it is named. */}
+          <PlaceDoors
+            look="page"
+            name={head.title}
+            sites={
+              projectId === undefined || routes.length === 0
+                ? undefined
+                : { groupId, kind: production ? "production" : "stage", projectId }
+            }
+            vault={
+              vault === undefined || projectId === undefined
+                ? undefined
+                : { onOpen: () => vault.onOpenChange(true), open: vault.open }
+            }
+          />
           {projectId === undefined ? null : (
             <ZeropsStopMenu
               groupId={groupId}
