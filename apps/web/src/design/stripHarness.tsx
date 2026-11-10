@@ -51,6 +51,7 @@ import {
 import { Button } from "~/components/ui/button";
 import { threadAgentActivity } from "~/zerops/agentActivity";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
+import { MateLinkMarker } from "~/components/zerops/MateLinkMarker";
 import { MateStatusMarker } from "~/components/zerops/MateStatusMarker";
 import { ZeropsProjectLink } from "~/components/zerops/ZeropsProjectLink";
 import type { MateStatusAsk } from "~/zerops/mateStatus.logic";
@@ -327,6 +328,8 @@ interface HeadState {
   readonly links?: "held" | "project" | "none";
   /** The Mate waits on a key: its status after the line, a press for its person, words otherwise. */
   readonly needsKey?: { readonly ask: MateStatusAsk; readonly mine: boolean };
+  /** The Mate's link is being made again: past a blip (`held`), or slow, with Try now. */
+  readonly link?: "held" | "slow";
 }
 
 const LONG_SUBJECT =
@@ -528,6 +531,22 @@ const STATES: ReadonlyArray<HeadState> = [
     crew: [],
     on: 0,
     needsKey: { ask: { askedOf: "Dana" }, mine: false },
+  },
+  {
+    id: "link-held",
+    title: "Fen's link dropped — past a blip its header says so, in the status's seat",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    link: "held",
+  },
+  {
+    id: "link-slow",
+    title: "The same once the link is slow — Try now joins it; nothing stands over the composer",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    link: "slow",
   },
 ];
 
@@ -739,6 +758,12 @@ function Frame({
               renameField={null}
               trailing={state.review === true ? <HeaderReviewDoor {...REVIEW_DOOR} /> : undefined}
             />
+            {state.link === undefined ? null : (
+              <MateLinkMarker
+                onTryNow={state.link === "slow" ? () => {} : undefined}
+                words={`Reconnecting to ${FEN.name}…`}
+              />
+            )}
             {state.needsKey === undefined ? null : (
               <MateStatusMarker
                 ask={state.needsKey.ask}
