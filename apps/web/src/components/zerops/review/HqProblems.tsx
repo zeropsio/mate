@@ -1,8 +1,12 @@
-import { problemPresentation } from "@t3tools/client-runtime/zerops/hq";
+import { problemSaid } from "@t3tools/client-runtime/zerops/hq";
 import type { HqProblem } from "@t3tools/shared/hqProblems";
-import { ReviewSection } from "./ZeropsReviewSurface";
+import { TriangleAlertIcon } from "lucide-react";
 
-/** Both reviews show the finding HQ supplied, including its concrete recovery. */
+/**
+ * What HQ found, in both reviews: each finding one statement, then who acts next and how. Its
+ * identifiers (where, rule, evidence) are a person's to quote, not to read first: they open under
+ * *Details*.
+ */
 export function HqProblems({
   problems,
 }: {
@@ -10,37 +14,40 @@ export function HqProblems({
 }) {
   if (problems === undefined || problems.length === 0) return null;
   return (
-    <ReviewSection title="HQ findings">
-      <ol>
+    <section aria-label="What HQ found">
+      <ol className="rv-findings">
         {problems.map((problem, index) => {
-          const shown = problemPresentation(problem);
+          const said = problemSaid(problem);
           return (
-            <li key={index}>
-              <p className="rv-words">{shown.what}</p>
-              <dl>
-                <div>
-                  <dt>Where</dt>
-                  <dd>{shown.where}</dd>
-                </div>
-                <div>
-                  <dt>Rule</dt>
-                  <dd>{shown.rule}</dd>
-                </div>
-                <div>
-                  <dt>Next</dt>
-                  <dd>{shown.next}</dd>
-                </div>
-                {shown.evidence === undefined ? null : (
+            <li className="rv-finding" key={index}>
+              <TriangleAlertIcon aria-hidden="true" />
+              <p className="rv-finding-what">{said.what}</p>
+              <p className="rv-finding-next">
+                <span>Next, for {said.who}:</span> {said.action}
+              </p>
+              <details className="rv-finding-more">
+                <summary>Details</summary>
+                <dl>
                   <div>
-                    <dt>Evidence</dt>
-                    <dd>{shown.evidence}</dd>
+                    <dt>Where</dt>
+                    <dd>{said.where}</dd>
                   </div>
-                )}
-              </dl>
+                  <div>
+                    <dt>Rule</dt>
+                    <dd>{said.rule}</dd>
+                  </div>
+                  {said.evidence === undefined ? null : (
+                    <div>
+                      <dt>Evidence</dt>
+                      <dd>{said.evidence}</dd>
+                    </div>
+                  )}
+                </dl>
+              </details>
             </li>
           );
         })}
       </ol>
-    </ReviewSection>
+    </section>
   );
 }

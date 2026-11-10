@@ -285,8 +285,22 @@ function ChangeReviewData({
   // The offer HQ sends right after a merge is not read yet; once it has gone pending and is read
   // again, it counts the change this review merged, and the review stops adding it.
   const offerPending = flow?.release.summaryRead === "pending";
-  const [offerMoved, setOfferMoved] = useState(false);
-  if (press.kind === "done" && offerPending && !offerMoved) setOfferMoved(true);
+  const [offerWentPending, setOfferWentPending] = useState(false);
+  if (press.kind === "done" && offerPending && !offerWentPending) setOfferWentPending(true);
+  // The offer can also arrive whole, never seen pending — before the merge's own answer, even. It
+  // is then told from the one in hand at the press by what its tag would list.
+  const offerKey =
+    flow === undefined
+      ? undefined
+      : [
+          flow.release.groupHead,
+          ...flow.release.entries.map(({ service, commit }) => `${service}@${commit}`),
+        ].join(" ");
+  const [offerAtPress, setOfferAtPress] = useState<string | undefined>(undefined);
+  const offerMoved = offerWentPending || offerKey !== offerAtPress;
+  // Until it has moved, the offer in hand was read before this merge: its gate may still say
+  // nothing waits for production, which the merge just made untrue.
+  const offerStale = press.kind === "done" && !offerMoved;
   const [closePress, setClosePress] = useState({
     head: pull.headSha,
     press: { kind: "idle" } as ReviewClose,
@@ -301,6 +315,7 @@ function ChangeReviewData({
   const setClosing = (press: ReviewClose) => setClosePress({ head: pull.headSha, press });
   const change = { repository: pull.repository, number: pull.number };
   const merge = async () => {
+    setOfferAtPress(offerKey);
     setPress({ kind: "running" });
     // The head the review shows: its files were read for it, and one pushed since HQ refuses.
     const outcome = await verbs.merge(target.groupId, change, pull.headSha);
@@ -476,7 +491,7 @@ function ChangeReviewData({
       project={project}
       appId={target.groupId}
       stages={flow === undefined ? NO_STAGES : mainStagesOf(flow).map((entry) => entry.name)}
-      release={flow?.release.gate}
+      release={offerStale ? undefined : flow?.release.gate}
       mate={
         mate === undefined
           ? {
@@ -578,7 +593,7 @@ function ChangeReviewData({
       waitingForProduction={waitingForProduction({
         summary: flow?.release.summary,
         pending: offerPending,
-        mergedAhead: press.kind === "done" && !offerMoved,
+        mergedAhead: offerStale,
       })}
     />
   );

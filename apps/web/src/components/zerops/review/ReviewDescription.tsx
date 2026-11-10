@@ -75,7 +75,14 @@ export function ReviewDescription({
   /** Opens the run that made it, where one is known. */
   readonly onOpenRun: (() => void) | undefined;
 }) {
-  const shown = reviewDescription({ description, reading });
+  // Words once shown stay while the change is read again (a merge reads it anew): the description
+  // never gives its place back to a skeleton.
+  const [kept, setKept] = useState(description);
+  if (description !== undefined && description !== kept) setKept(description);
+  const shown = reviewDescription({
+    description: description ?? (reading ? kept : undefined),
+    reading,
+  });
   // A description that was read for and turned out not to exist folds shut: what stood under its
   // lines glides up into their place, never jumps.
   const [was, setWas] = useState(shown.kind);

@@ -11986,6 +11986,10 @@ a.message-file:focus-visible {
 .rv-body:empty {
   display: none;
 }
+/* A section with nothing under its label says nothing: it is not drawn. */
+.rv-body section:has(> .rv-sec-h:only-child) {
+  display: none;
+}
 .rv-sec-h {
   display: flex;
   align-items: baseline;
@@ -12355,6 +12359,83 @@ a.message-file:focus-visible {
 
 /* What could not be read, where it would have stood, with Try again: amber, it didn't go
    through; a failure never blanks its section. */
+/* What HQ found: each finding a soft box — the statement beside its mark, who acts next under it,
+   and its identifiers folded under Details. */
+.rv-findings {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rv-finding {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 4px 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--zerops-status-attention) 9%, transparent);
+}
+.rv-finding > svg {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--zerops-status-attention);
+}
+.rv-finding > :not(svg) {
+  grid-column: 2;
+}
+.rv-finding-what {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-wrap: pretty;
+}
+.rv-finding-next {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+  text-wrap: pretty;
+}
+.rv-finding-next > span {
+  color: var(--foreground);
+}
+.rv-finding-more {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+.rv-finding-more > summary {
+  width: fit-content;
+  cursor: pointer;
+  border-radius: 4px;
+  outline-offset: 2px;
+}
+.rv-finding-more > summary:hover {
+  color: var(--foreground);
+}
+.rv-finding-more > dl {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+}
+.rv-finding-more > dl > div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+}
+.rv-finding-more dt {
+  color: var(--muted-foreground);
+}
+.rv-finding-more dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+  color: color-mix(in oklab, var(--foreground) 80%, transparent);
+}
 .rv-failed {
   display: flex;
   min-height: 36px;

@@ -1362,7 +1362,11 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
         ? { words: RELEASE_READING }
         : props.servicePlanFailure !== undefined
           ? {
-              words: props.servicePlanFailure.replace(/\.$/u, ""),
+              // HQ's finding stands above in its own words: the foot says only what it holds back.
+              words:
+                problems !== undefined && problems.length > 0
+                  ? "Nothing is released until this is fixed"
+                  : props.servicePlanFailure.replace(/\.$/u, ""),
               tone: "attention",
               ...(props.onRetryServicePlan === undefined
                 ? {}
