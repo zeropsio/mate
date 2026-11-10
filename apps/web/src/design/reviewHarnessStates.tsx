@@ -1364,6 +1364,41 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
     },
   })),
   {
+    id: "release-reopened-key",
+    label: "See why · opened on the release that stopped on production's key, nothing pressed here",
+    props: {
+      outcome: { kind: "failed", detail: "Its production deploy failed", services: ["shop"] },
+      over: {
+        ...KEY_RELEASE,
+        started: { at: minutesAgo(42), by: "Dana" },
+        progress: {
+          creation: creationOf("failed", {
+            reason: KEY_WIDENED,
+            services: ["cache"],
+            at: minutesAgo(42),
+            endedAt: minutesAgo(41.7),
+          }),
+          deploys: KEY_DEPLOYS,
+        },
+        keyRenewal: { run: { kind: "none" }, onRenew: noop },
+      },
+    },
+  },
+  {
+    id: "release-reopened",
+    label: "See why · opened on a release whose deploy failed, the next one a press away",
+    props: {
+      outcome: derived57({
+        tagged: tagged57({
+          standing: "deploy-failed",
+          failedEntries: [{ service: "app", commit: SEVEN_E }],
+        }),
+        jobs: FAILED_JOBS,
+      }),
+      over: { progress: progressOfJobs(FAILED_JOBS), onReviewNew: noop },
+    },
+  },
+  {
     id: "release-key-deploy",
     label: "Release · stopped at a deploy, the key HQ keeps no longer answers",
     props: {

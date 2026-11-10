@@ -31,6 +31,7 @@ import {
   carriedMoved,
   changesCountWords,
   holdReleaseFacts,
+  releaseFailureOf,
   movedCommits,
   movedCount,
   releaseFacts,
@@ -363,9 +364,27 @@ function ReleaseData({
     repositories: flow.release.repositories ?? new Map(),
     tags: versionTags,
   });
+  // "See why": opened while the newest release didn't go live and nothing is on its way, the
+  // sheet opens on that release's stop, not on the next offer. Which release that is, is the one
+  // fact the next-release bar's "Didn't go live" is read from (`releaseFailureOf`: the newest that
+  // did not go through among those newer than what production runs, so one a newer live release
+  // followed is not reopened). It is followed as one this tab pressed is, decided once when the
+  // releases are first known; *Review a new release* lets it go for the offer.
+  const [reopened, setReopened] = useState<string | null | undefined>(undefined);
+  if (reopened === undefined && flow.releasesKnown)
+    setReopened(
+      flow.release.git !== undefined || flow.release.inFlight !== undefined || made !== undefined
+        ? null
+        : (releaseFailureOf({
+            releases: flow.releases,
+            environmentInputs: flow.environmentInputs,
+            stalled: flow.release.stalled,
+          })?.tag ?? null),
+    );
+  const stoppedBefore = reopened === null ? undefined : reopened;
   const follows = releaseFollows({
-    made,
-    held,
+    made: made ?? stoppedBefore,
+    held: held ?? (stoppedBefore === undefined ? undefined : { tag: stoppedBefore }),
     press,
     inFlight: flow.release.inFlight,
     stalled: flow.release.stalled,
@@ -766,6 +785,7 @@ function ReleaseData({
         setHeldPlan(undefined);
         setTypedVersion(undefined);
         setPressedAt(undefined);
+        setReopened(null);
         renewKey.reset();
       }}
       environmentName={production?.environment}
@@ -1334,8 +1354,6 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
   const renewal = props.keyRenewal?.run ?? NOT_RENEWING;
   const onRenew = props.keyRenewal?.onRenew;
   const failedCreation = steps.find((step) => step.kind === "create" && step.mark === "failed");
-  const createdAfter =
-    stopped && made.length > 0 && failedCreation === undefined && early.kind !== "working";
   const onCreate = props.creation?.onCreate;
   const { onReviewNew } = props;
   const wayOut: ReviewPrimaryButton | undefined = !stopped
@@ -1369,25 +1387,15 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               safe: false,
               onPress: onCreate,
             }
-          : createdAfter && onReviewNew !== undefined
+          : onReviewNew !== undefined
             ? { label: "Review a new release", enabled: true, safe: false, onPress: onReviewNew }
-            : fix !== undefined && props.fixer !== undefined
-              ? {
-                  label: `Ask ${props.fixer} to ${fix.verb}`,
-                  enabled: true,
-                  safe: false,
-                  onPress: () => {
-                    props.onFix(fix.problem);
-                  },
-                }
-              : onReviewNew !== undefined
-                ? {
-                    label: "Review a new release",
-                    enabled: true,
-                    safe: false,
-                    onPress: onReviewNew,
-                  }
-                : undefined;
+            : undefined;
+  // A stop whose one button is its own way out (the key, the creation) keeps the way to the next
+  // release behind ⋯: no stop is a dead end, opened again or not.
+  const reviewNext =
+    stopped && onReviewNew !== undefined && wayOut?.onPress !== onReviewNew
+      ? [{ label: "Review a new release", onPress: onReviewNew }]
+      : [];
   const press1 = releasePressLabel(tag, creates);
   const primary: ReviewPrimaryButton | undefined = offered
     ? {
@@ -1483,7 +1491,10 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       held={!offered}
       // What HQ refused with a fix a Mate can make: asked for beside the way out.
       ask={
-        offered && fix !== undefined && props.fixer !== undefined
+        // Offered, or stopped on something a Mate can fix: never for the key, which is a person's.
+        (offered || (stopped && keyStop === undefined && early.kind !== "working")) &&
+        fix !== undefined &&
+        props.fixer !== undefined
           ? {
               label: `Ask ${props.fixer} to ${fix.verb}`,
               onPress: () => {
@@ -1494,7 +1505,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       }
       kind="release"
       kindLabel={props.name ?? ""}
-      menu={browse}
+      menu={[...browse, ...reviewNext]}
       noteAction={note.action}
       onClose={props.onClose}
       primary={primary}
