@@ -5,7 +5,9 @@ How mate reaches users. Each step names the file that owns its detail.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.
 - **Staging web.** `zerops.yml`'s `staging` setup builds the alfa test web against alfa's HQ
-  (`VITE_HQ_ORIGIN`); Mates born from it pin `T3CODE_ZEROPS_HQ_ORIGIN` to that HQ.
+  (`VITE_HQ_ORIGIN`); Mates born from it pin `T3CODE_ZEROPS_HQ_ORIGIN` to that HQ. It runs at
+  https://web-31d9.prg1.zerops.app, the `web` service of `mate-hq-staging`; deploy it from a
+  checkout with `zcli push -P <project id> -S <web id> --setup staging`.
 - **Hosted client's service worker.** `prod` and `staging` build with
   `VITE_APP_SHELL_WORKER: app-shell`: `/sw.js` answers every load with the origin's page, so the
   first load after a deploy runs it, and keeps that page with its files behind it; the kept page
