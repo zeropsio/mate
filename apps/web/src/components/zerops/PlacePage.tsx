@@ -96,6 +96,7 @@ import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
+import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { Skeleton } from "../ui/skeleton";
 import { usePlaceAccessPeople } from "./projects/ProjectPeople";
 import type { columnPeople } from "./projects/accessTable.logic";
@@ -584,6 +585,13 @@ function ZeropsProjectStopDetailPage({
         platformServices={serviceMap.rows}
         usageRead={serviceMap.usageRead}
         vault={orgId === null ? undefined : { orgId, open: vaultOpen, onOpenChange: setVaultOpen }}
+        onManageAddresses={
+          orgId === null
+            ? undefined
+            : () => {
+                useAddressesSheet.getState().open({ orgId, projectId, groupId });
+              }
+        }
         readAgain={<StopReadAgain projectId={projectId} />}
         runningNow={runningNow}
         readFailures={
@@ -961,6 +969,7 @@ export function ZeropsStopPane({
   view,
   waiting,
   vault,
+  onManageAddresses,
   access,
   groupName,
   platformServices,
@@ -982,6 +991,8 @@ export function ZeropsStopPane({
     | undefined;
   /** The project's name, for the access card's link: "Manage on Tea Shop's page". */
   readonly groupName?: string | undefined;
+  /** Opens the place's addresses to manage them; absent where the account reads no organization. */
+  readonly onManageAddresses?: (() => void) | undefined;
   /** The environment's vault, where the account reads its organization: a drawer over the page. */
   readonly vault?:
     | {
@@ -1576,7 +1587,21 @@ export function ZeropsStopPane({
             </div>
 
             {projectId === undefined ? null : (
-              <PlaceSection label={<SectionLabel>Addresses</SectionLabel>}>
+              <PlaceSection
+                label={
+                  <SectionLabel
+                    action={
+                      onManageAddresses === undefined ? undefined : (
+                        <Button onClick={onManageAddresses} size="sm" variant="link">
+                          Manage
+                        </Button>
+                      )
+                    }
+                  >
+                    Addresses
+                  </SectionLabel>
+                }
+              >
                 <PlaceAddressCard
                   enablingServiceId={enablingServiceId ?? null}
                   offers={offers}

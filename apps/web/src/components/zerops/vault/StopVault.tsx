@@ -4,7 +4,7 @@
  * the page, closed by default: open beside the page it took a third of the screen on every visit
  * (the owner, 2026-11-09).
  */
-import { Vault } from "lucide-react";
+import { KeyRound } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
 
 import { PreviewPanelShell } from "../../RightPanelShell";
@@ -30,7 +30,7 @@ export function StopVaultToggle({
       size="sm"
       variant="secondary"
     >
-      <Vault aria-hidden="true" />
+      <KeyRound aria-hidden="true" />
       Vault
     </Button>
   );
@@ -110,7 +110,7 @@ export function PlaceVaultButton({
             />
           }
         >
-          <Vault aria-hidden="true" />
+          <KeyRound aria-hidden="true" />
         </TooltipTrigger>
         <TooltipPopup side="top">Vault</TooltipPopup>
       </Tooltip>
