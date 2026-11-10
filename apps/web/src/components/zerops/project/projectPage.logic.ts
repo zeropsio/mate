@@ -1,14 +1,11 @@
 /**
  * What a project's page says, from the reads its overview card already takes: its recent changes,
- * what the live release brought, its code's copies elsewhere and every address it serves at. Pure:
- * no React.
+ * what the live release brought and its code's copies elsewhere. Pure: no React.
  */
-import {
-  isPlatformSubdomain,
-  type EnvironmentSlotRow,
-  type FlowPullRequest,
-  type GroupFlow,
-  type GroupFlowAddress,
+import type {
+  EnvironmentSlotRow,
+  FlowPullRequest,
+  GroupFlow,
 } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
@@ -22,7 +19,6 @@ import {
   broughtBy,
   cardChanges,
   mateChangesForReview,
-  placeLabel,
   type CardChange,
   type PlaceLine,
 } from "../projects/projectCard.logic";
@@ -60,27 +56,43 @@ export function pageChanges(input: {
 export interface ChangeGroup {
   readonly label: string;
   readonly changes: ReadonlyArray<CardChange>;
+  /** The release that took them, where one did: its version, and when it was made. */
+  readonly release?: { readonly tag: string; readonly at: string | undefined } | undefined;
 }
 
 /**
- * The page's changes by what each row needs to say: open ones each with what stops it; merged ones
- * grouped by where they went, the place said once as the group's label; setup files last, each
- * saying it is no part of a release.
+ * The page's changes by what each row needs to say, in two zones. What is not live yet: open ones
+ * each with what stops it, then merged ones grouped by where they stand before production, the
+ * place said once as the group's label (`groups`). What is live (`live`): merged ones grouped by
+ * the release that put them live. Setup files last, each saying it is no part of a release.
  */
 export function changeGroups(changes: ReadonlyArray<CardChange>): {
   readonly open: ReadonlyArray<CardChange>;
   readonly groups: ReadonlyArray<ChangeGroup>;
+  readonly live: ReadonlyArray<ChangeGroup>;
   readonly setup: ReadonlyArray<CardChange>;
 } {
-  const groups = new Map<string, CardChange[]>();
+  const groups = new Map<string, { live: boolean; group: ChangeGroup }>();
   for (const change of changes) {
     if (change.open || change.pull.kind === "recipe") continue;
     const label = groupLabel(change.words);
-    groups.set(label, [...(groups.get(label) ?? []), change]);
+    const took = change.where?.kind === "released" ? change.where : undefined;
+    const held = groups.get(label);
+    groups.set(label, {
+      live: took?.live === true,
+      group: {
+        label,
+        changes: [...(held?.group.changes ?? []), change],
+        ...(took === undefined ? {} : { release: { tag: took.tag, at: took.at } }),
+      },
+    });
   }
+  const zone = (live: boolean) =>
+    [...groups.values()].filter((each) => each.live === live).map((each) => each.group);
   return {
     open: changes.filter((change) => change.open),
-    groups: [...groups].map(([label, rows]) => ({ label, changes: rows })),
+    groups: zone(false),
+    live: zone(true),
     setup: changes.filter((change) => !change.open && change.pull.kind === "recipe"),
   };
 }
@@ -161,41 +173,6 @@ export function waitingChanges(
   mateProjectId: string,
 ): ReadonlyArray<FlowPullRequest> {
   return mateChangesForReview(flow, mateProjectId);
-}
-
-/** One address of the project's page: its host, and the place that serves it. */
-export interface PageAddress extends GroupFlowAddress {
-  readonly host: string;
-  /** The place it belongs to, `Production` or a stage by its name (`placeLabel`). */
-  readonly place: string;
-}
-
-/**
- * Every address the project's places serve at, each once: production's first, and within a place
- * its own domains before the platform's subdomains.
- */
-export function pageAddresses(lines: ReadonlyArray<PlaceLine>): ReadonlyArray<PageAddress> {
-  const seen = new Set<string>();
-  return linesProductionFirst(lines).flatMap((line) => {
-    if (line.nothingDeployed === true) return [];
-    const served = line.addresses.flatMap((address) => {
-      if (seen.has(address.url)) return [];
-      seen.add(address.url);
-      return [{ ...address, host: hostOf(address.url), place: placeLabel(line) }];
-    });
-    return [
-      ...served.filter((address) => !isPlatformSubdomain(address.host)),
-      ...served.filter((address) => isPlatformSubdomain(address.host)),
-    ];
-  });
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
 }
 
 /** Production's slot, then every stage's — the order the project's card says them in. */

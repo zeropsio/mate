@@ -3,10 +3,17 @@
  * whether a failure of it is over. Pure: no React.
  */
 import { RELEASE_DIDNT_GO_LIVE } from "@t3tools/client-runtime/zerops/flow";
-import type { FlowReleaseRow } from "@t3tools/client-runtime/zerops";
+import type { FlowReleaseRow, Moved } from "@t3tools/client-runtime/zerops";
 
 import { changeTitle } from "./projects/projectHistory.logic";
 import { releaseRowTone } from "./ZeropsProjectRow.logic";
+
+/**
+ * The repositories a release carried changes of, from every one HQ compared for it: one it moved
+ * no commit in is none of what the release carried, and its opened row does not list it.
+ */
+export const reposCarried = (moved: ReadonlyArray<Moved>): ReadonlyArray<Moved> =>
+  moved.filter((read) => read.commits.length > 0);
 
 type Listed = Pick<FlowReleaseRow, "tag" | "verdict" | "standing" | "history">;
 

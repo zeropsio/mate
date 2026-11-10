@@ -42,6 +42,7 @@ import {
   type EnvironmentServiceState,
   type FlowPullRequest,
   type FlowRelease,
+  type Moved,
   type MovedCommits,
   type ReleaseCreationFailure,
   type ReleaseDeployFailure,
@@ -83,7 +84,11 @@ import type {
 import type { MateTintId } from "@t3tools/shared/brand";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
-import { VAULT_FIXTURE, vaultFixtureImpact } from "~/components/zerops/vault/vaultFixture";
+import {
+  VAULT_FIXTURE,
+  VAULT_TWO_APPS_FIXTURE,
+  vaultFixtureImpact,
+} from "~/components/zerops/vault/vaultFixture";
 import type { columnPeople } from "~/components/zerops/projects/accessTable.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
@@ -887,6 +892,61 @@ const carriedAs = (
   state: MovedCommits,
 ): ReadonlyMap<string, MovedCommits> => new Map(releases.map(({ tag }) => [tag, state]));
 
+/**
+ * Tea Shop as HQ records its releases now: the five newest name their changes and compare both
+ * repositories, the one a release did not move included; the oldest were made before HQ recorded
+ * what a release carried.
+ */
+const TEASHOP_COMPARED = carriedOf(TEASHOP_RELEASES);
+const movedBy = (tag: string): ReadonlyArray<Moved> => {
+  const compared = TEASHOP_COMPARED.get(tag);
+  return compared?.state === "known" ? compared.moved : [];
+};
+const TEASHOP_RECORDED: ReadonlyArray<FlowRelease> = [
+  ...TEASHOP_RELEASES.map((release, index) => {
+    if (index > 4) return release;
+    const commits = movedBy(release.tag).flatMap((read) =>
+      read.commits.map((entry) => ({ repo: read.repository, title: entry.subject })),
+    );
+    return {
+      ...release,
+      history: {
+        ranges: [],
+        changes: commits.map((entry, at) => ({ ...entry, number: 40 - index * 3 - at })),
+        commitCount: commits.length,
+        outsideCommitCount: 0,
+      },
+    };
+  }),
+  // Three more of the first commits, so the list keeps some behind its quiet verb.
+  ...["v0.1.6", "v0.1.5", "v0.1.4"].map((tag, index) => ({
+    ...(TEASHOP_RELEASES.at(-1) as FlowRelease),
+    tag,
+    taggedAt: new Date(NOW - (index + 8) * 86_400_000).toISOString(),
+  })),
+];
+const TEASHOP_RECORDED_CARRIED: ReadonlyMap<string, MovedCommits> = new Map(
+  TEASHOP_RELEASES.map((release) => {
+    const moved = movedBy(release.tag);
+    return [
+      release.tag,
+      {
+        state: "known",
+        moved: [...TEASHOP_REPOSITORY_OF].map(
+          ([service, repository]) =>
+            moved.find((read) => read.repository === repository) ?? {
+              repository,
+              services: [service],
+              commits: [],
+              total: 0,
+              truncated: false,
+            },
+        ),
+      },
+    ];
+  }),
+);
+
 /** A stage the platform lists, each service running what its deploy named. */
 const STAGE_RUNNING: Deployment = {
   kind: "running",
@@ -1260,6 +1320,8 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       history={history}
       names={NAMES}
       onEnableRoute={() => {}}
+      onReleaseExpanded={() => {}}
+      onOpenCarriedChange={() => {}}
       onRollBack={() => {}}
       pending={new Set()}
       release={release}
@@ -2004,6 +2066,29 @@ function HarnessStates() {
             releases: TEASHOP_RELEASES,
             releasedAge: "1h ago",
             carried: carriedOf(TEASHOP_RELEASES),
+          }}
+        />
+      </State>
+
+      <State
+        label="A production whose releases name their changes"
+        note="Tea Shop as HQ records it: each release is titled by a change and opens onto the repositories it moved, never one it did not; v0.1.9 moved both. The oldest were made before that was recorded, and three wait behind the quiet verb."
+      >
+        <StopState
+          fixture={{
+            tier: "production",
+            group: "Tea Shop",
+            services: TEASHOP_LIVE,
+            routes: TEASHOP_ROUTES,
+            deployment: TEASHOP_RUNNING,
+            releases: TEASHOP_RECORDED,
+            releasedAge: "1h ago",
+            carried: TEASHOP_RECORDED_CARRIED,
+            liveBy: "Dana K.",
+            release: TEASHOP_BEHIND,
+            waiting: TEASHOP_WAITING,
+            vault: true,
+            vaultView: VAULT_TWO_APPS_FIXTURE,
           }}
         />
       </State>

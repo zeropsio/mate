@@ -33,8 +33,9 @@ export function FaceCards({
  * lines: `FaceCardLine`s, or anything a line long); `foot` (presses of the card's own, under what
  * it says; with `footHeld` its seat keeps its height while empty, so a verb arriving moves
  * nothing); `press` (the element the body is — a `<Link>`, a `<button>` — where the card opens
- * something; a plain block where absent); `corner` (a mark in the body's top corner: where it
- * leads); `faded` (its figure paler: an invitation not accepted yet); `rest` (`"top"`, the lines
+ * something; a plain block where absent); `stamp` (a few quiet characters in the body's top
+ * corner: when it last moved); `ruled`
+ * (its foot under a hairline, a row of the card's own doors); `faded` (its figure paler: an invitation not accepted yet); `rest` (`"top"`, the lines
  * hanging from the figure so faces line up along a row; `"middle"`, what it says centred in a card
  * its row made taller).
  */
@@ -46,7 +47,8 @@ export function FaceCard({
   foot,
   footHeld = false,
   press,
-  corner,
+  stamp,
+  ruled = false,
   faded = false,
   rest = "top",
   ...data
@@ -58,16 +60,15 @@ export function FaceCard({
   readonly foot?: ReactNode;
   readonly footHeld?: boolean;
   readonly press?: ReactElement<{ className?: string; children?: ReactNode }> | undefined;
-  readonly corner?: ReactNode;
+  readonly stamp?: ReactNode;
+  readonly ruled?: boolean;
   readonly faded?: boolean;
   readonly rest?: "top" | "middle";
 } & { readonly [key: `data-${string}`]: string | undefined }) {
   const said = (
     <>
-      {corner === undefined || corner === null ? null : (
-        <span aria-hidden="true" className="tm-card-corner">
-          {corner}
-        </span>
+      {stamp === undefined || stamp === null ? null : (
+        <span className="tm-card-stamp">{stamp}</span>
       )}
       <span className="tm-card-face">{figure}</span>
       <span className="tm-card-name" data-part="name">
@@ -95,7 +96,11 @@ export function FaceCard({
     >
       {body}
       {footed || footHeld ? (
-        <span className="tm-card-foot" data-held={footHeld || undefined}>
+        <span
+          className="tm-card-foot"
+          data-held={footHeld || undefined}
+          data-ruled={ruled || undefined}
+        >
           {footed ? foot : null}
         </span>
       ) : null}

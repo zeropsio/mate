@@ -18,7 +18,12 @@
  *
  * Pure: no clock of its own, no platform globals.
  */
-import { comingLine, placeAddresses, type ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import {
+  comingLine,
+  isPlatformSubdomain,
+  placeAddresses,
+  type ZeropsPublicRoute,
+} from "@t3tools/client-runtime/zerops";
 import {
   mateParts,
   type MatePart,
@@ -277,7 +282,7 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
           more: entry.more,
           why: entry.why,
         });
-  return { services: [...services.values()], links: others };
+  return { services: [...services.values()], links: ownDomainsFirst(others) };
 }
 
 /**
@@ -300,14 +305,30 @@ function devPlaceholder(mate: SitesMateFacts, part: MatePart): SitesService {
   };
 }
 
+/**
+ * A list's addresses with the domains of the project's own before the platform's subdomains, each
+ * kind in the order given: people reach a place at the domain its owner gave it, so that is what
+ * a Sites list leads with — in a place, a Mate and the whole project alike.
+ */
+export function ownDomainsFirst<Link extends { readonly host: string }>(
+  links: ReadonlyArray<Link>,
+): ReadonlyArray<Link> {
+  return [
+    ...links.filter((link) => !isPlatformSubdomain(link.host)),
+    ...links.filter((link) => isPlatformSubdomain(link.host)),
+  ];
+}
+
 const placeLinks = (routes: ReadonlyArray<ZeropsPublicRoute>): ReadonlyArray<SitesLink> =>
-  routeMenuEntries(routes).map(({ key, service, port, host, url }) => ({
-    key,
-    service,
-    port,
-    host,
-    url,
-  }));
+  ownDomainsFirst(
+    routeMenuEntries(routes).map(({ key, service, port, host, url }) => ({
+      key,
+      service,
+      port,
+      host,
+      url,
+    })),
+  );
 
 /** One section of the popover: a place with its state, or a Mate. */
 export type SitesSection =
@@ -337,6 +358,21 @@ export type SitesSection =
       /** Its parts' services, each part's dev then its stage. */
       readonly services: ReadonlyArray<SitesService>;
     };
+
+/**
+ * The sections of a list that says only where the project answers (its own page's Sites): a Mate's
+ * service with nothing to open is left out, and so is a Mate left with no address. Why a service
+ * has none is said where the Mate itself is named. A Mate not read yet keeps its reading section.
+ */
+export function answeringSections(
+  sections: ReadonlyArray<SitesSection>,
+): ReadonlyArray<SitesSection> {
+  return sections.flatMap((section): ReadonlyArray<SitesSection> => {
+    if (section.kind !== "mate") return [section];
+    const services = section.services.filter((service) => service.url !== undefined);
+    return services.length === 0 && section.links?.length === 0 ? [] : [{ ...section, services }];
+  });
+}
 
 /**
  * The popover's sections, in order: production, each stage (and each being created), then each

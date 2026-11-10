@@ -1186,8 +1186,15 @@ const RELEASE_FOLLOWS = "You can close this. Production's line on the project's 
 /** What a release's foot says before the press: how long it takes, as measured — the run's
  *  first release went live in 98 s. */
 export const RELEASE_TAKES = "Takes a minute or two";
-/** What a release's foot says while HQ has not said what it carries or what production lacks. */
+/**
+ * What "What happens in production" says, at its label, while HQ has not said what the release
+ * carries or what production lacks.
+ */
 export const RELEASE_READING = "Reading what production needs…";
+/** The same wait once it has lasted: what HQ's review of the release reads. */
+export const RELEASE_READING_WORKING = "Reading each repository and production's services…";
+/** Past the read's own deadline, while it is asked again: beside the way to ask now. */
+export const RELEASE_READING_LATE = "This is taking longer than usual.";
 /** Past this, a release on its way says it takes longer than usual (`releaseOutcomeOf`). */
 export const RELEASE_ESTIMATE_MS = 2 * 60_000;
 

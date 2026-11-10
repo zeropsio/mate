@@ -1,16 +1,16 @@
 /**
  * The line in full (`projectLineFull`), behind its picture (`ProjectLine`), as its board drew it:
  * the same stations, track, beads and counts, with what each station is under its name — its Mates,
- * its repositories, a place's state and a stage's address — production's address under its dot,
- * under each segment its count and its one verb (*Review the next one*, *Review release*, *Put it
- * live*: the blue one is what waits on the person), and a row under `main` for each copy of the
- * code elsewhere and each further place. Under the line, a row for each Mate: its own changes
- * under the segment each is on, its newest eight and then a count; the rows past the first six
- * fold behind *Show N more Mates*, which stands at the rows' head and so stays where it was
- * pressed. Last, what a bead's marks mean.
+ * its repositories, a place's state — under each segment its count and its one verb (*Review the
+ * next one*, *Review release*, *Put it live*: the blue one is what waits on the person), and a row
+ * under `main` for each copy of the code elsewhere and each further place. Last, what a bead's
+ * marks mean. It prints no address and holds no door: a place's Sites and Vault stand on its line
+ * in Places, right above (an address is reached through a Sites door, a door stands once).
  *
  * A station's name opens what it names: a place its page, Mates' work the page's Mates. A further
  * place's row opens its page, a bead its change's review, a count its group of the Changes list.
+ * A bead names its change (`data-zerops-change`), as the change's row in the list under it does:
+ * the page marks the one while the other is pointed at.
  *
  * `held` keeps its shape (track, station dots and the room of its side rows, no beads) while the
  * project's reads have not answered. Under 700 px of its own width it is compact: station names
@@ -19,19 +19,14 @@
  * Props: `view` (`projectLineFull(…)`); `groupId` (a place opens `/group/$groupId/$projectId`);
  * `held`; `onOpenChange(pull, from)` (a bead and *Review*); `onShowGroup(group)`;
  * `onReviewRelease(from)`; `onPutLive`; `onOpenMates(from)` (Mates' work: the page's Mates
- * section); `stationEnds` (what stands at the end of a place's name, by the place's page id, e.g.
- * its vault: it keeps its room, so the name never moves — its station names the hover with
- * `group/place`).
+ * section).
  */
 import { REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
 import { Link } from "@tanstack/react-router";
-import { useId, useState, type ReactNode } from "react";
 
 import { Button, InlineButton } from "~/components/ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { CutText } from "./ChangeRow";
 import {
-  Bead,
   Caption,
   SegmentBeads,
   textOf,
@@ -41,10 +36,7 @@ import {
   type ShowLineGroup,
 } from "./ProjectLineParts";
 import {
-  moreChipWidth,
-  ROWS_SHOWN,
   type LineBead,
-  type LineMateRow,
   type LineSegmentFull,
   type LineSide,
   type LineStationFull,
@@ -56,7 +48,6 @@ export interface ProjectLineFullActs {
   readonly onReviewRelease: (from: HTMLElement) => void;
   readonly onPutLive?: (() => void) | undefined;
   readonly onOpenMates?: ((from: HTMLElement) => void) | undefined;
-  readonly stationEnds?: ReadonlyMap<string, ReactNode> | undefined;
 }
 
 export interface ProjectLineFullProps extends ProjectLineFullActs {
@@ -69,7 +60,7 @@ export interface ProjectLineFullProps extends ProjectLineFullActs {
   readonly onShowGroup?: ShowLineGroup;
 }
 
-const UNREAD: ProjectLineFullView = { stations: [], segments: [], sides: [], mates: [] };
+const UNREAD: ProjectLineFullView = { stations: [], segments: [], sides: [] };
 
 export function ProjectLineFull({
   view,
@@ -80,9 +71,8 @@ export function ProjectLineFull({
   onReviewRelease,
   onPutLive,
   onOpenMates,
-  stationEnds,
 }: ProjectLineFullProps) {
-  const { stations, segments, sides, mates } = view ?? UNREAD;
+  const { stations, segments, sides } = view ?? UNREAD;
   const [widths, track] = useTrackWidths(segments.length);
   const press = (segment: LineSegmentFull, from: HTMLElement) => {
     const verb = segment.verb;
@@ -109,18 +99,13 @@ export function ProjectLineFull({
               data-track={held ? undefined : segment?.track}
               key={station.kind}
             >
-              <div className="group/place lnx-head">
-                <div className="lnx-namerow">
-                  <StationName
-                    groupId={groupId}
-                    held={held}
-                    onOpenMates={onOpenMates}
-                    station={station}
-                  />
-                  {held || station.projectId === undefined
-                    ? null
-                    : stationEnds?.get(station.projectId)}
-                </div>
+              <div className="lnx-head">
+                <StationName
+                  groupId={groupId}
+                  held={held}
+                  onOpenMates={onOpenMates}
+                  station={station}
+                />
                 {held ? null : <StationLines station={station} />}
               </div>
               <div
@@ -181,7 +166,6 @@ export function ProjectLineFull({
           </ul>
         )}
       </div>
-      {held || mates.length === 0 ? null : <MateRows onOpenChange={onOpenChange} rows={mates} />}
       {held || view === undefined ? null : <Legend beads={marks} />}
     </div>
   );
@@ -238,39 +222,10 @@ function SegmentFoot({
 const isPrimary = (verb: NonNullable<LineSegmentFull["verb"]>) =>
   verb.kind === "put-live" || (verb.kind === "review-release" && verb.primary);
 
-/** Under production's dot: its address; what it runs where the line is compact. */
+/** Under production's dot, where the line is compact: what it runs. */
 function ProductionFoot({ station }: { readonly station: LineStationFull }) {
-  return (
-    <>
-      {station.address === undefined ? null : (
-        <Address address={station.address} name={station.name} />
-      )}
-      {station.version === undefined ? null : (
-        <span className="ln-words ln-short font-mono">{station.version}</span>
-      )}
-    </>
-  );
-}
-
-function Address({
-  address,
-  name,
-}: {
-  readonly address: NonNullable<LineStationFull["address"]>;
-  readonly name: string;
-}) {
-  return (
-    <span className="ln-words ln-full">
-      <a
-        aria-label={`Open ${name} at ${address.host}`}
-        className="rounded-sm"
-        href={address.url}
-        rel="noreferrer"
-        target="_blank"
-      >
-        {address.host} ↗
-      </a>
-    </span>
+  return station.version === undefined ? null : (
+    <span className="ln-words ln-short font-mono">{station.version}</span>
   );
 }
 
@@ -298,115 +253,6 @@ function Legend({ beads }: { readonly beads: ReadonlyArray<LineBead> }) {
         </li>
       ))}
     </ul>
-  );
-}
-
-/**
- * A row for each Mate, on the line's columns. The first six stand; the rest fold behind the verb
- * at the rows' head.
- */
-function MateRows({
-  rows,
-  onOpenChange,
-}: {
-  readonly rows: ReadonlyArray<LineMateRow>;
-  readonly onOpenChange: OpenLineChange;
-}) {
-  const [all, setAll] = useState(false);
-  const label = useId();
-  const rest = rows.slice(ROWS_SHOWN);
-  const list = (some: ReadonlyArray<LineMateRow>) =>
-    some.map((row) => <MateRow key={row.key} onOpenChange={onOpenChange} row={row} />);
-  return (
-    <div className="lnx-mates" data-zerops-line-mates="">
-      <div className="lnx-mates-head">
-        <span className="ln-words" id={label}>
-          Each Mate’s changes
-        </span>
-        {rest.length === 0 ? null : (
-          <span className="ln-words">
-            <InlineButton
-              aria-expanded={all}
-              onClick={() => {
-                setAll((now) => !now);
-              }}
-              tone="muted"
-            >
-              {all
-                ? "Show fewer Mates"
-                : `Show ${String(rest.length)} more ${rest.length === 1 ? "Mate" : "Mates"}`}
-            </InlineButton>
-          </span>
-        )}
-      </div>
-      <ul aria-labelledby={label} className="lnx-rows">
-        {list(rows.slice(0, ROWS_SHOWN))}
-      </ul>
-      {rest.length === 0 ? null : (
-        <div className="lnx-more" data-open={all ? "" : undefined}>
-          <ul aria-label="More Mates’ changes" className="lnx-rows" inert={!all}>
-            {list(rest)}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MateRow({
-  row,
-  onOpenChange,
-}: {
-  readonly row: LineMateRow;
-  readonly onOpenChange: OpenLineChange;
-}) {
-  const [work, ...after] = row.cells;
-  const cell = (each: LineMateRow["cells"][number], earlier: number) => (
-    <span className="lnx-cell" data-seg={each.key} key={each.key}>
-      {each.beads.length === 0 && earlier === 0 ? null : (
-        <ul aria-label={each.label}>
-          {earlier === 0 ? null : (
-            <li>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <span
-                      aria-label={`${String(earlier)} earlier`}
-                      className="ln-more"
-                      data-wide={moreChipWidth(earlier) > 28 ? "" : undefined}
-                      role="img"
-                      tabIndex={0}
-                    />
-                  }
-                >
-                  +{earlier}
-                </TooltipTrigger>
-                <TooltipPopup side="top">
-                  +{earlier} earlier {earlier === 1 ? "change" : "changes"}
-                </TooltipPopup>
-              </Tooltip>
-            </li>
-          )}
-          {each.beads.map((bead) => (
-            <li key={bead.key}>
-              <Bead bead={bead} onOpenChange={onOpenChange} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </span>
-  );
-  return (
-    <li className="lnx-row">
-      <span className="lnx-first">
-        <span className="lnx-who">
-          <i aria-hidden="true" className="ln-face" data-tint={row.tint} />
-          <span>{row.name}</span>
-        </span>
-        {work === undefined ? null : cell(work, row.earlier)}
-      </span>
-      {after.map((each) => cell(each, 0))}
-    </li>
   );
 }
 
@@ -451,28 +297,18 @@ function StationName({
   );
 }
 
-/**
- * Under a station's name: its Mates, its repositories, a place's state; a stage's address, where
- * its state leaves it a line.
- */
+/** Under a station's name: its Mates, its repositories, a place's state. */
 function StationLines({ station }: { readonly station: LineStationFull }) {
-  return (
-    <>
-      {station.lines.map((line, index) => (
-        <CutText className="ln-words" key={textOf(line)} text={textOf(line)}>
-          {index === 0
-            ? station.tints.map((face) => (
-                <i aria-hidden="true" className="ln-face" data-tint={face.tint} key={face.key} />
-              ))
-            : null}
-          <Words words={line} />
-        </CutText>
-      ))}
-      {station.kind === "stage" && station.address !== undefined && station.lines.length < 2 ? (
-        <Address address={station.address} name={station.name} />
-      ) : null}
-    </>
-  );
+  return station.lines.map((line, index) => (
+    <CutText className="ln-words" key={textOf(line)} text={textOf(line)}>
+      {index === 0
+        ? station.tints.map((face) => (
+            <i aria-hidden="true" className="ln-face" data-tint={face.tint} key={face.key} />
+          ))
+        : null}
+      <Words words={line} />
+    </CutText>
+  ));
 }
 
 function SideRow({ side, groupId }: { readonly side: LineSide; readonly groupId: string }) {

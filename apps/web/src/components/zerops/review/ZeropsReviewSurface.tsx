@@ -49,6 +49,7 @@ import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Spinner } from "~/components/ui/spinner";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { isMacPlatform } from "~/lib/utils";
 
 import {
@@ -100,6 +101,11 @@ export interface ReviewPrimaryButton extends ReviewButton {
   readonly icon?: "tag" | "rollback" | "globe" | undefined;
   /** The words it shows where they say more than its label: "Merge to stage". */
   readonly text?: string | undefined;
+  /**
+   * Why it cannot be pressed yet, where the review says so elsewhere: the id of the line that
+   * says it, read with the button, and its words, shown over it.
+   */
+  readonly held?: { readonly by: string; readonly words: string } | undefined;
 }
 
 export interface ZeropsReviewSurfaceProps {
@@ -370,40 +376,25 @@ export function ZeropsReviewSurface({
                         {settled}
                       </span>
                     )}
-                    {primary === undefined ? null : (
-                      <Button
-                        data-review-primary=""
-                        data-safe={
-                          primary.safe && primary.enabled && primary.busy !== true
-                            ? "true"
-                            : "false"
-                        }
-                        data-zerops-primary-action={primary.label}
-                        disabled={!primary.enabled || primary.busy === true}
-                        onClick={() => {
-                          pressed();
-                          primary.onPress();
-                        }}
-                      >
-                        {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
-                        {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
-                        {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
-                        {primary.busy === true
-                          ? `${primary.label}…`
-                          : (primary.text ?? primary.label)}
-                        {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
-                          <kbd aria-hidden="true" className="rv-keys">
-                            {PRESS_KEYS}
-                          </kbd>
-                        ) : null}
-                      </Button>
+                    {primary === undefined ? null : primary.held === undefined ? (
+                      <ReviewPrimary onPress={pressed} primary={primary} />
+                    ) : (
+                      // A held button takes no pointer: the words over it are its wrapper's.
+                      <Tooltip>
+                        <TooltipTrigger render={<span className="inline-flex" />}>
+                          <ReviewPrimary onPress={pressed} primary={primary} />
+                        </TooltipTrigger>
+                        <TooltipPopup>{primary.held.words}</TooltipPopup>
+                      </Tooltip>
                     )}
                   </div>
                 )}
               </>
             )}
           </div>
-          {consequence === "" && noteAction === undefined ? null : (
+          {consequence === "" &&
+          noteAction === undefined &&
+          consequenceRoom === undefined ? null : (
             <p
               className="rv-conseq"
               data-room={consequenceRoom === undefined ? undefined : ""}
@@ -455,6 +446,40 @@ export function ZeropsReviewSurface({
     <div className="rv-page" data-zerops-surface="review" onKeyDown={pressFromKeys}>
       {content}
     </div>
+  );
+}
+
+/** The one button: what it does in words, its keys while they press it, its mark while it runs. */
+function ReviewPrimary({
+  primary,
+  onPress,
+}: {
+  readonly primary: ReviewPrimaryButton;
+  /** Told as it is pressed, before the press itself. */
+  readonly onPress: () => void;
+}) {
+  return (
+    <Button
+      aria-describedby={primary.held?.by}
+      data-review-primary=""
+      data-safe={primary.safe && primary.enabled && primary.busy !== true ? "true" : "false"}
+      data-zerops-primary-action={primary.label}
+      disabled={!primary.enabled || primary.busy === true}
+      onClick={() => {
+        onPress();
+        primary.onPress();
+      }}
+    >
+      {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
+      {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
+      {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
+      {primary.busy === true ? `${primary.label}…` : (primary.text ?? primary.label)}
+      {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
+        <kbd aria-hidden="true" className="rv-keys">
+          {PRESS_KEYS}
+        </kbd>
+      ) : null}
+    </Button>
   );
 }
 

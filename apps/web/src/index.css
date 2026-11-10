@@ -4803,21 +4803,36 @@ code {
 
   /* The one selected band (`SidebarSelectedBand`): behind every row of the
      list, which is its own stacking context, over the open Mate's unit — its
-     row and its crew's line — with the row's corners. It is placed by
-     transform; only a slide to a newly opened Mate moves it. */
+     row and its crew's line. Its own box is where it stands, and paints nothing. */
   .menu-band {
     position: absolute;
     top: 0;
     left: 0;
     z-index: -1;
-    border-radius: 12px;
-    /* The fill alone (the owner, 2026-10-12: "just do the white, not the border"). */
-    background: var(--sidebar-row-active);
     opacity: 0;
     pointer-events: none;
-    /* Its own layer from the start: a slide runs on the compositor while the page it opens is
-       drawn, never waiting on that draw to begin. */
+  }
+
+  /* What it shows: four nested layers of one size, each clipping to the row's corners, the
+     innermost filled; what all four leave is the band (`bandLayers`). A slide to a newly opened
+     Mate shifts them and nothing else, so its edges travel together with true corners. Layers of
+     their own from the start: a slide runs on the compositor while the page it opens is drawn,
+     never waiting on that draw to begin. */
+  .menu-band-layer {
+    position: absolute;
+    inset: 0;
+    overflow: clip;
+    border-radius: 12px;
     will-change: transform;
+  }
+
+  .menu-band > .menu-band-layer {
+    inset: 0 auto auto 0;
+  }
+
+  /* The fill alone (the owner, 2026-10-12: "just do the white, not the border"). */
+  .menu-band-layer:empty {
+    background: var(--sidebar-row-active);
   }
 
   .menu-band[data-on] {
@@ -4991,15 +5006,6 @@ code {
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .menu-band[data-sliding] {
-    transition:
-      transform 240ms var(--ease-out-strong),
-      height 240ms var(--ease-out-strong),
-      width 240ms var(--ease-out-strong);
-  }
-}
-
 :root {
   --person-l: 0.74;
   --person-c: 0.07;
@@ -5135,10 +5141,12 @@ code {
   justify-self: center;
 }
 
+/* A version is a real thing's name: the mono face, on the x-height of the title beside it. */
 .zerops-envpop-version {
   margin-inline-start: 6px;
   color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-size: 0.966em;
 }
 
 .zerops-envpop-word {
@@ -5803,11 +5811,15 @@ code {
   color: var(--primary);
 }
 
+/* A service is named by its hostname, a real thing's own name: in the mono face (`.real-name`'s
+   rule), never the label face its section's title wears. */
 .zerops-sites-service {
   flex: none;
   max-width: 45%;
   overflow: hidden;
   color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 0.966em;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8132,32 +8144,6 @@ a.ov-chip-who:focus-visible {
   align-content: center;
 }
 
-/* Where the card leads, in its top corner: said at rest, inked under the pointer and on focus. */
-.tm-card-corner {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: flex;
-  color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
-  transition: color var(--duration-quick) var(--ease-out-strong);
-}
-
-.tm-card-corner > svg {
-  width: 16px;
-  height: 16px;
-}
-
-.tm-card:has(> .tm-card-body:hover) .tm-card-corner,
-.tm-card:has(> .tm-card-body:focus-visible) .tm-card-corner {
-  color: var(--foreground);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tm-card-corner {
-    transition: none;
-  }
-}
-
 .tm-card:has(> .tm-card-body:focus-visible) {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
@@ -8184,6 +8170,34 @@ a.ov-chip-who:focus-visible {
 .tm-card-foot[data-held] {
   align-content: center;
   min-height: 50px;
+}
+
+/* A foot under a hairline: a row of the card's own doors, one height whatever stands in it (a
+   32 px control over its own padding), so every card of a row ends alike. */
+.tm-card-foot[data-ruled] {
+  min-height: 45px;
+  margin-top: 0;
+  padding: 6px 12px;
+  border-top: 1px solid var(--ov-rule);
+}
+
+.tm-card:has(> .tm-card-foot[data-ruled]) > .tm-card-body {
+  padding-bottom: 16px;
+}
+
+/* A few quiet characters in the body's top corner: when it last moved, the menu's dot before it. */
+.tm-card-stamp {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .tm-card-trouble {
@@ -8291,19 +8305,14 @@ a.ov-chip-who:focus-visible {
   text-overflow: ellipsis;
 }
 
-/* When it last moved, under its name, with the menu's dot before it; its seat kept where a Mate
-   still coming has no time. */
-.mc-time {
-  display: inline-flex;
-  min-height: 16px;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-  color: var(--muted-foreground);
-  font-size: var(--text-caption);
-  line-height: 16px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+/* Two facts, a line each, in the room its one reading takes over two lines: a card is as tall
+   whichever it says. */
+.mc-two {
+  display: grid;
+  height: 36px;
+  min-width: 0;
+  max-width: 100%;
+  justify-items: center;
 }
 
 /* Its owner's mark on the corner of its 64 px face, where it is a colleague's. */
@@ -8325,17 +8334,13 @@ a.ov-chip-who:focus-visible {
   vertical-align: -2px;
 }
 
-/* Its previews, then its verb, centred on one line of its foot while they fit. */
+/* Its doors, then a verb only it has, centred on one line of its foot while they fit. */
 .mc-foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 4px 6px;
-}
-
-.mc-foot > .ov-mate-parts {
-  display: contents;
 }
 
 /* The grid's last cell, the door that adds a Mate: a dashed slot, as the page's empty setups are. */
@@ -8364,17 +8369,29 @@ a.ov-chip-who:focus-visible {
   align-content: center;
 }
 
+/* Its mark, its words and its line are one group in the card's middle: the mark close over the
+   words it belongs to, never where a face would stand. */
 .mc-add-mark {
-  width: 64px;
-  height: 64px;
+  display: flex;
+  width: 40px;
+  height: 40px;
   align-items: center;
   justify-content: center;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  background: var(--ov-hover);
   color: var(--muted-foreground);
 }
 
 .mc-add-mark > svg {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
+}
+
+/* Its one line wraps where the card is narrow, and takes only the room it needs. */
+.mc-add-line {
+  white-space: normal;
+  text-wrap: balance;
 }
 
 .mc-add:disabled .mc-add-mark,
@@ -9075,6 +9092,11 @@ button.ov-change {
   outline-offset: -2px;
 }
 
+/* The row of the change whose bead on the line is pointed at (`data-zerops-change`). */
+.ov-change-row[data-marked] > .ov-change {
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
 /* Work that is no change yet has nothing to open: the row stays still under the pointer. */
 .ov-change[data-plain]:hover {
   background: none;
@@ -9325,6 +9347,14 @@ button.ov-change {
   margin-inline-end: var(--ov-change-gap);
 }
 
+/* A face's seat is held down a list where some row fills it. A place's next release that lists
+   commits of no change fills none: the seat goes, and the subjects stand on the card's own edge. */
+[data-zerops-next-block]
+  .ov-changes:not(:has(.ov-change-face > *, .ov-change-icon))
+  .ov-change-face {
+  display: none;
+}
+
 /* A release in the changes: where it was cut, its tag, and production's mark on the one it runs. */
 .ov-change-release {
   display: flex;
@@ -9502,6 +9532,15 @@ button.ov-change {
     transition: opacity 150ms linear;
   }
 }
+/* A real thing's own name wherever it is printed in a line of words — a service's hostname, a
+   repository's slug, a version: the mono face, its x-height matched to the label face beside it
+   (Roboto's x-height is 0.966 of the mono face's at one size), so it never looks the larger. In
+   the ink of what it names: the class sets no colour. */
+.real-name {
+  font-family: var(--font-mono);
+  font-size: 0.966em;
+}
+
 /* ==== end of the overview's cards ==== */
 
 /* ==== Pass 41 · the review sheet ==== */
@@ -12511,6 +12550,48 @@ a.message-file:focus-visible {
 }
 .rv-sec-h > span {
   font-weight: 400;
+}
+/* A section's own state at its label's end: its mark, its words and the press beside them. Every
+   sentence its wait will say holds the room from the start, so the one it says next never moves
+   the label; a cause too long for the label's line takes the next one, from the label's edge. */
+.rv-sec-h:has(.rv-sec-state) {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 2px;
+}
+/* On a line of its own, in a narrow sheet, it keeps the end edge it has beside the label. */
+.rv-sec-h:has(.rv-sec-state) > span {
+  margin-inline-start: auto;
+}
+.rv-sec-state {
+  display: grid;
+  justify-items: end;
+}
+.rv-sec-state > span {
+  display: inline-flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.rv-sec-state > [data-room] {
+  visibility: hidden;
+  /* Its mark's room. */
+  padding-inline-start: 18px;
+}
+.rv-sec-state[data-tone="attention"] {
+  justify-items: start;
+  color: var(--zerops-status-attention-text);
+}
+/* A cause reads as a sentence, its press following its last word wherever that falls, as far
+   from it as the wait's own press stands from its words. */
+.rv-sec-state[data-tone="attention"] > span {
+  display: block;
+  white-space: normal;
+  text-wrap: pretty;
+}
+.rv-sec-state[data-tone="attention"] [data-release-plan-again] {
+  margin-inline-start: 3px;
 }
 .rv-words {
   margin: 0;
