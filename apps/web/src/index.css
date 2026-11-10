@@ -6028,8 +6028,11 @@ code {
      `!important` over the header's top-bar height utility. */
   [data-slot="sidebar-header"]:has(.menu-top) {
     height: auto !important;
-    /* The Chief's row and the squares bring their own insets at every width; the phone sheet's
-       gutter is the bare mark's. */
+  }
+
+  /* The menu's top bar keeps no gutter of its own (`SidebarChromeHeader`); `!important` over the
+     header's padding utilities. */
+  [data-menu-head] {
     padding-inline: 0 !important;
   }
 
