@@ -12,13 +12,25 @@
  *   `long` thirty steps, so the card fills its height, its commands
  *   two lines each, the first with what it printed to open; `edits` two edits in
  *   a row, the second folding into the first as it lands; `cards` three calls
- *   at once, the first returning first, then a new batch;
+ *   at once, the first returning first, then a new batch; `smooth` every way
+ *   the card's edges move — a thought growing line by line, a call taking its
+ *   place, a command whose body arrives seconds after its pill, then the same
+ *   once the card stands at its full height; `ten` ten quick calls of every
+ *   kind inside two seconds, then calm; `send` a conversation at its end
+ *   under a finished run, the person's message sent a second in (`?draft=<px>`
+ *   for a draft that tall, which the composer gives back as it goes; `?ack=<s>`
+ *   for how long the card stands on its head alone; `?short` for a
+ *   conversation that begins with that run, shorter than the page until the
+ *   new card outgrows it; `?watched` for that run played to its end here
+ *   first, its answer landing three seconds before the send);
  * - `?speed=<x>` plays faster or slower, `?at=<s>` starts that far in;
  * - `?theme=dark`; `?provider=claudeAgent` reads no call stale by timing.
  *
  * `window.__liveHarness.restart()` plays it again from the start,
- * `.seconds()` says where it is, for a per-frame sampler, and `.resync(s)`
- * catches it up to `s` seconds as a resync does.
+ * `.seconds()` says where it is, for a per-frame sampler, `.resync(s)`
+ * catches it up to `s` seconds as a resync does, `.follows()` says whether
+ * the conversation follows its end and `.followLog()` what turned that on or
+ * off, as ChatView judges it.
  *
  * Fixtures only, all invented. Nothing here ships — `design-live.html` is not
  * `index.html`, and no route imports this module.
@@ -39,8 +51,10 @@ import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
+import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
 import { deriveDock } from "~/components/chat/conversationDock.logic";
 import { KeptTimelines } from "~/components/chat/KeptTimelines";
+import type { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import type { TimelineEntry, WorkLogEntry } from "~/session-logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
@@ -53,6 +67,18 @@ const SPEED = Number(params.get("speed") ?? 1);
 const START_AT = Number(params.get("at") ?? 0);
 const SCRIPT = params.get("script") ?? "main";
 const PROVIDER = params.get("provider") ?? "codex";
+/** How much taller the composer stands with the draft the person sends (`send`). */
+const DRAFT = Number(params.get("draft") ?? 0);
+/** How long the card stands on its head alone after a send, before the run's first thing. */
+const ACK = Number(params.get("ack") ?? 1.5);
+/** A conversation that begins with the run before the send: shorter than the page until its card grows. */
+const SHORT = params.has("short");
+/** The run before the send is watched to its end here, its answer landing under the person's eyes. */
+const WATCHED = params.has("watched");
+/** When the person sends (`send`): a second in, or once the watched run before it has settled. */
+const SEND_AT = WATCHED ? 6 : 1;
+/** When the watched run before the send ends. */
+const BEFORE_END = 3;
 const ENVIRONMENT = EnvironmentId.make("environment-harness");
 const TURN = TurnId.make("live-turn");
 const COMPOSER_HEIGHT = 132;
@@ -85,6 +111,8 @@ type Item =
       readonly fails?: boolean;
       /** Sent to the background, as Claude Code says: the job's id. */
       readonly background?: string;
+      /** When its command is known: until then it is a call that says nothing of itself. */
+      readonly codeAt?: number;
     }
   | {
       readonly id: string;
@@ -125,6 +153,11 @@ interface Run {
    * one starts thinking, as a message sent mid-run does (run 11).
    */
   readonly interrupt?: { readonly at: number; readonly words: string; readonly thought: string };
+  /**
+   * The person sends its ask at `sendAt`, the conversation standing at its end
+   * under a run that finished before: until then nothing runs.
+   */
+  readonly sendAt?: number;
 }
 
 const THOUGHT1 =
@@ -379,6 +412,147 @@ const INTERRUPT: Run = {
   },
 };
 
+const THOUGHT3 =
+  "The route reads the deploy history on every request. That is a query a page view: fine for an admin page, wasteful for one a monitor polls every few seconds. A minute's cache in the helper keeps it to one read, and the page says how old its answer is so nobody reads a stale row as live. The helper already has a cache for the release list; the status rows can share its key space under their own prefix.";
+const SIZES = [
+  "pnpm build",
+  "du -sh dist",
+  "ls dist/assets | wc -l",
+  "gzip -9 -c dist/app.js | wc -c",
+  "echo done",
+].join("\n");
+
+/** A thought and a two-line command, `at` seconds in: what fills the card to its height. */
+function pair(index: number, at: number): ReadonlyArray<Item> {
+  return [
+    {
+      id: `ft${index}`,
+      kind: "thought",
+      start: at,
+      end: at + 0.5,
+      text: `Route ${index} still reads the history twice: once for the row, once for its age.`,
+    },
+    {
+      id: `fc${index}`,
+      kind: "command",
+      start: at + 0.6,
+      end: at + 1.1,
+      words: `Check route ${index}`,
+      code: `npm test -- route-${index}\nnpm run lint -- route-${index}`,
+    },
+  ];
+}
+
+/**
+ * Every way the card's edges move, twice: while it still grows on the page,
+ * and once it stands at its full height and the history gives the slot its
+ * room. A thought gaining a line at a time, a call taking its place (the
+ * history arriving with its first line), a command that is a pill for a
+ * second and a half before its five lines arrive, a thought after it, then
+ * the run's end.
+ */
+const SMOOTH: Run = {
+  ask: "Cache the status page's deploy history for a minute.",
+  items: [
+    { id: "t1", kind: "thought", start: 0.3, end: 3.3, text: THOUGHT3 },
+    { id: "r1", kind: "read", start: 3.5, end: 3.7, name: "src/lib/deploys.ts" },
+    {
+      id: "c1",
+      kind: "command",
+      start: 4.3,
+      end: 7.3,
+      codeAt: 5.8,
+      words: "Measure the bundle",
+      code: SIZES,
+      output: "184K\tdist\n      12\n   61204\ndone",
+    },
+    { id: "t2", kind: "thought", start: 7.5, end: 8.6, text: THOUGHT2 },
+    ...[0, 1, 2, 3].flatMap((index) => pair(index, 9 + index * 1.4)),
+    { id: "t3", kind: "thought", start: 14.8, end: 17.8, text: THOUGHT3 },
+    { id: "r2", kind: "read", start: 18, end: 18.2, name: "src/lib/cache.ts" },
+    {
+      id: "c2",
+      kind: "command",
+      start: 18.8,
+      end: 21.8,
+      codeAt: 20.3,
+      words: "Measure the bundle",
+      code: SIZES,
+      output: "184K\tdist\n      12\n   61204\ndone",
+    },
+    { id: "t4", kind: "thought", start: 22, end: 23, text: THOUGHT2 },
+  ],
+  write: 23.5,
+  end: 25.5,
+  answer: ANSWER,
+};
+
+/**
+ * Ten quick calls inside two seconds — reads, searches, edits, one-line
+ * commands, a fifth of a second apart — then calm: a thought, and one command
+ * that runs a while (the owner, 2026-11-10: "sometimes it pumps out 10 rows in
+ * two seconds"). Every edge keeps one way through it.
+ */
+const TEN: Run = {
+  ask: "Find where the deploy history is read and tidy it.",
+  items: [
+    ...(
+      [
+        ["read", "src/lib/deploys.ts"],
+        ["read", "src/lib/cache.ts"],
+        ["search", "deployHistory"],
+        ["edit", "src/lib/deploys.ts"],
+        ["command", "npm run lint -- src/lib"],
+        ["read", "src/routes/status.ts"],
+        ["edit", "src/routes/status.ts"],
+        ["read", "src/routes/index.ts"],
+        ["search", "readHistory"],
+        ["command", "npm test -- deploys"],
+      ] as const
+    ).map(([kind, name], index): Item => {
+      const start = 0.5 + index * 0.2;
+      return kind === "command"
+        ? { id: `q${index}`, kind, start, end: start + 0.15, words: "Check it", code: name }
+        : { id: `q${index}`, kind, start, end: start + 0.12, name };
+    }),
+    { id: "t1", kind: "thought", start: 3.4, end: 5, text: THOUGHT2 },
+    { id: "c1", kind: "command", start: 5.3, end: 8, words: "Build the app", code: "pnpm build" },
+  ],
+  write: 8.5,
+  end: 10.5,
+  answer: "The history is read in one place now, and the page says how old its answer is.",
+};
+
+/**
+ * The person's message sent with the conversation at its end, a finished run
+ * over it: the card that starts under it grows past the composer's top, and
+ * the conversation is to follow it there.
+ */
+const SENT = SEND_AT + ACK;
+const SEND: Run = {
+  ask: "Now cache its deploy history for a minute.",
+  sendAt: SEND_AT,
+  items: [
+    { id: "t1", kind: "thought", start: SENT, end: SENT + 2, text: THOUGHT1 },
+    { id: "r1", kind: "read", start: SENT + 2.2, end: SENT + 2.4, name: "src/lib/deploys.ts" },
+    { id: "e1", kind: "edit", start: SENT + 2.9, end: SENT + 3.2, name: "src/lib/deploys.ts" },
+    {
+      id: "c1",
+      kind: "command",
+      start: SENT + 3.6,
+      end: SENT + 5.6,
+      words: "Measure the bundle",
+      code: SIZES,
+      output: "184K\tdist\n      12\n   61204\ndone",
+    },
+    { id: "t2", kind: "thought", start: SENT + 5.8, end: SENT + 6.8, text: THOUGHT2 },
+    { id: "e2", kind: "edit", start: SENT + 7, end: SENT + 7.3, name: "src/routes/status.ts" },
+  ],
+  write: SENT + 7.8,
+  end: SENT + 10,
+  answer: ANSWER,
+};
+
 const RUN: Run =
   {
     main: MAIN,
@@ -389,6 +563,9 @@ const RUN: Run =
     edits: EDITS,
     cards: CARDS,
     interrupt: INTERRUPT,
+    smooth: SMOOTH,
+    ten: TEN,
+    send: SEND,
   }[SCRIPT] ?? MAIN;
 
 /** The turn the person's message starts, in the interrupt script. */
@@ -398,7 +575,12 @@ const TURN2 = TurnId.make("live-turn-2");
 const STARTED = Date.now() - START_AT * 1000;
 const iso = (second: number) => new Date(STARTED + second * 1000).toISOString();
 
-function work(id: string, start: number, fields: Partial<WorkLogEntry>): TimelineEntry {
+function work(
+  id: string,
+  start: number,
+  fields: Partial<WorkLogEntry>,
+  turnId: TurnId = TURN,
+): TimelineEntry {
   return {
     id,
     kind: "work",
@@ -407,7 +589,7 @@ function work(id: string, start: number, fields: Partial<WorkLogEntry>): Timelin
       id,
       createdAt: iso(start),
       startedAt: iso(start),
-      turnId: TURN,
+      turnId,
       toolCallId: `call-${id}`,
       label: "Tool call",
       tone: "tool",
@@ -440,11 +622,12 @@ function callEntry(
     ...(returned ? { updatedAt: iso(item.end!) } : {}),
   };
   if (item.kind === "command") {
+    // Its command not known yet, it is a call that says nothing of itself.
+    const known = item.codeAt === undefined || t >= item.codeAt;
     return work(item.id, item.start, {
       label: "Command run",
       itemType: "command_execution",
-      command: item.code,
-      callInput: { description: item.words },
+      ...(known ? { command: item.code, callInput: { description: item.words } } : {}),
       ...lifecycle,
       ...(returned && item.output !== undefined ? { detail: item.output } : {}),
       ...(returned && item.fails ? { tone: "tool" } : {}),
@@ -560,9 +743,65 @@ const EARLIER: ReadonlyArray<TimelineEntry> = [
   ),
 ];
 
+/** The turn of the run that finished before the person's send (`send`). */
+const TURN_BEFORE = TurnId.make("turn-before");
+
+const BEFORE_ANSWER = "Added `/status`: it says how long the app has been up since its last start.";
+
+/**
+ * The run before the send at `t`: two calls and its answer. It finished a few
+ * minutes before the page opened, its card settled — or, `?watched`, it plays
+ * from the page's open and ends at `BEFORE_END`.
+ */
+function runBefore(t: number): ReadonlyArray<TimelineEntry> {
+  const from = WATCHED ? 0 : -300;
+  const at = WATCHED ? t : Number.POSITIVE_INFINITY;
+  const entries: TimelineEntry[] = [
+    message("before-ask", "user", from, "Add a /status page that lists the app's uptime."),
+  ];
+  (["src/routes/index.ts", "src/routes/status.ts"] as const).forEach((name, index) => {
+    const start = from + 0.4 + index * 0.7;
+    if (at < start) return;
+    const returned = at >= start + 0.5;
+    entries.push(
+      work(
+        `before-${index}`,
+        start,
+        {
+          itemType: index === 0 ? "dynamic_tool_call" : "file_change",
+          detail: `${index === 0 ? "Read" : "Edit"}: ${JSON.stringify({ file_path: name })}`,
+          callInput: { filePath: name },
+          ...(index === 0 ? {} : { changedFiles: [name] }),
+          toolLifecycleStatus: returned ? "completed" : "inProgress",
+          sourceActivityKind: returned ? "tool.completed" : "tool.started",
+          ...(returned ? { updatedAt: iso(start + 0.5) } : {}),
+        },
+        TURN_BEFORE,
+      ),
+    );
+  });
+  const writes = from + 1.9;
+  if (at >= writes) {
+    const shown = Math.min(1, (at - writes) / (BEFORE_END - 1.9));
+    entries.push(
+      message(
+        "before-answer",
+        "assistant",
+        writes,
+        BEFORE_ANSWER.slice(0, Math.max(1, Math.round(BEFORE_ANSWER.length * shown))),
+        at < from + BEFORE_END,
+        TURN_BEFORE,
+      ),
+    );
+  }
+  return entries;
+}
+
 /** The run's timeline at `t` seconds in. */
 function entriesAt(t: number): TimelineEntry[] {
-  const entries: TimelineEntry[] = [...EARLIER, message("ask", "user", 0, RUN.ask)];
+  const entries: TimelineEntry[] = SHORT ? [] : [...EARLIER];
+  if (RUN.sendAt !== undefined) entries.push(...runBefore(t));
+  if (t >= (RUN.sendAt ?? 0)) entries.push(message("ask", "user", RUN.sendAt ?? 0, RUN.ask));
   for (const item of RUN.items) {
     if (t < item.start) continue;
     switch (item.kind) {
@@ -670,12 +909,92 @@ function useRunClock(): readonly [number, () => void, (to: number) => void] {
 const keptForever = () => true;
 const readsNothing = () => null;
 
+type TimelineProps = Parameters<typeof MessagesTimeline>[0];
+
+/** What turned following on or off, for a sampler: when, by what, and what it is since. */
+interface FollowChange {
+  readonly at: number;
+  readonly by: string;
+  readonly follows: boolean;
+}
+
+/**
+ * Whether the conversation follows its end, as ChatView judges it
+ * (`nextTimelineFollow`): the list's scrolls and the person's inputs turn it
+ * off and on, and the person's own send turns it on.
+ */
+function useFollow(listRef: { readonly current: LegendListRef | null }) {
+  const [follow, setFollow] = useState({ enabled: true, atEnd: true });
+  const followRef = useRef(follow);
+  const logRef = useRef<FollowChange[]>([]);
+  const judge = useCallback((by: string, next: (current: typeof follow) => typeof follow) => {
+    const current = followRef.current;
+    const judged = next(current);
+    if (judged.enabled !== current.enabled) {
+      logRef.current.push({ at: performance.now(), by, follows: judged.enabled });
+    }
+    followRef.current = judged;
+    setFollow(judged);
+  }, []);
+  const onIsAtEndChange = useCallback<TimelineProps["onIsAtEndChange"]>(
+    (isAtEnd, scroll) =>
+      judge(`position ${JSON.stringify({ isAtEnd, ...scroll })}`, (current) => ({
+        atEnd: isAtEnd,
+        enabled: nextTimelineFollow(current.enabled, {
+          type: "position",
+          atEnd: isAtEnd,
+          ...scroll,
+        }),
+      })),
+    [judge],
+  );
+  const onManualNavigation = useCallback(
+    () => judge("navigation", (current) => ({ ...current, enabled: false })),
+    [judge],
+  );
+  const onPersonInput = useCallback<TimelineProps["onPersonInput"]>(
+    (input) => {
+      if (input.kind !== "wheel" && input.kind !== "key") return;
+      if (input.direction === "up") {
+        judge(`${input.kind} up`, (current) => ({
+          ...current,
+          enabled: nextTimelineFollow(current.enabled, { type: "left-end" }),
+        }));
+        return;
+      }
+      judge(`${input.kind} down`, (current) => ({
+        ...current,
+        enabled: nextTimelineFollow(current.enabled, {
+          type: "toward-end-input",
+          inEndBand: current.atEnd,
+        }),
+      }));
+    },
+    [judge],
+  );
+  // The person's own send, as ChatView's `scrollToEnd(false, true)`: already
+  // following at the end, the list's own follower takes it there.
+  const sent = useCallback(() => {
+    const current = followRef.current;
+    const following = current.enabled && current.atEnd;
+    judge("sent", () => ({
+      atEnd: true,
+      enabled: nextTimelineFollow(current.enabled, { type: "sent", byPerson: true }),
+    }));
+    if (following) return;
+    requestAnimationFrame(() => void listRef.current?.scrollToEnd({ animated: false }));
+  }, [judge, listRef]);
+  return { follow, logRef, onIsAtEndChange, onManualNavigation, onPersonInput, sent };
+}
+
 function Pane() {
   const [seconds, restart, jump] = useRunClock();
   const [epoch, setEpoch] = useState(0);
   // A resync: the thread catches up while `syncing`, then settles.
   const [syncing, setSyncing] = useState(false);
   const listRef = useRef<LegendListRef | null>(null);
+  const { follow, logRef, onIsAtEndChange, onManualNavigation, onPersonInput, sent } =
+    useFollow(listRef);
   useEffect(() => {
     (window as unknown as { __liveHarness: unknown }).__liveHarness = {
       restart: () => {
@@ -688,10 +1007,23 @@ function Pane() {
         jump(to);
         setTimeout(() => setSyncing(false), 300);
       },
+      follows: () => follow.enabled,
+      followLog: () => logRef.current,
     };
-  }, [jump, restart, seconds]);
+  }, [follow.enabled, jump, logRef, restart, seconds]);
   const step = Math.floor(seconds * 20) / 20;
-  const ended = step >= RUN.end && RUN.interrupt === undefined;
+  // The person's send: until then the conversation rests under a finished run.
+  const asked = RUN.sendAt === undefined || step >= RUN.sendAt;
+  const askedRef = useRef(asked);
+  useEffect(() => {
+    if (asked && !askedRef.current) sent();
+    askedRef.current = asked;
+  }, [asked, sent]);
+  // The draft the person sends stands in the composer until it goes.
+  const composerHeight = COMPOSER_HEIGHT + (asked ? 0 : DRAFT);
+  // The run before the send, watched: it works until its answer has landed.
+  const beforeWorks = !asked && WATCHED && step < BEFORE_END;
+  const ended = !beforeWorks && (!asked || (step >= RUN.end && RUN.interrupt === undefined));
   // Written into: the first turn is over, the next one runs.
   const second = RUN.interrupt !== undefined && step >= RUN.interrupt.at + 0.5;
   const entries = useMemo(() => entriesAt(step), [step]);
@@ -704,25 +1036,33 @@ function Pane() {
             startedAt: iso(RUN.interrupt!.at + 0.5),
             completedAt: null,
           }
-        : {
-            turnId: TURN,
-            state: ended ? ("completed" as const) : ("running" as const),
-            startedAt: iso(0),
-            completedAt: ended ? iso(RUN.end) : null,
-          },
-    [ended, second],
+        : !asked
+          ? {
+              turnId: TURN_BEFORE,
+              state: beforeWorks ? ("running" as const) : ("completed" as const),
+              startedAt: iso(WATCHED ? 0 : -299),
+              completedAt: beforeWorks ? null : iso(WATCHED ? BEFORE_END : -289),
+            }
+          : {
+              turnId: TURN,
+              state: ended ? ("completed" as const) : ("running" as const),
+              startedAt: iso(RUN.sendAt ?? 0),
+              completedAt: ended ? iso(RUN.end) : null,
+            },
+    [asked, beforeWorks, ended, second],
   );
+  const runningTurnId = ended ? null : second ? TURN2 : beforeWorks ? TURN_BEFORE : TURN;
   const dock = useMemo(
     () =>
       deriveDock({
         timelineEntries: entries,
         isWorking: !ended,
-        runningTurnId: ended ? null : second ? TURN2 : TURN,
+        runningTurnId,
         agentPanelModel: emptyAgentPanelModel(),
         plan: null,
         pause: null,
       }),
-    [entries, ended, second],
+    [entries, ended, runningTurnId],
   );
   const routeThreadKey = `${ENVIRONMENT}:live-${epoch}`;
   return (
@@ -735,11 +1075,15 @@ function Pane() {
           crewTimeline={null}
           timeline={{
             isWorking: !ended,
-            activeTurnStartedAt: ended ? null : second ? iso(RUN.interrupt!.at + 0.5) : iso(0),
+            activeTurnStartedAt: ended
+              ? null
+              : second
+                ? iso(RUN.interrupt!.at + 0.5)
+                : iso(beforeWorks ? 0 : (RUN.sendAt ?? 0)),
             listRef,
             timelineEntries: entries,
             latestTurn,
-            runningTurnId: ended ? null : second ? TURN2 : TURN,
+            runningTurnId,
             working: dock,
             routeThreadKey,
             // Its calls name no response: Codex's timing rule reads its
@@ -753,11 +1097,11 @@ function Pane() {
             workspaceRoot: undefined,
             anchorMessageId: null,
             onAnchorReady: () => undefined,
-            contentInsetEndAdjustment: COMPOSER_HEIGHT,
-            liveFollowEnabled: true,
-            onIsAtEndChange: () => undefined,
-            onPersonInput: () => undefined,
-            onManualNavigation: () => undefined,
+            contentInsetEndAdjustment: composerHeight,
+            liveFollowEnabled: follow.enabled,
+            onIsAtEndChange,
+            onPersonInput,
+            onManualNavigation,
             hideEmptyPlaceholder: false,
             loading: false,
             syncing,
@@ -767,11 +1111,12 @@ function Pane() {
       </div>
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-5 pt-2"
-        style={{ height: COMPOSER_HEIGHT }}
+        style={{ height: composerHeight }}
+        data-harness-composer=""
       >
         <div
           className="mx-auto max-w-3xl rounded-3xl border border-border bg-card shadow-sm"
-          style={{ height: COMPOSER_HEIGHT - 20 }}
+          style={{ height: composerHeight - 20 }}
         />
       </div>
       <p
