@@ -379,7 +379,7 @@ function ThemeColorPickerPanel({
               />
               <input
                 aria-label={`${label} picker hex value`}
-                className="h-8 min-w-0 flex-1 bg-transparent font-mono text-xs text-foreground outline-none"
+                className="h-8 min-w-0 flex-1 bg-transparent font-mono text-base text-foreground outline-none sm:text-xs"
                 onBlur={() => {
                   isEditingTextRef.current = false;
                   setHexDraft(currentColor);
@@ -401,7 +401,7 @@ function ThemeColorPickerPanel({
             <span className="flex min-w-0 items-center rounded-lg border border-input bg-background px-2 focus-within:border-ring">
               <input
                 aria-label={`${label} picker RGB value`}
-                className="h-8 min-w-0 flex-1 bg-transparent font-mono text-xs text-foreground outline-none"
+                className="h-8 min-w-0 flex-1 bg-transparent font-mono text-base text-foreground outline-none sm:text-xs"
                 onBlur={() => {
                   isEditingTextRef.current = false;
                   setHexDraft(currentColor);

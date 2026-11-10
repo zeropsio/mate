@@ -42,7 +42,7 @@ export function MateAddressExternalLink({
     <a
       aria-label={`Open ${address.service} in a new tab`}
       className={cn(
-        "inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground",
+        "relative inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:after:absolute pointer-coarse:after:size-10",
         className,
       )}
       data-mate-address-external

@@ -496,7 +496,7 @@ function HostedStaticEnvironmentBootstrap() {
 /** A new build came while a Mate's setup runs in this tab: the reload waits for the setup. */
 function ReloadAfterSetup() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-center text-foreground">
+    <div className="flex min-h-svh items-center justify-center bg-background px-4 text-center text-foreground">
       <div className="max-w-sm">
         <h1 className="text-lg font-semibold">Mate was updated.</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -516,7 +516,7 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
   const details = errorDetails(error);
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
+    <div className="relative flex min-h-svh items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
       <div className="pointer-events-none absolute inset-0 opacity-80">
         <div className="absolute inset-x-0 top-0 h-44 bg-[radial-gradient(44rem_16rem_at_top,color-mix(in_srgb,var(--color-red-500)_16%,transparent),transparent)]" />
         <div className="absolute inset-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)]" />

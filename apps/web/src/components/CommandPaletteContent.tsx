@@ -3,12 +3,15 @@ import { type ComponentProps, type ReactNode, useLayoutEffect, useRef } from "re
 
 import { Command, CommandFooter, CommandInput, CommandPanel } from "./ui/command";
 import { Kbd, KbdGroup } from "./ui/kbd";
+import { cn } from "~/lib/utils";
 
 type CommandPaletteContentProps = Omit<ComponentProps<typeof Command>, "children"> & {
   readonly children: ReactNode;
   readonly escapeLabel?: ReactNode;
   /** The keys a mode answers in its own way, in place of the default ones. */
   readonly footerKeys?: ReactNode;
+  /** Whether `footerKeys` holds anything a finger can use; false, the bar leaves with them on touch. */
+  readonly footerKeysOnTouch?: boolean;
   readonly footerActionLabel?: ReactNode;
   readonly footerTrailing?: ReactNode;
   readonly inputAccessory?: ReactNode;
@@ -31,6 +34,7 @@ export function CommandPaletteContent({
   children,
   escapeLabel = "Close",
   footerKeys,
+  footerKeysOnTouch = true,
   footerActionLabel,
   footerTrailing,
   inputAccessory,
@@ -67,9 +71,20 @@ export function CommandPaletteContent({
         >
           {children}
         </CommandPanel>
-        <CommandFooter className="max-sm:flex-col max-sm:items-start">
+        <CommandFooter
+          className={cn(
+            // A narrow window stacks the keys' long row; under a finger only what is typed is
+            // left, and it fits one line.
+            "max-sm:flex-col max-sm:items-start max-sm:pointer-coarse:flex-row max-sm:pointer-coarse:items-center",
+            // Nothing but a keyboard's keys in it: no bar at all under a finger.
+            (footerKeys === undefined || !footerKeysOnTouch) &&
+              (footerTrailing === undefined || footerTrailing === null) &&
+              "pointer-coarse:hidden",
+          )}
+        >
           {footerKeys ?? (
-            <div className="flex items-center gap-3">
+            // A keyboard's own keys mean nothing under a finger.
+            <div className="flex items-center gap-3 pointer-coarse:hidden">
               <KbdGroup>
                 <Kbd>
                   <ArrowUpIcon />

@@ -109,18 +109,21 @@ export function IntegrationRow({
       ref={targetRef}
       tabIndex={id === undefined ? undefined : -1}
     >
-      <div className="flex items-center gap-3 px-4 py-3">
+      {/* On a phone the pill goes under the line, at the words' edge: the name keeps its room. */}
+      <div className="flex items-center gap-3 px-4 py-3 max-sm:flex-wrap max-sm:gap-y-1">
         <span aria-hidden className="flex size-5 shrink-0 items-center justify-center">
           {mark}
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">{name}</p>
-          <p className="truncate text-xs text-muted-foreground">{line}</p>
+          <p className="truncate text-xs text-muted-foreground max-sm:line-clamp-2 max-sm:whitespace-normal">
+            {line}
+          </p>
         </div>
-        <span className="flex w-32 shrink-0 justify-end text-xs">
+        <span className="flex w-32 shrink-0 justify-end text-xs max-sm:order-last max-sm:w-full max-sm:justify-start max-sm:ps-8 max-sm:empty:hidden">
           <IntegrationStatus state={state} />
         </span>
-        <span className="flex w-24 shrink-0 justify-end">{action}</span>
+        <span className="flex w-24 shrink-0 justify-end max-sm:w-auto">{action}</span>
       </div>
       <Reveal open={open}>
         <div className="grid gap-3 pe-4 pb-4 ps-12">{children}</div>
@@ -159,7 +162,9 @@ export function IntegrationSetting({
       ref={targetRef}
       tabIndex={id === undefined ? undefined : -1}
     >
-      <div className="flex items-center gap-3 px-4 py-3">
+      {/* On a phone fields go under the words they set, at the words' edge; a lone press stays
+          beside them. */}
+      <div className="flex items-center gap-3 px-4 py-3 max-sm:flex-wrap">
         <span aria-hidden className="flex size-5 shrink-0 items-center justify-center">
           {mark}
         </span>
@@ -167,7 +172,9 @@ export function IntegrationSetting({
           <p className="text-sm font-medium text-foreground">{name}</p>
           <p className="text-xs text-muted-foreground">{line}</p>
         </div>
-        <div className="flex shrink-0 justify-end">{control}</div>
+        <div className="flex shrink-0 justify-end max-sm:has-[input]:w-full max-sm:has-[input]:justify-start max-sm:has-[input]:ps-8">
+          {control}
+        </div>
       </div>
       {children ? <div className="pe-4 pb-3 ps-12">{children}</div> : null}
     </li>

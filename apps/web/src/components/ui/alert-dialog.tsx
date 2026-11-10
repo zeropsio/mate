@@ -9,6 +9,7 @@ import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 import {
   DIALOG_BACKDROP_CLASS,
+  DIALOG_MOBILE_FOOTER_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
   DIALOG_VIEWPORT_CLASS,
@@ -104,7 +105,8 @@ function AlertDialogFooter({
       className={cn(
         "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-[calc(var(--radius-2xl)-1px)]",
         variant === "default" && "border-t bg-muted/72 py-4",
-        variant === "bare" && "pb-6",
+        DIALOG_MOBILE_FOOTER_CLASS,
+        variant === "bare" && "pb-6 max-sm:pb-[max(--spacing(6),env(safe-area-inset-bottom))]",
         className,
       )}
       data-slot="alert-dialog-footer"

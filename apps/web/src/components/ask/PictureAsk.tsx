@@ -242,7 +242,9 @@ function PictureAskBody({
       const steps: AskStep[] = ask.pictures.map((path, step) => ({
         id: `${step}`,
         label: (
-          <span className="inline-flex min-w-0 items-center gap-2 align-middle">
+          // A flex box, held to the step's width: inline, it ran as wide as its file's name
+          // and the name was cut by the card with no ellipsis.
+          <span className="flex min-w-0 items-center gap-2">
             {picture(path, "sm")}
             <span className="truncate">{fileNameOf(path)}</span>
           </span>

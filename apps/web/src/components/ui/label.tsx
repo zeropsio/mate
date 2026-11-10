@@ -8,7 +8,9 @@ import { cn } from "~/lib/utils";
 function Label({ className, render, ...props }: useRender.ComponentProps<"label">) {
   const defaultProps = {
     className: cn(
-      "inline-flex items-center gap-2 text-base/4.5 sm:text-sm/4 font-medium text-foreground",
+      // A label is read, not typed in: the app's 14 px at every width (only a field needs 16 on a
+      // phone, against the zoom).
+      "inline-flex items-center gap-2 text-sm/4 font-medium text-foreground",
       className,
     ),
     "data-slot": "label",

@@ -15,7 +15,9 @@ import {
   Plug,
   Users,
   KeyRound,
+  X,
 } from "lucide-react";
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import {
   type ComponentType,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -212,7 +214,9 @@ function SurfaceMenuItem(props: {
         descriptionId={descriptionId}
         label={props.label}
       />
-      {props.shortcut === null ? null : <MenuShortcut>{props.shortcut}</MenuShortcut>}
+      {props.shortcut === null ? null : (
+        <MenuShortcut className="pointer-coarse:hidden">{props.shortcut}</MenuShortcut>
+      )}
     </MenuItem>
   );
   if (props.available || !props.disabledReason) return item;
@@ -400,7 +404,8 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
           </span>
         ) : null}
         {action.shortcut === null ? null : (
-          <Kbd className="ms-auto shrink-0">{action.shortcut}</Kbd>
+          // A key's letter says nothing to a finger.
+          <Kbd className="ms-auto shrink-0 pointer-coarse:hidden">{action.shortcut}</Kbd>
         )}
       </span>
     );
@@ -410,8 +415,9 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
     "flex w-full min-w-0 flex-col items-start gap-1 rounded-lg border border-border/80 bg-card p-3 text-left @[22rem]:p-3.5 dark:border-transparent dark:shadow-none dark:inset-ring-1 dark:inset-ring-white/5";
   const highlightedCardClass = "bg-accent/60 dark:inset-ring-white/20";
   // Two lines held under every name, whether its words need one or two: every card is one height,
-  // and none grows when a neighbour's words wrap.
-  const cardTextClass = "min-h-[2lh] text-muted-foreground text-xs leading-relaxed";
+  // and none grows when a neighbour's words wrap. A phone's one column is wide enough for every
+  // card's words on one line, so the second is not held there: nine rows fit a screen.
+  const cardTextClass = "min-h-[2lh] text-muted-foreground text-xs leading-relaxed max-sm:min-h-0";
 
   return (
     <div
@@ -421,7 +427,7 @@ export function RightPanelEmptyState(props: { actions: readonly SurfaceAction[] 
       aria-label="Open a page"
       data-surface-launcher-keys={availableActions.map((action) => action.shortcut ?? "").join("")}
       className={cn(
-        "flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 outline-none @container",
+        "flex min-h-0 flex-1 overflow-y-auto px-4 pt-4 outline-none @container max-sm:scrollbar-none",
         // The panel topbar sits above this container; matching bottom padding
         // keeps the cards centered against the full panel, not the leftover.
         "pb-[calc(var(--workspace-topbar-height)+--spacing(6))]",
@@ -565,7 +571,9 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
 /**
  * A page's tab: its icon, which turns into its close button under the pointer, and its name. Folded
  * (`useTabStripCompact`), a tab other than the open one is its icon alone, which opens it, its name
- * in a tooltip; it closes from its menu or a middle click.
+ * in a tooltip; it closes from its menu or a middle click. Where nothing hovers (a finger), the icon
+ * stays an icon and never closes blind: a press anywhere on a tab opens it, and the open tab shows
+ * its close after its name.
  */
 function SurfaceTabFace(props: {
   readonly icon: ReactNode;
@@ -582,6 +590,34 @@ function SurfaceTabFace(props: {
       aria-hidden
     />
   ) : null;
+  const touch = useMediaQuery("(hover: none)");
+  if (touch && !compact) {
+    return (
+      <>
+        <button
+          className="flex min-w-0 cursor-pointer items-center gap-1"
+          onClick={props.onActivate}
+          type="button"
+        >
+          <span className="relative flex size-4 shrink-0 items-center justify-center">
+            {props.icon}
+            {pendingDot}
+          </span>
+          <span className="truncate">{props.title}</span>
+        </button>
+        {props.active ? (
+          <button
+            aria-label={`Close ${props.title}`}
+            className="flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-sm"
+            onClick={props.onClose}
+            type="button"
+          >
+            <X className="size-3" />
+          </button>
+        ) : null}
+      </>
+    );
+  }
   if (compact) {
     return (
       <Tooltip>

@@ -850,7 +850,9 @@ type MessagesTimelineRowBody =
  * between a person's messages in a run, rows sit closer (`tight`, `line`,
  * `block`). A row's gap depends only on its predecessor, so it never changes
  * once both are on screen (opening a log changes the row after it — a click
- * moves what is under it, nothing else does).
+ * moves what is under it, nothing else does). A seam right under a seam (a
+ * day nobody spoke on, a fresh start nobody wrote into) opens a turn as any
+ * seam does, named apart (`turn-seam`) so a phone can stand the pair close.
  */
 export type RowGap =
   | "none"
@@ -860,7 +862,8 @@ export type RowGap =
   | "part"
   | "part-words"
   | "turn"
-  | "turn-after-words";
+  | "turn-after-words"
+  | "turn-seam";
 
 /**
  * The run whose Mate at work stood where this row now begins: a run with
@@ -1176,7 +1179,11 @@ export function rowGap(
   // as a run's line with no chat does.
   if (row.kind === "working") return "tight";
   // A seam opens the turn under it: a turn's air above it, a part's under it.
-  if (row.kind === "seam" || row.kind === "crew-seam") return turnAfter(previous);
+  if (row.kind === "seam" || row.kind === "crew-seam") {
+    return previous.kind === "seam" || previous.kind === "crew-seam"
+      ? "turn-seam"
+      : turnAfter(previous);
+  }
   if (previous.kind === "seam" || previous.kind === "crew-seam")
     return isMateProse(row) ? "part-words" : "part";
   if (isPersonRow(row)) {

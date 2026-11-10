@@ -153,7 +153,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
       <SidebarContent className="overflow-x-hidden">
         <SidebarGroup>
           <div className="flex flex-col gap-2">
-            <div className="flex h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
+            <div className="flex h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground pointer-coarse:h-10">
               <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
               <SidebarInput
                 ref={searchInputRef}
@@ -193,7 +193,10 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                   <XIcon className="size-3" />
                 </Button>
               ) : (
-                <Kbd>/</Kbd>
+                // A key to press: said only where there is a keyboard to press it on.
+                <span className="flex pointer-coarse:hidden">
+                  <Kbd>/</Kbd>
+                </span>
               )}
             </div>
             {isSearching && results.length === 0 ? (
@@ -257,6 +260,8 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                         return (
                           <SidebarMenuItem key={to}>
                             <SidebarMenuButton
+                              // A finger's row on a touch screen: 40 px, where a pointer's is 32.
+                              className="pointer-coarse:h-10"
                               isActive={isActive}
                               onClick={() => handleSectionClick(to)}
                             >

@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { cn } from "~/lib/utils";
 
 import { Crumbs, type Crumb } from "./Crumbs";
+import { InPhoneBar } from "./PhoneBar";
 
 /**
  * Props: `trail` (from `usePageTrail`; none drawn where empty or absent); `title` (`undefined`
@@ -33,7 +34,12 @@ export function PageHeader({
 }) {
   return (
     <header className="flex min-w-0 flex-col gap-2.5" data-zerops-page-header="">
-      {trail === undefined || trail.length === 0 ? null : <Crumbs trail={trail} />}
+      {trail === undefined || trail.length === 0 ? null : (
+        // On a phone the trail is the frame's bar, beside the menu's button.
+        <InPhoneBar>
+          <Crumbs trail={trail} />
+        </InPhoneBar>
+      )}
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
         <h1
           className={cn(
