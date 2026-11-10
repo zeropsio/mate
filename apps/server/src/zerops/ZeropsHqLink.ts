@@ -171,6 +171,8 @@ type KeyVerdict = { readonly refusal: string } | { readonly unresolved: true };
 const SUPERSEDED = 4409;
 /** `1001` and `1012`: HQ is going away or restarting (a rolling deploy); the Mate relinks to its other container. */
 const PLANNED_HANDOVER: ReadonlyArray<number> = [1001, 1012];
+/** `1006`: the socket went away without a close frame (a dropped network); the code is the Mate's own, never HQ's. */
+const ABNORMAL = 1006;
 
 const decodeClosed = Schema.decodeUnknownOption(MateLinkClosed);
 
@@ -747,6 +749,9 @@ export const makeZeropsHqLink = (
     yield* Effect.forkScoped(
       Effect.gen(function* () {
         let attempt = 0;
+        // The close HQ was last logged for while the Mate has not linked since, so a refused hello
+        // retried forever writes one line, not one per retry.
+        let warned: string | undefined;
         for (;;) {
           // A link that failed, whatever failed in it, is tried again after a growing wait: the loop
           // never ends.
@@ -762,6 +767,27 @@ export const makeZeropsHqLink = (
             continue;
           }
           const heard = verdictOf(close);
+          const planned =
+            close?.code === SUPERSEDED ||
+            (close?.code !== undefined && PLANNED_HANDOVER.includes(close.code));
+          if (ran.opened && ran.stated) warned = undefined;
+          // HQ closed the link for something other than the key (a malformed hello, `1007`): the
+          // standing cannot say why, so the container's log does.
+          if (
+            heard === undefined &&
+            close?.code !== undefined &&
+            close.code !== ABNORMAL &&
+            !planned
+          ) {
+            const said = `${close.code} ${close.reason ?? ""}`;
+            if (said !== warned) {
+              warned = said;
+              yield* Effect.logWarning("zerops hq link: HQ closed the link", {
+                code: close.code,
+                reason: close.reason ?? "",
+              });
+            }
+          }
           // No answer on the key says nothing against a refusal that stands.
           if (heard !== undefined)
             yield* SubscriptionRef.update(keyVerdict, (held) =>
@@ -785,9 +811,6 @@ export const makeZeropsHqLink = (
           // Only an admitted link that stayed up, one the Mate's own newer link superseded, or one
           // HQ handed over on purpose resets the wait; a link that never gets state is a failure.
           const lived = (yield* Clock.currentTimeMillis) - began;
-          const planned =
-            close?.code === SUPERSEDED ||
-            (close?.code !== undefined && PLANNED_HANDOVER.includes(close.code));
           attempt =
             planned || (ran.opened && ran.stated && lived >= LINK_STABLE_MS) ? 0 : attempt + 1;
           const delay = delays[Math.min(Math.max(attempt - 1, 0), delays.length - 1)] ?? 1_000;
