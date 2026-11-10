@@ -61,6 +61,7 @@ import {
 } from "./timelineEndFollow";
 import { landingHolds } from "./answerLanding.logic";
 import { headStoodJustNow, takeWordsStood, wordsJustStood, type WordsStood } from "./wordsLanding";
+import { AsPainted } from "./AsPainted";
 import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { usePace } from "./usePace";
@@ -2389,6 +2390,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       <div className="h-full min-h-0" data-conversation-content="">
         <TimelineRowReadsCtx value={rowReads}>{content}</TimelineRowReadsCtx>
       </div>
+      {/* Its live card's head, read as painted before a commit that changes its rows. */}
+      <AsPainted of={rows} />
       {kept?.shown === false || pauseStageId !== null || keepsDraftMessage ? null : (
         <ConversationOpeningStage
           ready={standing}
