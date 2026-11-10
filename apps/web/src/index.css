@@ -10101,6 +10101,18 @@ button.ov-change {
   scale: 0.7;
   transform-origin: right bottom;
 }
+/* Under an opened line of the log, a column of times ends where the line's
+   own time does: the chevron's seat, its 14 px and the 6 px before it, is
+   held at the end of every time under it (the owner, 2026-11-10, of a
+   deploy's steps: "not too well designed" — their times ended under the
+   chevron, 20 px past the line's own). */
+.run-line-detail {
+  --run-line-seat: 20px;
+}
+/* A time in a list that may stand under such a line: it holds that seat where there is one. */
+.line-time {
+  padding-inline-end: var(--run-line-seat, 0px);
+}
 /* Nothing standing in it: a row as an item's — its mark in the Mate's column,
    its words on the items' text edge, so what comes next takes its place where
    it stands. */

@@ -2189,6 +2189,32 @@ function WatchedOperationBubble(props: OperationLineProps) {
   return <OperationLine {...props} regions={regions} />;
 }
 
+/**
+ * A line's words with the service they name in the mono face: a hostname is a real thing's own
+ * name, never a label (`.real-name`). Only where it stands as a word of its own.
+ */
+function ServiceNamed({
+  words,
+  name,
+}: {
+  readonly words: string;
+  readonly name: string | undefined;
+}) {
+  const at = name === undefined || name === "" ? -1 : words.indexOf(name);
+  if (name === undefined || at === -1) return words;
+  const end = at + name.length;
+  const inWord = /[\w-]/u;
+  if ((at > 0 && inWord.test(words[at - 1]!)) || (end < words.length && inWord.test(words[end]!)))
+    return words;
+  return (
+    <>
+      {words.slice(0, at)}
+      <span className="real-name">{name}</span>
+      {words.slice(end)}
+    </>
+  );
+}
+
 function OperationLine({
   operation,
   undone = false,
@@ -2280,7 +2306,7 @@ function OperationLine({
           // A deploy's running step pulses: its name stands still in the ink.
           sweeps={live !== null && !stepped}
         >
-          {words}
+          <ServiceNamed name={operation.target?.hostname} words={words} />
         </RunShimmer>
         {stepped ? null : live !== null ? (
           <>
@@ -2327,6 +2353,8 @@ function OperationLine({
         <div
           className={cn(
             "pt-2",
+            // In the log its times end where the line's own does, the chevron's seat held.
+            !inSlot && "run-line-detail",
             // Only an open the person made moves; a carried or a landing one is simply there.
             rises(disclosure.made),
           )}

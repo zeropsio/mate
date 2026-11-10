@@ -416,6 +416,43 @@ export function UrlChip({ label, url }: { readonly label: string; readonly url: 
   );
 }
 
+/** A link's words that are an address, not a label: no space, a dot in them. */
+const isAddress = (label: string): boolean => /^\S+\.\S+$/u.test(label);
+
+/**
+ * Where what it did answers, under its line in the chat: a row of the line's
+ * own list — the globe in the steps' mark column, the address in the mono
+ * face on the steps' text edge — never a pill beside it (the owner,
+ * 2026-11-10, of the pill under a deploy's steps: "not too well designed").
+ */
+function AddressRows({
+  links,
+}: {
+  readonly links: ReadonlyArray<{ readonly label: string; readonly url: string }>;
+}) {
+  return (
+    <ul aria-label="URLs" className="space-y-1" data-zerops-address-rows>
+      {links.map((link) => (
+        <li className="flex items-start gap-2" key={link.url}>
+          <span className="flex h-5 shrink-0 items-center">
+            <GlobeIcon aria-hidden="true" className="size-3.5 text-muted-foreground" />
+          </span>
+          <ServiceBrowserLink
+            aria-label={`Open ${link.url}`}
+            className="min-w-0 break-all text-info-foreground text-line leading-5 hover:underline"
+            data-zerops-chip-kind="url"
+            href={link.url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <span className={isAddress(link.label) ? "real-name" : undefined}>{link.label}</span>
+          </ServiceBrowserLink>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export interface BrowserScreenshot {
   readonly src: string;
   readonly width?: number;
@@ -765,10 +802,12 @@ export function ZeropsOperationCard(props: {
   // say it again, and a bare "Failed." carries nothing — why stays, in its
   // explanation.
   const closing = restartWords?.cardText ?? (headless ? undefined : drawnClosing(operation));
+  // Under its line, where it answers is a row of the line's list, after its steps.
+  const addressRows = headless && links.length > 0;
   const hasResultRow =
     closing !== undefined ||
     version !== undefined ||
-    links.length > 0 ||
+    (links.length > 0 && !addressRows) ||
     props.onRestartRetry !== undefined;
 
   // On its own a card of the kit (a failed one wears its border in the failed ink, `index.css`);
@@ -857,7 +896,7 @@ export function ZeropsOperationCard(props: {
                   <span className="font-mono">{version}</span>
                 </span>
               ) : null}
-              {links.length > 0 ? (
+              {links.length > 0 && !addressRows ? (
                 <div aria-label="URLs" className="flex flex-wrap gap-1.5">
                   {links.map((link) => (
                     <UrlChip key={link.url} label={link.label} url={link.url} />
@@ -866,6 +905,7 @@ export function ZeropsOperationCard(props: {
               ) : null}
             </div>
           ) : null}
+          {addressRows ? <AddressRows links={links} /> : null}
         </>
       )}
     </Frame>
