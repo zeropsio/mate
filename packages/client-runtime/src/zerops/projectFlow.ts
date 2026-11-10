@@ -101,6 +101,11 @@ export interface FlowPullRequest {
   /** Closed without merging by its own Mate (`HqChange.closedByMate`). */
   readonly closedByMate?: true | undefined;
   /**
+   * Closed by HQ because the landing of this change of its repository carried all of it onto
+   * `main` (`HqChange.landedWith`): it landed, with that one.
+   */
+  readonly landedWith?: number | undefined;
+  /**
    * `open` or `closed`, as HQ says. A change read on its own by number may be closed without
    * ever merging: its review must not offer to merge it. Optional, as every flow built before a
    * review read it carries none.
@@ -148,13 +153,18 @@ export interface FlowPullRequest {
 }
 
 /**
- * Whether a change asks for the person's review at all: it is no draft, and no Mate's automatic
- * proposal of the recipe's missing tiers its Mate redoes from main (`recipeProposalRedone`).
+ * Whether a change asks for the person's review at all: it is no draft, no Mate's automatic
+ * proposal of the recipe's missing tiers its Mate redoes from main (`recipeProposalRedone`), and
+ * `main` lacks something of it. One `main` already holds all of (`empty`) leaves nothing to read
+ * and nothing to merge, so it waits for nobody: no Review counts it and no strip lists it, while
+ * its own row still says `Nothing to merge` (the owner, 2026-11-10: a change its Mate had
+ * retitled to say another had already taken it to main stood among the changes waiting for a
+ * review, with a Review of its own).
  */
 export function changeAsksForReview(
   pull: Pick<FlowPullRequest, "ready" | "kind" | "title" | "mergeability" | "mateGone">,
 ): boolean {
-  return pull.ready !== false && !recipeProposalRedone(pull);
+  return pull.ready !== false && pull.mergeability !== "empty" && !recipeProposalRedone(pull);
 }
 
 /**
@@ -237,6 +247,9 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(change.firstCodeMerge === undefined ? {} : { firstCodeMerge: change.firstCodeMerge }),
     ...(merged && change.landedOutside === true ? { landedOutside: true } : {}),
     ...(change.state === "closed" && change.closedByMate === true ? { closedByMate: true } : {}),
+    ...(change.state === "closed" && change.landedWith !== undefined
+      ? { landedWith: change.landedWith }
+      : {}),
     state: change.state === "open" ? "open" : "closed",
     headSha: change.head ?? undefined,
     ...(change.state === "open" && change.head === null ? { unpushed: true } : {}),
