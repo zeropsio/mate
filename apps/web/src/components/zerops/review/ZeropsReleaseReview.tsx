@@ -31,6 +31,7 @@ import {
   carriedMoved,
   changesCountWords,
   holdReleaseFacts,
+  releaseFailureOf,
   movedCommits,
   movedCount,
   releaseFacts,
@@ -78,6 +79,8 @@ import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { releaseRequestOf, type HqAppDetailRead } from "@t3tools/client-runtime/data";
+import { NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
+import { useRenewDeployKey } from "~/zerops/useRenewDeployKey";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
@@ -105,12 +108,17 @@ import {
 } from "./ZeropsReleasePlan";
 import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
 import {
+  inProductionWords,
+  keyRenewedSteps,
   planCreations,
+  releaseNoteSaid,
   releasePressLabel,
   releaseSheetSteps,
   releaseStepWords,
+  releaseStopReason,
   releaseSubtitle,
   wordsNaming,
+  type KeyRenewal,
   type ReleaseCreateOperation,
   type ReleaseProgress,
   type ReleaseSheetStep,
@@ -356,9 +364,27 @@ function ReleaseData({
     repositories: flow.release.repositories ?? new Map(),
     tags: versionTags,
   });
+  // "See why": opened while the newest release didn't go live and nothing is on its way, the
+  // sheet opens on that release's stop, not on the next offer. Which release that is, is the one
+  // fact the next-release bar's "Didn't go live" is read from (`releaseFailureOf`: the newest that
+  // did not go through among those newer than what production runs, so one a newer live release
+  // followed is not reopened). It is followed as one this tab pressed is, decided once when the
+  // releases are first known; *Review a new release* lets it go for the offer.
+  const [reopened, setReopened] = useState<string | null | undefined>(undefined);
+  if (reopened === undefined && flow.releasesKnown)
+    setReopened(
+      flow.release.git !== undefined || flow.release.inFlight !== undefined || made !== undefined
+        ? null
+        : (releaseFailureOf({
+            releases: flow.releases,
+            environmentInputs: flow.environmentInputs,
+            stalled: flow.release.stalled,
+          })?.tag ?? null),
+    );
+  const stoppedBefore = reopened === null ? undefined : reopened;
   const follows = releaseFollows({
-    made,
-    held,
+    made: made ?? stoppedBefore,
+    held: held ?? (stoppedBefore === undefined ? undefined : { tag: stoppedBefore }),
     press,
     inFlight: flow.release.inFlight,
     stalled: flow.release.stalled,
@@ -604,6 +630,18 @@ function ReleaseData({
           }
         };
 
+  // Production's deploy key, renewed from the sheet where it is what stopped the release.
+  const renewKey = useRenewDeployKey(
+    productionProjectId === undefined || production === undefined
+      ? undefined
+      : {
+          appId: flow.groupId,
+          projectId: productionProjectId,
+          name: production.environment,
+          place: "production",
+        },
+  );
+
   const [pressedAt, setPressedAt] = useState<string>();
   const release = async () => {
     if (chosen.tag === undefined || chosen.error !== undefined) return;
@@ -747,7 +785,12 @@ function ReleaseData({
         setHeldPlan(undefined);
         setTypedVersion(undefined);
         setPressedAt(undefined);
+        setReopened(null);
+        renewKey.reset();
       }}
+      environmentName={production?.environment}
+      entries={flow.release.entries.length}
+      keyRenewal={renewKey}
       git={
         flow.release.git === undefined
           ? undefined
@@ -988,6 +1031,18 @@ export interface ReleaseReviewViewProps {
   readonly expected?: number | undefined;
   /** How many commits the offer counts. */
   readonly commits?: number | undefined;
+  /** Production as HQ names it: where HQ's words lead with that name, the sheet says Production. */
+  readonly environmentName?: string | undefined;
+  /** How many services the release lists, known before HQ's plan: the places its steps hold. */
+  readonly entries?: number | undefined;
+  /**
+   * The renewal of production's deploy key, for a release HQ stopped because it will not use the
+   * one it keeps: where the sheet's own run of it stands, and its press — absent for a person
+   * without admin access to production's project, who cannot renew it.
+   */
+  readonly keyRenewal?:
+    | { readonly run: KeyRenewal; readonly onRenew: (() => void) | undefined }
+    | undefined;
   /** The roll back's review of the release this one replaced, where HQ offers it. */
   readonly onRollBack?: (() => void) | undefined;
   /** Back to the offer, after a release that stopped: the next version's review. */
@@ -1258,6 +1313,9 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
         : state === "release-superseded"
           ? model.consequence
           : undefined,
+    environmentName: props.environmentName,
+    renewal: props.keyRenewal?.run,
+    mayRenew: props.keyRenewal?.onRenew !== undefined,
     nowMs: props.now,
   });
   const creates = offered
@@ -1290,42 +1348,54 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
 
   // The foot: its note, and the way out of whatever state it stands in.
   const stopped = outcome.kind === "failed" || outcome.kind === "stalled";
+  // Stopped on production's deploy key: creating again cannot help, renewing the key does, and
+  // then the way on is a new release — HQ runs nothing of a release whose creation did not stand.
+  const keyStop = steps.find((step) => step.deployKey !== undefined);
+  const renewal = props.keyRenewal?.run ?? NOT_RENEWING;
+  const onRenew = props.keyRenewal?.onRenew;
   const failedCreation = steps.find((step) => step.kind === "create" && step.mark === "failed");
-  const createdAfter =
-    stopped && made.length > 0 && failedCreation === undefined && early.kind !== "working";
   const onCreate = props.creation?.onCreate;
   const { onReviewNew } = props;
   const wayOut: ReviewPrimaryButton | undefined = !stopped
     ? undefined
-    : early.kind === "working"
-      ? {
-          label: "Creating",
-          enabled: false,
-          safe: false,
-          busy: true,
-          onPress: () => undefined,
-        }
-      : failedCreation?.action !== undefined && onCreate !== undefined
+    : keyStop !== undefined
+      ? renewal.kind === "renewed"
+        ? onReviewNew === undefined
+          ? undefined
+          : { label: "Review a new release", enabled: true, safe: false, onPress: onReviewNew }
+        : onRenew === undefined
+          ? undefined
+          : {
+              label: renewal.kind === "working" ? "Renewing" : "Renew the key",
+              enabled: true,
+              safe: false,
+              busy: renewal.kind === "working",
+              onPress: onRenew,
+            }
+      : early.kind === "working"
         ? {
-            label: `Create ${creationNames(steps)} again`,
-            enabled: true,
+            label: "Creating",
+            enabled: false,
             safe: false,
-            onPress: onCreate,
+            busy: true,
+            onPress: () => undefined,
           }
-        : createdAfter && onReviewNew !== undefined
-          ? { label: "Review a new release", enabled: true, safe: false, onPress: onReviewNew }
-          : fix !== undefined && props.fixer !== undefined
-            ? {
-                label: `Ask ${props.fixer} to ${fix.verb}`,
-                enabled: true,
-                safe: false,
-                onPress: () => {
-                  props.onFix(fix.problem);
-                },
-              }
-            : onReviewNew !== undefined
-              ? { label: "Review a new release", enabled: true, safe: false, onPress: onReviewNew }
-              : undefined;
+        : failedCreation?.action !== undefined && onCreate !== undefined
+          ? {
+              label: `Create ${creationNames(steps)} again`,
+              enabled: true,
+              safe: false,
+              onPress: onCreate,
+            }
+          : onReviewNew !== undefined
+            ? { label: "Review a new release", enabled: true, safe: false, onPress: onReviewNew }
+            : undefined;
+  // A stop whose one button is its own way out (the key, the creation) keeps the way to the next
+  // release behind ⋯: no stop is a dead end, opened again or not.
+  const reviewNext =
+    stopped && onReviewNew !== undefined && wayOut?.onPress !== onReviewNew
+      ? [{ label: "Review a new release", onPress: onReviewNew }]
+      : [];
   const press1 = releasePressLabel(tag, creates);
   const primary: ReviewPrimaryButton | undefined = offered
     ? {
@@ -1359,7 +1429,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
         ? { words: where.note }
         : { words: where.note, tone: where.tone }
     : refused !== undefined
-      ? { words: refused, tone: "failed" }
+      ? { words: inProductionWords(refused, props.environmentName), tone: "failed" }
       : reading
         ? { words: RELEASE_READING }
         : props.servicePlanFailure !== undefined
@@ -1368,7 +1438,10 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               words:
                 problems !== undefined && problems.length > 0
                   ? "Nothing is released until this is fixed"
-                  : props.servicePlanFailure.replace(/\.$/u, ""),
+                  : inProductionWords(props.servicePlanFailure, props.environmentName).replace(
+                      /\.$/u,
+                      "",
+                    ),
               tone: "attention",
               ...(props.onRetryServicePlan === undefined
                 ? {}
@@ -1376,14 +1449,20 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
             }
           : blocked
             ? {
-                words: model.verdict.why,
+                words: inProductionWords(model.verdict.why, props.environmentName),
                 ...(model.verdict.tone === "attention" ? { tone: "attention" as const } : {}),
               }
             : { words: creates.length > 0 ? "Takes a few minutes" : RELEASE_TAKES };
 
   // HQ's own note on what it asked for at the press, where it left one.
   const answer = useReviewDeploys(press);
-  const answerNote = answer === undefined ? undefined : deployAnswerSaid(answer).note;
+  const answerNote = releaseNoteSaid({
+    note: answer === undefined ? undefined : deployAnswerSaid(answer).note,
+    stopped: releaseStopReason(props.progress),
+    // The key renewed, its sentence stands nowhere: the note says only what HQ could not do.
+    reasonGone: renewal.kind === "renewed",
+    environmentName: props.environmentName,
+  });
   const shown = allRows ? rows : rows.slice(0, ROWS_SHOWN);
   const counted =
     props.changesPending === true ? props.expected : rows.length === 0 ? undefined : rows.length;
@@ -1412,7 +1491,10 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       held={!offered}
       // What HQ refused with a fix a Mate can make: asked for beside the way out.
       ask={
-        offered && fix !== undefined && props.fixer !== undefined
+        // Offered, or stopped on something a Mate can fix: never for the key, which is a person's.
+        (offered || (stopped && keyStop === undefined && early.kind !== "working")) &&
+        fix !== undefined &&
+        props.fixer !== undefined
           ? {
               label: `Ask ${props.fixer} to ${fix.verb}`,
               onPress: () => {
@@ -1423,7 +1505,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       }
       kind="release"
       kindLabel={props.name ?? ""}
-      menu={browse}
+      menu={[...browse, ...reviewNext]}
       noteAction={note.action}
       onClose={props.onClose}
       primary={primary}
@@ -1496,14 +1578,18 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
         <ReviewSection title="What happens in production">
           <GrowsInPlace>
             {reading ? (
-              <ReleasePlanSkeleton steps={deployed.length + 1} />
+              // A step per service the release lists, known before HQ's plan, and production
+              // answering: the plan then only adds what it creates.
+              <ReleasePlanSkeleton steps={(props.entries ?? deployed.length) + 1} />
             ) : (
               <ReleasePlan
                 live={{ open, onAddDomain: props.onAddDomain }}
                 logOf={props.logOf}
                 // Stopped, the way out is the foot's button: the step does not say it twice.
                 onCreate={stopped ? undefined : onCreate}
-                steps={steps}
+                onRenew={onRenew}
+                renewing={renewal.kind === "working"}
+                steps={renewal.kind === "renewed" ? keyRenewedSteps(steps) : steps}
               />
             )}
           </GrowsInPlace>

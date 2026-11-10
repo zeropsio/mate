@@ -38,17 +38,24 @@ export function NextRelease({
   ready,
   onStage,
   density = "line",
+  failureSaid = false,
   children,
 }: NextReleaseInput & {
   readonly density?: "line" | "block";
+  /**
+   * The place line over it already says the release failed and what still runs: the bar then
+   * keeps to what waits and the way in, one failure said once.
+   */
+  readonly failureSaid?: boolean;
   readonly children?: ReactNode;
 }) {
   const view = nextReleaseView({ release, ready, onStage });
   if (view.kind === "none") return null;
+  const said = failureSaid && view.kind === "failed";
   return (
     <NextBlock
-      facts={view.kind === "releasing" ? [] : view.facts}
-      lead={view.kind === "failed" ? <Badge tone="danger">{view.pill}</Badge> : undefined}
+      facts={view.kind === "releasing" || said ? [] : view.facts}
+      lead={view.kind === "failed" && !said ? <Badge tone="danger">{view.pill}</Badge> : undefined}
       title={view.title}
       variant={density}
       verb={

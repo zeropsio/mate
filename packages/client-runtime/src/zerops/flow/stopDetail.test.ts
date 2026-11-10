@@ -189,8 +189,7 @@ describe("stopVerdict", () => {
       expected: {
         tone: "failed",
         text: "Its deploy key no longer works.",
-        detail:
-          "Someone with Full access to the Shop - stage project in Zerops mints a new one here.",
+        detail: "Someone with Full access to the Shop - stage project in Zerops mints a new one.",
         verb: null,
       },
     },
@@ -204,8 +203,7 @@ describe("stopVerdict", () => {
       expected: {
         tone: "failed",
         text: "It has no deploy key yet.",
-        detail:
-          "Someone with Full access to the Shop - production project in Zerops mints one here.",
+        detail: "Someone with Full access to the Shop - production project in Zerops mints one.",
         verb: null,
       },
     },
