@@ -4803,21 +4803,36 @@ code {
 
   /* The one selected band (`SidebarSelectedBand`): behind every row of the
      list, which is its own stacking context, over the open Mate's unit — its
-     row and its crew's line — with the row's corners. It is placed by
-     transform; only a slide to a newly opened Mate moves it. */
+     row and its crew's line. Its own box is where it stands, and paints nothing. */
   .menu-band {
     position: absolute;
     top: 0;
     left: 0;
     z-index: -1;
-    border-radius: 12px;
-    /* The fill alone (the owner, 2026-10-12: "just do the white, not the border"). */
-    background: var(--sidebar-row-active);
     opacity: 0;
     pointer-events: none;
-    /* Its own layer from the start: a slide runs on the compositor while the page it opens is
-       drawn, never waiting on that draw to begin. */
+  }
+
+  /* What it shows: four nested layers of one size, each clipping to the row's corners, the
+     innermost filled; what all four leave is the band (`bandLayers`). A slide to a newly opened
+     Mate shifts them and nothing else, so its edges travel together with true corners. Layers of
+     their own from the start: a slide runs on the compositor while the page it opens is drawn,
+     never waiting on that draw to begin. */
+  .menu-band-layer {
+    position: absolute;
+    inset: 0;
+    overflow: clip;
+    border-radius: 12px;
     will-change: transform;
+  }
+
+  .menu-band > .menu-band-layer {
+    inset: 0 auto auto 0;
+  }
+
+  /* The fill alone (the owner, 2026-10-12: "just do the white, not the border"). */
+  .menu-band-layer:empty {
+    background: var(--sidebar-row-active);
   }
 
   .menu-band[data-on] {
@@ -4988,15 +5003,6 @@ code {
     transition:
       opacity 180ms var(--ease-out-strong),
       transform 240ms var(--ease-out-strong);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .menu-band[data-sliding] {
-    transition:
-      transform 240ms var(--ease-out-strong),
-      height 240ms var(--ease-out-strong),
-      width 240ms var(--ease-out-strong);
   }
 }
 
