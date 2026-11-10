@@ -113,8 +113,12 @@ export function selectChatItems(
  */
 export const CHAT_OPENS_WITH = 40;
 
-/** How many earlier lines the scroll draws at a time as the person scrolls up to them. */
-export const EARLIER_CHUNK = 200;
+/**
+ * How many earlier lines the scroll draws at a time as the person scrolls up
+ * to them: about three screens of them. Two hundred at once held the frame
+ * they were drawn in for a tenth of a second, in the middle of a scroll.
+ */
+export const EARLIER_CHUNK = 40;
 
 /** How near its top the scroll draws the earlier lines: before the person reaches them. */
 export const EARLIER_REACH_PX = 480;
@@ -131,6 +135,78 @@ export function chatOpensAt(lines: number): number {
 export function earlierShown(from: number): { readonly shows: number; readonly next: number } {
   const next = Math.max(0, from - EARLIER_CHUNK);
   return { shows: from - next, next };
+}
+
+/**
+ * The lines the log keeps drawn (the owner, 2026-11-10: a run at 299 steps "on
+ * like 5 FPS"): what a frame of the card costs grew with every line it ever
+ * drew, though seven of them are in view. Lines far above the view are set
+ * aside — taken off the page, the room they took kept over the first line
+ * drawn, to the pixel, so nothing that is drawn moves and the scroll's length
+ * and its thumb stay as they were — and come back, a stretch at a time, as
+ * the person scrolls up to them, like the earlier lines of a run opened late.
+ */
+
+/** How far above its view the log keeps its lines drawn. */
+export const KEPT_ABOVE_PX = 1200;
+
+/** How far past that its drawn lines reach before the furthest are set aside: never a line at a time. */
+export const SET_ASIDE_PAST_PX = 1200;
+
+/** How tall a stretch of lines set aside is, about: each comes back on its own, in one short draw. */
+export const ASIDE_STRETCH_PX = 600;
+
+/** Lines set aside over the first one drawn: how many, and the room they took, the gap under them included. */
+export interface AsideStretch {
+  readonly lines: number;
+  readonly height: number;
+}
+
+/**
+ * The stretches to set aside, oldest first, of the rows drawn over the view:
+ * each row by how many lines it holds and where the row after it starts, from
+ * the first row's top. Every row that ends `KEPT_ABOVE_PX` or more over the
+ * view goes, once the drawn rows reach `SET_ASIDE_PAST_PX` further; a last
+ * stretch shorter than `ASIDE_STRETCH_PX` stays for the next time.
+ */
+export function stretchesAside(
+  rows: ReadonlyArray<{ readonly lines: number; readonly nextTop: number }>,
+  /** How far the view's top stands under the first row's. */
+  above: number,
+): ReadonlyArray<AsideStretch> {
+  if (above < KEPT_ABOVE_PX + SET_ASIDE_PAST_PX) return [];
+  const limit = above - KEPT_ABOVE_PX;
+  const stretches: AsideStretch[] = [];
+  let lines = 0;
+  let from = 0;
+  for (const row of rows) {
+    if (row.nextTop > limit) break;
+    lines += row.lines;
+    if (row.nextTop - from >= ASIDE_STRETCH_PX) {
+      stretches.push({ lines, height: row.nextTop - from });
+      lines = 0;
+      from = row.nextTop;
+    }
+  }
+  return stretches;
+}
+
+/**
+ * The stretches to bring back as the view's top stands `above` px under the
+ * first drawn row's: the newest set aside, until `EARLIER_REACH_PX` of drawn
+ * lines stand over the view again. Newest first, as they come off `aside`.
+ */
+export function stretchesBack(
+  aside: ReadonlyArray<AsideStretch>,
+  above: number,
+): ReadonlyArray<AsideStretch> {
+  const back: AsideStretch[] = [];
+  let reach = above;
+  for (let index = aside.length - 1; index >= 0 && reach < EARLIER_REACH_PX; index -= 1) {
+    back.push(aside[index]!);
+    reach += aside[index]!.height;
+  }
+  return back;
 }
 
 /** Where the run's scroll stands. */
