@@ -14010,6 +14010,17 @@ a.message-file:focus-visible {
   [data-settings-row] [data-slot="row-control"] [data-slot="select-trigger"] {
     min-height: calc(var(--spacing) * 9);
   }
+
+  /* A section's heading reads whole: tools too wide to share its line go under it, at its end. */
+  :where([data-settings-page-scroll]) [data-slot="section-header"] {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  /* The desktop's 10 and 11 px notes (a count, a table's head, a sample's label) are 12 px here. */
+  [data-settings-page-scroll] :is(.text-2xs, .text-3xs) {
+    font-size: var(--text-caption);
+  }
 }
 
 /* ==== end of settings on a phone ==== */
