@@ -261,6 +261,8 @@ export interface MateActions {
   readonly busyKey: string | null;
   /** Why the last write failed; `null` when none did. */
   readonly trouble: string | null;
+  /** The shared birth whose Continue runs from here, so its page says so until its Mate's view takes over. */
+  readonly continuingBirth: string | null;
 }
 
 /** One Mate's name, edited where it stands. */
@@ -329,6 +331,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
   const facePress = useProjection(faceAction, faceRequest?.requestId ?? null, EMPTY_FACE_ACTION);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
+  const [continuingBirth, setContinuingBirth] = useState<string | null>(null);
   const writing = useRef(new Set<string>());
   const moveAttempts = useRef(
     new Map<
@@ -1187,7 +1190,10 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
                 label: "Continue",
                 disabled: busyKey === key,
                 onSelect: () => {
-                  void write(key, () => birthActions.proceed(birth.id));
+                  setContinuingBirth(birth.id);
+                  void write(key, () => birthActions.proceed(birth.id)).finally(() =>
+                    setContinuingBirth(null),
+                  );
                 },
               },
             ]
@@ -1689,6 +1695,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
     handOver,
     busyKey,
     trouble,
+    continuingBirth,
     renameInPlace,
     changeFace,
   };

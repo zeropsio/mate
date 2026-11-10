@@ -178,7 +178,11 @@ import {
   type MateEmptyComing,
 } from "./ZeropsMateEmptyState";
 import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
-import { sharedBirthPresentation, useSharedBirthState } from "~/zerops/sharedBirths";
+import {
+  continuingLine,
+  sharedBirthPresentation,
+  useSharedBirthState,
+} from "~/zerops/sharedBirths";
 
 /** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
 export const HAND_OVER_NAME_WAIT_MS = 15_000;
@@ -219,20 +223,27 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
     connected: false,
   };
   const presentation = sharedBirthPresentation(birth);
+  // Its Continue running here reads as going, never as the stop it answers, until the Mate's own
+  // view takes the route; one that stops says why under its buttons.
+  const continuing = actions.continuingBirth === birth.id;
+  const attention = presentation.attention && !continuing;
   return (
     <MateComingFrame header={<MateComingHeader mate={{ ...mate, projectUrl: undefined }} />}>
       <MateEmptyStateView
         coming={{
-          kind: presentation.attention ? "failed" : "coming",
+          kind: attention ? "failed" : "coming",
           headline: mate.name,
-          sentence: presentation.line,
-          severity: presentation.attention ? "attention" : "info",
+          sentence: continuing ? continuingLine(birth) : presentation.line,
+          severity: attention ? "attention" : "info",
           below: (
             <div className="flex flex-wrap justify-center gap-2">
-              {birth.adopted === true && presentation.attention && birth.canDelete ? (
+              {birth.adopted === true && attention && birth.canDelete ? (
                 <p className="w-full">
                   Delete stops setting up the Mate and leaves the project untouched.
                 </p>
+              ) : null}
+              {!continuing && actions.trouble !== null ? (
+                <p className="w-full">{actions.trouble}</p>
               ) : null}
               {actions.birthActionsFor(birth.id).map((action) =>
                 "separator" in action ? null : (

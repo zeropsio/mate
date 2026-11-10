@@ -70,6 +70,11 @@ const ROW_GOING: Record<SharedBirth["progress"]["phase"], string> = {
   "container-starting": "Starting its computer…",
 };
 
+/** A birth whose Continue runs in this tab, on its own page: the step it is at, going. */
+export function continuingLine(birth: SharedBirth): string {
+  return ROW_GOING[birth.progress.phase];
+}
+
 export function sharedBirthPresentation(birth: SharedBirth): {
   /** Everything known, for the birth's own page: its phase, why it stopped, who can continue. */
   readonly line: string;
@@ -187,6 +192,23 @@ export function useOwnChiefBirth(): SharedBirth | undefined {
     : open.find((birth) => birth.chief === true && birth.madeBy === user.id);
 }
 
+/** Where a shared birth's Mate is drawn: its application, its kind, its name and face. */
+export function birthPlacement(birth: SharedBirth): ZeropsPlacedBirth["placement"] {
+  const face = readMateFace(birth.face);
+  return {
+    groupId: birth.appId,
+    groupName: birth.appName,
+    kind:
+      birth.intent?.placement.role === "stage" || birth.intent?.placement.role === "devstage"
+        ? "devstage"
+        : "mate",
+    displayName: birth.intent?.placement.name ?? "Mate",
+    ...(face?.tint === undefined || face.shape === undefined
+      ? {}
+      : { face: { tint: face.tint, shape: face.shape } }),
+  };
+}
+
 /** Place shared births ahead of locally pending creations. */
 export function placedSharedBirths(
   births: ReadonlyArray<SharedBirth>,
@@ -206,23 +228,11 @@ export function placedSharedBirths(
         !birth.canContinue)
     )
       return [];
-    const face = readMateFace(birth.face);
     return [
       {
         intent: birth.id,
         projectId: birth.projectId ?? birth.id,
-        placement: {
-          groupId: birth.appId,
-          groupName: birth.appName,
-          kind:
-            birth.intent?.placement.role === "stage" || birth.intent?.placement.role === "devstage"
-              ? "devstage"
-              : "mate",
-          displayName: birth.intent?.placement.name ?? "Mate",
-          ...(face?.tint === undefined || face.shape === undefined
-            ? {}
-            : { face: { tint: face.tint, shape: face.shape } }),
-        },
+        placement: birthPlacement(birth),
       },
     ];
   });
