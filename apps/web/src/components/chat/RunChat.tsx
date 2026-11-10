@@ -3768,7 +3768,10 @@ function placeSlot(list: HTMLOListElement | null): void {
  * first frame — a word fading in late left the Mate's face alone on the line
  * for half a second (run 5, E +0:23.6); a quick gap between two steps is
  * bridged by the step standing its minimum — its words on their way, a wait
- * on the person, the context condensing.
+ * on the person, the context condensing. It stands as the row that takes its
+ * place does: its mark in the Mate's column, its words on the items' text
+ * edge, so what comes next replaces it where it stands (2026-11-10: a bare
+ * word 12 px left of every item, no mark beside it).
  */
 function SlotFillerWords({ filler }: { readonly filler: SlotFiller }) {
   switch (filler.kind) {
@@ -4020,10 +4023,16 @@ function LiveSlot({
           <ChatShownContext value={shownRef}>
             <ol ref={listRef} className="run-slot-list">
               {lines.length === 0 ? (
-                <li key={`filler:${said.kind}`} className="run-slot-filler">
-                  <span aria-hidden="true" className={MARK_COLUMN} data-slot-mark="">
-                    <span className="flex h-[1lh] items-center" />
-                  </span>
+                <li
+                  key={`filler:${said.kind}`}
+                  className="run-slot-filler"
+                  data-slot-filler={said.kind}
+                >
+                  {/* "Thinking" wears the thought's mark: the thought that follows
+                      keeps it where it is. The card's head has the one face. */}
+                  <Mark line={said.kind === "thinking" ? "thought" : "call"}>
+                    {said.kind === "thinking" ? THOUGHT_MARK : null}
+                  </Mark>
                   <span className="run-now-words">
                     <SlotFillerWords filler={said} />
                   </span>
