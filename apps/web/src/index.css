@@ -12305,6 +12305,31 @@ a.message-file:focus-visible {
   bottom: auto;
   max-height: calc(100dvh - 24px);
 }
+/* A phone gives the sheet its width: 8 px from each edge, clear of the status bar and the home
+   bar, its words 16 px in as a page's are. */
+@media (max-width: 39.999rem) {
+  .rv-viewport > .rv {
+    top: max(8px, env(safe-area-inset-top));
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: calc(100% - 16px);
+  }
+
+  .rv-viewport > .rv:has(.rv-steps) {
+    bottom: auto;
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  .rv-viewport > .rv > .rv-chrome {
+    padding-inline: 16px 10px;
+  }
+
+  .rv-viewport > .rv > .rv-head,
+  .rv-viewport > .rv > .rv-body,
+  .rv-viewport > .rv > .rv-foot {
+    padding-inline: 16px;
+  }
+}
 /* Held while what it shows is read (`useReviewHold`): it slides in once, whole. */
 .rv[data-starting-style],
 .rv[data-ending-style],
@@ -12385,6 +12410,17 @@ a.message-file:focus-visible {
 .rv-x:last-child {
   margin-right: -6px;
 }
+/* A finger's 44 px, upward and downward: its neighbour keeps its own. */
+@media (pointer: coarse) {
+  .rv-x {
+    position: relative;
+  }
+  .rv-x::after {
+    position: absolute;
+    inset: -7px 0;
+    content: "";
+  }
+}
 .rv-x:hover {
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
   color: var(--foreground);
@@ -12447,6 +12483,33 @@ a.message-file:focus-visible {
   line-height: 20px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
+}
+/* A phone's line wraps: a dot goes down with the words after it, never left hanging at a line's
+   end, and one that would start a line is cut with the line's own edge. */
+@media (max-width: 39.999rem) {
+  .rv-line {
+    column-gap: 0;
+    margin-left: -14px;
+    clip-path: inset(0 0 0 14px);
+  }
+
+  .rv-line > .rv-dot {
+    display: none;
+  }
+
+  .rv-line > :not(.rv-dot) {
+    position: relative;
+    padding-left: 14px;
+  }
+
+  .rv-line > .rv-dot + ::before {
+    position: absolute;
+    left: 0;
+    width: 14px;
+    color: var(--muted-foreground);
+    text-align: center;
+    content: "·";
+  }
 }
 .rv-vt {
   display: inline-flex;
@@ -12522,7 +12585,8 @@ a.message-file:focus-visible {
 }
 .rv-page .rv-foot {
   position: sticky;
-  bottom: 16px;
+  /* Clear of a phone's home bar. */
+  bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 1;
   margin: 28px -8px 0;
   padding: 12px 16px 14px;
@@ -13340,6 +13404,21 @@ a.message-file:focus-visible {
   color: var(--foreground);
   opacity: 1;
   translate: 2px 0;
+}
+/* Where nothing hovers a row that opens says so at rest. */
+@media (hover: none) {
+  .rv-relrow-go {
+    opacity: 1;
+  }
+}
+/* A phone reads a change's title whole, on two lines where one cuts it. */
+@media (max-width: 39.999rem) {
+  .rv-relrow-t {
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
 }
 @media (prefers-reduced-motion: no-preference) {
   :is(button, a).rv-relrow:hover [data-mate-face-look] {
