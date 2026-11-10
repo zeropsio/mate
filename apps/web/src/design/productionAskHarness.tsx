@@ -248,8 +248,9 @@ function Offer(fixture: (typeof OFFERS)[number]) {
       changes={listed ? (fixture.changes ?? CHANGES) : []}
       creates={view.state.kind === "waiting" ? (fixture.creates ?? []) : []}
       mateName="Juno"
-      more={0}
-      now={view.state.kind === "done" ? undefined : { tag: "v0.1.3", since: "Nov 1" }}
+      // As the container counts: what is not listed is still counted.
+      more={listed ? 0 : (fixture.changes ?? CHANGES).length}
+      now={view.state.kind === "done" ? undefined : { tag: "v0.1.3" }}
       onNotNow={() => undefined}
       onReview={() => undefined}
       proposal={proposal}

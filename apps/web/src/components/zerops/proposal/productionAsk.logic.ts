@@ -24,6 +24,11 @@ export function serviceCreateTitle(services: ReadonlyArray<string>): string {
   return `Create ${namesWords(services)} in production`;
 }
 
+/** On the card, under its Production chip, the place is already said: "Create db and cache". */
+export function serviceCreateCardTitle(services: ReadonlyArray<string>): string {
+  return `Create ${namesWords(services)}`;
+}
+
 /**
  * What a service HQ's plan creates is, as a person reads it, from the settings the plan holds:
  * "Database · PostgreSQL 18, highly available". `null` where the plan names no type.
@@ -252,6 +257,38 @@ export function releaseOfferTitle(suggestion: string): string {
   return `Release ${suggestion} to production`;
 }
 
+/** On the card, under its Production chip, the place is already said: "Release v0.1.6". */
+export function releaseOfferCardTitle(suggestion: string): string {
+  return `Release ${suggestion}`;
+}
+
+/**
+ * The card's one quiet line over its changes: how many go out and since which release, and what
+ * the release creates first. "2 changes since v0.1.5 · creates cache first". `null` where the
+ * card knows none of it yet.
+ */
+export function releaseOfferSummary(input: {
+  readonly changes: number;
+  readonly live: string | undefined;
+  readonly creates: ReadonlyArray<string>;
+}): string | null {
+  const count =
+    input.changes === 0
+      ? undefined
+      : `${input.changes} ${input.changes === 1 ? "change" : "changes"}`;
+  const parts = [
+    count === undefined
+      ? input.live === undefined
+        ? undefined
+        : `${input.live} is live now`
+      : input.live === undefined
+        ? count
+        : `${count} since ${input.live}`,
+    input.creates.length === 0 ? undefined : `creates ${namesWords(input.creates)} first`,
+  ].filter((part) => part !== undefined);
+  return parts.length === 0 ? null : parts.join(" · ");
+}
+
 /** The live release offer as the card reads it from the application's flow. */
 export interface ReleaseOfferLive {
   /** The recipe's `main` HQ's offer was read at; `undefined` while it is not read. */
@@ -395,25 +432,14 @@ export function releaseOfferView(input: {
       : live.gate.allowed
         ? undefined
         : (live.gate.reason ?? "Release is not offered now.");
-  const count = live?.waiting;
   return view(
     { kind: "waiting" },
     {
       blocked,
-      moved: !movedOn
-        ? undefined
-        : count === undefined || count === 0
-          ? "Main moved on since: this covers what waits now."
-          : `Main moved on since: this now covers ${count === 1 ? "1 change" : `${String(count)} changes`}.`,
+      // The card's own line counts what waits: this one only says the ask is older than it.
+      moved: movedOn ? "Main moved on since: this covers what waits now." : undefined,
     },
   );
-}
-
-/** "Nov 1": the day production's release was made, as the card's *now* row says it. */
-export function releaseDay(taggedAt: string, locale?: string): string | undefined {
-  const at = Date.parse(taggedAt);
-  if (Number.isNaN(at)) return undefined;
-  return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(at);
 }
 
 /** What a create that ended says of itself; `null` once every service it began exists. */
