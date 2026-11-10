@@ -15,6 +15,7 @@ import type {
 import { ArrowUpRightIcon, ChevronRightIcon, EllipsisIcon, PlusIcon } from "lucide-react";
 import { useId, useState } from "react";
 
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { Button } from "../../ui/button";
 import { Checkbox } from "../../ui/checkbox";
 import { EmptyState } from "../../ui/empty";
@@ -309,6 +310,8 @@ function DomainRow({
   const key = `remove:${domain.domainName}`;
   const asking = mode.kind === "remove" && mode.domainName === domain.domainName;
   const own = domain.routingId.startsWith("own:");
+  // A phone's row has no room for where a domain leads beside it: said under it, both read whole.
+  const phone = useMediaQuery("max-sm");
   return (
     <>
       <SheetRow
@@ -364,9 +367,10 @@ function DomainRow({
             ) : (
               <span className="truncate">{domain.domainName}</span>
             )}
-            <RowMeta>{targetWords(domain)}</RowMeta>
+            {phone ? null : <RowMeta>{targetWords(domain)}</RowMeta>}
           </>
         }
+        sub={phone ? <RowMeta>{targetWords(domain)}</RowMeta> : undefined}
       />
       <Trouble text={ctx.trouble.get(key)} />
       {asking ? (

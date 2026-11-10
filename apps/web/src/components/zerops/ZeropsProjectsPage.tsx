@@ -267,6 +267,7 @@ import {
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
+import { InPhoneBar, useInPhoneBar } from "./system/PhoneBar";
 import { useMenuRows, usePaintStanding } from "~/zerops/useMenuRows";
 import { Badge } from "~/components/ui/badge";
 
@@ -624,25 +625,32 @@ export function ZeropsProjectsHeader({
   readonly notice?: ProjectsListingNotice | null;
   readonly onRetry?: (() => void) | undefined;
 }) {
+  const inBar = useInPhoneBar();
   return (
-    // Its row stands on the menu's logo row, centre to centre, not a bar's height below it.
-    <div
-      className="-mt-1.5 flex items-center justify-between gap-3"
-      data-zerops-project-scope="true"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <h1 className="text-xl font-medium text-foreground">Overview</h1>
-        {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
+    <InPhoneBar>
+      <div
+        className={cn(
+          "flex items-center justify-between gap-3",
+          // Its row stands on the menu's logo row, centre to centre, not a bar's height below it;
+          // on a phone it is the bar's line, beside the menu's button.
+          inBar ? "min-w-0 flex-1" : "-mt-1.5",
+        )}
+        data-zerops-project-scope="true"
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="text-xl font-medium text-foreground">Overview</h1>
+          {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {newProject ? (
+            <Button onClick={askNewProject} size="sm" variant="secondary">
+              <PlusIcon />
+              New project
+            </Button>
+          ) : null}
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        {newProject ? (
-          <Button onClick={askNewProject} size="sm" variant="secondary">
-            <PlusIcon />
-            New project
-          </Button>
-        ) : null}
-      </div>
-    </div>
+    </InPhoneBar>
   );
 }
 

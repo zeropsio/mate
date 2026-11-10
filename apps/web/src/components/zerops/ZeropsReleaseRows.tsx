@@ -332,7 +332,8 @@ function ReleaseRow({
           <span className="flex min-w-0 flex-col items-start gap-1 @lg/releases:flex-row @lg/releases:items-center @lg/releases:gap-3.5">
             <span
               className={cn(
-                "max-w-full min-w-0 truncate text-sm",
+                // A phone reads it whole, on two lines where one cuts it.
+                "max-w-full min-w-0 truncate text-sm max-sm:line-clamp-2 max-sm:whitespace-normal",
                 // The same changes again are no news: said, and quiet.
                 titled?.kind === "again" ? "text-muted-foreground" : "text-foreground",
               )}

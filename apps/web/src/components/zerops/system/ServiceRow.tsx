@@ -207,8 +207,10 @@ function ServiceMeter({
   const fill = usageRead ? meterFill(metric) : undefined;
   return (
     <div className="flex min-w-0 flex-col gap-1.5" data-zerops-place-meter={label}>
-      {/* Too narrow for both on one line, the figures wrap under the label, never cut. */}
-      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 text-caption">
+      {/* Too narrow for both on one line, the figures wrap under the label, never cut. A phone's
+          third of a card never holds both: there every meter says its label over its figure,
+          where one of three used to wrap and two not. */}
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 text-caption max-sm:flex-col max-sm:flex-nowrap max-sm:items-start">
         <span className="shrink-0 text-muted-foreground">{label}</span>
         {!usageRead ? (
           <Skeleton className="h-3 w-12" />
