@@ -30,6 +30,7 @@ import {
   impactLine,
   notLiveLine,
   notLiveTarget,
+  OWN_VAULTS_LABEL,
   refusalWords,
   vaultName,
   vaultRowKey,
@@ -41,8 +42,10 @@ import {
   vaultNeeds,
   vaultSections,
   type VaultEntry,
+  type VaultSection,
 } from "./vaultGroups.logic";
 import { VaultLines } from "./VaultLines";
+import { VaultPartName } from "./VaultPartName";
 import { VaultManagedRows, VaultRow, type VaultRowActivity } from "./VaultRow";
 import { diffVaultText, pasteIntoText, vaultToText, type VaultText } from "./vaultText.logic";
 
@@ -430,6 +433,26 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     }
 
     const { sections, made } = vaultSections(view, q);
+    const forAll = sections.filter((section) => section.scope.kind === "shared");
+    const own = sections.filter((section) => section.scope.kind !== "shared");
+    const sectionOf = (section: VaultSection) => (
+      <Section
+        action={
+          section.scope.hostname === null
+            ? undefined
+            : props.renderDeployConfig?.(section.scope.hostname)
+        }
+        count={section.words}
+        data-vault-part={section.scope.id}
+        key={section.scope.id}
+        level={3}
+        title={<VaultPartName scope={section.scope} />}
+      >
+        <div className="vault-box">
+          <div className="vault-rows">{section.entries.map(rowOf)}</div>
+        </div>
+      </Section>
+    );
     const needs = vaultNeeds(vaultGroups(view, { kind: "everything" }, ""));
     const notLive = notLiveLine(view.notLive, props.actor === "mate" ? mateName : null);
     const firstNotLive = view.notLive.find((item) => item.kind === "restart");
@@ -475,24 +498,17 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
             restarting={restarting}
           />
         ) : null}
-        {sections.map((section) => (
-          <Section
-            action={
-              section.scope.hostname === null
-                ? undefined
-                : props.renderDeployConfig?.(section.scope.hostname)
-            }
-            count={section.words}
-            data-vault-part={section.scope.id}
-            key={section.scope.id}
-            level={3}
-            title={section.title}
-          >
-            <div className="vault-box">
-              <div className="vault-rows">{section.entries.map(rowOf)}</div>
-            </div>
-          </Section>
-        ))}
+        {forAll.map(sectionOf)}
+        {forAll.length === 0 || own.length === 0 ? (
+          own.map(sectionOf)
+        ) : (
+          // Each app's own stand apart from what every app gets: over twice the room two of them
+          // keep, a hairline between, and the group's label hugging its first heading.
+          <div className="mt-2 grid gap-1 border-t border-border/70 pt-5" data-vault-own>
+            <p className="m-0 text-caption font-medium text-muted-foreground">{OWN_VAULTS_LABEL}</p>
+            <div className="grid gap-6">{own.map(sectionOf)}</div>
+          </div>
+        )}
         {made.length > 0 ? (
           <div className="vault-box" data-vault-made>
             <div className="vault-rows">
@@ -518,7 +534,9 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                       }
                       type="button"
                     >
-                      <span className="text-foreground">{scope.hostname}</span>
+                      <span className="font-mono text-caption text-foreground">
+                        {scope.hostname}
+                      </span>
                       {words === null ? null : (
                         <span className="truncate text-muted-foreground">{words}</span>
                       )}
