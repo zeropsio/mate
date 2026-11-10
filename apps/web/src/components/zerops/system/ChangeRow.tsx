@@ -17,6 +17,7 @@ import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import type { CardChange } from "../projects/projectCard.logic";
 import { changeTitle } from "../projects/projectHistory.logic";
 import { PageRows } from "./pageRows";
+import { lineChangeKey } from "./projectLine.logic";
 
 /** How long a cut line is pointed at before its whole shows, as a tooltip waits. */
 const CUT_TEXT_DELAY_MS = 500;
@@ -181,7 +182,10 @@ export function ChangeRow(props: ChangeRowProps) {
     </>
   );
   return (
-    <li className="ov-change-row">
+    <li
+      className="ov-change-row"
+      data-zerops-change={pull === undefined ? undefined : lineChangeKey(pull)}
+    >
       {onOpen === undefined ? (
         <div className="ov-change" data-plain="" data-open={open ? "true" : undefined}>
           {contents}

@@ -5135,10 +5135,12 @@ code {
   justify-self: center;
 }
 
+/* A version is a real thing's name: the mono face, on the x-height of the title beside it. */
 .zerops-envpop-version {
   margin-inline-start: 6px;
   color: var(--muted-foreground);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+  font-size: 0.966em;
 }
 
 .zerops-envpop-word {
@@ -5803,11 +5805,15 @@ code {
   color: var(--primary);
 }
 
+/* A service is named by its hostname, a real thing's own name: in the mono face (`.real-name`'s
+   rule), never the label face its section's title wears. */
 .zerops-sites-service {
   flex: none;
   max-width: 45%;
   overflow: hidden;
   color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 0.966em;
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -9080,6 +9086,11 @@ button.ov-change {
   outline-offset: -2px;
 }
 
+/* The row of the change whose bead on the line is pointed at (`data-zerops-change`). */
+.ov-change-row[data-marked] > .ov-change {
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
 /* Work that is no change yet has nothing to open: the row stays still under the pointer. */
 .ov-change[data-plain]:hover {
   background: none;
@@ -9515,6 +9526,15 @@ button.ov-change {
     transition: opacity 150ms linear;
   }
 }
+/* A real thing's own name wherever it is printed in a line of words — a service's hostname, a
+   repository's slug, a version: the mono face, its x-height matched to the label face beside it
+   (Roboto's x-height is 0.966 of the mono face's at one size), so it never looks the larger. In
+   the ink of what it names: the class sets no colour. */
+.real-name {
+  font-family: var(--font-mono);
+  font-size: 0.966em;
+}
+
 /* ==== end of the overview's cards ==== */
 
 /* ==== Pass 41 · the review sheet ==== */

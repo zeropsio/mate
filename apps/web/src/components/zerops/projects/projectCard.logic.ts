@@ -998,7 +998,12 @@ export function cardChanges(input: {
         pull.kind === "recipe"
           ? { kind: "setup" }
           : took !== undefined
-            ? { kind: "released", tag: took.tag, live: releaseIsLive(took.tag, input.releases) }
+            ? {
+                kind: "released",
+                tag: took.tag,
+                live: releaseIsLive(took.tag, input.releases),
+                at: took.taggedAt,
+              }
             : on(stage?.runs)
               ? { kind: "on-stage" }
               : on(stage?.deploying)

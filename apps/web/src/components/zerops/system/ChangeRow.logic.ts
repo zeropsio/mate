@@ -21,8 +21,16 @@ export function openChangeWords(pull: Parameters<typeof changeState>[0]): {
 export type MergedChangeWhere =
   /** A change to the setup repository: its files go to no place and no release. */
   | { readonly kind: "setup" }
-  /** The release that took it; `live` where production runs it or a newer release over it. */
-  | { readonly kind: "released"; readonly tag: string; readonly live: boolean }
+  /**
+   * The release that took it; `live` where production runs it or a newer release over it; `at`,
+   * when that release was made.
+   */
+  | {
+      readonly kind: "released";
+      readonly tag: string;
+      readonly live: boolean;
+      readonly at?: string | undefined;
+    }
   | { readonly kind: "on-stage" }
   | { readonly kind: "deploying-to-stage" }
   /** Production runs a release, and none took it yet. */

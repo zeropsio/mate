@@ -19,7 +19,7 @@ import { useProjectSitesOfGroup } from "~/zerops/projectPartsShown";
 
 import { Button } from "../../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
-import { MateSites, PlaceSites } from "../SidebarProjectSites";
+import { MateSites, PageSites, PlaceSites } from "../SidebarProjectSites";
 import type { MateSitesDoor, PlaceSitesDoor } from "./placeDoors.logic";
 
 type Look = "line" | "beside-verb" | "page" | "card";
@@ -128,6 +128,47 @@ export function PlaceDoors({
       {sitesDoor}
       {vaultDoor}
     </span>
+  );
+}
+
+/**
+ * Whether a place line's Sites door is drawn (`PlaceDoors` with `sites`): the line then leaves its
+ * address to the door. Where the menu has not drawn the project there is no door, and the line
+ * keeps its address: it is the only way there.
+ */
+export function usePlaceSitesDrawn(groupId: string): boolean {
+  return useProjectSitesOfGroup(groupId) !== undefined;
+}
+
+/**
+ * The whole project's Sites, in its page's header: the worded door a place's page has, opening
+ * every address of the project grouped by where it runs (`PageSites`). Draws nothing where the
+ * project answers nowhere (`answers`), or where the menu has not drawn it.
+ *
+ * Props: `groupId`; `name` (the project's); `answers` (it has an address or a Mate's preview:
+ * `projectAnswers(…)`).
+ */
+export function ProjectSitesDoor({
+  groupId,
+  name,
+  answers,
+}: {
+  readonly groupId: string;
+  readonly name: string;
+  readonly answers: boolean;
+}) {
+  const drawn = useProjectSitesOfGroup(answers ? groupId : undefined);
+  if (drawn === undefined) return null;
+  return (
+    <Door label={`Sites · ${name}`} look="page">
+      {(button) => (
+        <PageSites sites={drawn} trigger={button}>
+          <GlobeIcon aria-hidden="true" />
+          <span>Sites</span>
+          <ChevronDownIcon aria-hidden="true" className={MARK.page} />
+        </PageSites>
+      )}
+    </Door>
   );
 }
 
