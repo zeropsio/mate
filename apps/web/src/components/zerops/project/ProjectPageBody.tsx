@@ -453,7 +453,7 @@ function ProjectPlaces<T>({
           {props.renderProductionRun?.(entry)}
         </>
       ) : (
-        <NextRelease {...next} />
+        <NextRelease {...next} failureSaid={line?.trouble === true} />
       )}
     </>
   );
