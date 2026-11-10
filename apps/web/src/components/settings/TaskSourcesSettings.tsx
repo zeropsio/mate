@@ -963,6 +963,7 @@ export function TaskLimitsView({ controls }: { readonly controls: Controls<"hqTa
           )
         ) : (
           <form
+            className="max-sm:w-full"
             onSubmit={(event) => {
               event.preventDefault();
               const typed = readLimits(shownMinutes, shownCost);
@@ -1040,7 +1041,7 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
           </Button>
         ) : (
           <form
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 max-sm:w-full"
             onSubmit={(event) => {
               event.preventDefault();
               if (held === null) return;
@@ -1062,7 +1063,7 @@ export function MonthlyBudgetView({ controls }: { readonly controls: Controls<"h
             }}
           >
             <Label htmlFor={fieldId}>USD a month</Label>
-            <div className="w-24">
+            <div className="w-24 max-sm:w-auto max-sm:min-w-16 max-sm:flex-1">
               <Input
                 disabled={held === null}
                 id={fieldId}
@@ -1275,32 +1276,37 @@ function LimitsFields({
   readonly children?: ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2">
-      <Label htmlFor={minutesId}>Minutes</Label>
-      <div className="w-16">
-        <Input
-          id={minutesId}
-          inputMode="numeric"
-          onChange={(event) => {
-            onMinutes?.(event.target.value);
-          }}
-          size="sm"
-          value={minutes}
-        />
-      </div>
-      <Label htmlFor={costId}>Cost, USD</Label>
-      <div className="w-24">
-        <Input
-          id={costId}
-          inputMode="decimal"
-          onChange={(event) => {
-            onCost?.(event.target.value);
-          }}
-          placeholder="No limit"
-          size="sm"
-          value={cost}
-        />
-      </div>
+    // On a phone the two fields share the row's width, each beside its own label; Save wraps under.
+    <div className="flex items-center gap-2 max-sm:w-full max-sm:flex-wrap">
+      <span className="flex items-center gap-2 max-sm:flex-1">
+        <Label htmlFor={minutesId}>Minutes</Label>
+        <div className="w-16 max-sm:w-auto max-sm:min-w-12 max-sm:flex-1">
+          <Input
+            id={minutesId}
+            inputMode="numeric"
+            onChange={(event) => {
+              onMinutes?.(event.target.value);
+            }}
+            size="sm"
+            value={minutes}
+          />
+        </div>
+      </span>
+      <span className="flex items-center gap-2 max-sm:flex-1">
+        <Label htmlFor={costId}>Cost, USD</Label>
+        <div className="w-24 max-sm:w-auto max-sm:min-w-16 max-sm:flex-1">
+          <Input
+            id={costId}
+            inputMode="decimal"
+            onChange={(event) => {
+              onCost?.(event.target.value);
+            }}
+            placeholder="No limit"
+            size="sm"
+            value={cost}
+          />
+        </div>
+      </span>
       {children ?? (
         <Button size="sm" variant="secondary">
           Save

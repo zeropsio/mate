@@ -40,7 +40,7 @@ export function HeldRoom({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="grid">
+    <div className="grid max-sm:w-full">
       <div aria-hidden className="invisible col-start-1 row-start-1" data-zerops-intake-room="">
         {template}
       </div>
