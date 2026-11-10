@@ -21,7 +21,10 @@
  *   of six lines running at 13 s to 17.5 s, one of fifteen to open at 22 s);
  *   `reads` ten reads inside two seconds between two thoughts, the board's
  *   burst; `deep` a run forty minutes in, `?steps=<n>` rows in its log (300)
- *   that never fold, its working row changing every second or so; `send` a conversation at its end
+ *   that never fold, its working row changing every second or so (`?joins=<n>`
+ *   for that many earlier lines joining the front of its log 17.5 s in, as a
+ *   page of them read in late; `?leaves=<n>` for its first lines leaving it
+ *   then); `send` a conversation at its end
  *   under a finished run, the person's message sent a second in (`?draft=<px>`
  *   for a draft that tall, which the composer gives back as it goes; `?ack=<s>`
  *   for how long the card stands on its head alone; `?short` for a
@@ -110,6 +113,10 @@ const CREW = params.has("crew");
 const TURNS_ABOVE = Number(params.get("long") ?? 0);
 /** `?steps=<n>`: how many rows the `deep` run's log holds as it opens. */
 const STEPS = Math.max(2, Number(params.get("steps") ?? 300));
+/** `?joins=<n>`: that many earlier lines join the front of the `deep` run's log, 17.5 s in. */
+const JOINS = Math.max(0, Number(params.get("joins") ?? 0));
+/** `?leaves=<n>`: the `deep` run's first lines, that many, leave its log 17.5 s in. */
+const LEAVES = Math.max(0, Number(params.get("leaves") ?? 0));
 const ENVIRONMENT = EnvironmentId.make("environment-harness");
 const TURN = TurnId.make("live-turn");
 const COMPOSER_HEIGHT = 132;
@@ -889,7 +896,15 @@ function deepAt(t: number) {
   return { round, into: round < 0 ? 0 : since - round * DEEP_ROUND };
 }
 
+/** When the front of the `deep` run's log changes (`?joins`, `?leaves`): in its second round's quiet stretch. */
+const DEEP_FRONT_AT = DEEP_FIRST + DEEP_ROUND + 6;
+
 function deepEventKey(t: number): string {
+  const key = deepRoundKey(t);
+  return (JOINS > 0 || LEAVES > 0) && t >= DEEP_FRONT_AT ? `${key}:front` : key;
+}
+
+function deepRoundKey(t: number): string {
   const { round, into } = deepAt(t);
   if (t < 0.5) return "opening";
   if (round < 0) return "opened";
@@ -911,6 +926,32 @@ function deepEntries(): (t: number) => TimelineEntry[] {
     message("ask", "user", DEEP_BEGAN, "Work through the plan, a step at a time."),
   ];
   let opening: TimelineEntry[] | null = null;
+  // The front of its log once it changed: earlier lines joined, or its first ones gone.
+  let fronted: TimelineEntry[] | null = null;
+  const front = (rows: TimelineEntry[]) => [
+    rows[0]!,
+    // In the log's own mix, so each is a line of its own: a thought, then a command.
+    ...Array.from({ length: JOINS }, (_, index) => {
+      const at = DEEP_BEGAN + (index + 1) / (JOINS + 1);
+      return index % 2 === 0
+        ? message(
+            `deep-earlier-${index}`,
+            "reasoning",
+            at,
+            DEEP_THOUGHTS[index % DEEP_THOUGHTS.length]!,
+          )
+        : work(`deep-earlier-${index}`, at, {
+            label: "Command run",
+            itemType: "command_execution",
+            command: `pnpm test -- earlier-${index} --reporter dot`,
+            callInput: { description: `Check what stood before, part ${index + 1}` },
+            toolLifecycleStatus: "completed",
+            sourceActivityKind: "tool.completed",
+            updatedAt: iso(at),
+          });
+    }),
+    ...rows.slice(1 + LEAVES),
+  ];
   // A second call beside the command, from its code's arrival to its end: a line of its own under it.
   const beside = (round: number, returned: boolean) => {
     const start = DEEP_FIRST + round * DEEP_ROUND + 4.6;
@@ -976,7 +1017,8 @@ function deepEntries(): (t: number) => TimelineEntry[] {
         now.push(command(round, into < 4.2 ? "said" : into < 9.2 ? "coded" : "returned"));
       if (into >= 4.6) now.push(beside(round, into >= 9.2));
     }
-    const entries = [...(t < 0.5 ? opening : history), ...ended, ...now];
+    if (t >= DEEP_FRONT_AT && (JOINS > 0 || LEAVES > 0)) fronted ??= front(history);
+    const entries = [...(t < 0.5 ? opening : (fronted ?? history)), ...ended, ...now];
     last = { key, entries };
     return entries;
   };
