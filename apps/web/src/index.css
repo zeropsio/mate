@@ -13856,6 +13856,34 @@ a.message-file:focus-visible {
 
 /* ==== end of motion across switches ==== */
 
+/* ==== Settings on a phone ==== */
+
+/* A setting's row: its name and what it does; a switch or a button stays on the name's line; a
+   select, a field or a slider takes the row's width under the description. */
+@media (max-width: 39.999rem) {
+  [data-settings-row] > [data-slot="row"] > [data-slot="row-control"] {
+    align-self: flex-start;
+  }
+
+  [data-settings-row]
+    > [data-slot="row"]
+    > [data-slot="row-control"]:has(
+      [data-slot="select-trigger"],
+      [data-slot="input-control"],
+      [data-slot="number-field"],
+      input[type="range"]
+    ) {
+    flex-basis: 100%;
+  }
+
+  /* Under one another, the selects are one height whatever size their desktop row picked. */
+  [data-settings-row] [data-slot="row-control"] [data-slot="select-trigger"] {
+    min-height: calc(var(--spacing) * 9);
+  }
+}
+
+/* ==== end of settings on a phone ==== */
+
 /* ==== Pass 23 · the arrival ==== */
 
 /* A Mate's arrival and its empty conversation (`MateEmptyStateView`), the "Arrival" board's
