@@ -659,6 +659,27 @@ button.ln-name:hover {
   }
 }
 
+/* A phone: every station's name reads, and a release's verb under its segment. The columns give
+   each name its room; the corner's control stands under production, which holds no word, clear of
+   its name. */
+@media (max-width: 39.999rem) {
+  .ln-grid,
+  .lnx-grid {
+    grid-template-columns: 110fr 90fr 88fr;
+    padding-inline: 16px;
+  }
+
+  .ln[data-stations="4"] .ln-grid,
+  .ln[data-stations="4"] .lnx-grid {
+    grid-template-columns: 84fr 44fr 94fr 74fr;
+  }
+
+  .ln-corner:not([data-leads]) {
+    top: auto;
+    bottom: 4px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ln-bead,
   .ln-fold,

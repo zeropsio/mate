@@ -744,54 +744,62 @@ function HistoryProcessTable({
 
 function AttributionTable({ entries }: { entries: ReadonlyArray<ResourceAttributionEntry> }) {
   return (
-    <div className="overflow-x-auto border-t border-border/60">
-      <table className="w-full min-w-[720px] table-fixed text-left text-xs">
-        <colgroup>
-          <col className="w-[22%]" />
-          <col className="w-[28%]" />
-          <col className="w-[14%]" />
-          <col className="w-[14%]" />
-          <col className="w-[10%]" />
-          <col className="w-[12%]" />
-        </colgroup>
-        <thead className="border-b border-border/60 text-3xs uppercase tracking-widest text-muted-foreground/65">
-          <tr>
-            <th className="px-4 py-2 font-semibold sm:pl-5">Component</th>
-            <th className="px-3 py-2 font-semibold">Operation</th>
-            <th className="px-3 py-2 text-right font-semibold">Logical Read</th>
-            <th className="px-3 py-2 text-right font-semibold">Logical Write</th>
-            <th className="px-3 py-2 text-right font-semibold">Count</th>
-            <th className="px-3 py-2 text-right font-semibold sm:pr-5">Time</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border/50">
-          {entries.length === 0 ? (
+    <div className="border-t border-border/60">
+      <ScrollArea
+        radius="none"
+        chainVerticalScroll
+        scrollFade
+        hideScrollbars
+        className="w-full max-w-full"
+      >
+        <table className="w-full min-w-[720px] table-fixed text-left text-xs">
+          <colgroup>
+            <col className="w-[22%]" />
+            <col className="w-[28%]" />
+            <col className="w-[14%]" />
+            <col className="w-[14%]" />
+            <col className="w-[10%]" />
+            <col className="w-[12%]" />
+          </colgroup>
+          <thead className="border-b border-border/60 text-3xs uppercase tracking-widest text-muted-foreground/65">
             <tr>
-              <td colSpan={6} className="px-4 py-5 text-xs text-muted-foreground sm:px-5">
-                No instrumented application I/O has been recorded yet.
-              </td>
+              <th className="px-4 py-2 font-semibold sm:pl-5">Component</th>
+              <th className="px-3 py-2 font-semibold">Operation</th>
+              <th className="px-3 py-2 text-right font-semibold">Logical Read</th>
+              <th className="px-3 py-2 text-right font-semibold">Logical Write</th>
+              <th className="px-3 py-2 text-right font-semibold">Count</th>
+              <th className="px-3 py-2 text-right font-semibold sm:pr-5">Time</th>
             </tr>
-          ) : null}
-          {entries.map((entry) => (
-            <tr key={`${entry.component}:${entry.operation}`} className="hover:bg-muted/20">
-              <td className="truncate px-4 py-2 font-medium text-foreground sm:pl-5">
-                {entry.component}
-              </td>
-              <td className="truncate px-3 py-2 text-muted-foreground">{entry.operation}</td>
-              <td className="px-3 py-2 text-right font-mono tabular-nums text-info-foreground">
-                {formatBytes(entry.logicalReadBytes)}
-              </td>
-              <td className="px-3 py-2 text-right font-mono tabular-nums text-warning-foreground">
-                {formatBytes(entry.logicalWriteBytes)}
-              </td>
-              <td className="px-3 py-2 text-right font-mono tabular-nums">{entry.count}</td>
-              <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground sm:pr-5">
-                {(entry.durationMs / 1_000).toFixed(2)}s
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-border/50">
+            {entries.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-5 text-xs text-muted-foreground sm:px-5">
+                  No instrumented application I/O has been recorded yet.
+                </td>
+              </tr>
+            ) : null}
+            {entries.map((entry) => (
+              <tr key={`${entry.component}:${entry.operation}`} className="hover:bg-muted/20">
+                <td className="truncate px-4 py-2 font-medium text-foreground sm:pl-5">
+                  {entry.component}
+                </td>
+                <td className="truncate px-3 py-2 text-muted-foreground">{entry.operation}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums text-info-foreground">
+                  {formatBytes(entry.logicalReadBytes)}
+                </td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums text-warning-foreground">
+                  {formatBytes(entry.logicalWriteBytes)}
+                </td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums">{entry.count}</td>
+                <td className="px-3 py-2 text-right font-mono tabular-nums text-muted-foreground sm:pr-5">
+                  {(entry.durationMs / 1_000).toFixed(2)}s
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ScrollArea>
     </div>
   );
 }

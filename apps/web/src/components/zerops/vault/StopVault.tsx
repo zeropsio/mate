@@ -36,7 +36,8 @@ export function StopVaultDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetPopup
         aria-label={`Vault · ${name}`}
-        className="max-w-xl"
+        // A phone gives it the whole width: a 48 px strip of the page beside it holds nothing.
+        className="max-w-xl max-sm:w-full"
         data-zerops-surface="stop-vault"
         side="right"
       >

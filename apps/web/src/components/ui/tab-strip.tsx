@@ -200,9 +200,12 @@ const tabVariants = cva(
   {
     defaultVariants: { size: "sm" },
     variants: {
-      /** `sm`: a panel's strip of pages, 24 px; `md`: a page's own views, 28 px. */
+      /**
+       * `sm`: a panel's strip of pages, 24 px, and 32 under a finger (the strip clips anything a
+       * tab reaches beyond itself, so its own height is its target); `md`: a page's own views, 28 px.
+       */
       size: {
-        sm: "h-6 max-w-36 px-1.5",
+        sm: "h-6 max-w-36 px-1.5 pointer-coarse:h-8",
         md: "h-7 px-2.5 text-sm",
       },
     },

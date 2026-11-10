@@ -271,13 +271,16 @@ function RepoRow({
         {entry.name}
       </span>
       <div className="grid min-w-0 gap-0.5">
-        {/* Line one keeps its height where the name stands in its own column and no code goes out. */}
-        <p className="flex min-h-5 min-w-0 items-baseline gap-1.5">
+        {/* Line one keeps its height where the name stands in its own column and no code goes out.
+            A phone's row says the code's name over its repository: beside each other the
+            repository was cut to "zeropsio/app…". */}
+        <p className="flex min-h-5 min-w-0 items-baseline gap-1.5 max-sm:flex-col max-sm:items-start max-sm:gap-0">
           <span className="real-name shrink-0 text-foreground @lg:hidden">{entry.name}</span>
           {state.destination === null ? null : (
             <a
               className={cn(
-                "real-name min-w-0 truncate hover:underline",
+                // In a phone's column it is as wide as its words unless held to the row.
+                "real-name min-w-0 truncate hover:underline max-sm:max-w-full",
                 state.tone === "busy" ? "text-muted-foreground" : "text-foreground",
               )}
               href={state.destination.href}

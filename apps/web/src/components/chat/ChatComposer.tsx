@@ -95,6 +95,7 @@ import {
   type PromptStashEntry,
 } from "../../promptStashStore";
 import { ComposerStashBadge } from "./ComposerStashBadge";
+import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "./composerTypography";
 import { FULL_COMPOSER_MS, fullComposerHeight } from "./fullComposer.logic";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { useComposerTriggerState } from "./useComposerTriggerState";
@@ -3733,8 +3734,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 <div className="flex items-center justify-between gap-2 px-3 py-2">
                   <button
                     type="button"
+                    // The editor's own type (16 px under a finger): opening it changes no letter's
+                    // size. It reaches the pill's top, bottom and left edge, so a finger anywhere
+                    // on the words' side opens it.
                     className={cn(
-                      "min-w-0 flex-1 truncate bg-transparent p-0 text-left text-[14px] focus:outline-none",
+                      "-my-2 -ms-3 min-w-0 flex-1 self-stretch truncate bg-transparent py-2 ps-3 text-left focus:outline-none",
+                      COMPOSER_PROMPT_TYPE_CLASS_NAME,
                       (activePendingProgress ? activePendingProgress.customAnswer : prompt.trim())
                         ? "text-foreground"
                         : "text-placeholder",
@@ -3765,6 +3770,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     type="button"
                     className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
                     disabled={collapsedComposerPrimaryActionDisabled}
+                    data-composer-primary=""
                     aria-label={collapsedComposerPrimaryActionLabel}
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={(event) => {

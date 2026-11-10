@@ -611,10 +611,13 @@ describe("RunChat", () => {
       );
     const live = writing(true);
     const note = live.querySelector('[data-chat-kind="note"]')!;
-    expect(note.querySelector("[data-note-writing]")).not.toBeNull();
+    // Beside the bubble's foot, never in it (the owner, 2026-11-10: in its foot they stood on the
+    // words and on its edge).
+    expect(note.querySelector("[data-note-writing]")).toBeNull();
+    expect(note.nextElementSibling?.matches("[data-note-writing]")).toBe(true);
     expect(note.closest("[data-chat-row]")!.querySelector("[data-work-line-clock]")).toBeNull();
     expect(note.closest("[data-chat-row]")!.querySelector("button")).toBeNull();
-    expect(writing(false).querySelector('[data-chat-kind="note"] [data-note-writing]')).toBeNull();
+    expect(writing(false).querySelector("[data-note-writing]")).toBeNull();
   });
 
   // Run 5 (A +0:45.8): a wake's first call stood 1.7 s as an empty bubble beside a half-clipped

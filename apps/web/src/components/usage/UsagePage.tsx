@@ -529,7 +529,7 @@ export function UsagePage({
         <WorkspacePageHeader electron={isElectron}>{topbarContent}</WorkspacePageHeader>
 
         <ScrollArea className="min-h-0 flex-1">
-          <WorkspacePageContainer width="wide">
+          <WorkspacePageContainer className="max-sm:px-4" width="wide">
             {showingLimits ? null : (
               <div className="flex flex-col gap-2 lg:hidden">
                 <p className="text-xs text-muted-foreground md:hidden">{windowLabel}</p>
@@ -685,7 +685,7 @@ export function UsagePage({
                                   <span className="truncate">
                                     {PROVIDER_PRESENTATION[provider].label}
                                   </span>
-                                  <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground tabular-nums">
+                                  <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground tabular-nums max-sm:text-xs">
                                     {sessionLabel}
                                   </span>
                                 </span>

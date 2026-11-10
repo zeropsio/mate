@@ -1194,7 +1194,7 @@ export function MateComingHeader({
   readonly standsIn?: { readonly subject: string | null } | null;
 }) {
   return (
-    <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+    <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
       {/* The stage under it names the Mate, its face large: the header holds its place unnamed
           (the owner: the name up here while it is huge below is the same fact twice). */}
       <span className="min-w-0 flex-1" />
@@ -1203,7 +1203,7 @@ export function MateComingHeader({
         className={
           besidePanel
             ? "flex shrink-0 items-center justify-end gap-1 pr-0"
-            : "flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25"
+            : "flex shrink-0 items-center justify-end gap-1 pr-9.25 sm:pr-14.25"
         }
       >
         {standsIn === null ? null : (

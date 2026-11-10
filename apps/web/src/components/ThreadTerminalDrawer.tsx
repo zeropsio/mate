@@ -1512,7 +1512,8 @@ export default function ThreadTerminalDrawer({
         data-terminal-owner={isPanel ? "right-panel" : "drawer"}
         className={cn(
           "relative flex min-w-0 flex-col overflow-hidden bg-background",
-          isPanel ? "h-full flex-1" : "shrink-0 border-t border-border/80",
+          // The drawer stands on the window's bottom edge: clear of a phone's home bar.
+          isPanel ? "h-full flex-1" : "shrink-0 border-t border-border/80 pb-safe",
         )}
         style={isPanel ? undefined : { height: `${drawerHeight}px` }}
       >
@@ -1535,7 +1536,8 @@ export default function ThreadTerminalDrawer({
       data-terminal-owner={isPanel ? "right-panel" : "drawer"}
       className={cn(
         "relative flex min-w-0 flex-col overflow-hidden bg-background",
-        isPanel ? "h-full flex-1" : "shrink-0 border-t border-border/80",
+        // The drawer stands on the window's bottom edge: clear of a phone's home bar.
+        isPanel ? "h-full flex-1" : "shrink-0 border-t border-border/80 pb-safe",
       )}
       style={isPanel ? undefined : { height: `${drawerHeight}px` }}
     >
@@ -1548,36 +1550,41 @@ export default function ThreadTerminalDrawer({
               ? // In the panel the toolbar takes its own row: floated over the
                 // terminal it covered the end of the first output line.
                 "flex justify-end bg-(--terminal-background) px-2 pt-2 pb-1"
-              : "pointer-events-none absolute right-2 top-2 z-20"
+              : // On a phone it takes its own row too: the drawer is one screen wide, and floated
+                // it covered the prompt's end.
+                "pointer-events-none absolute right-2 top-2 z-20 max-sm:static max-sm:flex max-sm:justify-end max-sm:bg-(--terminal-background) max-sm:px-2 max-sm:pt-2 max-sm:pb-1"
           }
         >
           <div className="pointer-events-auto inline-flex items-center overflow-hidden rounded-md border border-border/80 bg-background shadow-xs">
+            {/* Half a phone's width is no terminal: the splits stay off it. */}
+            <span className="contents max-sm:hidden">
+              <TerminalActionButton
+                className={`p-1 text-foreground/90 transition-colors pointer-coarse:p-3.5 ${
+                  hasReachedSplitLimit
+                    ? "cursor-not-allowed opacity-64 hover:bg-transparent"
+                    : "hover:bg-accent"
+                }`}
+                onClick={onSplitTerminalAction}
+                label={splitTerminalActionLabel}
+              >
+                <SquareSplitHorizontal className="size-3.25" />
+              </TerminalActionButton>
+              <div className="h-4 w-px bg-border/80" />
+              <TerminalActionButton
+                className={`p-1 text-foreground/90 transition-colors pointer-coarse:p-3.5 ${
+                  hasReachedSplitLimit
+                    ? "cursor-not-allowed opacity-64 hover:bg-transparent"
+                    : "hover:bg-accent"
+                }`}
+                onClick={onSplitTerminalVerticalAction}
+                label={splitTerminalVerticalActionLabel}
+              >
+                <SquareSplitVertical className="size-3.25" />
+              </TerminalActionButton>
+              <div className="h-4 w-px bg-border/80" />
+            </span>
             <TerminalActionButton
-              className={`p-1 text-foreground/90 transition-colors ${
-                hasReachedSplitLimit
-                  ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-                  : "hover:bg-accent"
-              }`}
-              onClick={onSplitTerminalAction}
-              label={splitTerminalActionLabel}
-            >
-              <SquareSplitHorizontal className="size-3.25" />
-            </TerminalActionButton>
-            <div className="h-4 w-px bg-border/80" />
-            <TerminalActionButton
-              className={`p-1 text-foreground/90 transition-colors ${
-                hasReachedSplitLimit
-                  ? "cursor-not-allowed opacity-64 hover:bg-transparent"
-                  : "hover:bg-accent"
-              }`}
-              onClick={onSplitTerminalVerticalAction}
-              label={splitTerminalVerticalActionLabel}
-            >
-              <SquareSplitVertical className="size-3.25" />
-            </TerminalActionButton>
-            <div className="h-4 w-px bg-border/80" />
-            <TerminalActionButton
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+              className="p-1 text-foreground/90 transition-colors hover:bg-accent pointer-coarse:p-3.5"
               onClick={onNewTerminalAction}
               label={newTerminalActionLabel}
             >
@@ -1585,7 +1592,7 @@ export default function ThreadTerminalDrawer({
             </TerminalActionButton>
             <div className="h-4 w-px bg-border/80" />
             <TerminalActionButton
-              className="p-1 text-foreground/90 transition-colors hover:bg-accent"
+              className="p-1 text-foreground/90 transition-colors hover:bg-accent pointer-coarse:p-3.5"
               onClick={() => confirmCloseTerminal(resolvedActiveTerminalId)}
               label={closeTerminalActionLabel}
             >

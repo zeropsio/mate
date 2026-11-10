@@ -33,6 +33,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { useMediaQuery } from "~/hooks/useMediaQuery";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 
@@ -307,19 +308,23 @@ function JumpFindView({
 }) {
   const { value, groups, highlighted } = model;
   const writing = readJumpQuery(value).mode === "write";
+  const phone = useMediaQuery("max-sm");
   const footerKeys = (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <KbdGroup>
-        <Kbd>
-          <ArrowUpIcon />
-        </Kbd>
-        <Kbd>
-          <ArrowDownIcon />
-        </Kbd>
-        <span>Navigate</span>
-      </KbdGroup>
+      {/* A keyboard's own keys mean nothing under a finger; what is typed (@, >) still does. */}
+      <span className="contents pointer-coarse:hidden">
+        <KbdGroup>
+          <Kbd>
+            <ArrowUpIcon />
+          </Kbd>
+          <Kbd>
+            <ArrowDownIcon />
+          </Kbd>
+          <span>Navigate</span>
+        </KbdGroup>
+      </span>
       {writing ? (
-        <>
+        <span className="contents pointer-coarse:hidden">
           <KbdGroup>
             <Kbd>Tab</Kbd>
             <Kbd>Enter</Kbd>
@@ -329,13 +334,15 @@ function JumpFindView({
             <Kbd>Esc</Kbd>
             <span>Close</span>
           </KbdGroup>
-        </>
+        </span>
       ) : (
         <>
-          <KbdGroup>
-            <Kbd>Enter</Kbd>
-            <span>Open</span>
-          </KbdGroup>
+          <span className="contents pointer-coarse:hidden">
+            <KbdGroup>
+              <Kbd>Enter</Kbd>
+              <span>Open</span>
+            </KbdGroup>
+          </span>
           <KbdGroup>
             <Kbd>@</Kbd>
             <span>Write to a Mate</span>
@@ -349,6 +356,8 @@ function JumpFindView({
       aria-label="Jump to"
       autoHighlight="always"
       footerKeys={footerKeys}
+      // Writing to a Mate, every hint is a keyboard's key.
+      footerKeysOnTouch={!writing}
       footerTrailing={
         !writing && onCommands !== undefined ? (
           <KbdGroup>
@@ -358,7 +367,10 @@ function JumpFindView({
         ) : null
       }
       inputProps={{
-        placeholder: "Jump to a Mate, project, place, change or setting. Type @ to write to a Mate",
+        // A phone's field holds the first half; the footer says the other.
+        placeholder: phone
+          ? "Jump to a Mate, project or setting"
+          : "Jump to a Mate, project, place, change or setting. Type @ to write to a Mate",
         "aria-label": "Jump to, or write to a Mate",
         onKeyDown: (event) => {
           const action = jumpKey({
