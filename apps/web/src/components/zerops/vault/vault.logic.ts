@@ -50,6 +50,9 @@ export function vaultName(scope: Pick<VaultScope, "hostname">): string {
   return scope.hostname === null ? SHARED_NAME : `${scope.hostname} vault`;
 }
 
+/** What the apps' own vaults are called together, over them, where the shared one stands first. */
+export const OWN_VAULTS_LABEL = "Each app's own";
+
 /** Who reads a part's values, said beside its name: "accessible to every app", "only bot can read". */
 export function vaultReaders(scope: Pick<VaultScope, "hostname">): string {
   return scope.hostname === null ? "accessible to every app" : `only ${scope.hostname} can read`;

@@ -83,7 +83,8 @@ Source words and the product words that replace them:
 - T3 Connect, Tailscale, T3 Code → **omit**
 - Open in editor → **Cloud IDE**
 - zcp → **Zerops Control Plane**
-- project-level variables → **Shared vault**, "accessible to every app"; an app's own → **{app} vault**, "only {app} can read"
+- project-level variables → **Shared vault**, "accessible to every app"; an app's own → **{app} vault**, "only {app} can read";
+  the apps' own vaults together, under the shared one → **Each app's own**
 - environment variables, Plain / Sensitive → **vault values**; sensitive: **hidden**
 - control plane (product name) → **Zerops Mate**
 - stage half of a dev/stage pair, appstage → **{Mate}'s preview**
