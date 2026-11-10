@@ -112,6 +112,14 @@ export function RowMeta({ children }: { readonly children: ReactNode }) {
   );
 }
 
+/**
+ * A row's facts under its name, where a phone has no room for them beside it: in from the row's
+ * edge by its kind's column, so they hang from the address.
+ */
+export function RowUnder({ children }: { readonly children: ReactNode }) {
+  return <span className="block ps-11 text-muted-foreground text-xs">{children}</span>;
+}
+
 /** A section with nothing in it yet, said once inside its container. */
 
 /** A state's mark and its word, together. */
