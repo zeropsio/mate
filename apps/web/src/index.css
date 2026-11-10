@@ -14680,6 +14680,13 @@ a.message-file:focus-visible {
   color: var(--placeholder);
 }
 
+/* Below 640 px a typed field is 16 px: a smaller one makes iOS zoom the page onto it. */
+@media (max-width: 39.999rem) {
+  .arrival-input {
+    font-size: 16px;
+  }
+}
+
 .arrival-input:focus {
   box-shadow:
     inset 0 0 0 1px var(--ring),
