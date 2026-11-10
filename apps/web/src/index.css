@@ -7256,6 +7256,26 @@ a.ov-card-site:hover {
   padding: 0 6px;
 }
 
+/* A finger's lines: each place 36 px from the next, so one place's vault is never the other's,
+   and its name and its address a 36 px touch. */
+@media (pointer: coarse) {
+  .ov-places {
+    gap: 16px;
+  }
+
+  .ov-places [data-zerops-place-name],
+  .ov-places [data-zerops-place-address] {
+    position: relative;
+  }
+
+  .ov-places [data-zerops-place-name]::after,
+  .ov-places [data-zerops-place-address]::after {
+    position: absolute;
+    inset: -8px -4px;
+    content: "";
+  }
+}
+
 /* What waits on you, lifted: one tinted box under the places, each wait a row on the card's own
    ground inside it — a sentence and its one verb. */
 .ov-waits {
