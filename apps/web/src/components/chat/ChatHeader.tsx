@@ -2,7 +2,9 @@ import { useMateVoice } from "../../zerops/mateVoiceContext";
 import { mateStatus, type MateStatusAsk } from "../../zerops/mateStatus.logic";
 import { taskTitle, type ConversationTask } from "../../zerops/automatedMate.logic";
 import { MateTaskStatus } from "../zerops/MateTaskCard";
+import { MateLinkMarker } from "../zerops/MateLinkMarker";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
+import { useTryMateAgain } from "../../zerops/accountEnvironments";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
   type EnvironmentId,
@@ -332,6 +334,7 @@ export const ChatHeader = memo(function ChatHeader({
     panels.open(activeThreadRef, "overview");
   }, [chiefHere, activeThreadRef]);
   const linkVoice = useMateVoice();
+  const tryMateAgain = useTryMateAgain();
   const status = linkVoice.surface === "none" ? mateStatus(mateActivity, null) : null;
   const settings = useEnvironmentSettings(activeThreadEnvironmentId);
   const activeThreadShell = useThreadShell(activeThreadRef);
@@ -712,7 +715,18 @@ export const ChatHeader = memo(function ChatHeader({
                 )
               }
             />
-            {status === null ? null : (
+            {linkVoice.surface === "header" ? (
+              // A link that is only reconnecting says so here, in the status's seat: no banner.
+              <MateLinkMarker
+                cause={linkVoice.details}
+                onTryNow={
+                  linkVoice.actions.includes("try-now")
+                    ? () => tryMateAgain(activeThreadEnvironmentId)
+                    : undefined
+                }
+                words={linkVoice.text ?? "Reconnecting…"}
+              />
+            ) : status === null ? null : (
               <MateStatusMarker
                 ask={statusAsk}
                 mateName={mate?.name}

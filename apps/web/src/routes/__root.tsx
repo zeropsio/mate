@@ -15,6 +15,7 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
+  MATE_VOICE_QUIET_MS,
   MATE_VOICE_SLOW_MS,
   type Reachability,
   reachabilityCountsDown,
@@ -22,7 +23,7 @@ import {
   selectRouteGate,
   type MateVoice,
 } from "@t3tools/client-runtime/zerops/environments";
-import { useHeldFor } from "~/zerops/useHeldFor";
+import { useHeldFor, useTabShown } from "~/zerops/useHeldFor";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Link,
@@ -238,12 +239,16 @@ function SignedInRootRouteView() {
   const speaksFor = routeEnvironment ?? draftEnvironmentId;
   const hqKey = useAtomValue(serverEnvironment.hqKeyValueAtom(speaksFor));
   const conversationShown = gate.kind === "outlet" && conversation.kind === "shown";
-  // One stretch however the lost link alternates between reconnecting and retrying.
-  const linkSlow = useHeldFor(
+  // One stretch however the lost link alternates between reconnecting and retrying, and only
+  // while the tab is shown: a link lost while the person was away is not slow when they return,
+  // it starts being waited for then.
+  const tabShown = useTabShown();
+  const linkLost =
     conversationShown &&
-      (linkReachability?.kind === "reconnecting" || linkReachability?.kind === "retrying"),
-    MATE_VOICE_SLOW_MS,
-  );
+    tabShown &&
+    (linkReachability?.kind === "reconnecting" || linkReachability?.kind === "retrying");
+  const linkHeld = useHeldFor(linkLost, MATE_VOICE_QUIET_MS);
+  const linkSlow = useHeldFor(linkLost, MATE_VOICE_SLOW_MS);
   const voice =
     speaksFor !== null &&
     (gate.kind === "outlet" ||
@@ -256,6 +261,7 @@ function SignedInRootRouteView() {
           offlineSince,
           timestampFormat,
           conversationShown,
+          linkHeld,
           linkSlow,
           hqKey,
           nowMs,
