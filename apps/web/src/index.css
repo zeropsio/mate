@@ -193,6 +193,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      the menu is a sheet over the page, and the bar keeps 52. A desktop
      window's bar is its title bar's (`.electron`, `.wco`). */
   --workspace-topbar-height: 52px;
+  /* What is typed on a phone: iOS zooms the page onto any field under 16 px. Not a step of the
+     type scale, a platform's floor; every phone rule for a field reads it. */
+  --field-phone-size: 16px;
   --workspace-controls-top: 0px;
   --workspace-controls-left: calc(env(safe-area-inset-left) + 0.75rem);
   --workspace-controls-right: calc(env(safe-area-inset-right) + 0.75rem);
@@ -7729,7 +7732,7 @@ a.ov-card-site:hover {
 /* A phone zooms the page into a field under 16 px. */
 @media (max-width: 39.999rem) {
   .ov-reply-in {
-    font-size: 16px;
+    font-size: var(--field-phone-size);
   }
 }
 
@@ -8599,7 +8602,7 @@ a.ov-chip-who:focus-visible {
   .tm-team .tm-card-face > .person-avatar {
     width: 40px;
     height: 40px;
-    font-size: 16px;
+    font-size: var(--text-emphasis);
   }
 
   .tm-team .tm-card-name {
@@ -11648,7 +11651,7 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
 
   /* 16 px in the search, so a phone does not zoom the page on its focus. */
   .composer-model-menu [data-model-picker-content] input {
-    font-size: 1rem;
+    font-size: var(--field-phone-size);
   }
 }
 
@@ -13587,7 +13590,7 @@ a.message-file:focus-visible {
 /* A phone zooms the page into a field under 16 px. */
 @media (max-width: 39.999rem) {
   .rv-say-box {
-    font-size: 16px;
+    font-size: var(--field-phone-size);
   }
 }
 .rv-say-comment,
@@ -15083,7 +15086,7 @@ a.message-file:focus-visible {
 /* Below 640 px a typed field is 16 px: a smaller one makes iOS zoom the page onto it. */
 @media (max-width: 39.999rem) {
   .arrival-input {
-    font-size: 16px;
+    font-size: var(--field-phone-size);
   }
 }
 
