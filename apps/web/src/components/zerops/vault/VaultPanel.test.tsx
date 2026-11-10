@@ -146,8 +146,8 @@ describe("VaultPanelBody — what the Vault tab shows", () => {
     const { container } = await mount();
     expect(q(container, "[role=tablist]")).toBeNull();
     expect(parts(container)).toEqual([
-      "Every app: STRIPE_SECRET_KEY,API_URL,LEGACY_TOKEN,LOG_LEVEL,SESSION_SECRET",
-      "appdev: FEATURE_FLAGS",
+      "Shared vault: STRIPE_SECRET_KEY,API_URL,LEGACY_TOKEN,LOG_LEVEL,SESSION_SECRET",
+      "appdev vault: FEATURE_FLAGS",
     ]);
     expect(q(container, "[data-vault-made]")?.textContent).toBe(
       "dbDatabase · PostgreSQL5 values set by Zerops",
@@ -171,7 +171,7 @@ describe("VaultPanelBody — what the Vault tab shows", () => {
       ),
     };
     const { container } = await mount({ view });
-    expect(parts(container)).toEqual(["appdev: FEATURE_FLAGS"]);
+    expect(parts(container)).toEqual(["appdev vault: FEATURE_FLAGS"]);
     expect(container.textContent).not.toContain("No values yet.");
   });
 
@@ -468,7 +468,7 @@ describe("VaultPanelBody — adding", () => {
     const { container, writes } = await mount();
     await click(button(container, "Add"));
     const add = q(container, "[data-vault-add]")!;
-    expect(add.textContent).toContain("New value forevery app");
+    expect(add.textContent).toContain("New value inShared vault");
     await typeInto(add.querySelector('input[aria-label="Key"]'), "GITHUB_TOKEN");
     expect(add.querySelector("[role=switch]")?.getAttribute("aria-checked")).toBe("true");
     expect(add.querySelector("[data-vault-add-auto]")?.textContent).toBe(
@@ -514,8 +514,11 @@ describe("VaultPanelBody — apps", () => {
     const { container, writes } = await mount();
     await click(button(container, "Add"));
     const add = q(container, "[data-vault-add]")!;
-    await pick(add.querySelector('[aria-label="Where it goes"]')!, "appstage only");
-    expect(add.textContent).toContain("New value forappstage only");
+    await pick(
+      add.querySelector('[aria-label="Where it goes"]')!,
+      "appstage vault · only appstage",
+    );
+    expect(add.textContent).toContain("New value inappstage vault");
     await typeInto(add.querySelector('input[aria-label="Key"]'), "PORT");
     await typeInto(add.querySelector('input[aria-label="Value"]'), "3000");
     await click(button(add, "Save"));
@@ -562,9 +565,9 @@ describe("VaultPanelBody — search", () => {
   it("finds values by their name, key or value across every app", async () => {
     const { container } = await mount();
     await typeInto(q(container, 'input[aria-label="Search"]'), "secret");
-    expect(parts(container)).toEqual(["Every app: STRIPE_SECRET_KEY,SESSION_SECRET"]);
+    expect(parts(container)).toEqual(["Shared vault: STRIPE_SECRET_KEY,SESSION_SECRET"]);
     await typeInto(q(container, 'input[aria-label="Search"]'), "cart-vat");
-    expect(parts(container)).toEqual(["appdev: FEATURE_FLAGS"]);
+    expect(parts(container)).toEqual(["appdev vault: FEATURE_FLAGS"]);
   });
 });
 
@@ -619,7 +622,7 @@ describe("VaultPanelBody — states", () => {
 describe("VaultPanelBody — edit as text", () => {
   it("reviews each change with what it means and applies them one write each", async () => {
     const { container, writes } = await mount();
-    await fromMenu(container, "Every app as text");
+    await fromMenu(container, "Shared vault as text");
     const [plainText, sensitive] = [
       ...container.querySelectorAll<HTMLTextAreaElement>("[data-vault-text] textarea"),
     ];
@@ -650,7 +653,7 @@ describe("VaultPanelBody — edit as text", () => {
 
   it("applies a guarded removal once the person says remove anyway", async () => {
     const { container, writes } = await mount();
-    await fromMenu(container, "Every app as text");
+    await fromMenu(container, "Shared vault as text");
     const sensitive = container.querySelectorAll<HTMLTextAreaElement>(
       "[data-vault-text] textarea",
     )[1];

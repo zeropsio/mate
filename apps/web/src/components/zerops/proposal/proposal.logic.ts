@@ -476,8 +476,8 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
     case "env.set":
     case "env.reveal":
       return proposal.params.scope === "project"
-        ? `Every app${project === undefined ? "" : ` in ${project}`}`
-        : within(`${proposal.serviceName ?? "The service"}'s own`);
+        ? `Shared vault${project === undefined ? "" : ` in ${project}`}`
+        : within(`${proposal.serviceName ?? "A service"} vault`);
     case "domain.add":
       return `→ ${proposal.serviceName ?? "its service"} · port ${proposal.params.port}`;
     case "access.set":

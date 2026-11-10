@@ -14,7 +14,6 @@ import {
   removeGuardWords,
   reviewLine,
   scopeCount,
-  scopeName,
   scopeSections,
   sensitiveWordIn,
   valueLine,
@@ -118,11 +117,6 @@ describe("agoWords", () => {
 });
 
 describe("names and references", () => {
-  it("names the environment's own values Every app, and a service by its hostname", () => {
-    expect(scopeName(SHARED)).toBe("Every app");
-    expect(scopeName(APPDEV)).toBe("appdev");
-  });
-
   it.each([
     [SHARED, "API_URL", "${API_URL}", null],
     [APPDEV, "FEATURE_FLAGS", "${FEATURE_FLAGS}", "${appdev_FEATURE_FLAGS}"],
