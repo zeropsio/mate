@@ -186,6 +186,11 @@ export interface ReviewModel {
   readonly verdict: ReviewVerdict;
   /** What pressing does, said beside the button — or, once it is over, where things stand. */
   readonly consequence: string;
+  /**
+   * While the change is still read: the note that will stand once it is. The foot keeps its room
+   * under the words that say it is loading, so the buttons over it never move when it arrives.
+   */
+  readonly consequenceRoom?: string | undefined;
   /** `undefined` where there is nothing left to press. */
   readonly primary: ReviewPrimary | undefined;
   readonly secondary?: ReviewSecondary | undefined;
@@ -461,22 +466,47 @@ function mergeSentence(pull: ChangeReviewInput["pull"], behind: boolean, unshown
 
 /** What any recipe change does, which is all that can be said of one before its files are read. */
 const RECIPE_UNREAD =
-  "Each environment gets any service added to its recipe, created empty; the services it has stay as they are.";
+  "A stage gets any service added to its recipe, created empty, and production with its next release; the services they have stay as they are.";
 
-/** Who a recipe change's merge adds services to: the stages and the production made from it. */
-function recipeGainers(
-  reach: RecipeReach,
-): { readonly who: string; readonly one: boolean; readonly recipes: string } | undefined {
-  const stages = reach.stages === 0 ? undefined : reach.stages === 1 ? "the stage" : "the stages";
+/**
+ * The room a recipe change's note keeps while its files are read: who gains is not known yet, and
+ * the sentence that names them usually adds what is made later, one line more.
+ */
+const RECIPE_ROOM = `${RECIPE_UNREAD} A Mate or a stage added later is made from the new recipe.`;
+
+/**
+ * Who a recipe change's merge adds services to. A stage made from it gets them at the merge; the
+ * production made from it gets them only with a release a person approves (HQ imports nothing into
+ * a production for a merge), so it is said apart.
+ */
+function recipeGainers(reach: RecipeReach):
+  | {
+      /** The stages that get them at the merge; `undefined` where none is made from it. */
+      readonly stages: { readonly who: string; readonly one: boolean } | undefined;
+      readonly production: boolean;
+    }
+  | undefined {
+  const stages =
+    reach.stages === 0
+      ? undefined
+      : reach.stages === 1
+        ? { who: "the stage", one: true }
+        : { who: "the stages", one: false };
+  return stages === undefined && !reach.production
+    ? undefined
+    : { stages, production: reach.production };
+}
+
+/** What the gainers get, as the foot's sentence. */
+function gainersSentence(gainers: NonNullable<ReturnType<typeof recipeGainers>>): string {
+  const { stages } = gainers;
   if (stages === undefined) {
-    return reach.production ? { who: "production", one: true, recipes: "its recipe" } : undefined;
+    return "Production gets any service added to its recipe with its next release; the services it has stay as they are.";
   }
-  if (reach.production) {
-    return { who: `${stages} and production`, one: false, recipes: "their recipes" };
-  }
-  return reach.stages === 1
-    ? { who: stages, one: true, recipes: "its recipe" }
-    : { who: stages, one: false, recipes: "their recipe" };
+  const gets = `${capitalized(stages.who)} ${stages.one ? "gets" : "get"} any service added to ${stages.one ? "its" : "their"} recipe, created empty`;
+  return gainers.production
+    ? `${gets}, and production with its next release; the services they have stay as they are.`
+    : `${gets}; the services ${stages.one ? "it has" : "they have"} stay as they are.`;
 }
 
 /** What is made later from a recipe it changes, as a sentence names it. */
@@ -506,9 +536,7 @@ function recipeSentence(reach: RecipeReach | undefined): string {
       ? `Nothing in this project is made from the ${either(reach.unused)} recipe, so no environment changes.`
       : "No environment changes.";
   return sentences(
-    gainers === undefined
-      ? undefined
-      : `${capitalized(gainers.who)} ${gainers.one ? "gets" : "get"} any service added to ${gainers.recipes}, created empty; the services ${gainers.one ? "it has" : "they have"} stay as they are.`,
+    gainers === undefined ? undefined : gainersSentence(gainers),
     gainers === undefined ? unchanged : undefined,
     later.length === 0
       ? undefined
@@ -521,7 +549,10 @@ function recipeNext(reach: RecipeReach | undefined, base: string): string {
   if (reach === undefined) return `it's on ${base}`;
   const gainers = recipeGainers(reach);
   if (gainers === undefined) return "no environment changes";
-  return `${gainers.who} ${gainers.one ? "gets" : "get"} any new service`;
+  const { stages } = gainers;
+  if (stages === undefined) return "production gets any new service with its next release";
+  const gets = `${stages.who} ${stages.one ? "gets" : "get"} any new service`;
+  return gainers.production ? `${gets}, production with its next release` : gets;
 }
 
 /** What happens once `main` has it, as far as anything downstream goes. */
@@ -987,6 +1018,14 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
   return {
     verdict,
     consequence: held,
+    ...(verdictOf.enabled && input.readout === "reading"
+      ? {
+          consequenceRoom:
+            pull.kind === "recipe" && input.recipe === undefined
+              ? sentences(mergeSentence(pull, false, false), RECIPE_ROOM)
+              : squash,
+        }
+      : {}),
     primary: {
       label: "Merge",
       enabled,
@@ -1146,7 +1185,9 @@ export interface ReleaseReviewModel extends ReviewModel {
 const RELEASE_FOLLOWS = "You can close this. Production's line on the project's card follows it.";
 /** What a release's foot says before the press: how long it takes, as measured — the run's
  *  first release went live in 98 s. */
-export const RELEASE_TAKES = "It takes a minute or two.";
+export const RELEASE_TAKES = "Takes a minute or two";
+/** What a release's foot says while HQ has not said what it carries or what production lacks. */
+export const RELEASE_READING = "Reading what production needs…";
 /** Past this, a release on its way says it takes longer than usual (`releaseOutcomeOf`). */
 export const RELEASE_ESTIMATE_MS = 2 * 60_000;
 
@@ -1337,7 +1378,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         verdict: {
           state: "released",
           tone: "done",
-          title: `Released ${tag}`,
+          title: `${tag} is live`,
           // The age is the tag's: the landing's own moment is not read.
           why: age === undefined ? "Production runs it" : `Production runs it · released ${age}`,
           fix: undefined,
@@ -1369,7 +1410,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         verdict: {
           state: "release-failed",
           tone: "failed",
-          title: `${tag} didn't go out`,
+          title: `${tag} didn't go live`,
           why: outcome.error === undefined ? said : `${said}: ${outcome.error.replace(/\.$/u, "")}`,
           fix: problemsFix(outcome.problems ?? []) ?? {
             verb: "fix it",
@@ -1409,34 +1450,31 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
     enabled: input.gate.allowed,
     safe: false,
   };
-  // Still comparing what goes out: nothing is said of it, nor refused, until it is known (the
-  // onboarding run opened on "Can't release now" and "0 changes" for 0.4 s), and the foot says
-  // what a ready one says.
+  // The title is the release, whatever holds it: what is not read yet is no refusal (the
+  // onboarding run opened on "Can't release now" and "0 changes" for 0.4 s), and a refusal is the
+  // foot's to say, beside the button it holds.
+  const title = `Release ${tag}`;
   if (!input.gate.allowed && input.gate.reason === RELEASE_CHECKING)
     return {
       verdict: {
         state: "release-blocked",
         tone: "busy",
-        title: "Checking what goes out",
-        why: "Waiting on HQ",
+        title,
+        why: RELEASE_READING,
         fix: undefined,
       },
       consequence: RELEASE_TAKES,
       primary,
     };
   if (!input.gate.allowed) {
-    const reason = input.gate.reason;
     const nothing = releaseNothingReason(input.gate) !== undefined;
     return {
       verdict: {
         state: "release-blocked",
         tone: nothing ? "done" : "attention",
-        title: nothing
-          ? "Nothing to release"
-          : input.permission?.allowed === false
-            ? "Only releasers can release"
-            : "Can't release now",
-        why: reason.replace(/\.$/u, ""),
+        title,
+        // HQ's own words: what holds it, or its rule for who may release.
+        why: input.gate.reason.replace(/\.$/u, ""),
         fix: undefined,
       },
       consequence: keeps,
@@ -1447,7 +1485,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
     verdict: {
       state: "release-ready",
       tone: "ok",
-      title: "Ready to release",
+      title,
       why: stageWhy(input),
       fix: undefined,
     },

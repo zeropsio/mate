@@ -342,6 +342,7 @@ export {
   type GroupEnvironmentService,
   type GroupStopProject,
   type GroupStops,
+  type ReleaseCreation,
   type ReleaseCreationFailure,
   type ReleaseDeployFailure,
   type ReleaseDeploys,
@@ -449,7 +450,6 @@ export {
 } from "./stageMarks.ts";
 export {
   cannotTellWhatRuns,
-  servicesDeploying,
   changesCountWords,
   changesNotLive,
   PROJECT_ALL_CLEAR,
@@ -468,6 +468,8 @@ export {
 } from "./changeConversation.ts";
 export {
   REVIEW_LABEL,
+  RELEASE_ESTIMATE_MS,
+  RELEASE_READING,
   RELEASE_TAKES,
   REVIEW_RELEASE_LABEL,
   changeReview,
@@ -508,7 +510,6 @@ export {
   releaseStageMarks,
   releaseStep,
   releaseSteps,
-  releaseWhereWords,
   rollbackOnItsWay,
   type ReleaseFacts,
   type ReleaseFailure,

@@ -77,7 +77,7 @@ describe("change and release reviews use HQ's release verdict", () => {
           release: gate,
         }),
       );
-      expect(dialog.verdict.title).toBe(allowed ? "Ready to release" : "Nothing to release");
+      expect(dialog.verdict.state).toBe(allowed ? "release-ready" : "release-blocked");
       expect(footer.primary).toBeUndefined();
       if (!allowed) {
         expect(footer.consequence).toBe(RELEASE_NOTHING_NEW_ON_MAIN);
@@ -466,20 +466,20 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     [
       "production",
       { production: true },
-      "Production gets any service added to its recipe, created empty; the services it has stay as they are.",
-      "production gets any new service",
+      "Production gets any service added to its recipe with its next release; the services it has stay as they are.",
+      "production gets any new service with its next release",
     ],
     [
       "the stage and production",
       { stages: 1, production: true },
-      "The stage and production get any service added to their recipes, created empty; the services they have stay as they are.",
-      "the stage and production get any new service",
+      "The stage gets any service added to its recipe, created empty, and production with its next release; the services they have stay as they are.",
+      "the stage gets any new service, production with its next release",
     ],
     [
       "the stages and production, and a Mate added later",
       { stages: 2, production: true, later: ["mate"] },
-      "The stages and production get any service added to their recipes, created empty; the services they have stay as they are. A Mate added later is made from the new recipe.",
-      "the stages and production get any new service",
+      "The stages get any service added to their recipe, created empty, and production with its next release; the services they have stay as they are. A Mate added later is made from the new recipe.",
+      "the stages get any new service, production with its next release",
     ],
     [
       // The owner's case, 2026-09-30: a service added to these two, and a release offered for it.
@@ -547,7 +547,7 @@ describe("changeReview: a recipe change says what its merge does, and is never r
   });
 
   const UNREAD =
-    "Each environment gets any service added to its recipe, created empty; the services it has stay as they are.";
+    "A stage gets any service added to its recipe, created empty, and production with its next release; the services they have stay as they are.";
 
   it("says what any recipe change does where its files could not be read", () => {
     const review = changeReview(change({ pull: recipe(), readout: "failed", ...releasable }));
@@ -598,7 +598,7 @@ describe("releaseReview", () => {
       {
         state: "release-ready",
         tone: "ok",
-        title: "Ready to release",
+        title: "Release v0.1.57",
         why: "Stage runs both changes",
       },
     ],
@@ -623,19 +623,19 @@ describe("releaseReview", () => {
       {
         state: "release-blocked",
         tone: "attention",
-        title: "Only releasers can release",
+        title: "Release v0.1.57",
         why: "You need more than Read access to this project's production to release it",
       },
     ],
     [
       "still comparing what goes out: no verdict before it is known",
       { gate: { allowed: false, reason: RELEASE_CHECKING } },
-      { state: "release-blocked", tone: "busy", title: "Checking what goes out" },
+      { state: "release-blocked", tone: "busy", title: "Release v0.1.57" },
     ],
     [
       "nothing new",
       { gate: { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN } },
-      { state: "release-blocked", tone: "done", title: "Nothing to release" },
+      { state: "release-blocked", tone: "done", title: "Release v0.1.57" },
     ],
     [
       "releasing",
@@ -653,7 +653,7 @@ describe("releaseReview", () => {
       {
         state: "released",
         tone: "done",
-        title: "Released v0.1.57",
+        title: "v0.1.57 is live",
         why: "Production runs it · released 3 minutes ago",
       },
     ],
@@ -670,7 +670,7 @@ describe("releaseReview", () => {
       {
         state: "release-failed",
         tone: "failed",
-        title: "v0.1.57 didn't go out",
+        title: "v0.1.57 didn't go live",
         why: "The build of app failed",
       },
     ],
@@ -707,7 +707,7 @@ describe("releaseReview", () => {
     [
       "still comparing what goes out",
       { gate: { allowed: false, reason: RELEASE_CHECKING }, replaces: { kind: "first" } },
-      "It takes a minute or two.",
+      "Takes a minute or two",
       false,
     ],
     [

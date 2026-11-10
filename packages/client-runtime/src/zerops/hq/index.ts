@@ -24,6 +24,7 @@ export {
 export {
   deployAnswerFollowing,
   deployAnswerSaid,
+  deployNoteSaid,
   sourceArchiveLabel,
   type DeployAnswerEnvironment,
   type DeployAnswerJob,
@@ -106,4 +107,4 @@ export {
   type HqRevealRecord,
 } from "./chief.ts";
 
-export { problemPresentation, problemsFix } from "./problems.ts";
+export { problemPresentation, problemSaid, problemsFix } from "./problems.ts";

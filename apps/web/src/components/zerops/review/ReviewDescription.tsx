@@ -75,8 +75,39 @@ export function ReviewDescription({
   /** Opens the run that made it, where one is known. */
   readonly onOpenRun: (() => void) | undefined;
 }) {
-  const shown = reviewDescription({ description, reading });
-  if (shown.kind === "none") return null;
+  // Words once shown stay while the change is read again (a merge reads it anew): the description
+  // never gives its place back to a skeleton.
+  const [kept, setKept] = useState(description);
+  if (description !== undefined && description !== kept) setKept(description);
+  const shown = reviewDescription({
+    description: description ?? (reading ? kept : undefined),
+    reading,
+  });
+  // A description that was read for and turned out not to exist folds shut: what stood under its
+  // lines glides up into their place, never jumps.
+  const [was, setWas] = useState(shown.kind);
+  const [leaving, setLeaving] = useState(false);
+  if (was !== shown.kind) {
+    setWas(shown.kind);
+    setLeaving(was === "reading" && shown.kind === "none");
+  }
+  if (shown.kind === "none") {
+    return leaving ? (
+      <div
+        aria-hidden="true"
+        className="rv-what-leaves"
+        onAnimationEnd={() => {
+          setLeaving(false);
+        }}
+      >
+        <ReviewSection title={WHAT_IT_DOES}>
+          <div className="rv-what">
+            <ReviewSkeleton lines={2} />
+          </div>
+        </ReviewSection>
+      </div>
+    ) : null;
+  }
   return (
     <ReviewSection
       aside={

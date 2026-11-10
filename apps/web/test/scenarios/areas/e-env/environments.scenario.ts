@@ -148,7 +148,7 @@ describe("E: stage, production, release and rollback", () => {
             recordStep("release review deploys its version to production");
             yield* a.then.text("Version");
           }
-          yield* a.when.click("Release v0.1.0 to production");
+          yield* a.when.click("Release v0.1.0");
           yield* a.when.finish("production");
           yield* a.then.text("v0.1.0 is live");
           yield* a.when.click("Close");
