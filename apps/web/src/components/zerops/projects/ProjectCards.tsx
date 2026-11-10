@@ -37,6 +37,7 @@ import {
   cardReady,
   foldMates,
   mateIsLoud,
+  placeLabel,
   placeLines,
   placeFixWords,
   projectWaitLabel,
@@ -49,7 +50,8 @@ import { nextReleaseTitle } from "../system/NextRelease.logic";
 import { ComingMateRow } from "../system/MateRow";
 import { PlaceLine } from "../system/PlaceLine";
 import { placeVaultOf, type PlaceVault } from "../vault/placeVault.logic";
-import { PlaceVaultButton } from "../vault/StopVault";
+import { PlaceDoors } from "../place/PlaceDoors";
+import { placeSitesOf } from "../place/placeDoors.logic";
 import { SectionAction, SectionLabel } from "../system/SectionLabel";
 import type {
   ComingBirthRow,
@@ -763,7 +765,10 @@ function ProjectCard<T>({
   );
 }
 
-/** A place's line on its card, ending in its Vault where it has one (`placeVaultOf`). */
+/**
+ * A place's line on its card, ending in its doors: its Sites where it serves at an address
+ * (`placeSitesOf`), its Vault where it has one (`placeVaultOf`).
+ */
 function CardPlace({
   line,
   groupId,
@@ -774,14 +779,24 @@ function CardPlace({
   readonly onVault: ((place: PlaceVault) => void) | undefined;
 }) {
   const vault = onVault === undefined ? undefined : placeVaultOf(line);
-  if (vault === undefined || onVault === undefined)
+  const sites = placeSitesOf(line, groupId);
+  if (vault === undefined && sites === undefined)
     return <PlaceLine density="compact" groupId={groupId} line={line} />;
   return (
-    <div className="group/place flex min-w-0 items-center gap-1">
+    // The line's box is the measure of its doors' words: a card's is too narrow for them.
+    <div className="@container/place flex min-w-0 items-center gap-1">
       <div className="min-w-0 flex-1">
         <PlaceLine density="compact" groupId={groupId} line={line} />
       </div>
-      <PlaceVaultButton name={vault.name} onOpen={() => onVault(vault)} />
+      <PlaceDoors
+        name={placeLabel(line)}
+        sites={sites}
+        vault={
+          vault === undefined || onVault === undefined
+            ? undefined
+            : { onOpen: () => onVault(vault) }
+        }
+      />
     </div>
   );
 }

@@ -38,6 +38,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -1229,11 +1230,92 @@ export function HeaderSites({
   readonly trigger: ReactElement;
   readonly children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const mates = sites.mates
     .filter((mate) => mate.candidate.project.id === mateProjectId)
     .map((mate) => (threadKey === undefined ? mate : { ...mate, threadKey }));
+  return (
+    <SitesPopover mates={mates} sites={sites} surface="chat-header-sites" trigger={trigger}>
+      {children}
+    </SitesPopover>
+  );
+}
+
+const NO_MATES: ReadonlyArray<SitesMate> = [];
+
+/**
+ * One place's Sites, from a line or a page that names the place: the same panel, narrowed to that
+ * place alone — its state, its addresses, and the way to manage them. `sites` is the project as
+ * the menu drew it (`useProjectSitesOfGroup`).
+ */
+export function PlaceSites({
+  sites,
+  place,
+  name,
+  trigger,
+  children,
+}: {
+  readonly sites: ProjectSitesInput;
+  /** Which of the project's places: production, or the stage on this Zerops project. */
+  readonly place: { readonly kind: "production" | "stage"; readonly projectId: string };
+  /** The place as the line names it (`Production`). */
+  readonly name: string;
+  readonly trigger: ReactElement;
+  readonly children: ReactNode;
+}) {
+  const { kind, projectId } = place;
+  const { production, stages } = sites;
+  const narrowed = useMemo(
+    (): ProjectSitesInput => ({
+      ...sites,
+      // The other places are not said here, read or unread.
+      line: undefined,
+      production: kind === "production" ? production : undefined,
+      stages:
+        kind !== "stage" || stages === undefined
+          ? undefined
+          : (nowMs) => {
+              const { stops } = stages(nowMs);
+              const own = stops.filter((stop) => stop.projectId === projectId);
+              // A stage the menu's model names otherwise is still among them: never an empty list
+              // behind a line that shows an address.
+              return { stops: own.length === 0 ? stops : own };
+            },
+    }),
+    [kind, production, projectId, sites, stages],
+  );
+  return (
+    <SitesPopover
+      label={`Sites of ${name}`}
+      mates={NO_MATES}
+      sites={narrowed}
+      surface="place-sites"
+      trigger={trigger}
+    >
+      {children}
+    </SitesPopover>
+  );
+}
+
+/** The Sites panel in a popover of its own, under the door that opens it. */
+function SitesPopover({
+  sites,
+  mates,
+  surface,
+  label,
+  trigger,
+  children,
+}: {
+  readonly sites: ProjectSitesInput;
+  /** The Mates whose sections it lists. */
+  readonly mates: ReadonlyArray<SitesMate>;
+  readonly surface: string;
+  /** Its accessible name; the project's sites where absent. */
+  readonly label?: string;
+  readonly trigger: ReactElement;
+  readonly children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const close = () => {
     setOpen(false);
   };
@@ -1255,9 +1337,9 @@ export function HeaderSites({
           sideOffset={6}
         >
           <PopoverPrimitive.Popup
-            aria-label={`Sites of ${sites.projectName}`}
+            aria-label={label ?? `Sites of ${sites.projectName}`}
             className="zerops-sites"
-            data-zerops-surface="chat-header-sites"
+            data-zerops-surface={surface}
           >
             <SitesPanel
               focusSection={undefined}

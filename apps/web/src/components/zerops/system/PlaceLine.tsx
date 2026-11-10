@@ -24,7 +24,8 @@ export type PlaceLineDensity = "compact" | "row" | "header";
  * Props: `line` (one of `placeLines(…)` / `useApplicationPlaces(groupId).places`); `groupId` (its
  * project: with it, and the line's `projectId`, its name opens `/group/$groupId/$projectId`);
  * `density` (default `compact`); `trailing` (`row` only: something at the line's end before its
- * chevron — e.g. *Add stage* on a missing stage, which then stands outside the line's press).
+ * chevron — *Add stage* on a missing stage, a place's Sites and Vault (`PlaceDoors`) — which then
+ * stands outside the line's press).
  */
 export function PlaceLine({
   line,
@@ -120,7 +121,8 @@ export function PlaceLine({
     return (
       <div
         className={cn(
-          "relative flex min-h-8 min-w-0 items-center gap-2 rounded-control text-body",
+          // Its box is the measure of what stands at its end (`PlaceDoors`' words).
+          "@container/place relative flex min-h-8 min-w-0 items-center gap-2 rounded-control text-body",
           // What opens answers the pointer as a list's row does; its address and its verbs are
           // their own presses and leave it still.
           opens &&
