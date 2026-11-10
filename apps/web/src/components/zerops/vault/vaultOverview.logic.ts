@@ -16,6 +16,8 @@ export interface VaultOverviewPart {
   readonly id: string;
   /** As the panel titles it (`vaultSections`). */
   readonly title: string;
+  /** The app whose own values it holds, by its hostname; `null` for what every app gets. */
+  readonly hostname: string | null;
   /** "6 values · 4 hidden", "1 value". */
   readonly counts: string;
 }
@@ -55,6 +57,7 @@ export function vaultOverview(view: VaultView): VaultOverview {
   const parts = vaultSections(view, "").sections.map((section): VaultOverviewPart => ({
     id: section.scope.id,
     title: section.title,
+    hostname: section.scope.hostname,
     counts: valueCounts(
       section.entries.length,
       section.entries.filter((entry) => entry.value.sensitive).length,

@@ -30,7 +30,7 @@ import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUp
 import { useAtomValue } from "@effect/atom-react";
 import * as DateTime from "effect/DateTime";
 import { useNavigate, useRouteContext, useSearch } from "@tanstack/react-router";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentConnectionPhase } from "@t3tools/client-runtime/connection";
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -86,8 +86,9 @@ import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironm
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useDeleteProject } from "~/zerops/deleteProject";
 import { useAccountOrgId } from "~/zerops/accountData";
-import { placeVaults } from "./vault/placeVault.logic";
+import { placeVaults, type PlaceVault } from "./vault/placeVault.logic";
 import { usePlaceVaultDrawer } from "./vault/StopVault";
+import { VaultPanelContainer } from "./vault/VaultPanelContainer";
 import { useRestartMate } from "~/zerops/mateRestart";
 import {
   birthPresses,
@@ -884,7 +885,10 @@ export function ZeropsProjectsContent({
 }) {
   const openMate = useOpenMate();
   // A place's vault, opened from its line on a card or the project page: one drawer over the page.
-  const placeVault = usePlaceVaultDrawer(useAccountOrgId());
+  // A place's vault restarts what a change needs itself; a Mate's, opened from its card, is the
+  // Mate's own panel, which tells the Mate (changing a value under a Mate at work and restarting
+  // its services from outside would pull its ground away).
+  const placeVault = usePlaceVaultDrawer(useAccountOrgId(), mateVaultBody);
   const authGate = useRouteContext({
     from: "__root__",
     select: (context) => context.authGateState,
@@ -2425,6 +2429,20 @@ export function ZeropsProjectsContent({
           key={candidate.key}
           name={name}
           onOpen={select}
+          // Its card's Vault door, on its project's page: the page's one drawer, on its own values,
+          // told to the Mate where it is connected.
+          onVault={
+            layout === "page-card" && placeVault.open !== undefined
+              ? () =>
+                  placeVault.open?.({
+                    projectId: candidate.project.id,
+                    name,
+                    ...(candidate.group === "connected" && candidate.environmentId !== undefined
+                      ? { environmentId: candidate.environmentId }
+                      : {}),
+                  })
+              : undefined
+          }
           outsideHq={input.outsideHq === true}
           quiet={quiet === true}
           shape={shape}
@@ -3021,6 +3039,16 @@ export function ZeropsProjectsContent({
         <p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>
       )}
     </div>
+  );
+}
+
+/**
+ * What the page's vault drawer holds for a Mate's workspace: the Mate's own panel, which tells the
+ * Mate each write. Nothing for a place: the drawer's own panel is its.
+ */
+function mateVaultBody(place: PlaceVault): React.ReactNode {
+  return place.environmentId === undefined ? undefined : (
+    <VaultPanelContainer environmentId={EnvironmentId.make(place.environmentId)} />
   );
 }
 

@@ -209,6 +209,22 @@ export const VAULT_FIXTURE: VaultView = {
   ],
 };
 
+/** The fixture with a second app holding values of its own, under what every app gets. */
+export const VAULT_TWO_APPS_FIXTURE: VaultView = {
+  ...VAULT_FIXTURE,
+  scopes: VAULT_FIXTURE.scopes.map((scope) =>
+    scope.hostname !== "appstage"
+      ? scope
+      : {
+          ...scope,
+          values: [
+            value("v-stage-mode", "PAYMENTS_MODE", { value: "test" }),
+            value("v-stage-token", "PREVIEW_TOKEN", { sensitive: true }),
+          ],
+        },
+  ),
+};
+
 export const vaultFixtureScope = (id: string): VaultScope => {
   const scope = VAULT_FIXTURE.scopes.find((candidate) => candidate.id === id);
   if (scope === undefined) throw new Error(`No fixture scope ${id}`);

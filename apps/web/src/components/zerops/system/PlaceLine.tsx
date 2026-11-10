@@ -25,18 +25,21 @@ export type PlaceLineDensity = "compact" | "row" | "header";
  * project: with it, and the line's `projectId`, its name opens `/group/$groupId/$projectId`);
  * `density` (default `compact`); `trailing` (`row` only: something at the line's end before its
  * chevron — *Add stage* on a missing stage, a place's Sites and Vault (`PlaceDoors`) — which then
- * stands outside the line's press).
+ * stands outside the line's press); `sites` (its Sites door stands at its end, the caller's: the
+ * line then prints no address, which is the door's to open — an address is said once).
  */
 export function PlaceLine({
   line,
   groupId,
   density = "compact",
   trailing,
+  sites = false,
 }: {
   readonly line: PlaceLineData;
   readonly groupId?: string | undefined;
   readonly density?: PlaceLineDensity;
   readonly trailing?: ReactNode;
+  readonly sites?: boolean;
 }) {
   const view = placeLineView(line);
   // A compact line (a card, a panel) leaves since-when out, so its address stays whole.
@@ -46,7 +49,8 @@ export function PlaceLine({
       : view.facts;
   // A compact line that is not calm gives its address's room to why: "Down · app and db failed"
   // reads whole, where the address would cut both. The place's page still carries it.
-  const address = density === "compact" && view.pill !== undefined ? undefined : view.address;
+  const address =
+    sites || (density === "compact" && view.pill !== undefined) ? undefined : view.address;
   const projectId = line.projectId;
   const opens = groupId !== undefined && projectId !== undefined;
   const header = density === "header";

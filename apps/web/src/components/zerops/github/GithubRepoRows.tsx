@@ -3,6 +3,13 @@
  * line that says whether it moves, at most one button (the fix for that state) and a ⋯ for the
  * rest: Open on GitHub, Change repository…, Replace token, Disconnect…, Delete repository…. Every
  * press shows its progress on the row until HQ's record shows the outcome.
+ *
+ * A row is two lines in every state, so the rows are one height. Line one is one baseline: the
+ * repository's name and its slug on GitHub, both real names in the mono face, the mark between
+ * them on their x-height. Line two is the app's own words in the label face, its dot on their
+ * x-height, cut at the row's width with the whole in a tooltip. The trailing side is one column
+ * in every row — the verb, then the ⋯ seat, held where a row has no menu and another has — so
+ * the verbs end at one edge.
  */
 import { OperationStopped } from "@t3tools/client-runtime/data";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
@@ -29,6 +36,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { stoppedWords } from "~/zerops/stoppedWords";
 import { GitMirrorDialog } from "../GitMirrorDialog";
+import { CutText } from "../system";
 import {
   mirrorAuthorityLine,
   repoState,
@@ -138,11 +146,18 @@ export function RepoRowsView(props: RepoRowsViewProps) {
   if (listed === undefined)
     return <p className="px-2 text-xs text-muted-foreground">Reading repositories…</p>;
   const someUnconnected = listed.some((entry) => entry.remote == null);
+  // The ⋯ seat is held in every row where any row may fill it: the verbs end at one edge.
+  const seat = listed.some(
+    (entry) =>
+      entry.remote != null ||
+      entry.follows !== undefined ||
+      (entry.canDelete?.allow === true && props.actions.deleteRepository !== undefined),
+  );
   return (
     <div className="grid" data-zerops-surface="git-remotes">
       <ul className="@container grid">
         {listed.map((entry) => (
-          <RepoRow entry={entry} key={entry.name} {...props} />
+          <RepoRow entry={entry} key={entry.name} seat={seat} {...props} />
         ))}
       </ul>
       {someUnconnected && props.authority !== null ? (
@@ -178,7 +193,8 @@ function RepoRow({
   onConnect,
   onSetUpGithub,
   pressOf,
-}: RepoRowsViewProps & { readonly entry: RepoListEntry }) {
+  seat,
+}: RepoRowsViewProps & { readonly entry: RepoListEntry; readonly seat: boolean }) {
   const pressState = useRepoPress(orgId, project, entry.name, entry);
   const held: RepoPress =
     pressState.kind === "working"
@@ -248,32 +264,35 @@ function RepoRow({
   };
   const menu = Object.values(items).some((item) => item !== null && item !== false);
   return (
-    // Wide, the name stands in its own column as the board's rows do; narrow, it leads the line.
-    <li className="grid min-h-14 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border/70 px-2 py-2.5 first:border-t-0 @lg:grid-cols-[7.5rem_minmax(0,1fr)_auto] @lg:gap-4">
-      <span className="hidden truncate font-mono text-sm text-foreground @lg:block">
+    // Wide, the name stands in its own column as the board's rows do, on line one's baseline;
+    // narrow, it leads the line.
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-t border-border/70 px-2 py-2.5 text-sm/5 first:border-transparent @lg:grid-cols-[7.5rem_minmax(0,1fr)_auto] @lg:gap-4">
+      <span className="real-name hidden self-start truncate text-foreground @lg:block">
         {entry.name}
       </span>
       <div className="grid min-w-0 gap-0.5">
-        {/* A phone's row says the code's name over its repository: beside each other the
+        {/* Line one keeps its height where the name stands in its own column and no code goes out.
+            A phone's row says the code's name over its repository: beside each other the
             repository was cut to "zeropsio/app…". */}
-        <p className="flex min-w-0 items-baseline gap-2 text-sm max-sm:flex-col max-sm:items-start max-sm:gap-0">
-          <span className="shrink-0 font-mono text-foreground @lg:hidden">{entry.name}</span>
+        <p className="flex min-h-5 min-w-0 items-baseline gap-1.5 max-sm:flex-col max-sm:items-start max-sm:gap-0">
+          <span className="real-name shrink-0 text-foreground @lg:hidden">{entry.name}</span>
           {state.destination === null ? null : (
             <a
               className={cn(
-                "inline-flex min-w-0 items-center gap-1.5 truncate hover:underline",
+                "real-name min-w-0 truncate hover:underline",
                 state.tone === "busy" ? "text-muted-foreground" : "text-foreground",
               )}
               href={state.destination.href}
               rel="noreferrer"
               target="_blank"
             >
+              {/* The mark stands on the slug's x-height, the gap before it the gap after. */}
               {state.destination.href.startsWith("https://github.com/") ? (
-                <GitHubIcon aria-hidden="true" className="size-3.5 shrink-0 self-center" />
+                <GitHubIcon aria-hidden="true" className="me-1.5 inline size-3.5 align-middle" />
               ) : (
-                <GitBranchIcon aria-hidden="true" className="size-3.5 shrink-0 self-center" />
+                <GitBranchIcon aria-hidden="true" className="me-1.5 inline size-3.5 align-middle" />
               )}
-              <span className="truncate">{state.destination.label}</span>
+              {state.destination.label}
             </a>
           )}
         </p>
@@ -336,6 +355,8 @@ function RepoRow({
               ) : null}
             </MenuPopup>
           </Menu>
+        ) : seat ? (
+          <span aria-hidden="true" className="size-7 shrink-0" />
         ) : null}
       </div>
       <Popover
@@ -435,33 +456,54 @@ function RepoRow({
   );
 }
 
+/** What a state's dot says where its colour is not seen. */
+const DOT_WORDS = { ok: "Working", warn: "Needs attention", bad: "Stopped" } as const;
+
+/**
+ * Line two: the state's one line. Calm, it is one line, cut at the row's end. Where something
+ * stopped or needs the person, why is the row's content and is said whole, on as many lines as
+ * it takes: a reason cut after four words with the rest behind a hover is a reason not given
+ * (nothing needs a hover to be read). Its mark (a dot, or a spinner while a press is on its way)
+ * stands on the words' x-height.
+ */
 function StateLine({ state }: { readonly state: RepoState }) {
-  if (state.tone === "busy")
-    return (
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
-        <Spinner aria-hidden="true" size="xs" />
-        {state.line}
-      </p>
+  const mark =
+    state.tone === "quiet" ? null : (
+      <span className="me-1.5 inline-flex align-middle">
+        {state.tone === "busy" ? (
+          <Spinner aria-hidden="true" size="xs" />
+        ) : (
+          <Badge
+            aria-label={DOT_WORDS[state.tone]}
+            dot
+            tone={state.tone === "ok" ? "success" : state.tone === "warn" ? "warning" : "danger"}
+          />
+        )}
+      </span>
     );
-  if (state.tone === "quiet") return <p className="text-xs text-muted-foreground">{state.line}</p>;
   return (
     <p
       className={cn(
-        "text-xs",
-        state.tone === "ok"
-          ? "text-muted-foreground"
-          : state.tone === "warn"
-            ? "text-status-attention-text"
-            : "text-status-failed-text",
+        "min-w-0 text-xs",
+        state.tone === "warn"
+          ? "text-status-attention-text"
+          : state.tone === "bad"
+            ? "text-status-failed-text"
+            : "text-muted-foreground",
       )}
+      role={state.tone === "busy" ? "status" : undefined}
     >
-      <Badge
-        dot
-        tone={state.tone === "ok" ? "success" : state.tone === "warn" ? "warning" : "danger"}
-        wrap
-      >
-        {state.line}
-      </Badge>
+      {state.tone === "warn" || state.tone === "bad" ? (
+        <span className="block text-pretty">
+          {mark}
+          {state.line}
+        </span>
+      ) : (
+        <CutText className="block truncate" text={state.line}>
+          {mark}
+          {state.line}
+        </CutText>
+      )}
     </p>
   );
 }

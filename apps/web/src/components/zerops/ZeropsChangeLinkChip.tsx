@@ -132,17 +132,25 @@ export function ZeropsChangeLinkChip({
   // tooltip's.
   // A change closed without merging is over: what it last conflicted with is no longer true.
   const closed = pull !== undefined && !pull.merged && pull.state === "closed";
+  // Closed because another change's landing carried all of it: merged, and it says as part of which.
+  const landedWith = closed ? pull.landedWith : undefined;
   const openState = pull === undefined || pull.merged || closed ? undefined : changeState(pull);
   const state =
     pull === undefined
       ? undefined
       : pull.merged
         ? { word: "Landed", tone: "ok" as const, kind: "landed" as const }
-        : closed
-          ? { word: CLOSED_WITHOUT_MERGING, tone: "off" as const, kind: "closed" as const }
-          : openState === undefined
-            ? undefined
-            : { word: openState.word, tone: openState.tone, kind: "open" as const };
+        : landedWith !== undefined
+          ? {
+              word: `Merged as part of #${String(landedWith)}`,
+              tone: "ok" as const,
+              kind: "landed" as const,
+            }
+          : closed
+            ? { word: CLOSED_WITHOUT_MERGING, tone: "off" as const, kind: "closed" as const }
+            : openState === undefined
+              ? undefined
+              : { word: openState.word, tone: openState.tone, kind: "open" as const };
   const landedSince =
     pull?.merged === true &&
     writtenAt !== null &&

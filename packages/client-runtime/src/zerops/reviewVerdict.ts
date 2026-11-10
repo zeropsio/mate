@@ -290,6 +290,8 @@ export interface ChangeReviewInput {
     readonly mateGone?: true | undefined;
     /** HQ's word, once it closed without merging, that its own Mate closed it. */
     readonly closedByMate?: true | undefined;
+    /** HQ's word that it closed it because this change's landing carried all of it (`landedWith`). */
+    readonly landedWith?: number | undefined;
   };
   /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
   readonly mateName: string;
@@ -392,6 +394,25 @@ function closedReview(base: string, why: string): ReviewModel {
       fix: undefined,
     },
     consequence: `It never reached ${base}; nothing merges from here.`,
+    primary: undefined,
+  };
+}
+
+/**
+ * A change another change's landing carried: that one was built on it and merged first, so its
+ * squash put all of this one on `main`, and HQ closed it. It says it was merged, and as part of
+ * which change, never `Closed without merging`: nothing of it was given up.
+ */
+function landedWithReview(base: string, carrier: number): ReviewModel {
+  return {
+    verdict: {
+      state: "closed",
+      tone: "done",
+      title: `Merged as part of #${String(carrier)}`,
+      why: `#${String(carrier)} was built on it and merged first`,
+      fix: undefined,
+    },
+    consequence: `All of it is on ${base}; nothing more merges from here.`,
     primary: undefined,
   };
 }
@@ -867,6 +888,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
 
   // Owner-proven terminal facts win over an outdated local press.
   if (!pull.merged && pull.state === "closed") {
+    if (pull.landedWith !== undefined) return landedWithReview(base, pull.landedWith);
     const who =
       close.kind === "done" ? "You" : pull.closedByMate === true ? input.mateName : "Somebody";
     return closedReview(base, `${who} closed it; its branch is still there`);
@@ -1186,8 +1208,15 @@ const RELEASE_FOLLOWS = "You can close this. Production's line on the project's 
 /** What a release's foot says before the press: how long it takes, as measured — the run's
  *  first release went live in 98 s. */
 export const RELEASE_TAKES = "Takes a minute or two";
-/** What a release's foot says while HQ has not said what it carries or what production lacks. */
+/**
+ * What "What happens in production" says, at its label, while HQ has not said what the release
+ * carries or what production lacks.
+ */
 export const RELEASE_READING = "Reading what production needs…";
+/** The same wait once it has lasted: what HQ's review of the release reads. */
+export const RELEASE_READING_WORKING = "Reading each repository and production's services…";
+/** Past the read's own deadline, while it is asked again: beside the way to ask now. */
+export const RELEASE_READING_LATE = "This is taking longer than usual.";
 /** Past this, a release on its way says it takes longer than usual (`releaseOutcomeOf`). */
 export const RELEASE_ESTIMATE_MS = 2 * 60_000;
 

@@ -164,7 +164,8 @@ export function Caption({
 
 /**
  * One change on the track: its title and "Mate · state" on hover and focus; pressed, its review.
- * Work that is not a change yet opens nothing. `tip`: `end` ends its name at the bead, over its own
+ * It names its change as the change's row in a list does (`data-zerops-change`), so a page that
+ * draws both can mark the one from the other. Work that is not a change yet opens nothing. `tip`: `end` ends its name at the bead, over its own
  * segment, where the next station has words above the track (the line in full); default centred.
  */
 export function Bead({
@@ -197,6 +198,7 @@ export function Bead({
               className="ln-bead"
               data-mark={bead.mark}
               data-tint={bead.tint}
+              data-zerops-change={bead.key}
               onClick={(event) => {
                 onOpenChange(pull, event.currentTarget);
               }}

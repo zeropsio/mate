@@ -6,6 +6,8 @@
  *
  * Pure: no React.
  */
+import type { GroupFlow } from "@t3tools/client-runtime/zerops";
+
 import type { PlaceLine } from "../projects/projectCard.logic";
 import { placeLineAddress } from "../system/PlaceLine.logic";
 
@@ -14,6 +16,12 @@ export interface PlaceSitesDoor {
   readonly groupId: string;
   readonly kind: PlaceLine["kind"];
   readonly projectId: string;
+}
+
+/** A Mate whose Sites a door opens: its own previews, by its Zerops project. */
+export interface MateSitesDoor {
+  readonly groupId: string;
+  readonly mateProjectId: string;
 }
 
 /** A place line's Sites, where it has any. */
@@ -26,4 +34,23 @@ export function placeSitesOf(
     placeLineAddress(line) === undefined
     ? undefined
     : { groupId, kind: line.kind, projectId: line.projectId };
+}
+
+/**
+ * Whether a project answers anywhere: a place of it serves at an address, or a Mate of it has a
+ * part with a preview or a workspace to open. Without one its page offers no Sites.
+ */
+export function projectAnswers(
+  lines: ReadonlyArray<Pick<PlaceLine, "kind" | "addresses" | "nothingDeployed">>,
+  mates: GroupFlow["mates"],
+): boolean {
+  return (
+    lines.some((line) => placeLineAddress(line) !== undefined) ||
+    mates.some((mate) =>
+      (mate.parts ?? []).some(
+        (part) =>
+          part.preview?.url !== undefined || part.dev.some((entry) => entry.url !== undefined),
+      ),
+    )
+  );
 }

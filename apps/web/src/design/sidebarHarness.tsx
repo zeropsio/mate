@@ -46,6 +46,7 @@ import {
 import { createRoot } from "react-dom/client";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import {
   placedMenuRows,
   placedNames,
@@ -120,7 +121,9 @@ import { useSidebarJump } from "~/zerops/sidebarJump";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectOrderPreference";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsSessionContext } from "~/zerops/sessionContext";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import type { ZeropsSessionValue } from "~/zerops/ZeropsSessionProvider";
 import type { AppRouter } from "~/router";
 
@@ -1035,8 +1038,9 @@ const COMING_PHASE: ComingPhase =
  * `&viewer=colleague` anybody else, who reads that nobody has signed it in yet.
  */
 const COMING_VIEWER: ZeropsSessionValue | null = !COMING_SET
-  ? ({ user: { id: "u-harness" } } as unknown as ZeropsSessionValue)
+  ? ({ user: { id: "u-harness" }, activeOrganization: null } as unknown as ZeropsSessionValue)
   : ({
+      activeOrganization: null,
       user: {
         id:
           new URLSearchParams(location.search).get("viewer") === "colleague"
@@ -2021,6 +2025,28 @@ useComposerDraftStore
 // The menu is always on screen here: a find is shown in it, as on a desktop.
 useSidebarJump.getState().setShowable(true);
 
+// The menu asks the account's projects which environments an application has: none here, the
+// fixtures' own structure says them.
+const NO_INVENTORY: Inventory = {
+  projects: [],
+  isLoading: false,
+  error: null,
+  projectRefs: new Map(),
+  authority: new Map(),
+  lost: new Set(),
+  deleted: [],
+};
+const NO_DATA: ZeropsDataContextValue = {
+  scope: {} as AccountScope,
+  signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
+  organizationRef: () => {
+    throw new Error("not in the harness");
+  },
+  projectRef: () => {
+    throw new Error("not in the harness");
+  },
+};
+
 // The logo row's mark is a link home, so the harness stands in a router of
 // its own — one page, in memory — and in the sidebar's provider, as the app's
 // menu does.
@@ -2040,7 +2066,11 @@ const router = createRouter({
             } as CSSProperties
           }
         >
-          <Harness />
+          <ZeropsDataContext value={NO_DATA}>
+            <InventoryContext value={NO_INVENTORY}>
+              <Harness />
+            </InventoryContext>
+          </ZeropsDataContext>
         </SidebarProvider>
       </ZeropsSessionContext.Provider>
     ),

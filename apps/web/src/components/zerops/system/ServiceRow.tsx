@@ -78,8 +78,9 @@ export function ServiceRow({
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className="min-w-0 truncate text-sm font-semibold text-foreground">
-              {row.hostname}
+            {/* Its hostname, a real thing's own name: the mono face (`.real-name`). */}
+            <span className="min-w-0 truncate text-sm font-medium text-foreground">
+              <span className="real-name">{row.hostname}</span>
             </span>
             {kind === undefined || kind === "" ? null : (
               <span className="min-w-0 truncate text-caption text-muted-foreground">{kind}</span>
@@ -174,7 +175,7 @@ export function ServiceMeters({
 }) {
   return (
     <div
-      className="grid min-w-0 grid-cols-3 items-end gap-x-4 gap-y-2"
+      className="@container/meters grid min-w-0 grid-cols-3 items-end gap-x-4 gap-y-2"
       data-zerops-place-meters=""
       data-zerops-service-resources=""
     >
@@ -207,10 +208,10 @@ function ServiceMeter({
   const fill = usageRead ? meterFill(metric) : undefined;
   return (
     <div className="flex min-w-0 flex-col gap-1.5" data-zerops-place-meter={label}>
-      {/* Too narrow for both on one line, the figures wrap under the label, never cut. A phone's
-          third of a card never holds both: there every meter says its label over its figure,
-          where one of three used to wrap and two not. */}
-      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 text-caption max-sm:flex-col max-sm:flex-nowrap max-sm:items-start">
+      {/* Where the three do not fit their figures beside their labels (the box is under 448 px),
+          all three stand them under: one meter wrapping alone left its label a line higher than
+          its neighbours'. */}
+      <div className="flex min-w-0 flex-col items-start text-caption @md/meters:flex-row @md/meters:items-baseline @md/meters:justify-between @md/meters:gap-x-2">
         <span className="shrink-0 text-muted-foreground">{label}</span>
         {!usageRead ? (
           <Skeleton className="h-3 w-12" />

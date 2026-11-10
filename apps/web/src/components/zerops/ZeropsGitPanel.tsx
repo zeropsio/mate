@@ -5,8 +5,9 @@
  * waits for production; under it the project's line as a picture for this Mate (`ProjectLine`):
  * its changes as beads between the project's stations, work on disk that is no change yet among
  * them, everybody else's as a count; its corner leads to the project's page with the line in full.
- * Then per code repository it works in, under its name and its state on
- * GitHub, this Mate's work as a change row in plain words ("1 file not committed yet", "Ready to
+ * Then per code repository it works in, under its service's hostname — a real name, in the face
+ * of names — with where its code goes on GitHub and how that stands, this Mate's work as a change
+ * row in plain words ("1 file not committed yet", "Ready to
  * merge", "Merged · waits for production"). The change's commits and its files are the page's
  * "What changed", below.
  *
@@ -31,14 +32,19 @@ import {
   type GitBlock,
 } from "@t3tools/client-runtime/zerops";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
+import { GitBranchIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { GitHubIcon } from "~/components/Icons";
+import { Badge } from "~/components/ui/badge";
 import { InlineButton } from "~/components/ui/button";
 import { FailureDetails } from "~/components/ui/failure";
+import { Spinner } from "~/components/ui/spinner";
+import { cn } from "~/lib/utils";
 import type { RepoState } from "./gitMirror.logic";
 import { possessive, WORK_AWAITS_REPOSITORY, type GitWorkRow } from "./matePanels.logic";
 import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
-import { ChangeList, ChangeRow, ProjectLine, SectionLabel, type ProjectLineView } from "./system";
+import { ChangeList, ChangeRow, ProjectLine, type ProjectLineView } from "./system";
 
 /** One code repository the Mate works in, as the tab draws it. */
 export interface ZeropsGitRepository {
@@ -142,30 +148,34 @@ export function ZeropsGitPanel({
               key={block.repository}
             >
               <div className="flex min-w-0 flex-col">
-                <SectionLabel
-                  action={
-                    // What was proved wrong outranks its state on GitHub: one line, the worst first.
-                    troubled ? (
-                      <TroubleLine
-                        checking={repository.checking === true}
-                        onCheckAgain={
-                          onCheckAgain === undefined ? undefined : () => onCheckAgain(block)
-                        }
-                        trouble={block.trouble}
-                      />
-                    ) : repository.github === undefined ? undefined : (
-                      <GithubLine
-                        onConnect={
-                          onConnect === undefined ? undefined : () => onConnect(block.hqRepository)
-                        }
-                        state={repository.github}
-                      />
-                    )
-                  }
-                  level={3}
+                {/* One line while it fits; a long reason takes the next, whole, never cut. */}
+                <div
+                  className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2.5 gap-y-0.5 py-1"
+                  data-zerops-surface="git-repository-head"
                 >
-                  {block.label ?? block.repository}
-                </SectionLabel>
+                  {/* A service's own name, in the face of names: never the section labels' face. */}
+                  <h3 className="m-0 min-w-0 truncate font-mono text-caption font-medium text-foreground">
+                    {block.label ?? block.repository}
+                  </h3>
+                  <Destination to={repository.github?.destination ?? null} />
+                  {/* What was proved wrong outranks its state on GitHub: one line, the worst first. */}
+                  {troubled ? (
+                    <TroubleLine
+                      checking={repository.checking === true}
+                      onCheckAgain={
+                        onCheckAgain === undefined ? undefined : () => onCheckAgain(block)
+                      }
+                      trouble={block.trouble}
+                    />
+                  ) : repository.github === undefined ? null : (
+                    <GithubLine
+                      onConnect={
+                        onConnect === undefined ? undefined : () => onConnect(block.hqRepository)
+                      }
+                      state={repository.github}
+                    />
+                  )}
+                </div>
                 {/* What git said, for whoever reports it: folded, never a row's title. */}
                 {!troubled || block.troubleDetail === undefined ? null : (
                   <div className="min-w-0 pb-1" data-zerops-surface="git-trouble-detail">
@@ -262,9 +272,37 @@ function WorkRow({
 }
 
 /**
- * A repository whose remote does not answer, at its label's end: "Can't reach the repository" with
- * *Check again*, or that it is being checked. The sentence gives way in a narrow panel; the verb
- * never does.
+ * Where a repository's code goes, after its name: `acme/tea-shop` under GitHub's mark, as the
+ * project page's Code card names it; nothing while it goes nowhere.
+ */
+function Destination({ to }: { readonly to: RepoState["destination"] }) {
+  if (to === null) return null;
+  const Mark = to.href.startsWith("https://github.com/") ? GitHubIcon : GitBranchIcon;
+  return (
+    <a
+      className="inline-flex min-w-0 items-center gap-1 rounded-sm text-caption text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+      data-zerops-surface="git-destination"
+      href={to.href}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <Mark aria-hidden="true" className="size-3 shrink-0" />
+      <span className="truncate">{to.label}</span>
+    </a>
+  );
+}
+
+/**
+ * A repository's state and the verb that answers it, together: beside its name while they fit,
+ * else on the next line, where the words wrap and the verb keeps the line's end edge.
+ */
+const STATE = "flex min-w-0 flex-auto items-start gap-x-2.5";
+/** The one verb a repository's line ends in, at the line's end edge. */
+const VERB = "ms-auto flex shrink-0 items-center text-caption text-muted-foreground";
+
+/**
+ * A repository whose remote does not answer, in its GitHub state's place: "Can't reach the
+ * repository", with *Check again* at the line's end, or that it is being checked.
  */
 function TroubleLine({
   trouble,
@@ -276,15 +314,16 @@ function TroubleLine({
   readonly onCheckAgain: (() => void) | undefined;
 }) {
   return (
-    <span
-      className="flex min-w-0 items-baseline gap-1 text-caption text-muted-foreground"
-      data-zerops-surface="git-trouble"
-      role="status"
-    >
-      <span className="min-w-0 truncate text-status-failed-text">{trouble}</span>
+    <span className={STATE}>
+      <span
+        className="min-w-0 text-caption text-status-failed-text"
+        data-zerops-surface="git-trouble"
+        role="status"
+      >
+        {trouble}
+      </span>
       {onCheckAgain === undefined ? null : (
-        <span className="flex shrink-0 items-baseline gap-1">
-          <span aria-hidden="true">·</span>
+        <span className={VERB}>
           {checking ? (
             <span>Checking…</span>
           ) : (
@@ -298,10 +337,18 @@ function TroubleLine({
   );
 }
 
+/** A state's ink and the tone of its mark, as the Code card's row says it. */
+const STATE_INK = {
+  ok: "text-muted-foreground",
+  warn: "text-status-attention-text",
+  bad: "text-status-failed-text",
+} as const;
+const STATE_MARK = { ok: "success", warn: "warning", bad: "danger" } as const;
+
 /**
- * A repository's state on GitHub, at its label's end: "Not on GitHub · Connect", "In sync · pushed
- * 2h ago", or why it stopped with *Reconnect*. The words give way in a narrow panel; the verb that
- * fixes them never does.
+ * A repository's state on GitHub, after where its code goes: "Not on GitHub", "In sync · pushed 2h
+ * ago" under its mark, or why it stopped; the verb that fixes it (*Connect*, *Reconnect*) at the
+ * line's end.
  */
 function GithubLine({
   state,
@@ -319,14 +366,31 @@ function GithubLine({
           ? "Reconnect"
           : undefined;
   return (
-    <span
-      className="flex min-w-0 items-baseline gap-1 text-caption text-muted-foreground"
-      data-zerops-surface="git-github"
-    >
-      <span className="min-w-0 truncate">{state.line}</span>
+    <span className={STATE}>
+      <span
+        className={cn(
+          "flex min-w-0 items-center gap-1.5 text-caption",
+          state.tone === "busy" || state.tone === "quiet"
+            ? "text-muted-foreground"
+            : STATE_INK[state.tone],
+        )}
+        data-zerops-surface="git-github"
+      >
+        {state.tone === "busy" ? (
+          <>
+            <Spinner aria-hidden="true" size="xs" />
+            {state.line}
+          </>
+        ) : state.tone === "quiet" ? (
+          state.line
+        ) : (
+          <Badge dot tone={STATE_MARK[state.tone]} wrap>
+            {state.line}
+          </Badge>
+        )}
+      </span>
       {verb === undefined ? null : (
-        <span className="flex shrink-0 items-baseline gap-1">
-          <span aria-hidden="true">·</span>
+        <span className={VERB}>
           <InlineButton data-zerops-surface="git-github-connect" onClick={onConnect}>
             {verb}
           </InlineButton>

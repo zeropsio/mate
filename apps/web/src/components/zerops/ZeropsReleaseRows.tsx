@@ -15,16 +15,21 @@ import { ChevronRightIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import type { ComparedCommits } from "~/zerops/useReleaseComparisons";
-import { ZeropsReadFailure } from "./ZeropsReadFailure";
 import { cn } from "~/lib/utils";
 import { useNowMs } from "~/zerops/useNowMs";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 
 import { STATUS_BADGE_TONE } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
-import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
+import type { HistoryChange, HistoryNames } from "./ZeropsHistoryView";
 import { releaseRowTone } from "./ZeropsProjectRow.logic";
-import { DIDNT_GO_LIVE_QUIET, releaseFailureIsOver, releaseTitle } from "./ZeropsReleaseRows.logic";
+import { ZeropsReleaseCarried } from "./ZeropsReleaseCarried";
+import {
+  DIDNT_GO_LIVE_QUIET,
+  releaseFailureIsOver,
+  releaseTitle,
+  reposCarried,
+} from "./ZeropsReleaseRows.logic";
 import { gitReleaseHistory } from "./GitHistory.logic";
 import { changeTitle } from "./projects/projectHistory.logic";
 import { Badge } from "~/components/ui/badge";
@@ -80,6 +85,18 @@ export function ReleaseList({ children }: { readonly children: ReactNode }) {
   return <ul className={RELEASE_LIST_CLASS}>{children}</ul>;
 }
 
+/**
+ * What stands under the rows, on their grid: a quiet verb whose words start where the versions do.
+ */
+export function ReleaseListFoot({ children }: { readonly children: ReactNode }) {
+  return (
+    <li className="col-span-full grid min-w-0 grid-cols-subgrid px-3.5 pb-0.5">
+      {/* A ghost button's own inset is taken back, so its words keep the column's edge. */}
+      <span className="col-span-3 col-start-2 -ms-2.5 flex min-w-0">{children}</span>
+    </li>
+  );
+}
+
 /** Three titles of three lengths, so the waiting rows read as a list and not as a block. */
 const WAITING_TITLES = [
   <Skeleton className="h-3 w-64 max-w-full" key="long" surface="card" />,
@@ -115,9 +132,6 @@ export function ReleaseRowsWaiting() {
   );
 }
 
-const EMPTY_DEPLOYED: ReadonlyMap<string, string> = new Map();
-const EMPTY_RELEASES: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
-
 /**
  * A production's releases, newest first, as its page lists them: one row each — its version, the
  * live one's pill, the first change it brought that the last live release had not, with how many in
@@ -127,9 +141,9 @@ const EMPTY_RELEASES: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
  * row's hover or focus, and its review asks before anything moves. The rows only: the card around
  * them is the caller's.
  *
- * Given `carried`, a row also opens onto the commits its release carried — the whole row is the
- * press, its chevron at its start as on everything that opens in place. Without it, or before the
- * commits are read, a row is its tag and its shas.
+ * Given `carried`, a row also opens onto the commits its release carried (`ZeropsReleaseCarried`)
+ * — the whole row is the press, its chevron at its start as on everything that opens in place.
+ * Without it, or before the commits are read, a row is its tag and its shas.
  */
 export function ZeropsReleaseRows({
   carried,
@@ -174,19 +188,25 @@ function ReleaseRow({
 }) {
   const [open, setOpen] = useState(false);
   const what = carried?.carried.get(release.tag);
-  const moved: ReadonlyArray<Moved> = what?.state === "known" ? what.moved : [];
-  const named = moved.length > 1;
+  // A repository the release moved nothing in is none of what it carried.
+  const moved: ReadonlyArray<Moved> = what?.state === "known" ? reposCarried(what.moved) : [];
   const live = release.standing === "live";
   const by = live && liveBy !== undefined ? `released by ${liveBy}` : undefined;
   // A refused release's line is HQ's reason, and the reason stays. A roll back carried nothing
   // new: it says what it went back to.
   const back = rolledBackTo(release, releases);
   const titled = releaseTitle(release, every, releasing);
-  const description: { readonly primary: string; readonly secondary: string | undefined } =
+  // `names`: the line that is the release's services and their commits, real names both, which
+  // stand in the face of names.
+  const description: {
+    readonly primary: string;
+    readonly secondary: string | undefined;
+    readonly names?: "primary" | "secondary";
+  } =
     release.verdict === "refused" && release.detail !== undefined
-      ? { primary: release.detail, secondary: release.line }
+      ? { primary: release.detail, secondary: release.line, names: "secondary" }
       : back !== undefined
-        ? rolledBackDescription(back, release.line)
+        ? { ...rolledBackDescription(back, release.line), names: "secondary" }
         : release.history !== undefined
           ? {
               // A release of commits that belong to no change is titled by what it carried, never
@@ -212,8 +232,13 @@ function ReleaseRow({
             ? (described(releaseDescription(moved, release.line, now, carried?.names)) ?? {
                 primary: release.line,
                 secondary: by,
+                names: "primary",
               })
-            : { primary: release.line, secondary: "Which changes it carried was not recorded" };
+            : {
+                primary: release.line,
+                secondary: "Which changes it carried was not recorded",
+                names: "primary",
+              };
   const tone = releaseRowTone(release);
   const rollingBack = pending.has(flowVerbKey({ kind: "roll-back", groupId, tag: release.tag }));
   // Only a state that is not calm says its word, after the title: Live, Releasing, Didn't go
@@ -240,40 +265,13 @@ function ReleaseRow({
     (carried.onExpandedChange !== undefined || moved.length > 0 || what?.state === "failed");
   const expansion =
     !open || carried === undefined ? undefined : (
-      <div
-        className="col-span-full flex min-w-0 flex-col gap-1 ps-10 pe-3.5 pt-1 pb-3"
-        data-zerops-surface="release-carried"
-      >
-        {what?.state === "failed" ? (
-          <ZeropsReadFailure action="Compare again" reason={what.reason} again={what.again} />
-        ) : what?.state === "reading" ? (
-          <p className="text-sm text-muted-foreground">Reading commit messages…</p>
-        ) : moved.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No commits.</p>
-        ) : (
-          moved.map((read) => (
-            <ReleaseService
-              key={read.repository}
-              named={named}
-              service={read.services[0] ?? read.repository}
-            >
-              <ZeropsHistoryView
-                history={{ kind: "read", commits: read.commits, total: read.total }}
-                names={carried.names}
-                onOpenChange={
-                  carried.onOpenChange === undefined
-                    ? undefined
-                    : (change, from) => {
-                        carried.onOpenChange?.(read.repository, change, from);
-                      }
-                }
-                request={{ appId: groupId, repo: read.repository, deployed: EMPTY_DEPLOYED }}
-                tags={EMPTY_RELEASES}
-              />
-            </ReleaseService>
-          ))
-        )}
-      </div>
+      <ZeropsReleaseCarried
+        appId={groupId}
+        changed={moved}
+        names={carried.names}
+        onOpenChange={carried.onOpenChange}
+        what={what}
+      />
     );
   const toggle = () => {
     carried?.onExpandedChange?.(release.tag, !open);
@@ -320,7 +318,8 @@ function ReleaseRow({
         )}
         <span
           className={cn(
-            "pe-1 font-mono text-sm font-medium whitespace-nowrap tabular-nums",
+            // A version, in the face of names, a step under the title so it reads no larger.
+            "pe-1 font-mono text-body font-medium whitespace-nowrap tabular-nums",
             live ? "text-status-ok-text" : "text-foreground",
           )}
           data-zerops-surface="environment-name"
@@ -333,7 +332,9 @@ function ReleaseRow({
             <span
               className={cn(
                 // A phone reads it whole, on two lines where one cuts it.
-                "max-w-full min-w-0 truncate text-sm max-sm:line-clamp-2 max-sm:whitespace-normal",
+                "max-w-full min-w-0 truncate max-sm:line-clamp-2 max-sm:whitespace-normal",
+                // A step under the title's size, so the mono face reads no larger than a title.
+                description.names === "primary" ? "font-mono text-body" : "text-sm",
                 // The same changes again are no news: said, and quiet.
                 titled?.kind === "again" ? "text-muted-foreground" : "text-foreground",
               )}
@@ -345,7 +346,10 @@ function ReleaseRow({
           </span>
           {description.secondary === undefined || description.secondary === "" ? null : (
             <span
-              className="min-w-0 truncate text-caption text-muted-foreground"
+              className={cn(
+                "min-w-0 truncate text-muted-foreground",
+                description.names === "secondary" ? "font-mono text-2xs leading-4" : "text-caption",
+              )}
               data-zerops-surface="release-byline"
             >
               {description.secondary}
@@ -417,25 +421,6 @@ function described<D extends { readonly primary: string }>(description: D | unde
   const more = /, \+\d+\+? more$/u.exec(description.primary)?.[0] ?? "";
   const title = description.primary.slice(0, description.primary.length - more.length);
   return { ...description, primary: `${changeTitle(title)}${more}` };
-}
-
-/** One repository's block in a release's expansion, under its hostname where there are several. */
-function ReleaseService({
-  service,
-  named,
-  children,
-}: {
-  readonly service: string;
-  /** Whether the expansion holds more than this one, so its hostname is said. */
-  readonly named: boolean;
-  readonly children: ReactNode;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col">
-      {named ? <span className="text-xs text-muted-foreground">{service}</span> : null}
-      {children}
-    </div>
-  );
 }
 
 /** Historical rows keep HQ's frozen entries and the environment's recorded push outcomes. */
