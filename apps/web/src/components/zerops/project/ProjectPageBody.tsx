@@ -8,7 +8,7 @@
  */
 import { useRouterState } from "@tanstack/react-router";
 import { FileIcon, GlobeIcon } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-runtime/zerops";
 import type {
@@ -915,6 +915,9 @@ const GROUP_LIT_MS = 1400;
  * record. Setup files stand last, quiet. The group a release would carry names no verb: *Review
  * release* is production's, the page's one. *All history* opens its releases in place, each with
  * the changes it put live; with no history, *All changes* lists past the first few.
+ *
+ * The picture and the list name a change alike (`data-zerops-change`): the row pointed at or
+ * focused marks its bead, the bead its row (`useMarksItsChange`).
  */
 function ProjectChanges<T>({
   entry,
@@ -954,6 +957,8 @@ function ProjectChanges<T>({
     open.length === 0 && groups.length === 1 && live.length === 0 ? groups[0] : undefined;
   // The record stands under the card; setup files last, in the record where there is one.
   const record = !historyShown && live.length > 0;
+  const section = useRef<HTMLElement>(null);
+  useMarksItsChange(section);
   const groupId = entry.group.groupId;
   const pictureInput = {
     flow: entry.flow,
@@ -1082,6 +1087,7 @@ function ProjectChanges<T>({
       aria-labelledby="pp-changes"
       className="pp-group"
       data-zerops-surface="project-changes"
+      ref={section}
     >
       <SectionLabel
         action={action}
@@ -1211,6 +1217,60 @@ function GroupWords({ group }: { readonly group: ChangeGroup }) {
 function LiveSince({ at }: { readonly at: string | undefined }) {
   const words = sinceWords(at, useNowMs());
   return words === undefined ? null : ` ${words}`;
+}
+
+/**
+ * Within `root`, a change pointed at or focused marks its other drawing (`data-marked`): its row
+ * in the list marks its bead on the line, its bead its row. Both name the change alike
+ * (`data-zerops-change`). The pointer's outranks focus'; nothing is re-rendered for it.
+ */
+function useMarksItsChange(root: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const element = root.current;
+    if (element === null) return;
+    let pointed: Element | null = null;
+    let focused: Element | null = null;
+    const mark = () => {
+      const from = pointed ?? focused;
+      const key = from?.getAttribute("data-zerops-change");
+      for (const each of element.querySelectorAll("[data-zerops-change]"))
+        each.toggleAttribute(
+          "data-marked",
+          key != null && each !== from && each.getAttribute("data-zerops-change") === key,
+        );
+    };
+    const changeAt = (event: Event) =>
+      event.target instanceof Element ? event.target.closest("[data-zerops-change]") : null;
+    const point = (event: Event) => {
+      const next = changeAt(event);
+      if (next === pointed) return;
+      pointed = next;
+      mark();
+    };
+    const unpoint = () => {
+      if (pointed === null) return;
+      pointed = null;
+      mark();
+    };
+    const focus = (event: Event) => {
+      focused = changeAt(event);
+      mark();
+    };
+    const blur = () => {
+      focused = null;
+      mark();
+    };
+    element.addEventListener("pointerover", point);
+    element.addEventListener("pointerleave", unpoint);
+    element.addEventListener("focusin", focus);
+    element.addEventListener("focusout", blur);
+    return () => {
+      element.removeEventListener("pointerover", point);
+      element.removeEventListener("pointerleave", unpoint);
+      element.removeEventListener("focusin", focus);
+      element.removeEventListener("focusout", blur);
+    };
+  }, [root]);
 }
 
 /** A section opened at the main column's foot from a side row: brought into view, closed by its own word. */

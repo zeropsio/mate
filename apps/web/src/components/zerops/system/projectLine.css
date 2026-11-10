@@ -210,6 +210,13 @@
   outline-offset: 3px;
 }
 
+/* The bead of the change whose row in the list is pointed at: a ring in the ink, outside its
+   mark's, that takes no room. */
+.ln-bead[data-marked] {
+  outline: 1.5px solid var(--foreground);
+  outline-offset: 4px;
+}
+
 .ln-bead[data-mark="waits"] {
   box-shadow:
     0 0 0 2px var(--ln-ground),

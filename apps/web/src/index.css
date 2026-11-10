@@ -9081,6 +9081,11 @@ button.ov-change {
   outline-offset: -2px;
 }
 
+/* The row of the change whose bead on the line is pointed at (`data-zerops-change`). */
+.ov-change-row[data-marked] > .ov-change {
+  background: color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
 /* Work that is no change yet has nothing to open: the row stays still under the pointer. */
 .ov-change[data-plain]:hover {
   background: none;

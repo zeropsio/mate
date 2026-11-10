@@ -9,6 +9,8 @@
  *
  * A station's name opens what it names: a place its page, Mates' work the page's Mates. A further
  * place's row opens its page, a bead its change's review, a count its group of the Changes list.
+ * A bead names its change (`data-zerops-change`), as the change's row in the list under it does:
+ * the page marks the one while the other is pointed at.
  *
  * `held` keeps its shape (track, station dots and the room of its side rows, no beads) while the
  * project's reads have not answered. Under 700 px of its own width it is compact: station names
