@@ -7,15 +7,8 @@
  */
 import type { DeployLogTarget } from "@t3tools/client-runtime/zerops/hq";
 import { CheckIcon, XIcon } from "lucide-react";
-import { MOTION } from "@t3tools/shared/brand";
-import {
-  Fragment,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactElement,
-  type ReactNode,
-} from "react";
+import type { RunningLine as Running } from "@t3tools/client-runtime/zerops/activity/runningNow";
+import { Fragment, useState, type ReactElement } from "react";
 
 import { InlineButton } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
@@ -23,6 +16,7 @@ import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 
 import { DeployLogDetails } from "../ZeropsDeployLog";
+import { RunningLine } from "../system";
 import type { ReleaseSheetStep, Words } from "./releaseSheet.logic";
 
 /** Words drawn, the names in them in code type. */
@@ -54,34 +48,6 @@ function keyedWords(words: Words) {
   return keyed;
 }
 
-/**
- * What grows in place: when what it holds gets taller — the plan bringing a step the places did
- * not hold, a step opening its import — it eases there, so what stands under it goes down and
- * never jumps. Getting shorter is not eased. Reduced motion cuts.
- */
-export function GrowsInPlace({ children }: { readonly children: ReactNode }) {
-  const box = useRef<HTMLDivElement | null>(null);
-  const stood = useRef<number | undefined>(undefined);
-  useLayoutEffect(() => {
-    const node = box.current;
-    if (node === null) return;
-    // Its laid-out height: the sheet's entrance scales what a client rect would say.
-    const now = node.offsetHeight;
-    const before = stood.current;
-    stood.current = now;
-    if (before === undefined || now - before < 1) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    node.animate(
-      [
-        { height: `${String(before)}px`, overflow: "clip" },
-        { height: `${String(now)}px`, overflow: "clip" },
-      ],
-      { duration: MOTION.duration.base, easing: MOTION.easing.out },
-    );
-  });
-  return <div ref={box}>{children}</div>;
-}
-
 /** A deploy's log, where Zerops holds it: the project it ran in and the job to read. */
 export interface ReleaseStepLog {
   readonly projectId: string;
@@ -97,6 +63,8 @@ export interface ReleasePlanProps {
   readonly renewing?: boolean | undefined;
   /** A service's deploy log, once its job has one. */
   readonly logOf?: ((service: string) => ReleaseStepLog | undefined) | undefined;
+  /** The platform's process a busy step is, by the step's key: where its build stands. */
+  readonly running?: ReadonlyMap<string, Running> | undefined;
   /** Once live: the way in, and a domain of its own where production has none. */
   readonly live?:
     | {
@@ -112,6 +80,7 @@ export function ReleasePlan({
   onRenew,
   renewing = false,
   logOf,
+  running,
   live,
 }: ReleasePlanProps) {
   const creations = steps.filter((step) => step.kind === "create").length;
@@ -129,6 +98,10 @@ export function ReleasePlan({
           onCreate={onCreate}
           onRenew={onRenew}
           renewing={renewing}
+          // A deploy under way says where its build stands; a creation's title and clock say all.
+          running={
+            step.kind === "deploy" && step.mark === "busy" ? running?.get(step.key) : undefined
+          }
           step={step}
         />
       ))}
@@ -144,6 +117,7 @@ function PlanStep({
   onRenew,
   renewing,
   log,
+  running,
   live,
 }: {
   readonly step: ReleaseSheetStep;
@@ -153,6 +127,7 @@ function PlanStep({
   readonly onRenew: (() => void) | undefined;
   readonly renewing: boolean;
   readonly log: ReleaseStepLog | undefined;
+  readonly running: Running | undefined;
   readonly live: ReleasePlanProps["live"];
 }) {
   const [open, setOpen] = useState<"import" | "log" | undefined>(undefined);
@@ -221,10 +196,23 @@ function PlanStep({
           </InlineButton>
         </span>
       ) : null}
-      <p className="rv-pstep-l" data-tone={step.tone}>
-        <span>
-          <WordsOf words={step.line} />
-        </span>
+      <p className="rv-pstep-l" data-tone={running === undefined ? step.tone : "quiet"}>
+        {running === undefined ? (
+          <span>
+            <WordsOf words={step.line} />
+          </span>
+        ) : (
+          // The step names the service and counts the time: the line is what the platform does.
+          <>
+            <RunningLine line={running} within="step" />
+            {step.late === true ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>taking longer than usual</span>
+              </>
+            ) : null}
+          </>
+        )}
         {acts.map((act) => (
           <Fragment key={act.key}>
             <span aria-hidden="true">·</span>

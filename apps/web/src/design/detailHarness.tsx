@@ -1,4 +1,5 @@
 import { HqEnvironmentId } from "@t3tools/contracts";
+import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
 /**
@@ -838,6 +839,8 @@ interface StopFixture {
   readonly mayKeep?: boolean;
   /** The key's renewal offered from the verdict, and where a run of it stands. */
   readonly renewKey?: KeyRenewal;
+  /** What the platform runs or holds waiting there now. */
+  readonly runningNow?: ReadonlyArray<RunningLine>;
   readonly history?: ZeropsHistoryState;
   /** A production's releases, newest first. */
   readonly releases?: ReadonlyArray<FlowRelease>;
@@ -955,6 +958,74 @@ function platformService(id: string): StopService["service"] {
  * The stop's name, its release rows and its failure are derived the way the flow and the page
  * derive them, so a fixture differs only in what it reads.
  */
+const runningSince = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
+const RUNNING_NOW: ReadonlyArray<RunningLine> = [
+  {
+    id: "process-api",
+    service: "api",
+    words: "Deploying v0.1.4",
+    doing: "is deploying v0.1.4",
+    trail: [
+      { label: "Build container", state: "done" },
+      { label: "Build", state: "done" },
+      { label: "Deploy", state: "busy" },
+    ],
+    waiting: false,
+    behind: undefined,
+    since: runningSince(384),
+    version: "v0.1.4",
+    kind: "build",
+    versionId: undefined,
+    rank: 3,
+  },
+  {
+    id: "process-app",
+    service: "app",
+    words: "Building v0.1.4",
+    doing: "is building v0.1.4",
+    trail: [
+      { label: "Build container", state: "done" },
+      { label: "Build", state: "busy" },
+      { label: "Deploy", state: "waiting" },
+    ],
+    waiting: false,
+    behind: undefined,
+    since: runningSince(72),
+    version: "v0.1.4",
+    kind: "build",
+    versionId: undefined,
+    rank: 2,
+  },
+  {
+    id: "process-db",
+    service: "db",
+    words: "Restarting",
+    doing: "is restarting",
+    trail: undefined,
+    waiting: false,
+    behind: undefined,
+    since: runningSince(9),
+    version: undefined,
+    kind: "other",
+    versionId: undefined,
+    rank: 2,
+  },
+  {
+    id: "process-app-next",
+    service: "app",
+    words: "Waiting",
+    doing: "waits for its restart",
+    trail: undefined,
+    waiting: true,
+    behind: "its build of v0.1.4",
+    since: runningSince(4),
+    version: undefined,
+    kind: "other",
+    versionId: undefined,
+    rank: 0,
+  },
+];
+
 function StopState({ fixture }: { readonly fixture: StopFixture }) {
   const [vaultOpen, setVaultOpen] = useState(fixture.vault === "open");
   const production = fixture.tier === "production";
@@ -1065,6 +1136,7 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       renewKey={
         fixture.renewKey === undefined ? undefined : { run: fixture.renewKey, onRenew: () => {} }
       }
+      runningNow={fixture.runningNow}
       verdict={stopVerdict({
         tier: fixture.tier,
         view,
@@ -1391,6 +1463,39 @@ function Harness() {
             routes: ROUTES,
             mayRunAgain: true,
             keyInvalid: true,
+          }}
+        />
+      </State>
+
+      <State
+        label="A production with a release on its way, its platform at work"
+        note="Running now stands over the services while anything runs or waits there, a line each: the service, what it is, where its build stands, how long. It takes no room while nothing runs."
+      >
+        <StopState
+          fixture={{
+            tier: "production",
+            services: [
+              service("api", "b21d904c", undefined),
+              service("app", "5c3ea18b", undefined),
+            ],
+            deployment: STAGE_RUNNING,
+            routes: ROUTES,
+            runningNow: RUNNING_NOW,
+          }}
+        />
+      </State>
+
+      <State
+        label="A stage deploying a merge"
+        note="The same group on a stage: one build, its three parts, its clock."
+      >
+        <StopState
+          fixture={{
+            tier: "stage",
+            services: [service("app", "5c3ea18b", undefined)],
+            deployment: STAGE_RUNNING,
+            routes: ROUTES,
+            runningNow: RUNNING_NOW.slice(1, 2),
           }}
         />
       </State>

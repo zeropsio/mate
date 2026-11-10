@@ -261,18 +261,19 @@ function CompactAgents({
           authorizedBy: resolveAgentAuthorizer(agent, viewerSubject),
           viewerSubject,
         });
-        // Whose login it is can need the person even while it works: say so, never "signed in".
-        const status =
-          action === "none" && agentOwnershipNeedsAttention(ownership)
-            ? { label: "Needs attention", tone: "attention" as const }
-            : agentStatusPresentation(agent, login, true);
+        // Whose login it is, is a fact of the row and never an alarm: a colleague's Mate works
+        // through its person's login, and whoever reads along is asked for nothing. Where the
+        // viewer is the one who must sign in, the conversation asks them.
+        const status = agentStatusPresentation(agent, login, true);
         const signedIn = action === "none" && status.tone === "ok";
         const word = signedIn
           ? ownership === "mine"
             ? "signed in by you"
-            : agent.state === "authorized-token"
-              ? "signed in by a project token"
-              : "signed in"
+            : agentOwnershipNeedsAttention(ownership)
+              ? "signed in by another member"
+              : agent.state === "authorized-token"
+                ? "signed in by a project token"
+                : "signed in"
           : status.label;
         const extra = logins.filter((entry) => !entry.default && entry.agent === agent.agentId);
         const signInOnly = action === "sign-in" && login.kind === "none" && extra.length === 0;

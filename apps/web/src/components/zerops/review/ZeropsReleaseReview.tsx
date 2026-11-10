@@ -80,6 +80,8 @@ import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { releaseRequestOf, type HqAppDetailRead } from "@t3tools/client-runtime/data";
 import { NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
+import { releasePressKey, useReleasePresses } from "~/zerops/releasePresses";
+import { useRunningNow } from "~/zerops/activity/useRunningNow";
 import { useRenewDeployKey } from "~/zerops/useRenewDeployKey";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
@@ -98,9 +100,10 @@ import { ZeropsReadFailure } from "../ZeropsReadFailure";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useZeropsReviewMates, type ZeropsReviewMate } from "~/zerops/useZeropsReviewMates";
 
+import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
+import { GrowsInPlace, RunningClock } from "../system";
 import { ZeropsChangeReview } from "./ZeropsChangeReview";
 import {
-  GrowsInPlace,
   ReleasePlan,
   ReleasePlanSkeleton,
   WordsOf,
@@ -110,6 +113,8 @@ import { useReleaseSteps, ZeropsReleaseSteps } from "./ZeropsReleaseSteps";
 import {
   inProductionWords,
   keyRenewedSteps,
+  productionBusyWords,
+  releaseRunning,
   planCreations,
   releaseNoteSaid,
   releasePressLabel,
@@ -419,6 +424,9 @@ function ReleaseData({
   const productionProject =
     production?.target.kind === "zerops" ? production.target.projectId : undefined;
   const productionAddresses = useProductionAddresses(productionProject);
+  // What the platform runs in production now: under the steps, and beside them where it is not
+  // this release's (`releaseRunning`).
+  const productionRunning = useRunningNow(productionProject);
   // Its Where row follows HQ's deploys of it: released is said with them, never before.
   const followed = useDeployAnswerFollowing(useReviewDeploys(press)).answer;
   const {
@@ -642,7 +650,12 @@ function ReleaseData({
         },
   );
 
-  const [pressedAt, setPressedAt] = useState<string>();
+  // The press's own time, and this tab's first sight of the release live (`releasePresses`).
+  const pressRecord = useReleasePresses((state) =>
+    follows.tag === undefined
+      ? undefined
+      : state.presses[releasePressKey(flow.groupId, follows.tag)],
+  );
   const release = async () => {
     if (chosen.tag === undefined || chosen.error !== undefined) return;
     if (plan.required && reviewedPlan === undefined) return;
@@ -650,7 +663,8 @@ function ReleaseData({
     setHeldPlan(reviewedPlan);
     setHeld({ ...facts, tag: chosen.tag });
     setMade(chosen.tag);
-    setPressedAt(new Date().toISOString());
+    const presses = useReleasePresses.getState();
+    presses.pressed(flow.groupId, chosen.tag, new Date().toISOString());
     setPress({ kind: "running" });
     const answer =
       reviewedPlan === undefined
@@ -664,7 +678,17 @@ function ReleaseData({
     );
     // The tag it made is the one the review follows from here.
     setMade(answer.ok ? (answer.tag ?? chosen.tag) : undefined);
+    if (!answer.ok) presses.refused(flow.groupId, chosen.tag);
+    else if (answer.tag !== undefined) presses.renamed(flow.groupId, chosen.tag, answer.tag);
   };
+  const sawLive =
+    outcome.kind === "released" && pressRecord !== undefined && pressRecord.liveAt === undefined
+      ? follows.tag
+      : undefined;
+  useEffect(() => {
+    if (sawLive !== undefined)
+      useReleasePresses.getState().live(flow.groupId, sawLive, new Date().toISOString());
+  }, [flow.groupId, sawLive]);
 
   // What HQ does in production for the followed release, as its jobs there stand: the steps'
   // marks, clocks and words (`releaseSheetSteps`).
@@ -689,7 +713,15 @@ function ReleaseData({
             job.kind === "deploy" &&
             job.service !== null &&
             job.environment === production.environment
-              ? [{ service: job.service, state: job.state, reason: job.reason }]
+              ? [
+                  {
+                    service: job.service,
+                    state: job.state,
+                    reason: job.reason,
+                    processId: job.processId,
+                    appVersionId: job.appVersionId,
+                  },
+                ]
               : [],
           ),
     [followed, production],
@@ -704,6 +736,8 @@ function ReleaseData({
           reason: job.reason?.trim() || undefined,
           at: job.at,
           endedAt: job.endedAt,
+          processId: job.processId,
+          appVersionId: job.appVersionId,
         })),
         ...answered
           .filter((job) => !jobs.some((streamed) => streamed.service === job.service))
@@ -713,6 +747,8 @@ function ReleaseData({
             reason: job.reason?.trim() || undefined,
             at: undefined,
             endedAt: null,
+            processId: job.processId,
+            appVersionId: job.appVersionId,
           })),
       ],
     }),
@@ -759,9 +795,15 @@ function ReleaseData({
               },
       }}
       progress={progress}
-      // The clock the press started keeps counting from the press: HQ tags a moment later, and
-      // counting from its tag would take seconds back under the person's eyes.
-      started={{ at: pressedAt ?? follows.tagged?.taggedAt, by: startedBy }}
+      // The clock the press started keeps counting from the press: HQ tags when it gets to it,
+      // and counting from its tag would take time back under the person's eyes. "Took" is the
+      // press to this tab's sight of it live; a tab that did not press says HQ's own times.
+      started={{
+        at: pressRecord?.pressedAt ?? follows.tagged?.taggedAt,
+        by: startedBy,
+        liveAt: pressRecord?.liveAt,
+      }}
+      running={productionRunning}
       logOf={(service) => {
         const job = jobs.find((entry) => entry.service === service)?.job;
         const target = job === undefined ? undefined : deployLogTarget(job);
@@ -784,7 +826,6 @@ function ReleaseData({
         setHeld(undefined);
         setHeldPlan(undefined);
         setTypedVersion(undefined);
-        setPressedAt(undefined);
         setReopened(null);
         renewKey.reset();
       }}
@@ -858,6 +899,8 @@ const NO_ANSWERED: ReadonlyArray<{
   readonly service: string;
   readonly state: HqJob["state"];
   readonly reason: string | null;
+  readonly processId: string | null;
+  readonly appVersionId: string | null | undefined;
 }> = [];
 const NO_SERVICES: ReadonlyArray<never> = [];
 
@@ -1023,8 +1066,15 @@ export interface ReleaseReviewViewProps {
   readonly progress?: ReleaseProgress | undefined;
   /** When the release on its way was made, and who asked for it: "you", or a person's name. */
   readonly started?:
-    | { readonly at: string | undefined; readonly by: string | undefined }
+    | {
+        readonly at: string | undefined;
+        readonly by: string | undefined;
+        /** When the tab that pressed saw it live; none for a tab that did not press. */
+        readonly liveAt?: string | undefined;
+      }
     | undefined;
+  /** What the platform runs or holds waiting in production now (`runningLines`). */
+  readonly running?: ReadonlyArray<RunningLine> | undefined;
   /** A service's deploy log, once its job has one. */
   readonly logOf?: ((service: string) => ReleaseStepLog | undefined) | undefined;
   /** How many changes the offer counts, known before they are listed. */
@@ -1326,7 +1376,16 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       )
     : [];
   const liveAt =
-    newestEnd(props.progress) ?? (outcome.kind === "released" ? outcome.at : undefined);
+    props.started?.liveAt ??
+    newestEnd(props.progress) ??
+    (outcome.kind === "released" ? outcome.at : undefined);
+  // The platform's own work in production while the release runs: each deploy's under its step,
+  // anything else said above the plan, where it explains a wait.
+  const platform =
+    outcome.kind === "releasing" && props.running !== undefined
+      ? releaseRunning({ lines: props.running, steps, tag, progress: props.progress })
+      : undefined;
+  const busy = platform === undefined ? undefined : productionBusyWords(platform.outside);
   const subtitle = releaseSubtitle({
     state,
     said: state === "release-stalled" ? model.consequence : model.verdict.why,
@@ -1582,15 +1641,28 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               // answering: the plan then only adds what it creates.
               <ReleasePlanSkeleton steps={(props.entries ?? deployed.length) + 1} />
             ) : (
-              <ReleasePlan
-                live={{ open, onAddDomain: props.onAddDomain }}
-                logOf={props.logOf}
-                // Stopped, the way out is the foot's button: the step does not say it twice.
-                onCreate={stopped ? undefined : onCreate}
-                onRenew={onRenew}
-                renewing={renewal.kind === "working"}
-                steps={renewal.kind === "renewed" ? keyRenewedSteps(steps) : steps}
-              />
+              <>
+                {busy === undefined ? null : (
+                  <p className="rv-busy" data-zerops-surface="release-production-busy">
+                    <b>Production is busy:</b> {busy.words} ·{" "}
+                    <RunningClock since={busy.first.since} />
+                    {busy.more}.{" "}
+                    {platform?.waits === true
+                      ? `This release waits for ${busy.more === "" ? "it" : "them"}.`
+                      : null}
+                  </p>
+                )}
+                <ReleasePlan
+                  live={{ open, onAddDomain: props.onAddDomain }}
+                  logOf={props.logOf}
+                  running={platform?.ofStep}
+                  // Stopped, the way out is the foot's button: the step does not say it twice.
+                  onCreate={stopped ? undefined : onCreate}
+                  onRenew={onRenew}
+                  renewing={renewal.kind === "working"}
+                  steps={renewal.kind === "renewed" ? keyRenewedSteps(steps) : steps}
+                />
+              </>
             )}
           </GrowsInPlace>
           {answerNote === undefined ? null : <p className="rv-note">{answerNote}</p>}

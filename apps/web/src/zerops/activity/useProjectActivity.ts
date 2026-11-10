@@ -11,9 +11,9 @@ import {
   projectsProcesses,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
-import { useMemo } from "react";
+import { useContext, useMemo } from "react";
 
-import { projectAuthority, useZeropsInventory } from "../inventoryContext";
+import { InventoryContext, projectAuthority, useZeropsInventory } from "../inventoryContext";
 import { useAccountOrgId, useDetailDemand, useProjection } from "../ZeropsAccountData";
 
 export interface ProjectActivitySnapshot {
@@ -73,6 +73,27 @@ export function useProjectActivityRead(projectId: string | null): ProjectActivit
     () => (withheld ? EMPTY_PROJECT_ACTIVITY_SNAPSHOT : projectActivitySnapshotOf(read)),
     [read, withheld],
   );
+}
+
+const NOTHING_RUNNING: ReadonlyArray<ActivityProcess> = [];
+
+/**
+ * What runs or waits in a project now, as the organization's running work lists it: nothing while
+ * that is not read, and nothing of a project the grant withholds. It holds no history.
+ */
+export function useProjectRunning(projectId: string | null): ReadonlyArray<ActivityProcess> {
+  // Read where a surface may stand outside an account (the menu's popover): nothing runs there.
+  const inventory = useContext(InventoryContext);
+  const orgId = useAccountOrgId();
+  const read = useProjection(
+    projectProcesses,
+    orgId === null || projectId === null ? null : { orgId, projectId },
+    NOT_READ_ATOM,
+  );
+  const withheld =
+    inventory === null ||
+    (projectId !== null && projectAuthority(inventory, projectId).kind === "withheld");
+  return withheld ? NOTHING_RUNNING : read.running;
 }
 
 /** Several projects' processes at once, without holding any history. */
