@@ -265,7 +265,7 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): SurfaceLaun
     case "express":
       return ExpressLauncherMark;
     case "vault":
-      return Vault;
+      return KeyRound;
     case "overview":
       return LayersIcon;
   }
