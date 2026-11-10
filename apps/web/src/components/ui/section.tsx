@@ -39,7 +39,8 @@ function SectionHeader({
     children: (
       <>
         <Heading className="m-0 flex min-w-0 items-center gap-2 truncate font-semibold text-[15px] text-foreground leading-5">
-          {title}
+          {/* Plain words end in an ellipsis; a flex box itself only clips them. */}
+          {typeof title === "string" ? <span className="min-w-0 truncate">{title}</span> : title}
         </Heading>
         {count === undefined || count === null ? null : (
           <span className="shrink-0 text-muted-foreground text-xs tabular-nums">{count}</span>
