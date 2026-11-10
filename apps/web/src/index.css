@@ -7679,6 +7679,12 @@ a.ov-card-site:hover {
     inset 0 0 0 1px color-mix(in oklab, var(--ring) 55%, var(--border)),
     0 0 0 3px color-mix(in oklab, var(--ring) 14%, transparent);
 }
+/* A phone zooms the page into a field under 16 px. */
+@media (max-width: 39.999rem) {
+  .ov-reply-in {
+    font-size: 16px;
+  }
+}
 
 /* Who reaches a project, as people chips: pills that wrap, a face, a short name over the level they
    have there, a ⋮ for whoever may change it; *Add access* a quiet button under them. */
