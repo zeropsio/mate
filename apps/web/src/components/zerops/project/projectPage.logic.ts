@@ -109,11 +109,6 @@ export function lineGroupOf(group: ChangeGroup): LineGroup | undefined {
     : undefined;
 }
 
-/** The first group a release would carry: its label ends in the release's verb. */
-export function releaseGroup(groups: ReadonlyArray<ChangeGroup>): ChangeGroup | undefined {
-  return groups.find((group) => group.label === ON_STAGE_READY || group.label === ON_MAIN_READY);
-}
-
 /** How many of what the live release brought are named before "+ N". */
 export const BROUGHT_SHOWN = 3;
 

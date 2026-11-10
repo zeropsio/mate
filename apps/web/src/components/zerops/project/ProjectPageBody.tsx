@@ -26,7 +26,7 @@ import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
-import { ENVIRONMENT_NOT_ADDED, REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
+import { ENVIRONMENT_NOT_ADDED } from "@t3tools/client-runtime/zerops";
 import { ComingMateFace, drawn, matesOf, type FlowMateEntry } from "../projects/flowSteps";
 import {
   cardReady,
@@ -73,7 +73,6 @@ import {
   pageAddresses,
   linesProductionFirst,
   productionFirst,
-  releaseGroup,
   waitingChanges,
 } from "./projectPage.logic";
 import { SetupCard, SetupRow } from "./SetupCard";
@@ -887,8 +886,9 @@ const GROUP_LIT_MS = 1400;
  * with what stops it, merged ones grouped by where they went — the group's label says it once, in
  * the picture's words ("On stage, ready for production · 12"), and with one group the section's
  * label is it ("On main, not live yet · 5") — setup files last, quiet. The group a release would
- * carry ends in a quiet *Review release*. *All history* opens its releases in place, each with the
- * changes it put live; with no history, *All changes* lists past the first few.
+ * carry names no verb: *Review release* is production's, the page's one. *All history* opens its
+ * releases in place, each with the changes it put live; with no history, *All changes* lists past
+ * the first few.
  */
 function ProjectChanges<T>({
   entry,
@@ -915,12 +915,6 @@ function ProjectChanges<T>({
   const every = changeGroups(listed).groups;
   const countOf = (group: (typeof groups)[number]) =>
     every.find((each) => each.label === group.label)?.changes.length ?? group.changes.length;
-  // The changes a release would carry: their group carries its verb.
-  const carried =
-    door.view.kind === "ready" || door.view.kind === "failed" ? releaseGroup(groups) : undefined;
-  const reviewRelease = (
-    <SectionAction onClick={facts.release.onReview}>{REVIEW_RELEASE_LABEL} →</SectionAction>
-  );
   const mateName = (projectId: string) =>
     entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
   const faceOf = (projectId: string) => {
@@ -928,10 +922,8 @@ function ProjectChanges<T>({
     return item === undefined ? undefined : props.renderMateFace(item, 20);
   };
   const historyShown = history && facts.repo !== undefined;
-  // One group alone, and nothing open beside it: its place is the section's label, unless it
-  // carries the release's verb beside the section's own.
-  const only =
-    open.length === 0 && groups.length === 1 && groups[0] !== carried ? groups[0] : undefined;
+  // One group alone, and nothing open beside it: its place is the section's label.
+  const only = open.length === 0 && groups.length === 1 ? groups[0] : undefined;
   const picture = projectLine({
     flow: entry.flow,
     places: lines,
@@ -1057,11 +1049,7 @@ function ProjectChanges<T>({
                   data-zerops-change-group={lineGroupOf(group)}
                   key={group.label}
                 >
-                  <SectionLabel
-                    action={group === carried ? reviewRelease : undefined}
-                    count={countOf(group)}
-                    level={3}
-                  >
+                  <SectionLabel count={countOf(group)} level={3}>
                     {group.label}
                   </SectionLabel>
                   <ChangeList>{group.changes.map((change) => row(change, undefined))}</ChangeList>
