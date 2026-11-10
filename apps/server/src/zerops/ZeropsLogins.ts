@@ -379,6 +379,8 @@ export interface ZeropsLoginsOptions {
   readonly reconcile?: (id: string, verified: ServerProviderAuthStatus) => Effect.Effect<void>;
   /** Who this server saw sign each login in (`ZeropsProjectSigners.signers`); absent, none names one. */
   readonly readSigners?: Effect.Effect<ProjectSigners>;
+  /** Every later move of `readSigners` (`ZeropsProjectSigners.changes`), HQ's `signers` frame included. */
+  readonly signerChanges?: Stream.Stream<void>;
   /** Where an API key login's signer is kept (`zeropsSignIns`); absent, nobody signs one in. */
   readonly signIns?: SignInStore;
   readonly watch: (target: string, fallbackDir: string, onChange: () => void) => WatcherHandle;
@@ -444,6 +446,7 @@ export const make = (options: ZeropsLoginsOptions) =>
       verify,
       reconcile,
       readSigners,
+      signerChanges,
       signIns,
       watch,
       checkDebounce = CHECK_DEBOUNCE,
@@ -611,6 +614,18 @@ export const make = (options: ZeropsLoginsOptions) =>
       }),
     );
 
+    // A row's signer moves without a settings change: HQ's `signers` frame refills the store
+    // after a restart, once the rows are already out. Subscribed before the first publish.
+    if (signerChanges !== undefined) {
+      yield* signerChanges.pipe(
+        Stream.runForEach(() => publish),
+        Effect.catchCause((cause) =>
+          Effect.logWarning("zerops logins: signer changes stopped", { cause }),
+        ),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+    }
+
     // Unreadable settings list nothing until their next change; a write
     // never starts from them (see `write`).
     yield* sync(
@@ -767,6 +782,7 @@ export const layer = Layer.effect(
         }),
       reconcile: providerInstances.reconcileInstanceAuth,
       readSigners: projectSigners.signers,
+      signerChanges: projectSigners.changes,
       signIns,
       watch: watchWithFallback,
     });

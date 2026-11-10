@@ -51,6 +51,7 @@ import * as ZeropsObserveCredentialFileModule from "./ZeropsObserveCredentialFil
 import * as ZeropsAccessReadModule from "./ZeropsAccessRead.ts";
 import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateOwnerModule from "./ZeropsMateOwner.ts";
+import * as ZeropsChiefOpenerModule from "./ZeropsChiefOpener.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { mateAutoUpdatePolicyLayer } from "./MateAutoUpdatePolicy.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
@@ -75,8 +76,9 @@ import * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 /**
  * One access list for the auth boundary, the door, the watch and the link to HQ, with the own-key
  * reader it reads Zerops with: computed by the Mate in a Zerops container, empty elsewhere. It
- * carries the one `ZeropsMateOwner` out with it: the link writes HQ's owner there, and the list's
- * Chief filter and offboarding read it.
+ * carries the one `ZeropsMateOwner` and the one `ZeropsChiefOpener` out with it: the link writes
+ * HQ's owner and Chief opener there; offboarding reads the owner, the list's Chief filter the
+ * opener.
  */
 export const ZeropsMateAccessListLive = Layer.unwrap(
   Effect.gen(function* () {
@@ -91,6 +93,7 @@ export const ZeropsMateAccessListLive = Layer.unwrap(
 ).pipe(
   Layer.provideMerge(ZeropsMateKeyModule.layer),
   Layer.provideMerge(ZeropsMateOwnerModule.layer),
+  Layer.provideMerge(ZeropsChiefOpenerModule.layer),
 );
 
 /** One connection registry shared by the HQ link, WebSocket and HTTP transports. */

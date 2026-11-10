@@ -27,12 +27,12 @@ export const ChiefMateOwner = Schema.Struct({
 export type ChiefMateOwner = typeof ChiefMateOwner.Type;
 
 /**
- * A personal Chief never inherits someone else's organization authority: it opens for its person
- * (HQ's owner of it) alone, and for nobody while none is known.
+ * A personal Chief never inherits someone else's organization authority: it opens for the person
+ * HQ lets open it alone, and for nobody while none is known.
  */
 export function restrictChiefAccess(
   members: ReadonlyArray<MateAccessMember>,
-  chief: Pick<ChiefMateOwner, "userId"> | null | undefined,
+  chief: { readonly userId: string | null } | null | undefined,
 ): ReadonlyArray<MateAccessMember> {
   return chief == null ? members : members.filter((member) => member.userId === chief.userId);
 }
@@ -145,8 +145,8 @@ export function projectAccess(input: {
   readonly projectId: string;
   readonly members: ReadonlyArray<ZeropsOrgMember>;
   readonly overrides: Readonly<Record<string, string>>;
-  /** A Chief's person, which it opens for alone; none on any other project. */
-  readonly chief?: Pick<ChiefMateOwner, "userId"> | null;
+  /** Whom HQ lets open a Chief, which it opens for alone; none on any other project. */
+  readonly chief?: { readonly userId: string | null } | null;
 }): ReadonlyArray<MateAccessMember> {
   const access: Array<MateAccessMember> = [];
   for (const member of input.members) {

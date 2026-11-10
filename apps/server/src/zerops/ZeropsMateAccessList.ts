@@ -5,9 +5,9 @@
  * `userRoles` and the organisation's persons, through the shared door rule
  * (`@t3tools/shared/mateAccess` `projectAccess` over `zeropsRoles`): an active person whose
  * effective role (their override here, else their org role) is Basic user or above is opened for,
- * one at Read only is listed, anyone else is absent. A project tagged `chief` opens only for its
- * owner as HQ names it (`ZeropsMateOwner`), and for nobody while HQ names none; it recomputes when
- * HQ names another. It recomputes every
+ * one at Read only is listed, anyone else is absent. A project tagged `chief` opens only for the
+ * person HQ lets open it (`ZeropsChiefOpener`), and for nobody while HQ names none; it recomputes
+ * when HQ names another. It recomputes every
  * {@link ACCESS_RECOMPUTE_EVERY} give or take {@link ACCESS_RECOMPUTE_JITTER}, and at once when a
  * ticket names a person the list does not open for. A read that fails, Zerops refusing the key
  * included, keeps the last list as it is. Between reads the Zerops websocket keeps it live
@@ -63,7 +63,7 @@ import {
 } from "./ZeropsAccessSocket.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
-import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
+import { type ChiefOpener, ZeropsChiefOpener } from "./ZeropsChiefOpener.ts";
 import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
 
 /**
@@ -101,21 +101,22 @@ export interface OwnRows {
 }
 
 /**
- * The Mate's own list from the rows of its project `projectId`, read at `nowMs`, with `owner` the
- * owner HQ names (`ZeropsMateOwner`): a Chief opens for them alone, and for nobody without one.
+ * The Mate's own list from the rows of its project `projectId`, read at `nowMs`, with `opener` the
+ * person HQ lets open a Chief (`ZeropsChiefOpener`): a Chief opens for them alone, and for nobody
+ * without one.
  */
 export const ownAccessList = (
   projectId: string,
   rows: OwnRows,
   nowMs: number,
-  owner?: MateOwner,
+  opener?: ChiefOpener,
 ): AccessList => {
   return {
     members: projectAccess({
       projectId,
       members: rows.members,
       overrides: rows.project.overrides,
-      chief: rows.project.tagList.includes("chief") ? { userId: owner ?? null } : null,
+      chief: rows.project.tagList.includes("chief") ? { userId: opener ?? null } : null,
     }),
     readAtMs: nowMs,
     expiresAtMs: nowMs + Duration.toMillis(ACCESS_LIST_HOLDS),
@@ -278,14 +279,14 @@ interface Held {
 
 /**
  * The list with `own`, the Mate's own read of its project, kept live between reads by `live` (the
- * Zerops websocket over its organisation, once a read named it) and recomputed when `owner` (HQ's,
- * which a Chief opens for) moves; without it, a list that never names anybody.
+ * Zerops websocket over its organisation, once a read named it) and recomputed when `opener` (whom
+ * HQ lets open a Chief) moves; without it, a list that never names anybody.
  */
 export const make = (own?: {
   readonly projectId: string;
   readonly read: ZeropsAccessRead["Service"]["read"];
   readonly live?: (clientId: string) => Stream.Stream<AccessLiveEvent>;
-  readonly owner?: Pick<ZeropsMateOwner["Service"], "owner" | "changes">;
+  readonly opener?: Pick<ZeropsChiefOpener["Service"], "opener" | "changes">;
 }) =>
   Effect.gen(function* () {
     const held = yield* Ref.make<Held>({ rows: undefined, own: undefined });
@@ -325,8 +326,8 @@ export const make = (own?: {
      * read in flight, so an answer Zerops gave before the frame never lands after it.
      */
     const serial = yield* Semaphore.make(1);
-    /** Whom HQ names the owner now; read inside `serial`, so a move applies after it. */
-    const ownerNow = own?.owner?.owner ?? Effect.succeed<MateOwner>(undefined);
+    /** Whom HQ lets open a Chief now; read inside `serial`, so a move applies after it. */
+    const openerNow = own?.opener?.opener ?? Effect.succeed<ChiefOpener>(undefined);
 
     const readOnce = (from: NonNullable<typeof own>) =>
       Effect.gen(function* () {
@@ -337,10 +338,10 @@ export const make = (own?: {
           }),
         );
         if (read.kind !== "read") return;
-        const owner = yield* ownerNow;
+        const opener = yield* openerNow;
         const [, after] = yield* update((_, nowMs) => ({
           rows: read,
-          own: ownAccessList(from.projectId, read, nowMs, owner),
+          own: ownAccessList(from.projectId, read, nowMs, opener),
         }));
         if (after.own === undefined) return;
         yield* report(after, after.own.readAtMs);
@@ -354,31 +355,31 @@ export const make = (own?: {
     const appliedFrame = (from: NonNullable<typeof own>, frame: AccessFrame) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
-        const owner = yield* ownerNow;
+        const opener = yield* openerNow;
         const [before, after] = yield* update((current) => {
           if (current.rows === undefined || current.own === undefined) return current;
           const rows = applyAccessFrame(current.rows, frame);
           return rows === current.rows
             ? current
-            : { rows, own: ownAccessList(from.projectId, rows, current.own.readAtMs, owner) };
+            : { rows, own: ownAccessList(from.projectId, rows, current.own.readAtMs, opener) };
         });
         if (after !== before) yield* report(after, now);
       }).pipe(serial.withPermits(1));
 
     /**
-     * The list over the same rows once HQ names another owner, holding from the read it builds on;
-     * reported only when it changes whom it opens for (a Chief's).
+     * The list over the same rows once HQ names another opener, holding from the read it builds
+     * on; reported only when it changes whom it opens for (a Chief's).
      */
-    const ownerMoved = (from: NonNullable<typeof own>) =>
+    const openerMoved = (from: NonNullable<typeof own>) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
-        const owner = yield* ownerNow;
+        const opener = yield* openerNow;
         const [before, after] = yield* update((current) =>
           current.rows === undefined || current.own === undefined
             ? current
             : {
                 rows: current.rows,
-                own: ownAccessList(from.projectId, current.rows, current.own.readAtMs, owner),
+                own: ownAccessList(from.projectId, current.rows, current.own.readAtMs, opener),
               },
         );
         if (reachOf(before.own) !== reachOf(after.own)) yield* report(after, now);
@@ -433,8 +434,8 @@ export const make = (own?: {
       );
     }
 
-    if (own?.owner !== undefined) {
-      yield* Stream.runForEach(own.owner.changes, () => ownerMoved(own)).pipe(
+    if (own?.opener !== undefined) {
+      yield* Stream.runForEach(own.opener.changes, () => openerMoved(own)).pipe(
         Effect.forkScoped({ startImmediately: true }),
       );
     }
@@ -493,7 +494,7 @@ export const layer = (environment: Pick<ZeropsEnvironment, "apiBaseUrl" | "proje
       return yield* make({
         projectId: environment.projectId,
         read: (yield* ZeropsAccessRead).read,
-        owner: yield* ZeropsMateOwner,
+        opener: yield* ZeropsChiefOpener,
         live: (clientId) =>
           accessEvents({ ...environment, clientId, mateKey, connect: connectAccessSocket }).pipe(
             Stream.provideService(HttpClient.HttpClient, httpClient),

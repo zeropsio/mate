@@ -10,6 +10,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as Connections from "./ZeropsConnections.ts";
 import * as Access from "./ZeropsMateAccessList.ts";
+import * as ChiefOpener from "./ZeropsChiefOpener.ts";
 import * as Tickets from "./ZeropsTicketDoor.ts";
 import { type AccessLiveEvent, decodeAccessFrame } from "./ZeropsAccessSocket.ts";
 import { makeAccessScene, type SceneRoles, sceneRead } from "./testing/accessScene.ts";
@@ -51,6 +52,20 @@ const setupScene = (roles: SceneRoles) =>
     const scene = yield* makeAccessScene(roles);
     yield* TestClock.adjust(0);
     return { ...(yield* over(scene.list)), set: scene.set };
+  });
+/** The Mate's own list over a Chief project holding `roles`, opened for whom `chiefOpener` names. */
+const setupChief = (roles: SceneRoles) =>
+  Effect.gen(function* () {
+    const opener = yield* ChiefOpener.make;
+    const rig = yield* setupWith({
+      projectId: "P_MATE",
+      read: Effect.succeed(sceneRead(roles, ["chief"])),
+      opener,
+    });
+    yield* TestClock.adjust(0);
+    const chiefOpener = (userId: ChiefOpener.ChiefOpener) =>
+      opener.named(userId).pipe(Effect.andThen(TestClock.adjust(0)));
+    return { ...rig, chiefOpener };
   });
 const setupOwn = Effect.gen(function* () {
   const answer = yield* Ref.make(sceneRead({ jan: "OWNER", eva: "READ_ONLY" }));
@@ -111,45 +126,45 @@ describe("ZeropsConnections", () => {
     "A Chief registration narrows native grants and closes excluded connections, retaining its verdict across absent states",
     () =>
       Effect.gen(function* () {
-        const { connections, closed, open } = yield* setupScene({
+        const { connections, closed, open, chiefOpener } = yield* setupChief({
           jan: "OWNER",
           eva: "BASIC_USER",
           read: "READ_ONLY",
         });
+        yield* chiefOpener("jan");
         assert.isTrue(Option.isSome(yield* open("jan", "jan")));
-        assert.isTrue(Option.isSome(yield* open("eva", "eva")));
+        assert.isTrue(Option.isNone(yield* open("eva", "eva")));
         assert.strictEqual(
           yield* Effect.flatten(connections.ticket(ticket("issued", "jan"))),
           "open",
         );
-        yield* connections.chiefOpener("eva");
+        yield* chiefOpener("eva");
         assert.deepEqual(closed, ["jan"]);
-        assert.isTrue(Option.isSome(yield* connections.current("eva")));
+        assert.isTrue(Option.isSome(yield* open("eva-now", "eva")));
         assert.strictEqual(
           yield* Effect.flatten(connections.ticket(ticket("owner", "jan"))),
           "not_in_list",
         );
-        yield* connections.chiefOpener(undefined);
+        yield* chiefOpener(undefined);
         assert.strictEqual(
           yield* Effect.flatten(connections.ticket(ticket("still-owner", "jan"))),
           "not_in_list",
         );
-        yield* connections.chiefOpener("read");
+        yield* chiefOpener("read");
         assert.strictEqual(
           yield* Effect.flatten(connections.ticket(ticket("reader", "read"))),
           "read_only",
         );
-        yield* connections.chiefOpener("unknown");
+        yield* chiefOpener("unknown");
         assert.strictEqual(
           yield* Effect.flatten(connections.ticket(ticket("unknown", "unknown"))),
           "not_in_list",
         );
-        yield* connections.chiefOpener(null);
+        yield* chiefOpener(null);
         assert.strictEqual(
           yield* Effect.flatten(connections.ticket(ticket("nobody", "eva"))),
           "not_in_list",
         );
-        yield* connections.chiefOpener("jan");
         assert.isTrue(Option.isNone(yield* connections.admit({ ticket: "issued" }, Effect.void)));
       }).pipe(Effect.scoped),
   );
@@ -157,33 +172,36 @@ describe("ZeropsConnections", () => {
   it.effect("A Chief registration refuses a ticket waiting on a native access read", () =>
     Effect.gen(function* () {
       const readAnswers = yield* Deferred.make<void>();
+      const opener = yield* ChiefOpener.make;
       const { connections, tickets } = yield* setupWith({
         projectId: "P_MATE",
-        read: Deferred.await(readAnswers).pipe(Effect.as(sceneRead({ jan: "OWNER" }))),
+        read: Deferred.await(readAnswers).pipe(Effect.as(sceneRead({ jan: "OWNER" }, ["chief"]))),
+        opener,
       });
       const answer = yield* connections.ticket(ticket("pending", "jan"));
       const verdict = yield* Effect.forkChild(answer);
-      yield* connections.chiefOpener("eva");
-      yield* connections.chiefOpener("jan");
+      yield* opener.named("eva");
       yield* Deferred.succeed(readAnswers, undefined);
       assert.strictEqual(yield* Fiber.join(verdict), "not_in_list");
       assert.isTrue(Option.isNone(yield* tickets.consume({ ticket: "pending" })));
     }).pipe(Effect.scoped),
   );
 
-  it.effect("A registered opener still needs the tagged Chief project's native owner grant", () =>
+  it.effect("A registered opener still needs the tagged Chief project's native grant", () =>
     Effect.gen(function* () {
-      const rows = sceneRead({ jan: "OWNER", eva: "BASIC_USER" });
+      const rows = sceneRead({ jan: "OWNER", eva: "NO_ACCESS" });
       if (rows.kind !== "read") return yield* Effect.die("expected rows");
+      const opener = yield* ChiefOpener.make;
       const { connections } = yield* setupWith({
         projectId: "P_MATE",
         read: Effect.succeed({
           ...rows,
           project: { ...rows.project, tagList: ["chief"], overrides: { "cu-jan": "OWNER" } },
         }),
+        opener,
       });
       yield* TestClock.adjust(0);
-      yield* connections.chiefOpener("eva");
+      yield* opener.named("eva");
       assert.strictEqual(
         yield* Effect.flatten(connections.ticket(ticket("eva", "eva"))),
         "not_in_list",
@@ -192,7 +210,8 @@ describe("ZeropsConnections", () => {
         yield* Effect.flatten(connections.ticket(ticket("jan", "jan"))),
         "not_in_list",
       );
-      yield* connections.chiefOpener("jan");
+      yield* opener.named("jan");
+      yield* TestClock.adjust(0);
       assert.strictEqual(yield* Effect.flatten(connections.ticket(ticket("owner", "jan"))), "open");
     }).pipe(Effect.scoped),
   );

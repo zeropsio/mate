@@ -74,7 +74,7 @@ describe("ownAccessList", () => {
     ["no OWNER override", {}],
     ["an active OWNER-override holder", { "cu-ada": "OWNER" }],
   ])(
-    "A Chief admits nobody while HQ names no owner, whatever its overrides say: %s",
+    "A Chief admits nobody while HQ names no opener, whatever its overrides say: %s",
     (_name, overrides) => {
       const input = read(
         [person("ada", "ADMIN"), person("ben", "NO_ACCESS", "WAITING_AUTHORIZATION")],
