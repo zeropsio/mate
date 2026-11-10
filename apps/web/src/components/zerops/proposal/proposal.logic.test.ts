@@ -575,12 +575,12 @@ describe("proposalWhere", () => {
     [
       "a project value is every app's",
       { ...envProposal("project", "A"), projectName: "Contoso" },
-      "Every app in Contoso",
+      "Shared vault in Contoso",
     ],
     [
       "a service's value is its own",
       { ...envProposal("service", "A"), projectName: "Contoso", serviceName: "api" },
-      "api's own · Contoso",
+      "api vault · Contoso",
     ],
     ["a domain names the service and the web port it points at", domain, "→ medusa · port 9000"],
     [

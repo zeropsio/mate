@@ -13,6 +13,7 @@ import type {
   VaultWrite,
 } from "@t3tools/client-runtime/data";
 import {
+  ChevronDownIcon,
   CheckIcon,
   CopyIcon,
   DicesIcon,
@@ -156,7 +157,7 @@ export function VaultRow(props: VaultRowProps) {
     >
       <button
         aria-expanded={open}
-        className="flex h-11 w-full items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        className="flex h-11 w-full cursor-pointer items-center gap-3 px-3.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         onClick={props.onToggle}
         type="button"
       >
@@ -197,6 +198,11 @@ export function VaultRow(props: VaultRowProps) {
             <VaultShown show={showOf(value)} />
           )}
         </span>
+        {/* Every value opens in place: the same mark the folded services wear says so. */}
+        <ChevronDownIcon
+          aria-hidden="true"
+          className="vault-chevron size-4 shrink-0 text-muted-foreground"
+        />
       </button>
       {activity.kind === "settled" && activity.line !== null && !open ? (
         <p
