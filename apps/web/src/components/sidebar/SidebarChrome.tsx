@@ -25,7 +25,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarTrigger,
   useSidebar,
 } from "../ui/sidebar";
 import {
@@ -77,7 +76,8 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
         isElectron && "drag-region",
       )}
     >
-      <SidebarTrigger className="md:hidden" />
+      {/* The phone's sheet has no toggle of its own up here: the bar is the Chief's and the
+          squares', whole. A tap beside the sheet, a swipe, or the foot's toggle closes it. */}
       {brand === undefined ? (
         <>
           <SidebarBrand />
@@ -96,7 +96,7 @@ export const SidebarChromeHeader = memo(function SidebarChromeHeader({
           {brand}
           {status === undefined && actions === undefined ? null : (
             <div
-              className="menu-top-squares flex items-center justify-end gap-1 md:pe-4"
+              className="menu-top-squares flex items-center justify-end gap-1 pe-4"
               data-zerops-surface="sidebar-top-actions"
             >
               {status}

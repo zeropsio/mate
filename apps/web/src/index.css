@@ -5406,6 +5406,20 @@ code {
   opacity: 0.45;
 }
 
+/* Under a finger nothing hovers, so a row's verbs stand at rest: only its ···, at the end of the
+   line under the name, where the time above it keeps its place. The project's page and its
+   addresses are in that menu ("Open project", "Addresses"), so their own doors step aside, and
+   the line stops short of the ···. */
+@media (pointer: coarse) {
+  .menu-row-verbs > :is([data-zerops-surface="sidebar-project-page"], .zerops-sites-globe) {
+    display: none;
+  }
+
+  .menu-row-box:has(> .menu-row-verbs) .menu-line2:not(.menu-line2 .menu-line2) {
+    padding-inline-end: 32px;
+  }
+}
+
 /* The environment tag: the row's tags' metrics (22 px, 12/16 · 500, radius 7), its dot before
    its word. Red and amber on their status grounds; moving on the quiet card ground the Review
    tag wears; landed on the ok ground. */
@@ -6014,6 +6028,9 @@ code {
      `!important` over the header's top-bar height utility. */
   [data-slot="sidebar-header"]:has(.menu-top) {
     height: auto !important;
+    /* The Chief's row and the squares bring their own insets at every width; the phone sheet's
+       gutter is the bare mark's. */
+    padding-inline: 0 !important;
   }
 
   /* The Chief (`SidebarChiefRow`): a Mate row's measure in the bar — its mark on the faces' column,
@@ -6165,6 +6182,13 @@ code {
 
   .menu-chief-name-noun {
     flex: none;
+  }
+
+  /* In a phone's sheet the room left of the noun would hold two letters of the name: none of it. */
+  @container sidebar-header (max-width: 380px) {
+    .menu-chief-name-head {
+      display: none;
+    }
   }
 
   /* One line, never two: what does not fit ends in an ellipsis. */

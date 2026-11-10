@@ -2765,7 +2765,7 @@ function GroupRowWords<T extends RosterCandidate>({
       badges={<ProjectNameMarks />}
       meta={
         <span
-          className="relative flex h-5.5 min-w-16 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:opacity-0"
+          className="relative flex h-5.5 min-w-16 items-center justify-end transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0 pointer-coarse:min-w-0"
           data-menu-time-box=""
         >
           <span className="flex items-center" data-menu-time="">
@@ -3035,7 +3035,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
           </span>
         ) : null}
         <span
-          className="absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100"
+          className="menu-row-verbs absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:top-auto pointer-coarse:bottom-2 pointer-coarse:opacity-100"
           data-row-control=""
           data-zerops-surface="sidebar-project-actions"
         >
@@ -3146,7 +3146,7 @@ function ProjectBareRow({
           </span>
         ) : null}
         <span
-          className="absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100"
+          className="menu-row-verbs absolute top-2 end-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:top-auto pointer-coarse:bottom-2 pointer-coarse:opacity-100"
           data-row-control=""
           data-zerops-surface="sidebar-project-actions"
         >
@@ -4200,8 +4200,10 @@ function MateRowView<T extends RosterCandidate>({
         meta={
           <span
             className={cn(
-              "relative flex h-5.5 shrink-0 items-center justify-end",
-              project === undefined ? "min-w-11" : "min-w-16 pointer-coarse:opacity-0",
+              // The room the row's verbs take on hover; under a finger they stand on the line
+              // below, and the name has it.
+              "relative flex h-5.5 shrink-0 items-center justify-end pointer-coarse:min-w-0",
+              project === undefined ? "min-w-11" : "min-w-16",
               menuShown &&
                 "transition-opacity group-any-hover/mate:opacity-0 group-has-[:focus-visible]/mate:opacity-0 group-has-[[data-popup-open]]/mate:opacity-0",
               armed && "opacity-0",
@@ -4274,10 +4276,11 @@ function MateRowView<T extends RosterCandidate>({
       {!menuShown && globe === undefined ? null : (
         <span
           className={cn(
-            "absolute top-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
+            "menu-row-verbs absolute top-2 flex h-7 items-center opacity-0 transition-opacity group-any-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100",
             "end-2",
-            // A finger never hovers: a project's row holds its verbs where its time stood.
-            project !== undefined && "pointer-coarse:opacity-100",
+            // A finger never hovers: the time keeps its place and the row's ··· stands at the end
+            // of the line under it (`.menu-row-verbs`).
+            "pointer-coarse:top-auto pointer-coarse:bottom-2 pointer-coarse:opacity-100",
             armed && "opacity-100",
           )}
           data-row-control=""
