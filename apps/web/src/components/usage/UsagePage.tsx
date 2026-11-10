@@ -685,7 +685,7 @@ export function UsagePage({
                                   <span className="truncate">
                                     {PROVIDER_PRESENTATION[provider].label}
                                   </span>
-                                  <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground tabular-nums">
+                                  <span className="shrink-0 whitespace-nowrap text-2xs text-muted-foreground tabular-nums max-sm:text-xs">
                                     {sessionLabel}
                                   </span>
                                 </span>

@@ -1278,7 +1278,7 @@ function LimitsFields({
   return (
     // On a phone the two fields share the row's width, each beside its own label; Save wraps under.
     <div className="flex items-center gap-2 max-sm:w-full max-sm:flex-wrap">
-      <span className="flex items-center gap-2 max-sm:flex-1">
+      <span className="flex items-center gap-2 whitespace-nowrap max-sm:flex-1">
         <Label htmlFor={minutesId}>Minutes</Label>
         <div className="w-16 max-sm:w-auto max-sm:min-w-12 max-sm:flex-1">
           <Input
@@ -1292,7 +1292,7 @@ function LimitsFields({
           />
         </div>
       </span>
-      <span className="flex items-center gap-2 max-sm:flex-1">
+      <span className="flex items-center gap-2 whitespace-nowrap max-sm:flex-1">
         <Label htmlFor={costId}>Cost, USD</Label>
         <div className="w-24 max-sm:w-auto max-sm:min-w-16 max-sm:flex-1">
           <Input
