@@ -339,8 +339,8 @@ function ViewDeploy({
 }
 
 /**
- * The place's addresses, its own domains first and the platform's subdomains after them, muted;
- * each with the service it reaches. Then the services that serve and answer to nobody, each with
+ * The place's addresses, its own domains first and the platform's subdomains after them, all in
+ * one weight (the place's line already names its first); each with the service it reaches. Then the services that serve and answer to nobody, each with
  * *Open to the internet* where the person may; else, where nothing answers from outside, that.
  */
 export function PlaceAddressCard({
@@ -393,13 +393,8 @@ export function PlaceAddressCard({
             rel="noreferrer"
             target="_blank"
           >
-            <span
-              className={
-                subdomain
-                  ? "flex max-w-full min-w-0 items-center gap-1 text-body text-muted-foreground group-hover:text-foreground"
-                  : "flex max-w-full min-w-0 items-center gap-1 text-sm text-foreground"
-              }
-            >
+            {/* Every address in one weight: the place's own line already names its first. */}
+            <span className="flex max-w-full min-w-0 items-center gap-1 text-body text-muted-foreground group-hover:text-foreground">
               <MiddleTruncate value={route.host} />
               <ArrowUpRightIcon aria-hidden="true" className="size-3.5 shrink-0" />
             </span>

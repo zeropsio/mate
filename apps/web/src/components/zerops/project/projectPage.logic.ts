@@ -2,11 +2,12 @@
  * What a project's page says, from the reads its overview card already takes: its recent changes,
  * what the live release brought, and every address it serves at. Pure: no React.
  */
-import type {
-  EnvironmentSlotRow,
-  FlowPullRequest,
-  GroupFlow,
-  GroupFlowAddress,
+import {
+  isPlatformSubdomain,
+  type EnvironmentSlotRow,
+  type FlowPullRequest,
+  type GroupFlow,
+  type GroupFlowAddress,
 } from "@t3tools/client-runtime/zerops";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
@@ -133,18 +134,24 @@ export interface PageAddress extends GroupFlowAddress {
   readonly place: string;
 }
 
-/** Every address the project's places serve at, production first, each once. */
+/**
+ * Every address the project's places serve at, each once: production's first, and within a place
+ * its own domains before the platform's subdomains.
+ */
 export function pageAddresses(lines: ReadonlyArray<PlaceLine>): ReadonlyArray<PageAddress> {
   const seen = new Set<string>();
-  return linesProductionFirst(lines).flatMap((line) =>
-    line.nothingDeployed === true
-      ? []
-      : line.addresses.flatMap((address) => {
-          if (seen.has(address.url)) return [];
-          seen.add(address.url);
-          return [{ ...address, host: hostOf(address.url), place: placeLabel(line) }];
-        }),
-  );
+  return linesProductionFirst(lines).flatMap((line) => {
+    if (line.nothingDeployed === true) return [];
+    const served = line.addresses.flatMap((address) => {
+      if (seen.has(address.url)) return [];
+      seen.add(address.url);
+      return [{ ...address, host: hostOf(address.url), place: placeLabel(line) }];
+    });
+    return [
+      ...served.filter((address) => !isPlatformSubdomain(address.host)),
+      ...served.filter((address) => isPlatformSubdomain(address.host)),
+    ];
+  });
 }
 
 function hostOf(url: string): string {
