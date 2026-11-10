@@ -9679,6 +9679,17 @@ button.ov-change {
   text-align: left;
   cursor: pointer;
 }
+/* A finger's 44 px on a row 28 px tall. */
+@media (pointer: coarse) {
+  .rv-fold-row {
+    position: relative;
+  }
+  .rv-fold-row::after {
+    position: absolute;
+    inset: -8px 0;
+    content: "";
+  }
+}
 .rv-fold-aside {
   font-size: 13px;
   font-weight: 400;
@@ -13215,6 +13226,12 @@ a.message-file:focus-visible {
 }
 .rv-say-box::placeholder {
   color: var(--muted-foreground);
+}
+/* A phone zooms the page into a field under 16 px. */
+@media (max-width: 39.999rem) {
+  .rv-say-box {
+    font-size: 16px;
+  }
 }
 .rv-say-comment,
 .rv-say-ask {
