@@ -177,23 +177,23 @@ describe("the one list", () => {
       ),
     );
     expect(listOf(view)).toEqual([
-      "Every app: Stripe secret key, API URL, Log level",
-      "mailpit: SMTP host",
+      "Shared vault: Stripe secret key, API URL, Log level",
+      "mailpit vault: SMTP host",
       "made: db",
     ]);
   });
 
   it("leaves out a part that holds nothing", () => {
-    expect(listOf(viewOf([], [value("SMTP_HOST")]))).toEqual(["mailpit: SMTP host"]);
-    expect(listOf(viewOf([value("LOG_LEVEL")]))).toEqual(["Every app: Log level"]);
+    expect(listOf(viewOf([], [value("SMTP_HOST")]))).toEqual(["mailpit vault: SMTP host"]);
+    expect(listOf(viewOf([value("LOG_LEVEL")]))).toEqual(["Shared vault: Log level"]);
   });
 
   it("keeps what a search finds in every part, by name, key or value", () => {
     const view = withDb(
       viewOf([value("LOG_LEVEL", { value: "debug" }), value("API_URL")], [value("SMTP_HOST")]),
     );
-    expect(listOf(view, "debug")).toEqual(["Every app: Log level"]);
-    expect(listOf(view, "smtp")).toEqual(["mailpit: SMTP host"]);
+    expect(listOf(view, "debug")).toEqual(["Shared vault: Log level"]);
+    expect(listOf(view, "smtp")).toEqual(["mailpit vault: SMTP host"]);
     expect(listOf(view, "db")).toEqual(["made: db"]);
   });
 });

@@ -31,7 +31,7 @@ import {
   notLiveLine,
   notLiveTarget,
   refusalWords,
-  scopeName,
+  vaultName,
   vaultRowKey,
 } from "./vault.logic";
 import { VaultAddCard, VaultReview, VaultTextEditor } from "./VaultEditors";
@@ -316,7 +316,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
               }}
             >
               <TextIcon />
-              {scopeName(scope)} as text
+              {vaultName(scope)} as text
             </MenuItem>
           ))}
         </MenuPopup>
@@ -482,7 +482,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                 ? undefined
                 : props.renderDeployConfig?.(section.scope.hostname)
             }
-            count={section.words ?? undefined}
+            count={section.words}
             data-vault-part={section.scope.id}
             key={section.scope.id}
             level={3}
@@ -508,7 +508,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                   >
                     <button
                       aria-expanded={open}
-                      className="flex h-11 w-full items-center gap-2 px-3.5 text-left text-line outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                      className="flex h-11 w-full cursor-pointer items-center gap-2 px-3.5 text-left text-line outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
                       onClick={() =>
                         setOpenMade((current) => {
                           const next = new Set(current);

@@ -18,7 +18,7 @@ import {
   generateVaultValue,
   keyProblem,
   reviewLine,
-  scopeName,
+  vaultName,
   sensitiveWordIn,
 } from "./vault.logic";
 import {
@@ -66,20 +66,22 @@ export function VaultAddCard(props: VaultAddCardProps) {
   return (
     <div className="vault-card rounded-xl bg-card p-px" data-vault-add>
       <div className="flex items-center gap-1 px-3 pt-2 font-medium text-xs text-foreground">
-        New value for
+        New value in
         <Menu>
           <MenuTrigger
             render={
               <Button aria-label="Where it goes" size="sm" variant="ghost" className="-ml-0.5" />
             }
           >
-            {scope.hostname === null ? "every app" : `${scope.hostname} only`}
+            {vaultName(scope)}
             <ChevronDownIcon />
           </MenuTrigger>
           <MenuPopup align="start" className="min-w-44">
             {props.scopes.map((candidate) => (
               <MenuItem key={candidate.id} onClick={() => setScopeId(candidate.id)}>
-                {candidate.hostname === null ? "Every app" : `${candidate.hostname} only`}
+                {candidate.hostname === null
+                  ? `${vaultName(candidate)} · every app`
+                  : `${vaultName(candidate)} · only ${candidate.hostname}`}
               </MenuItem>
             ))}
           </MenuPopup>
@@ -240,7 +242,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
   return (
     <section className="grid gap-3 px-1 pt-1 pb-2" data-vault-text>
       <div className="flex items-center gap-2">
-        <span className="font-medium text-line">{scopeName(props.scope)}</span>
+        <span className="font-medium text-line">{vaultName(props.scope)}</span>
         <span className="text-xs text-muted-foreground">as text</span>
         <span className="grow" />
         <Button onClick={props.onCancel} size="sm" variant="ghost">
@@ -305,7 +307,7 @@ export function VaultReview(props: VaultReviewProps) {
     <section className="grid px-1 pt-1 pb-2" data-vault-review>
       <div className="flex items-center gap-2 pb-2">
         <span className="font-medium text-line">Review changes</span>
-        <span className="text-xs text-muted-foreground">{scopeName(props.scope)}</span>
+        <span className="text-xs text-muted-foreground">{vaultName(props.scope)}</span>
       </div>
       {lines.map(({ write, line }) => (
         <div

@@ -34,11 +34,25 @@ export function joinNames(names: ReadonlyArray<string>): string {
 
 const ref = (name: string) => `\${${name}}`;
 
-export const SHARED_NAME = "Every app";
+export const SHARED_NAME = "Shared vault";
 
-/** Every app, or the service's hostname. */
+/** Who a sentence is about: the shared vault, or the service by its hostname. */
 export function scopeName(scope: Pick<VaultScope, "hostname">): string {
   return scope.hostname ?? SHARED_NAME;
+}
+
+/**
+ * A part of the vault by its own name, as its heading and every door to it say it: "Shared vault",
+ * "bot vault". "Every app" alone read as a filter, not as the place the values are kept (the
+ * owner, 2026-11-10).
+ */
+export function vaultName(scope: Pick<VaultScope, "hostname">): string {
+  return scope.hostname === null ? SHARED_NAME : `${scope.hostname} vault`;
+}
+
+/** Who reads a part's values, said beside its name: "accessible to every app", "only bot can read". */
+export function vaultReaders(scope: Pick<VaultScope, "hostname">): string {
+  return scope.hostname === null ? "accessible to every app" : `only ${scope.hostname} can read`;
 }
 
 /** One row of one scope, for what is in flight or refused there: the scope's id and the key. */
