@@ -8612,6 +8612,8 @@ function ConversationView(props: ChatViewProps) {
             keybindings={keybindings}
             availableEditors={availableEditors}
             rightPanelOpen={rightPanelOpen}
+            terminalOpen={terminalUiState.terminalOpen}
+            onToggleTerminal={activeProject !== null ? toggleTerminalVisibility : undefined}
             gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onStartFresh={startFreshConversation}

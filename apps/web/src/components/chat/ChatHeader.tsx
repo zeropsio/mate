@@ -18,7 +18,14 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import { ArchiveIcon, ChevronDownIcon, EllipsisIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ChevronDownIcon,
+  EllipsisIcon,
+  LayoutDashboardIcon,
+  PanelBottomIcon,
+} from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   memo,
   useCallback,
@@ -76,7 +83,7 @@ import { useMateReadOnly } from "~/zerops/useMateReadOnly";
 import { useHqProjectPerson } from "~/zerops/useZeropsMateOwners";
 import { showWaitingAsk } from "../ask/askReveal";
 import { useOpenVaultAskDoor } from "../zerops/vault/VaultAskContainer";
-import { useIsMobile } from "~/hooks/useMediaQuery";
+import { useIsMobile, useMediaQuery } from "~/hooks/useMediaQuery";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/menu";
 
 interface ChatHeaderProps {
@@ -106,6 +113,12 @@ interface ChatHeaderProps {
   keybindings: ResolvedKeybindingsConfig;
   availableEditors: ReadonlyArray<EditorId>;
   rightPanelOpen: boolean;
+  /**
+   * The terminal drawer's toggle, where there is a terminal to open: on a phone the header's menu
+   * carries it, its own button gone from beside the panel's (`PanelLayoutControls`).
+   */
+  terminalOpen?: boolean;
+  onToggleTerminal?: (() => void) | undefined;
   gitCwd: string | null;
   onNewThreadInProject: () => void;
   /** Archives the Mate's conversation and opens a fresh one in its place. */
@@ -224,6 +237,8 @@ export const ChatHeader = memo(function ChatHeader({
   keybindings,
   availableEditors,
   rightPanelOpen,
+  terminalOpen = false,
+  onToggleTerminal,
   gitCwd,
   onNewThreadInProject,
   onStartFresh,
@@ -250,6 +265,12 @@ export const ChatHeader = memo(function ChatHeader({
     return () => observer.disconnect();
   }, []);
   const actionsCollapsed = isMobile || isNarrowHeader;
+  // A phone's header has room for the Mate, what waits on the person and one panel toggle: the
+  // terminal drawer's goes into the menu, as CSS takes its button out below the same width
+  // (`PanelLayoutControls`), and the project's page with it.
+  const phone = useMediaQuery("max-sm");
+  const terminalInMenu = phone && onToggleTerminal !== undefined;
+  const navigate = useNavigate();
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionsContainer] = useState(() => {
     const container = document.createElement("div");
@@ -534,7 +555,9 @@ export const ChatHeader = memo(function ChatHeader({
   const startsFresh = mate !== undefined && crewOrigin === null && !mateReadOnly;
   const projectActionsInMenu =
     actionsCollapsed && (showProjectScripts || showOpenInPicker || showGitActions);
-  const menuShown = startsFresh || projectActionsInMenu;
+  const projectPageInMenu = phone && projectPage?.kind === "page" ? projectPage : undefined;
+  const menuShown =
+    startsFresh || projectActionsInMenu || terminalInMenu || projectPageInMenu !== undefined;
   if (!menuShown && actionsOpen) setActionsOpen(false);
   // The chat's title as it is renamed: under a Mate — whose line says what the
   // chat is about only on hover — over the line from the Mate's name, on the
@@ -646,7 +669,7 @@ export const ChatHeader = memo(function ChatHeader({
     // A Chief's face is the product's own mark here as in its conversation.
     <MateFaceAsMark.Provider value={mate?.chief === true}>
       <div
-        className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3"
+        className="@container/header-actions flex min-w-0 flex-1 items-center gap-1 sm:gap-3"
         onContextMenu={handleHeaderContextMenu}
       >
         {lead === "reserved" ? (
@@ -794,15 +817,16 @@ export const ChatHeader = memo(function ChatHeader({
             // A Mate's header is a row of borderless buttons, 4 px apart like
             // the panel toggles beside it — held so while its Mate is not named yet.
             lead === "breadcrumb" ? "gap-2 @3xl/header-actions:gap-3" : "gap-1",
-            // Reserve two panel toggles (32px, 28px at sm) with their 4px gap and
+            // Reserve two panel toggles (28px at sm) with their 4px gap and
             // 1px edge inset, plus the gap the actions keep between themselves so
             // the terminal toggle does not sit against the last action. The page
-            // header adds 8px more right padding at sm.
+            // header adds 8px more right padding at sm. A phone shows the panel's
+            // toggle alone (32px): the terminal's is in the menu.
             rightPanelOpen
               ? "pr-0"
               : lead === "breadcrumb"
-                ? "pr-19.25 sm:pr-15.25 @3xl/header-actions:pr-16.25"
-                : "pr-18.25 sm:pr-14.25",
+                ? "pr-10.25 sm:pr-15.25 @3xl/header-actions:pr-16.25"
+                : "pr-9.25 sm:pr-14.25",
           )}
         >
           {/* The Mate's version and its update live with its body in the right
@@ -831,9 +855,38 @@ export const ChatHeader = memo(function ChatHeader({
             >
               <div ref={mountMenuActions} className="contents" />
               {createPortal(headerActions, actionsContainer)}
-              {startsFresh ? (
+              {projectPageInMenu !== undefined || terminalInMenu ? (
                 <>
                   {projectActionsInMenu ? <MenuSeparator /> : null}
+                  {projectPageInMenu === undefined ? null : (
+                    <MenuItem
+                      data-zerops-surface="header-project-page"
+                      onClick={() => {
+                        void navigate({
+                          to: "/group/$groupId/flow",
+                          params: { groupId: projectPageInMenu.groupId },
+                        });
+                      }}
+                    >
+                      <LayoutDashboardIcon />
+                      {projectPageInMenu.projectName === undefined
+                        ? "Open the project"
+                        : `Open ${projectPageInMenu.projectName}`}
+                    </MenuItem>
+                  )}
+                  {terminalInMenu ? (
+                    <MenuItem data-header-terminal onClick={onToggleTerminal}>
+                      <PanelBottomIcon />
+                      {terminalOpen ? "Hide terminal" : "Terminal"}
+                    </MenuItem>
+                  ) : null}
+                </>
+              ) : null}
+              {startsFresh ? (
+                <>
+                  {projectActionsInMenu || terminalInMenu || projectPageInMenu !== undefined ? (
+                    <MenuSeparator />
+                  ) : null}
                   <StartFreshMenuItem onStartFresh={onStartFresh} />
                 </>
               ) : null}
@@ -850,6 +903,7 @@ export const ChatHeader = memo(function ChatHeader({
               environmentId={activeThreadEnvironmentId}
               mateProjectId={mate?.projectId}
               page={projectPage}
+              projectInMenu={phone}
               sites={headerSites}
               threadId={activeThreadId}
             />
