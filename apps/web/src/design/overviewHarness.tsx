@@ -46,6 +46,7 @@ import { MateOwnerMark } from "~/components/zerops/MateOwnerMark";
 import { ownerMark } from "~/components/zerops/SidebarMateRow.logic";
 import { GitPullRequestIcon } from "lucide-react";
 import { CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
+import { MateCard } from "~/components/zerops/system/MateCard";
 import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
 import { PageHeader } from "~/components/zerops/system/PageHeader";
 import { PlaceLine } from "~/components/zerops/system/PlaceLine";
@@ -1323,10 +1324,17 @@ function HarnessPage() {
                       Review
                     </button>
                   );
+                // On its project's page a Mate is a card, from the same reading (`MateCard`).
+                const card = options.layout === "page-card";
+                const Drawn = card ? MateCard : MateRow;
                 return (
-                  <MateRow
+                  <Drawn
                     actions={
-                      reading.lift === undefined ? null : (
+                      reading.lift === undefined ? (
+                        card ? (
+                          review
+                        ) : null
+                      ) : (
                         <CardMateLiftActions
                           lift={reading.lift}
                           name={entry.name}
@@ -1344,10 +1352,10 @@ function HarnessPage() {
                     }
                     face={
                       <>
-                        <MateFace size={32} state={entry.face} tint={entry.tint} />
+                        <MateFace size={card ? 64 : 32} state={entry.face} tint={entry.tint} />
                         {mineOf(entry) ? null : (
                           <MateOwnerMark
-                            className="ov-mate-owner"
+                            className={card ? "mc-owner" : "ov-mate-owner"}
                             seat={{
                               kind: "person",
                               mark: ownerMark({
@@ -1362,7 +1370,12 @@ function HarnessPage() {
                     }
                     key={entry.id}
                     line={
-                      review === null ? undefined : (
+                      review === null ? undefined : card ? (
+                        <span className="mc-change" data-zerops-surface="card-mate-change">
+                          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+                          {reading.text}
+                        </span>
+                      ) : (
                         <span className="ov-mate-change" data-zerops-surface="card-mate-change">
                           <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
                           <span className="ov-mate-change-title">{reading.text}</span>

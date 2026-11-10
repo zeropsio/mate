@@ -127,6 +127,9 @@ export interface ComingBirthRow {
   readonly menu: ReactNode;
 }
 
+/** How a Mate is drawn where a surface lists it (`ZeropsProjectsFlowProps.renderMate`). */
+export type MateLayout = "card" | "row" | "page-card";
+
 export interface ZeropsProjectsFlowProps<T> {
   /** In the page's order. */
   readonly groups: ReadonlyArray<ProjectsFlowGroup<T>>;
@@ -142,13 +145,14 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly getKey: (item: T) => string;
   readonly isMate: (item: T) => boolean;
   /**
-   * A Mate — a `card` of its own among the containers no project holds, or a `row` on its
-   * project's card (`CardMate`), with its change waiting for review (`review`) where it has one.
+   * A Mate — a `card` of its own among the containers no project holds, a `row` on its project's
+   * overview card (`MateRow`), or a `page-card` in the grid of its project's own page (`MateCard`)
+   * — with its change waiting for review (`review`) where it has one.
    */
   readonly renderMate: (
     item: T,
     options: {
-      readonly layout: "card" | "row";
+      readonly layout: MateLayout;
       readonly parts: ReadonlyArray<MatePart>;
       readonly review?: FlowPullRequest | undefined;
       /**

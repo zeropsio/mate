@@ -7413,8 +7413,8 @@ a.ov-card-site:hover {
   outline-offset: 2px;
 }
 
-/* A row's end, past its words: a Mate still coming's ⋯, or on a page's list where its row leads.
-   A column of its own only on the rows that have one. */
+/* A row's end, past its words: a Mate still coming's ⋯. A column of its own only on the rows
+   that have one. */
 .ov-mate-end {
   position: relative;
   z-index: 1;
@@ -7423,42 +7423,6 @@ a.ov-card-site:hover {
   grid-column: 3;
   align-items: center;
   align-self: center;
-}
-
-/* Where the row leads is the row's own press: the pointer goes through to it. */
-.ov-mate-end:has(> .ov-go) {
-  pointer-events: none;
-}
-
-/* A page's list (`PageRows`): the row is as wide as the page's column, so its time stands after
-   its name, before its parts, and the row's end holds only where it leads. In a narrow column the
-   time keeps to the line's end. */
-.ov-mates-page {
-  container: mates / inline-size;
-}
-
-.ov-mate[data-page]:not([data-lift]):has(.ov-mate-open:focus-visible) {
-  background: var(--ov-hover);
-}
-
-@container mates (min-width: 720px) {
-  .ov-mate[data-page] .ov-mate-l1 {
-    align-items: baseline;
-  }
-
-  .ov-mate[data-page] .ov-mate-time {
-    margin-left: 0;
-    padding-left: 0;
-  }
-
-  .ov-mate[data-page] .ov-mate-time::before {
-    color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
-    content: "·";
-  }
-
-  .ov-mate[data-page] .ov-mate-parts {
-    order: 1;
-  }
 }
 
 /* A change's *Review* in its Mate's time place, as its menu row has it: quiet where a colleague's
@@ -8310,6 +8274,119 @@ a.ov-chip-who:focus-visible {
   color: var(--zerops-status-attention-text);
 }
 
+/* ---- A Mate's card on its project's page (`MateCard`): what only it needs of the face card. ---- */
+
+/* Its name with its mark after it: the name gives way, the mark never. */
+.mc-name {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  vertical-align: top;
+}
+
+.mc-name > :first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* When it last moved, under its name, with the menu's dot before it; its seat kept where a Mate
+   still coming has no time. */
+.mc-time {
+  display: inline-flex;
+  min-height: 16px;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Its owner's mark on the corner of its 64 px face, where it is a colleague's. */
+.mc-owner {
+  top: auto;
+  right: -3px;
+  bottom: -3px;
+  left: auto;
+  width: 22px;
+  height: 22px;
+  font-size: var(--text-caption);
+  box-shadow: 0 0 0 2px var(--ov-lift);
+}
+
+/* A change's mark before its title, on the line's own height. */
+.mc-change > .menu-change-mark {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+/* Its previews, then its verb, centred on one line of its foot while they fit. */
+.mc-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 6px;
+}
+
+.mc-foot > .ov-mate-parts {
+  display: contents;
+}
+
+/* The grid's last cell, the door that adds a Mate: a dashed slot, as the page's empty setups are. */
+.mc-add {
+  width: 100%;
+  background: none;
+  outline: 1px dashed color-mix(in oklab, var(--foreground) 16%, transparent);
+  outline-offset: -1px;
+  cursor: pointer;
+}
+
+.mc-add:hover:not(:disabled) {
+  background: var(--ov-hover);
+}
+
+.mc-add:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.mc-add:disabled {
+  cursor: default;
+}
+
+.mc-add > .tm-card-body {
+  align-content: center;
+}
+
+.mc-add-mark {
+  width: 64px;
+  height: 64px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+}
+
+.mc-add-mark > svg {
+  width: 24px;
+  height: 24px;
+}
+
+.mc-add:disabled .mc-add-mark,
+.mc-add:disabled .tm-card-name {
+  opacity: 0.55;
+}
+
+/* No Mate yet: the door alone is the section, as wide as the column. */
+.tm-cards > li[data-alone] {
+  grid-column: 1 / -1;
+}
+
 /* An address cut in its middle: the name before the @ gives way, the domain always shows. */
 .tm-address {
   display: inline-flex;
@@ -9015,9 +9092,7 @@ button.ov-change {
 }
 
 .ov-change:hover .ov-go,
-.ov-change:focus-visible .ov-go,
-.ov-mate:has(.ov-mate-open:hover) .ov-go,
-.ov-mate:has(.ov-mate-open:focus-visible) .ov-go {
+.ov-change:focus-visible .ov-go {
   opacity: 1;
 }
 

@@ -7,7 +7,7 @@
  * Production's state is its Places card's; *Review release* is its `NextRelease`'s.
  */
 import { useRouterState } from "@tanstack/react-router";
-import { FileIcon, GlobeIcon, PlusIcon } from "lucide-react";
+import { FileIcon, GlobeIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-runtime/zerops";
@@ -25,7 +25,6 @@ import { useUiStateStore } from "~/uiStateStore";
 import { Button } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
 import { ENVIRONMENT_NOT_ADDED } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
@@ -51,12 +50,10 @@ import {
   ChangeList,
   ChangeRow,
   changeRowLine,
-  ComingMateRow,
   lineChangeKey,
   NextRelease,
   nextReleaseView,
   PageHeader,
-  PageRows,
   PlaceLine,
   ProjectLine,
   projectLine,
@@ -68,6 +65,7 @@ import {
   type LineGroup,
   type NextReleaseView,
 } from "../system";
+import { AddMateCard, ComingMateCard, MateCards } from "../system/MateCard";
 import type { ReleaseOffer } from "../ZeropsReleaseVerb";
 import { placeVaultOf } from "../vault/placeVault.logic";
 import { PlaceDoors } from "../place/PlaceDoors";
@@ -168,10 +166,8 @@ export function ProjectPageBody<T>({
     <div className="pp" data-zerops-surface="project-page">
       <PageHeader
         actions={
-          <>
-            <AddMateButton onAdd={onAddMate} why={addMateWhy} />
-            {props.renderGroupMenu(entry, { page: true })}
-          </>
+          // *Add a Mate* is the Mates grid's last card: one door on the page.
+          props.renderGroupMenu(entry, { page: true })
         }
         placeholder={entry.placeholder}
         tag={
@@ -191,7 +187,9 @@ export function ProjectPageBody<T>({
           <ProjectWaits entry={entry} waits={waits} />
           <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
           <ProjectMates
+            addMateWhy={addMateWhy}
             entry={entry}
+            onAddMate={onAddMate}
             props={props}
             waiting={new Set(waits.map(({ wait }) => wait.mate.projectId))}
           />
@@ -248,34 +246,6 @@ export function ProjectPageBody<T>({
 function useOpenDetails() {
   const hash = useRouterState({ select: (state) => state.location.hash });
   return useState(() => ({ access: hash.startsWith("access-"), automation: false }));
-}
-
-function AddMateButton({
-  onAdd,
-  why,
-}: {
-  readonly onAdd: () => void;
-  readonly why: string | null;
-}) {
-  const button = (
-    <Button
-      data-zerops-surface="add-mate"
-      disabled={why !== null}
-      onClick={onAdd}
-      size="sm"
-      variant="secondary"
-    >
-      <PlusIcon aria-hidden="true" />
-      Add a Mate
-    </Button>
-  );
-  if (why === null) return button;
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<span />}>{button}</TooltipTrigger>
-      <TooltipPopup side="bottom">{why}</TooltipPopup>
-    </Tooltip>
-  );
 }
 
 const changeKey = lineChangeKey;
@@ -795,18 +765,25 @@ function Brought({
 }
 
 /**
- * Every Mate of the project, as the menu says each; what one waits on the person for is Waiting on
- * you's, so its row stays quiet. *Add a Mate* is the header's.
+ * Every Mate of the project as a card in a grid, drawn as the Team page draws people (`MateCard`),
+ * each saying what the menu says of it; what one waits on the person for is Waiting on you's, so
+ * its card stays quiet. The grid's last card is the page's one *Add a Mate*; with no Mate yet it is
+ * the whole section, saying so.
  */
 function ProjectMates<T>({
   entry,
   props,
   waiting,
+  addMateWhy,
+  onAddMate,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
-  /** The Mates whose wait on the person Waiting on you says: their rows stay quiet. */
+  /** The Mates whose wait on the person Waiting on you says: their cards stay quiet. */
   readonly waiting: ReadonlySet<string>;
+  /** Why the project takes no Mate now, known before the press. */
+  readonly addMateWhy: string | null;
+  readonly onAddMate: () => void;
 }) {
   const mates = matesOf(entry);
   const draw = (mate: FlowMateEntry<T>) =>
@@ -819,7 +796,7 @@ function ProjectMates<T>({
     ) : (
       <Fragment key={props.getKey(mate.item)}>
         {props.renderMate(mate.item, {
-          layout: "row",
+          layout: "page-card",
           parts: mate.mate.parts ?? [],
           quiet: waiting.has(mate.mate.projectId),
           // A change is offered for review only once the project's changes are read and known.
@@ -835,18 +812,24 @@ function ProjectMates<T>({
       <SectionLabel count={mates.length > 1 ? mates.length : undefined} id="pp-mates">
         Mates
       </SectionLabel>
-      <div className="pp-card pp-list ov-mates-page" role="list">
-        {mates.length === 0 ? (
-          <p className="pp-empty">No Mates yet. Add one to start work here.</p>
-        ) : (
-          <PageRows value>{mates.map(draw)}</PageRows>
-        )}
-      </div>
+      <MateCards>
+        {mates.map(draw)}
+        <AddMateCard
+          alone={mates.length === 0}
+          line={mates.length === 0 ? NO_MATES_YET : ADD_MATE_GIVES}
+          onAdd={onAddMate}
+          why={addMateWhy}
+        />
+      </MateCards>
     </section>
   );
 }
 
-/** A Mate being created: waking, named, how far its birth has got; its row opens the birth's page. */
+/** What the add card says of a Mate, under its words. */
+const ADD_MATE_GIVES = "Its own workspace and preview";
+const NO_MATES_YET = "No Mates yet. Add one to start work here.";
+
+/** A Mate being created: waking, named, how far its birth has got; its card opens the birth's page. */
 function ComingMate<T>({
   mate,
   birth,
@@ -855,8 +838,8 @@ function ComingMate<T>({
   readonly birth: ComingBirthRow | undefined;
 }) {
   return (
-    <ComingMateRow
-      face={<ComingMateFace coming={mate.coming} size={24} />}
+    <ComingMateCard
+      face={<ComingMateFace coming={mate.coming} size={64} />}
       line={birth?.line ?? comingMateLine(mate.coming)}
       menu={birth?.menu}
       name={mate.mate.name}
