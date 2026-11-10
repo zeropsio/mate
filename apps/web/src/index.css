@@ -8444,6 +8444,87 @@ a.ov-chip-who:focus-visible {
   text-align: center;
 }
 
+/* On a phone the team is rows, not cards: a 40 px face, the name with the role beside it, the
+   address under them, and the whole row one press. The search takes its own line under the
+   heading, sharing it with Invite. */
+@media (max-width: 39.999rem) {
+  [data-slot="section-header"]:has(.tm-team-search) {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+
+  [data-slot="section-header"] > span:has(> .tm-team-search) {
+    flex-basis: 100%;
+    gap: 8px;
+  }
+
+  .tm-team-search {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+
+  .tm-team .tm-cards {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin-inline: -12px;
+  }
+
+  .tm-team .tm-card {
+    border-radius: 12px;
+    background: transparent;
+    text-align: left;
+  }
+
+  .tm-team .tm-card-body {
+    grid-template-columns: 40px minmax(0, auto) minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 0;
+    justify-items: start;
+    align-content: center;
+    align-items: center;
+    min-height: 56px;
+    padding: 8px 12px;
+  }
+
+  .tm-team .tm-card-face {
+    grid-row: 1 / span 2;
+    align-self: start;
+    margin-bottom: 0;
+  }
+
+  .tm-team .tm-card-face > .person-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
+
+  .tm-team .tm-card-name {
+    grid-column: 2;
+  }
+
+  .tm-team .tm-card-badges {
+    grid-column: 3;
+    flex-wrap: nowrap;
+    margin: 0 0 0 -4px;
+  }
+
+  .tm-team .tm-badge {
+    font-size: var(--text-caption);
+    letter-spacing: 0.04em;
+  }
+
+  .tm-team .tm-card-mail {
+    grid-column: 2 / -1;
+  }
+
+  .tm-team .tm-card-foot {
+    justify-items: start;
+    margin-top: -4px;
+    padding: 0 12px 10px 64px;
+  }
+}
+
 /* A person's page and the invitation start where the team's own column does, so going in and
    back never moves the content sideways. */
 .tm-page {
