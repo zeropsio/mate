@@ -206,6 +206,78 @@ function SidebarProvider({
   );
 }
 
+/**
+ * A phone's sheet follows the finger that pushes it back to its edge, and closes when it is let go
+ * past a third of its width or flicked. An up-and-down drag is the list's scroll, never this.
+ */
+function useSheetSwipeClose(side: "left" | "right", onClose: () => void) {
+  const drag = React.useRef<{
+    id: number;
+    x: number;
+    y: number;
+    at: number;
+    taken: boolean;
+  } | null>(null);
+  return React.useMemo(() => {
+    const toEdge = side === "left" ? -1 : 1;
+    const touchOf = (touches: React.TouchList, id: number) =>
+      Array.from(touches).find((touch) => touch.identifier === id);
+    const finish = (event: React.TouchEvent<HTMLElement>, cancelled: boolean) => {
+      const current = drag.current;
+      drag.current = null;
+      if (current === null || !current.taken) return;
+      const sheet = event.currentTarget;
+      const touch = touchOf(event.changedTouches, current.id);
+      const pushed = touch === undefined ? 0 : (touch.clientX - current.x) * toEdge;
+      const speed = pushed / Math.max(1, event.timeStamp - current.at);
+      // Back on the sheet's own transition from here, wherever the finger left it.
+      sheet.style.transition = "";
+      if (!cancelled && (pushed > sheet.offsetWidth / 3 || (pushed > 24 && speed > 0.5))) {
+        sheet.style.translate = `${toEdge * 100}% 0`;
+        onClose();
+        return;
+      }
+      sheet.style.translate = "";
+    };
+    return {
+      onTouchStart: (event: React.TouchEvent<HTMLElement>) => {
+        const touch = event.touches.length === 1 ? event.touches[0] : undefined;
+        drag.current =
+          touch === undefined
+            ? null
+            : {
+                id: touch.identifier,
+                x: touch.clientX,
+                y: touch.clientY,
+                at: event.timeStamp,
+                taken: false,
+              };
+      },
+      onTouchMove: (event: React.TouchEvent<HTMLElement>) => {
+        const current = drag.current;
+        if (current === null) return;
+        const touch = touchOf(event.touches, current.id);
+        if (touch === undefined) return;
+        const pushed = (touch.clientX - current.x) * toEdge;
+        const across = Math.abs(touch.clientY - current.y);
+        if (!current.taken) {
+          if (across > 10 && across > pushed) {
+            drag.current = null;
+            return;
+          }
+          if (pushed < 10 || pushed < across * 1.5) return;
+          current.taken = true;
+        }
+        const sheet = event.currentTarget;
+        sheet.style.transition = "none";
+        sheet.style.translate = `${toEdge * Math.max(0, pushed)}px 0`;
+      },
+      onTouchEnd: (event: React.TouchEvent<HTMLElement>) => finish(event, false),
+      onTouchCancel: (event: React.TouchEvent<HTMLElement>) => finish(event, true),
+    };
+  }, [onClose, side]);
+}
+
 function Sidebar({
   side = "left",
   variant = "sidebar",
@@ -245,6 +317,8 @@ function Sidebar({
     () => ({ side, resizable: resolvedResizable }),
     [resolvedResizable, side],
   );
+  const closeMobile = React.useCallback(() => setOpenMobile(false), [setOpenMobile]);
+  const swipeClose = useSheetSwipeClose(side, closeMobile);
 
   if (collapsible === "none") {
     return (
@@ -272,7 +346,9 @@ function Sidebar({
               // The sheet is portalled out of the wrapper, so it restates the
               // phone's control size: its toggle stands where the closed
               // one did, the same size.
-              "w-(--sidebar-width) max-w-none bg-sidebar surface-grain p-0 text-sidebar-foreground max-sm:[--workspace-titlebar-control-size:--spacing(8)]",
+              // Up-and-down pans stay the browser's (the list scrolls); a sideways push is the
+              // sheet's own (`useSheetSwipeClose`).
+              "w-(--sidebar-width) max-w-none touch-pan-y bg-sidebar surface-grain p-0 text-sidebar-foreground max-sm:[--workspace-titlebar-control-size:--spacing(8)]",
               className,
             )}
             data-mobile="true"
@@ -285,6 +361,7 @@ function Sidebar({
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
               } as React.CSSProperties
             }
+            {...swipeClose}
           >
             <SheetHeader className="sr-only">
               <SheetTitle>Sidebar</SheetTitle>
