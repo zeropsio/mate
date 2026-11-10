@@ -8850,6 +8850,18 @@ label.tm-advanced-row:not([data-disabled]) {
   cursor: pointer;
 }
 
+/* On a phone a level is a finger's target: the row's whole height, not its 18 px word. */
+@media (max-width: 39.999rem) {
+  .tm-pick-row {
+    min-height: 44px;
+    padding-block: 0;
+  }
+
+  .tm-pick-level {
+    min-height: 44px;
+  }
+}
+
 .tm-rule {
   height: 1px;
   background: var(--ov-rule);
@@ -14018,7 +14030,7 @@ a.message-file:focus-visible {
   }
 
   /* The desktop's 10 and 11 px notes (a count, a table's head, a sample's label) are 12 px here. */
-  [data-settings-page-scroll] :is(.text-2xs, .text-3xs) {
+  [data-settings-page-scroll] :is(.text-2xs, .text-3xs, .text-\[10px\], .text-\[11px\]) {
     font-size: var(--text-caption);
   }
 }

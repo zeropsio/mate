@@ -32,7 +32,7 @@ const DIALOG_MOBILE_SHEET_CLASS =
  * neighbours never share a finger's 44 px, and the last one stands clear of the home indicator.
  */
 const DIALOG_MOBILE_FOOTER_CLASS =
-  "max-sm:pb-[max(--spacing(4),env(safe-area-inset-bottom))] max-sm:[&>[data-slot=button]]:min-h-10";
+  "max-sm:pb-[max(--spacing(4),env(safe-area-inset-bottom))] max-sm:[&>:is(button,a)]:min-h-10";
 
 export {
   DIALOG_BACKDROP_CLASS,
