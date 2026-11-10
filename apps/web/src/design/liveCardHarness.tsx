@@ -16,7 +16,11 @@
  *   the card's edges move — a thought growing line by line, a call taking its
  *   place, a command whose body arrives seconds after its pill, then the same
  *   once the card stands at its full height; `ten` ten quick calls of every
- *   kind inside two seconds, then calm; `send` a conversation at its end
+ *   kind inside two seconds, then calm; `board` the approved board's run
+ *   (a ledger of thoughts, commands, a tool and what the Mate said, a command
+ *   of six lines running at 13 s to 17.5 s, one of fifteen to open at 22 s);
+ *   `reads` ten reads inside two seconds between two thoughts, the board's
+ *   burst; `send` a conversation at its end
  *   under a finished run, the person's message sent a second in (`?draft=<px>`
  *   for a draft that tall, which the composer gives back as it goes; `?ack=<s>`
  *   for how long the card stands on its head alone; `?short` for a
@@ -142,6 +146,14 @@ type Item =
       readonly answer: string;
     }
   | { readonly id: string; readonly kind: "note"; readonly start: number; readonly text: string }
+  | {
+      /** A tool called by its name: neither a file's nor a command. */
+      readonly id: string;
+      readonly kind: "tool";
+      readonly start: number;
+      readonly end: number;
+      readonly tool: string;
+    }
   | {
       readonly id: string;
       readonly kind: "deploy" | "standup";
@@ -572,9 +584,172 @@ const SEND: Run = {
   answer: ANSWER,
 };
 
+/**
+ * The approved board's run ("one quiet log, one loud now"): a thought, a
+ * command, a thought, three quick commands, a tool, what the Mate says, a
+ * thought, a command — then a command of six lines that runs from 13 s to
+ * 17.5 s (`?at=17&speed=0.0001` stands on it), two edits, a command of
+ * fifteen lines to open, and a long thought before the answer.
+ */
+const BOARD_THOUGHT_ROUTE =
+  "The shop keeps one route file per page and a loader beside it. A status page fits the same pattern, so nothing new has to be invented: one route, one loader, one entry in the footer's list of links, and the tests that go with them.";
+const BOARD_THOUGHT_TESTS =
+  "The tests pin the route's shape, so the page should read it through the same loader the other pages use. That keeps one place to change if a fourth check is ever added, and the page's own test stays small.";
+const BOARD_THOUGHT_ROWS =
+  "The status route reports three checks: orders, payments and the catalogue. The page can show one row for each with the time of its last check, and say in plain words when one of them is failing instead of printing a code.";
+const BOARD_THOUGHT_FOOTER =
+  "The footer test counted three links and the page adds a fourth, so two of the status tests still expect the old footer. I'm updating them to expect four links rather than loosening the check, so a link that goes missing later still fails. The page's own test passes with the three rows. After that I'll open the page once with real data, to see orders, payments and the catalogue each say when they were last checked, and then open the change for you to review.";
+const BOARD_READ = [
+  "for f in src/routes/status.ts src/routes/status.test.ts; do",
+  `  echo "== $f"; sed -n '1,120p' "$f"`,
+  "done",
+  'grep -rn "statusRoute\\|lastChecked" src \\',
+  "  --include='*.ts' --include='*.tsx' | head -20",
+  "sed -n '1,40p' src/routes/index.ts",
+].join("\n");
+const BOARD_ADD = [
+  "python3 - <<'EOF'",
+  "import re",
+  "p = 'src/components/Footer.tsx'",
+  "s = open(p).read()",
+  "s = s.replace(",
+  `    '<a href="/contact">Contact</a>',`,
+  String.raw`    '<a href="/contact">Contact</a>\n      <a href="/status">Status</a>',`,
+  ")",
+  "open(p, 'w').write(s)",
+  "",
+  `page = """`,
+  'import { Card } from "../components/Card";',
+  `"""`,
+  "open('src/pages/status.tsx', 'w').write(page)",
+  "EOF",
+].join("\n");
+const BOARD: Run = {
+  ask: "Add a status page to Tea Shop, linked from the footer.",
+  items: [
+    { id: "t1", kind: "thought", start: 0.3, end: 2.3, text: BOARD_THOUGHT_ROUTE },
+    {
+      id: "c1",
+      kind: "command",
+      start: 2.5,
+      end: 4.5,
+      words: "Find where the shop's pages are routed",
+      code: String.raw`grep -rn "createRoute\|path:" src/routes src/pages | head -40`,
+    },
+    { id: "t2", kind: "thought", start: 4.7, end: 6.2, text: BOARD_THOUGHT_TESTS },
+    ...(["routes", "pages", "loaders"] as const).map((name, index): Item => ({
+      id: `g${index}`,
+      kind: "command",
+      start: 6.4 + index * 0.3,
+      end: 6.6 + index * 0.3,
+      words: `Count the ${name}`,
+      code: `ls src/${name} | wc -l`,
+    })),
+    { id: "w1", kind: "tool", start: 7.6, end: 9.6, tool: "zerops_workflow" },
+    {
+      id: "n1",
+      kind: "note",
+      start: 9.8,
+      text: "The shop already has a status route, so I'm building the page on it.",
+    },
+    { id: "t3", kind: "thought", start: 10, end: 11.5, text: BOARD_THOUGHT_ROWS },
+    {
+      id: "c2",
+      kind: "command",
+      start: 11.7,
+      end: 12.9,
+      words: "List the components the page can reuse",
+      code: "ls src/components && sed -n '1,60p' src/components/Card.tsx src/components/Dot.tsx",
+    },
+    {
+      id: "c3",
+      kind: "command",
+      start: 13,
+      end: 17.5,
+      words: "Read the status route and its tests",
+      code: BOARD_READ,
+    },
+    { id: "t4", kind: "thought", start: 17.7, end: 19, text: BOARD_THOUGHT_TESTS },
+    { id: "e1", kind: "edit", start: 19.2, end: 20.4, name: "src/pages/status.tsx" },
+    { id: "e2", kind: "edit", start: 20.6, end: 21.8, name: "src/components/Footer.tsx" },
+    {
+      id: "c4",
+      kind: "command",
+      start: 22,
+      end: 28,
+      words: "Add the status page and link it from the footer",
+      code: BOARD_ADD,
+      output: "wrote src/pages/status.tsx\nupdated src/components/Footer.tsx",
+    },
+    { id: "w2", kind: "tool", start: 28.2, end: 30.2, tool: "zerops_workflow" },
+    {
+      id: "n2",
+      kind: "note",
+      start: 30.4,
+      text: "The page is in. I'm running the tests before I show it to you.",
+    },
+    { id: "t5", kind: "thought", start: 30.6, end: 36, text: BOARD_THOUGHT_FOOTER },
+  ],
+  write: 36.5,
+  end: 39,
+  answer:
+    "Tea Shop has a status page now, at `/status`, linked from the footer. It is ready for you to review.",
+};
+
+/**
+ * The board's burst: calm rows, a thought, then ten reads inside two seconds
+ * (5.2 s to 7.3 s), then a thought again — the log is to move once for the
+ * batch, the working row to stand one height through it.
+ */
+const READS_BEFORE =
+  "The page should look like the rest of the shop, so before writing anything I want the card and the dot the orders page already uses, the footer it will be linked from, the tokens for its colours, and the loaders that show how a page asks for its data. That is ten files. I'll read them in one go rather than one at a time, and then write the page against what they hold.";
+const READS_AFTER =
+  "Everything the page needs is in those ten files. The card takes a title and its rows, the dot takes a colour, and the orders loader shows the shape a page expects back. So the status page can be one card with three rows and a dot on each, read through a loader of its own, and the footer only gains a link. Nothing else in the shop has to change, which keeps the review small.";
+const READS: Run = {
+  ask: "Make the status page look like the rest of the shop.",
+  items: [
+    {
+      id: "c1",
+      kind: "command",
+      start: 0.2,
+      end: 1.4,
+      words: "List the components the page can reuse",
+      code: "ls src/components && sed -n '1,60p' src/components/Card.tsx src/components/Dot.tsx",
+    },
+    { id: "w1", kind: "tool", start: 1.5, end: 2.6, tool: "zerops_workflow" },
+    { id: "t1", kind: "thought", start: 2.7, end: 5, text: READS_BEFORE },
+    ...(
+      [
+        "src/routes/status.ts",
+        "src/routes/index.ts",
+        "src/components/Card.tsx",
+        "src/components/Dot.tsx",
+        "src/components/Footer.tsx",
+        "src/pages/orders.tsx",
+        "src/loaders/orders.ts",
+        "src/loaders/catalogue.ts",
+        "src/styles/tokens.css",
+        "src/pages/index.tsx",
+      ] as const
+    ).map((name, index): Item => ({
+      id: `r${index}`,
+      kind: "read",
+      start: 5.2 + index * 0.2,
+      end: 5.2 + index * 0.2 + 0.1 + (index % 3) * 0.1,
+      name,
+    })),
+    { id: "t2", kind: "thought", start: 7.6, end: 12, text: READS_AFTER },
+  ],
+  write: 12.5,
+  end: 14.5,
+  answer: "The status page uses the shop's own card and dot now.",
+};
+
 const RUN: Run =
   {
     main: MAIN,
+    board: BOARD,
+    reads: READS,
     burst: BURST,
     stale: STALE,
     band: BAND,
@@ -853,6 +1028,19 @@ function entriesAt(t: number): TimelineEntry[] {
       case "command":
         entries.push(callEntry(item, t));
         break;
+      case "tool": {
+        const returned = t >= item.end;
+        entries.push(
+          work(item.id, item.start, {
+            itemType: "dynamic_tool_call",
+            detail: `${item.tool}: {}`,
+            toolLifecycleStatus: returned ? "completed" : "inProgress",
+            sourceActivityKind: returned ? "tool.completed" : "tool.started",
+            ...(returned ? { updatedAt: iso(item.end) } : {}),
+          }),
+        );
+        break;
+      }
       case "note":
         entries.push(message(item.id, "assistant", item.start, item.text));
         break;

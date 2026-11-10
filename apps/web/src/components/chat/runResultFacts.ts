@@ -32,7 +32,12 @@ import { useThreadDetail } from "../../state/entities";
 import { useAppsChanges } from "../../zerops/projectFlows";
 import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import type { OutcomeModel } from "./conversation.logic";
-import { runEffortWords, type ResultChange, type ResultFacts } from "./runResult.logic";
+import {
+  runEffortFacts,
+  runEffortWords,
+  type ResultChange,
+  type ResultFacts,
+} from "./runResult.logic";
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 
 function resultChange(
@@ -233,4 +238,24 @@ export function useRunResultFacts(outcome: OutcomeModel | null | undefined): Res
  */
 export function useRunEffortWords(outcome: OutcomeModel | null | undefined): string | null {
   return runEffortWords(outcome, useRunResultFacts(outcome));
+}
+
+const NO_EFFORT_FACTS: ReturnType<typeof runEffortFacts> = { facts: [], rest: [] };
+
+/**
+ * The run's effort for its worked line, in its parts: the facts its closed
+ * line holds, the rest for its opened work's head, and all of it in words
+ * (`runEffortFacts`, `runEffortWords`).
+ */
+export function useRunEffort(
+  outcome: OutcomeModel | null | undefined,
+): ReturnType<typeof runEffortFacts> & { readonly words: string | null } {
+  const facts = useRunResultFacts(outcome);
+  return useMemo(
+    () =>
+      outcome === null || outcome === undefined
+        ? { ...NO_EFFORT_FACTS, words: null }
+        : { ...runEffortFacts(outcome, facts), words: runEffortWords(outcome, facts) },
+    [facts, outcome],
+  );
 }
