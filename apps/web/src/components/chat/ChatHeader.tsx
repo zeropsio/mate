@@ -68,6 +68,7 @@ import { HeaderReviewDoor } from "../zerops/SidebarProjectReview";
 import { headerReviewItems } from "../zerops/SidebarProjectReview.logic";
 import { useHeldBehindReview } from "~/zerops/heldBehindReview";
 import { useRightPanelStore } from "~/rightPanelStore";
+import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "~/rightPanelLayout";
 import { MateFaceAsMark } from "../zerops/primitives";
 import { ChatHeaderLinks } from "./ChatHeaderLinks";
 import { ConversationStrip, useMateWorks } from "./ConversationStrip";
@@ -345,10 +346,13 @@ export const ChatHeader = memo(function ChatHeader({
     [activeThreadEnvironmentId, activeThreadId],
   );
   const mateActivity = useZeropsThreadActivity(activeThreadRef);
-  // A Chief's conversation opens beside its organization's overview, until the person closes it.
+  // A Chief's conversation opens beside its organization's overview, until the person closes it:
+  // beside, never over. Where the panel is a sheet (a phone), it covers the conversation, so only
+  // the person opens it there.
   const chiefHere = mate?.chief === true && isServerThread;
   useEffect(() => {
     if (!chiefHere) return;
+    if (window.matchMedia(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY).matches) return;
     const panels = useRightPanelStore.getState();
     const key = scopedThreadKey(activeThreadRef);
     if (key in panels.byThreadKey) return;
