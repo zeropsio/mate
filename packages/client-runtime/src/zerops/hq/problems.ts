@@ -57,6 +57,19 @@ export function problemSaid(problem: HqProblem) {
   };
 }
 
+/**
+ * HQ's open findings that a service stop it asked for in this Zerops project is not confirmed. Each
+ * stands until HQ's next verdict on the same rollout replaces it; none says the service stopped.
+ */
+export function unverifiedStops(
+  problems: ReadonlyArray<HqProblem> | undefined,
+  projectId: string,
+): ReadonlyArray<HqProblem> {
+  return (problems ?? []).filter(
+    ({ code, where }) => code === "service_stop_unverified" && where.projectId === projectId,
+  );
+}
+
 /** The fix composer receives the same findings the person can read. */
 export function problemsFix(problems: ReadonlyArray<HqProblem>): ReviewFix | undefined {
   if (problems.length === 0) return undefined;
