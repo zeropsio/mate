@@ -351,7 +351,7 @@ interface LineInput {
   readonly releases: ReadonlyArray<ReturnType<typeof shipped>>;
   /** What the stage `main` feeds runs and is taking. */
   readonly stage?: CardStage;
-  readonly repos: ReadonlyArray<ReturnType<typeof lineRepo>>;
+  readonly repos: ReadonlyArray<ReturnType<typeof lineRepo> | (typeof KEPT_REPOS)[number]>;
   /** Why its last release did not go live, as production's page says it. */
   readonly cause?: string;
 }
@@ -422,9 +422,10 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
       onMain(31, "Sold-out labels on tea cards", "wren-b", 4 * DAY),
     ],
     stage: stageRuns(sha("c48"), [HEAD]),
+    // One copy on GitHub, behind and pushing; the other repository is kept in Mate alone.
     repos: [
       lineRepo("shop", "acme/tea-house", { syncedAt: null, divergedSince: null }),
-      lineRepo("api", "acme/tea-house-api", IN_SYNC),
+      { name: "api", mainHead: null, updatedAt: ago(4), remote: null },
     ],
   },
   // Three Mates, a release waiting: four merged since the live release, one on its way to the stage.
