@@ -6184,8 +6184,9 @@ code {
     flex: none;
   }
 
-  /* In a phone's sheet the room left of the noun would hold two letters of the name: none of it. */
-  @container sidebar-header (max-width: 380px) {
+  /* Where the room before the noun would hold two letters of the name (a phone's sheet), none of
+     it stands. */
+  @container sidebar-header (max-width: 350px) {
     .menu-chief-name-head {
       display: none;
     }
