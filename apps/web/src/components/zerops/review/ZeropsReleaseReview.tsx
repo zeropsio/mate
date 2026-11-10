@@ -721,7 +721,9 @@ function ReleaseData({
               },
       }}
       progress={progress}
-      started={{ at: follows.tagged?.taggedAt ?? pressedAt, by: startedBy }}
+      // The clock the press started keeps counting from the press: HQ tags a moment later, and
+      // counting from its tag would take seconds back under the person's eyes.
+      started={{ at: pressedAt ?? follows.tagged?.taggedAt, by: startedBy }}
       logOf={(service) => {
         const job = jobs.find((entry) => entry.service === service)?.job;
         const target = job === undefined ? undefined : deployLogTarget(job);
