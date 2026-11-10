@@ -50,7 +50,7 @@ import { nextReleaseTitle } from "../system/NextRelease.logic";
 import { ComingMateRow } from "../system/MateRow";
 import { PlaceLine } from "../system/PlaceLine";
 import { placeVaultOf, type PlaceVault } from "../vault/placeVault.logic";
-import { PlaceDoors } from "../place/PlaceDoors";
+import { PlaceDoors, usePlaceSitesDrawn } from "../place/PlaceDoors";
 import { placeSitesOf } from "../place/placeDoors.logic";
 import { SectionAction, SectionLabel } from "../system/SectionLabel";
 import type {
@@ -780,13 +780,15 @@ function CardPlace({
 }) {
   const vault = onVault === undefined ? undefined : placeVaultOf(line);
   const sites = placeSitesOf(line, groupId);
+  // Where its Sites door is drawn the line prints no address: the door opens every one of them.
+  const sitesDrawn = usePlaceSitesDrawn(groupId) && sites !== undefined;
   if (vault === undefined && sites === undefined)
     return <PlaceLine density="compact" groupId={groupId} line={line} />;
   return (
     // The line's box is the measure of its doors' words: a card's is too narrow for them.
     <div className="@container/place flex min-w-0 items-center gap-1">
       <div className="min-w-0 flex-1">
-        <PlaceLine density="compact" groupId={groupId} line={line} />
+        <PlaceLine density="compact" groupId={groupId} line={line} sites={sitesDrawn} />
       </div>
       <PlaceDoors
         name={placeLabel(line)}

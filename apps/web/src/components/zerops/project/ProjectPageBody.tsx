@@ -69,20 +69,19 @@ import {
 import { AddMateCard, ComingMateCard, MateCards } from "../system/MateCard";
 import type { ReleaseOffer } from "../ZeropsReleaseVerb";
 import { placeVaultOf } from "../vault/placeVault.logic";
-import { PlaceDoors } from "../place/PlaceDoors";
-import { placeSitesOf } from "../place/placeDoors.logic";
+import { PlaceDoors, ProjectSitesDoor, usePlaceSitesDrawn } from "../place/PlaceDoors";
+import { placeSitesOf, projectAnswers } from "../place/placeDoors.logic";
 import { StopLine } from "../ZeropsGroupDetail";
 import {
   BROUGHT_SHOWN,
   changeGroups,
   lineGroupOf,
   PAGE_CHANGES,
-  pageAddresses,
   linesProductionFirst,
   productionFirst,
   waitingChanges,
 } from "./projectPage.logic";
-import { SetupCard, SetupRow } from "./SetupCard";
+import { SetupCard } from "./SetupCard";
 
 /** What the page reads beyond the overview's group: the project's environments and its release. */
 export interface ProjectPageFacts {
@@ -134,7 +133,7 @@ export interface PlaceFix {
   readonly onAsk: () => void;
 }
 
-/** The side column's rows past Addresses, and the sections their *Manage* opens. */
+/** The side column's rows, and the sections their *Manage* opens. */
 export interface ProjectPageSetup {
   /** Code, Automation, Who has access and Spend, in that order; each given its *Manage*. */
   readonly rows: (open: {
@@ -175,7 +174,16 @@ export function ProjectPageBody<T>({
       <PageHeader
         actions={
           // *Add a Mate* is the Mates grid's last card: one door on the page.
-          props.renderGroupMenu(entry, { page: true })
+          <>
+            {/* Every address of the project, by where it runs: an address is reached through a
+                Sites door, the project's own here. */}
+            <ProjectSitesDoor
+              answers={projectAnswers(lines, flow.mates)}
+              groupId={group.groupId}
+              name={group.name}
+            />
+            {props.renderGroupMenu(entry, { page: true })}
+          </>
         }
         placeholder={entry.placeholder}
         tag={
@@ -231,7 +239,6 @@ export function ProjectPageBody<T>({
         </div>
         <div className="pp-side">
           <SetupCard>
-            <AddressesRow lines={lines} />
             {setup.rows({
               access: () => {
                 setOpen((now) => ({ ...now, access: true }));
@@ -450,6 +457,8 @@ function ProjectPlaces<T>({
       </Button>
     );
   };
+  // A line whose Sites door is drawn prints no address: the door opens every one of them.
+  const sitesDrawn = usePlaceSitesDrawn(groupId);
   /** A place line's end: its fix where it is not well, then its doors, Sites and Vault. */
   const placeEnd = (line: PlaceLineData) => {
     const fix = fixVerb(line);
@@ -587,6 +596,7 @@ function ProjectPlaces<T>({
             density="row"
             groupId={groupId}
             line={{ ...line, projectId: environment.id }}
+            sites={sitesDrawn && placeSitesOf(line, groupId) !== undefined}
             trailing={placeEnd(line)}
           />
         )}
@@ -632,6 +642,7 @@ function ProjectPlaces<T>({
                     density="row"
                     groupId={groupId}
                     line={line}
+                    sites={sitesDrawn && placeSitesOf(line, groupId) !== undefined}
                     trailing={placeEnd(line)}
                   />
                   {line.kind === "production" ? productionTail(line, undefined) : null}
@@ -1177,32 +1188,6 @@ function ProjectChanges<T>({
         )}
       </div>
     </section>
-  );
-}
-
-/**
- * Every public address the project serves at, production's first, each opened beside the page.
- * Where more than one place serves, each says whose it is: a stage's subdomain beside production's
- * domain otherwise reads as production's.
- */
-function AddressesRow({ lines }: { readonly lines: ReadonlyArray<PlaceLineData> }) {
-  const addresses = pageAddresses(lines);
-  if (addresses.length === 0) return null;
-  const places = new Set(addresses.map((address) => address.place)).size;
-  return (
-    <SetupRow label="Addresses" surface="project-addresses">
-      <ul className="pp-addresses">
-        {addresses.map((address) => (
-          <li key={address.url}>
-            <a className="pp-site" href={address.url} rel="noreferrer" target="_blank">
-              <span className="truncate">{address.host}</span>
-              <span aria-hidden="true">↗</span>
-            </a>
-            {places > 1 ? <span className="pp-site-place">{address.place}</span> : null}
-          </li>
-        ))}
-      </ul>
-    </SetupRow>
   );
 }
 

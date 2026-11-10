@@ -529,47 +529,6 @@ button.pp-hist-head:hover {
   padding: 2px 8px 6px;
 }
 
-.pp-addresses {
-  display: grid;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.pp-addresses > li {
-  display: flex;
-  min-width: 0;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-/* Whose address it is, where more than one place serves: quiet, at the row's end. */
-.pp-site-place {
-  flex: none;
-  color: var(--muted-foreground);
-  font-size: var(--text-xs);
-}
-
-/* An address opened beside the page: its host, then the arrow that says it leaves. */
-.pp-site {
-  display: inline-flex;
-  min-width: 0;
-  max-width: 100%;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted-foreground);
-  font-size: var(--text-line);
-  line-height: 20px;
-  text-underline-offset: 2px;
-}
-
-.pp-site:hover {
-  color: var(--foreground);
-  text-decoration: underline;
-}
-
 .pp-detail {
   padding: 12px;
 }

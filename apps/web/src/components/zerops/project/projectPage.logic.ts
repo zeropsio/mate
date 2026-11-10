@@ -1,14 +1,11 @@
 /**
  * What a project's page says, from the reads its overview card already takes: its recent changes,
- * what the live release brought, its code's copies elsewhere and every address it serves at. Pure:
- * no React.
+ * what the live release brought and its code's copies elsewhere. Pure: no React.
  */
-import {
-  isPlatformSubdomain,
-  type EnvironmentSlotRow,
-  type FlowPullRequest,
-  type GroupFlow,
-  type GroupFlowAddress,
+import type {
+  EnvironmentSlotRow,
+  FlowPullRequest,
+  GroupFlow,
 } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
@@ -22,7 +19,6 @@ import {
   broughtBy,
   cardChanges,
   mateChangesForReview,
-  placeLabel,
   type CardChange,
   type PlaceLine,
 } from "../projects/projectCard.logic";
@@ -161,41 +157,6 @@ export function waitingChanges(
   mateProjectId: string,
 ): ReadonlyArray<FlowPullRequest> {
   return mateChangesForReview(flow, mateProjectId);
-}
-
-/** One address of the project's page: its host, and the place that serves it. */
-export interface PageAddress extends GroupFlowAddress {
-  readonly host: string;
-  /** The place it belongs to, `Production` or a stage by its name (`placeLabel`). */
-  readonly place: string;
-}
-
-/**
- * Every address the project's places serve at, each once: production's first, and within a place
- * its own domains before the platform's subdomains.
- */
-export function pageAddresses(lines: ReadonlyArray<PlaceLine>): ReadonlyArray<PageAddress> {
-  const seen = new Set<string>();
-  return linesProductionFirst(lines).flatMap((line) => {
-    if (line.nothingDeployed === true) return [];
-    const served = line.addresses.flatMap((address) => {
-      if (seen.has(address.url)) return [];
-      seen.add(address.url);
-      return [{ ...address, host: hostOf(address.url), place: placeLabel(line) }];
-    });
-    return [
-      ...served.filter((address) => !isPlatformSubdomain(address.host)),
-      ...served.filter((address) => isPlatformSubdomain(address.host)),
-    ];
-  });
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
 }
 
 /** Production's slot, then every stage's — the order the project's card says them in. */

@@ -66,6 +66,7 @@ import { ownerMark } from "./SidebarMateRow.logic";
 import { AskToFix, ChipPortal, EnvDot, OpenInZerops, type ChipMate } from "./SidebarProductionChip";
 import type { ChipMenuModel, ChipMenuStop, ProductionChip } from "./SidebarProductionChip.logic";
 import {
+  answeringSections,
   filterSites,
   productionUrl,
   projectSitesSections,
@@ -397,6 +398,7 @@ export function SitesPanel({
   query,
   onQuery,
   focusSection,
+  answering = false,
   onAskToFix,
   onOpenStop,
   onClose,
@@ -411,6 +413,8 @@ export function SitesPanel({
   readonly onQuery: (query: string) => void;
   /** The section the tag spoke of: scrolled into view and lit as the popover opens. */
   readonly focusSection: string | undefined;
+  /** Only where the project answers (`answeringSections`): the project's own list. */
+  readonly answering?: boolean | undefined;
   readonly onAskToFix: ProjectSitesInput["onAskToFix"];
   readonly onOpenStop: ProjectSitesInput["onOpenStop"];
   /** Closes the popover, as a door to elsewhere opens. */
@@ -440,7 +444,7 @@ export function SitesPanel({
       .filter((mate) => readsLeases(factsOf(mate)))
       .map((mate) => ({ projectId: mate.candidate.project.id, threadKey: mate.threadKey })),
   );
-  const sections = projectSitesSections({
+  const every = projectSitesSections({
     production: prod,
     productionUnread: prod === undefined && line?.production !== undefined,
     stages: stg,
@@ -449,6 +453,7 @@ export function SitesPanel({
       (stop.projectId === undefined ? undefined : bound.get(stop.projectId)) ?? stop.routes,
     mates: mates.map((mate) => factsOf(mate, leases)),
   });
+  const sections = answering ? answeringSections(every) : every;
   const filtering = query.trim() !== "";
   const kept = new Map(filterSites(sections, query).map((section) => [section.key, section]));
   const total = sitesLinkCount(sections);
@@ -1243,6 +1248,51 @@ export function HeaderSites({
 const NO_MATES: ReadonlyArray<SitesMate> = [];
 
 /**
+ * The whole project's Sites, from its own page's header: every address it answers at in one list,
+ * grouped by where it runs — each place that has any, then each Mate with its previews. A place
+ * with no address, and a Mate's service with nothing to open, are left out: the list says where
+ * the project answers, and its places say their state on the page under it. `sites` is the project as the menu drew it
+ * (`useProjectSitesOfGroup`).
+ */
+export function PageSites({
+  sites,
+  trigger,
+  children,
+}: {
+  readonly sites: ProjectSitesInput;
+  readonly trigger: ReactElement;
+  readonly children: ReactNode;
+}) {
+  const { production, stages } = sites;
+  const listed = useMemo((): ProjectSitesInput => {
+    const answering = (model: ProjectSitesInput["production"]): ProjectSitesInput["production"] =>
+      model === undefined
+        ? undefined
+        : (nowMs) => ({
+            stops: model(nowMs).stops.filter((stop) => stop.routes.length > 0),
+          });
+    return {
+      ...sites,
+      // A place not read yet is not said here either: only where the project answers.
+      line: undefined,
+      production: answering(production),
+      stages: answering(stages),
+    };
+  }, [production, sites, stages]);
+  return (
+    <SitesPopover
+      answering
+      mates={sites.mates}
+      sites={listed}
+      surface="project-sites"
+      trigger={trigger}
+    >
+      {children}
+    </SitesPopover>
+  );
+}
+
+/**
  * One place's Sites, from a line or a page that names the place: the same panel, narrowed to that
  * place alone — its state, its addresses, and the way to manage them. `sites` is the project as
  * the menu drew it (`useProjectSitesOfGroup`).
@@ -1302,12 +1352,15 @@ function SitesPopover({
   mates,
   surface,
   label,
+  answering,
   trigger,
   children,
 }: {
   readonly sites: ProjectSitesInput;
   /** The Mates whose sections it lists. */
   readonly mates: ReadonlyArray<SitesMate>;
+  /** Only where the project answers: no service with nothing to open. */
+  readonly answering?: boolean | undefined;
   readonly surface: string;
   /** Its accessible name; the project's sites where absent. */
   readonly label?: string;
@@ -1342,6 +1395,7 @@ function SitesPopover({
             data-zerops-surface={surface}
           >
             <SitesPanel
+              answering={answering}
               focusSection={undefined}
               groupId={sites.groupId}
               line={sites.line}

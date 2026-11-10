@@ -360,6 +360,21 @@ export type SitesSection =
     };
 
 /**
+ * The sections of a list that says only where the project answers (its own page's Sites): a Mate's
+ * service with nothing to open is left out, and so is a Mate left with no address. Why a service
+ * has none is said where the Mate itself is named. A Mate not read yet keeps its reading section.
+ */
+export function answeringSections(
+  sections: ReadonlyArray<SitesSection>,
+): ReadonlyArray<SitesSection> {
+  return sections.flatMap((section): ReadonlyArray<SitesSection> => {
+    if (section.kind !== "mate") return [section];
+    const services = section.services.filter((service) => service.url !== undefined);
+    return services.length === 0 && section.links?.length === 0 ? [] : [{ ...section, services }];
+  });
+}
+
+/**
  * The popover's sections, in order: production, each stage (and each being created), then each
  * Mate in the order given. Every address appears once, where it first appears. A Mate with no
  * address and no part's service shows no section; one not read yet shows a reading one, as does a place
