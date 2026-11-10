@@ -4,7 +4,7 @@
  * over the page (`PlaceDoors`), closed by default: open beside the page it took a third of the
  * screen on every visit (the owner, 2026-11-09).
  */
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 
 import { PreviewPanelShell } from "../../RightPanelShell";
 import { Sheet, SheetPopup } from "../../ui/sheet";
@@ -18,6 +18,7 @@ export function StopVaultDrawer({
   name,
   open,
   onOpenChange,
+  part,
   body,
 }: {
   readonly orgId: string;
@@ -26,6 +27,8 @@ export function StopVaultDrawer({
   readonly name: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
+  /** The part of the vault it opens at (a scope's id, `data-vault-part`); its top where absent. */
+  readonly part?: string | undefined;
   /** What the drawer holds; the project's vault, read from the account, unless given. */
   readonly body?: ReactNode;
 }) {
@@ -50,10 +53,24 @@ export function StopVaultDrawer({
               who={{ kind: "environment", name }}
             />
           )}
+          {part === undefined ? null : <ShowsPart part={part} />}
         </PreviewPanelShell>
       </SheetPopup>
     </Sheet>
   );
+}
+
+/**
+ * Brings a part of the vault to the drawer's top as it opens, where the list already holds it: a
+ * press on that part's row of the page's Vault card lands on it.
+ */
+function ShowsPart({ part }: { readonly part: string }) {
+  useLayoutEffect(() => {
+    document
+      .querySelector(`[data-zerops-surface="stop-vault"] [data-vault-part="${CSS.escape(part)}"]`)
+      ?.scrollIntoView({ block: "start" });
+  }, [part]);
+  return null;
 }
 
 /**

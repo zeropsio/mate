@@ -7,6 +7,7 @@ import {
   canonicalAppEnvironments,
   canonicalHqNavigation,
   environmentById,
+  type VaultView,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import * as Schema from "effect/Schema";
@@ -15,6 +16,8 @@ import { useAccountDataOptional, useProjection } from "~/zerops/accountData";
 import { useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { StopVaultDrawer } from "./vault/StopVault";
+import { useProjectVault } from "./vault/VaultPanelContainer";
+import { vaultOverview } from "./vault/vaultOverview.logic";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 /**
@@ -132,6 +135,7 @@ import {
 import { PlaceAccessCard } from "./place/PlaceAccess";
 import { PlaceDoors } from "./place/PlaceDoors";
 import { PlaceNextCard, PlaceNextRelease } from "./place/PlaceNext";
+import { PlaceVaultCard } from "./place/PlaceVaultCard";
 import { usePlaceServiceMap } from "./place/usePlaceServiceMap";
 import {
   placeServiceRows,
@@ -362,6 +366,9 @@ function ZeropsProjectStopDetailPage({
   )?.structure?.apps.find((app) => app.id === groupId)?.problems;
   // Closed on every place's page as it opens: the drawer is this page's, never carried across.
   const [vaultOpen, setVaultOpen] = useState(false);
+  // Its vault as the drawer reads it, held while the page is drawn: the aside's card says it at a
+  // glance. Only where the drawer is offered, and for this one project.
+  const vaultView = useProjectVault(orgId === null ? null : projectId);
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
   const deployments = useStopDeploymentsShown();
@@ -594,7 +601,11 @@ function ZeropsProjectStopDetailPage({
         groupName={stopGroupName}
         platformServices={serviceMap.rows}
         usageRead={serviceMap.usageRead}
-        vault={orgId === null ? undefined : { orgId, open: vaultOpen, onOpenChange: setVaultOpen }}
+        vault={
+          orgId === null
+            ? undefined
+            : { orgId, open: vaultOpen, onOpenChange: setVaultOpen, view: vaultView }
+        }
         onManageAddresses={
           orgId === null
             ? undefined
@@ -1017,6 +1028,11 @@ export function ZeropsStopPane({
         readonly onOpenChange: (open: boolean) => void;
         /** What the drawer holds; the project's vault unless given (a harness's fixture). */
         readonly body?: React.ReactNode;
+        /**
+         * The vault as the drawer reads it (`useProjectVault`), for the aside's card: held while
+         * the page is drawn. Absent, no card.
+         */
+        readonly view?: VaultView | undefined;
       }
     | undefined;
   readonly readFailures?: React.ReactNode;
@@ -1140,6 +1156,12 @@ export function ZeropsStopPane({
   readonly routeTrouble?: string | null;
 }) {
   const [allReleases, setAllReleases] = useState(false);
+  // The part of the vault its drawer opens at: a part's row of the aside's card; else its top.
+  const [vaultPart, setVaultPart] = useState<string | undefined>(undefined);
+  const openVault = (part?: string) => {
+    setVaultPart(part);
+    vault?.onOpenChange(true);
+  };
   const services = readServices ?? NO_SERVICE_ROWS;
   const production = stop.tier === "production";
   // One more than the list holds is listed too: a verb to show one row is no shorter than the row.
@@ -1282,7 +1304,7 @@ export function ZeropsStopPane({
             vault={
               vault === undefined || projectId === undefined
                 ? undefined
-                : { onOpen: () => vault.onOpenChange(true), open: vault.open }
+                : { onOpen: () => openVault(), open: vault.open }
             }
           />
           {projectId === undefined ? null : (
@@ -1547,7 +1569,7 @@ export function ZeropsStopPane({
 
           <aside className="flex min-w-0 flex-col gap-8" aria-label={`${head.title} setup`}>
             {/* Live state leads, only while something runs; then what is set up once, the most
-                used first: where it answers, who reaches it, what it runs on. */}
+                used first: where it answers, what it is given, who reaches it, what it runs on. */}
             <div className="min-w-0">
               <RunningNow lines={runningNow ?? NOTHING_RUNNING} />
               {projectId === undefined ? null : (
@@ -1579,6 +1601,30 @@ export function ZeropsStopPane({
                 </PlaceSection>
               )}
             </div>
+
+            {vault?.view === undefined || projectId === undefined ? null : (
+              <PlaceSection
+                label={
+                  <SectionLabel
+                    action={
+                      <Button
+                        onClick={() => {
+                          openVault();
+                        }}
+                        size="sm"
+                        variant="link"
+                      >
+                        Open
+                      </Button>
+                    }
+                  >
+                    Vault
+                  </SectionLabel>
+                }
+              >
+                <PlaceVaultCard onOpen={openVault} overview={vaultOverview(vault.view)} />
+              </PlaceSection>
+            )}
 
             {access === undefined || projectId === undefined ? null : (
               <PlaceSection
@@ -1705,6 +1751,7 @@ export function ZeropsStopPane({
           name={head.title}
           onOpenChange={vault.onOpenChange}
           open={vault.open}
+          part={vaultPart}
           orgId={vault.orgId}
           projectId={projectId}
         />
