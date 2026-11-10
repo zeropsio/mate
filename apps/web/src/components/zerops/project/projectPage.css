@@ -600,6 +600,34 @@ button.pp-hist-head:hover {
   }
 }
 
+/* Going live says itself across the card, its door under its words: a column between the mark and
+   the button held four words a line. */
+@media (max-width: 39.999rem) {
+  .pp-golive-hero {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 12px 14px;
+    padding: 16px;
+  }
+
+  .pp-golive-icon {
+    align-self: start;
+  }
+
+  .pp-golive-hero > [data-slot="button"] {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .pp-golive-stage {
+    padding-inline: 16px;
+  }
+
+  .pp-golive > .pp-golive-run {
+    padding-inline: 16px;
+  }
+}
+
 /* A Mate's card lies down: its face at the left, its words beside it, its foot under them — a card
    still, a third as tall, its line as wide as the screen gives. *Add a Mate* is one of them. */
 @media (max-width: 39.999rem) {
@@ -651,6 +679,13 @@ button.pp-hist-head:hover {
 
   .pp .tm-card-foot[data-held] {
     min-height: 40px;
+  }
+
+  /* A foot that holds nothing keeps no seat here: under one column of cards it is a blank band,
+     and the card's own padding closes it. */
+  .pp .tm-card-foot[data-held]:empty {
+    min-height: 12px;
+    padding-block: 0;
   }
 
   .pp .mc-foot {

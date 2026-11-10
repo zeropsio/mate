@@ -254,7 +254,9 @@ function RepoRow({
         {entry.name}
       </span>
       <div className="grid min-w-0 gap-0.5">
-        <p className="flex min-w-0 items-baseline gap-2 text-sm">
+        {/* A phone's row says the code's name over its repository: beside each other the
+            repository was cut to "zeropsio/app…". */}
+        <p className="flex min-w-0 items-baseline gap-2 text-sm max-sm:flex-col max-sm:items-start max-sm:gap-0">
           <span className="shrink-0 font-mono text-foreground @lg:hidden">{entry.name}</span>
           {state.destination === null ? null : (
             <a
