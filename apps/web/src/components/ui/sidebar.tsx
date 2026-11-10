@@ -27,7 +27,10 @@ import {
 import * as Schema from "effect/Schema";
 
 const SIDEBAR_WIDTH = "16rem";
-const SIDEBAR_WIDTH_MOBILE = "calc(100vw - var(--spacing(3)))";
+// An inline style, so plain CSS only: Tailwind's `--spacing()` is not valid
+// here and the browser drops the whole declaration. The strip left beside the
+// sheet is the scrim a finger taps to close it.
+const SIDEBAR_WIDTH_MOBILE = "min(calc(100vw - 3rem), 26rem)";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_RESIZE_DEFAULT_MIN_WIDTH = 16 * 16;
 
