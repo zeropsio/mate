@@ -705,6 +705,48 @@ const APP_ALONE = {
   ],
 } satisfies Partial<ReleaseProps>;
 const NO_CREATION = { run: { kind: "none" }, created: [], onCreate: noop } as const;
+
+/**
+ * A release whose production's setup gained a cache: HQ creates it, then deploys both parts. HQ
+ * names the production "acme-production", and stops the release at the creation because the
+ * deploy key it keeps for it reaches more than its project.
+ */
+const KEY_ENVIRONMENT = "acme-production";
+const KEY_WIDENED = `${KEY_ENVIRONMENT}'s deploy token reaches more than its project; a person with admin access to its project renews it in Zerops Mate`;
+const KEY_PLAN: ReleasePlan = {
+  hash: "c".repeat(64),
+  operations: [
+    {
+      kind: "create",
+      service: "cache",
+      settings: { hostname: "cache", type: "valkey@7.2", mode: "NON_HA" },
+      cost: "Adds one billed service; resource usage is charged by Zerops according to the reviewed settings.",
+    },
+    { kind: "deploy", service: "api", sha: SEVEN_E },
+    { kind: "deploy", service: "shop", sha: SEVEN_E },
+  ],
+};
+/** What stands the same in every state of that release. */
+const KEY_RELEASE = {
+  servicePlan: KEY_PLAN,
+  services: ["api", "shop"],
+  where: [
+    { service: "api", line: "gets v0.1.57" },
+    { service: "shop", line: "gets v0.1.57" },
+  ],
+  production: {
+    at: undefined,
+    addresses: [{ service: "shop", url: "https://shop.acme.example" }],
+    parts: [
+      { hostname: "api", version: "v0.1.56" },
+      { hostname: "shop", version: "v0.1.56" },
+    ],
+  },
+  environmentName: KEY_ENVIRONMENT,
+  entries: 2,
+  creation: NO_CREATION,
+  onReviewNew: noop,
+} satisfies Partial<ReleaseProps>;
 const secondsAgo = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
 const STARTED = { at: secondsAgo(178), by: "you" } as const;
 
@@ -1033,6 +1075,15 @@ const FAILED_JOBS = [
   }),
 ];
 
+/** HQ's deploy jobs of that release: one it left because the part already runs the commit, one it ended for the creation. */
+const KEY_DEPLOYS = [
+  deployOf("api", "live", { reason: "api already runs it", endedAt: secondsAgo(25) }),
+  deployOf("shop", "refused", {
+    reason: "The release creation prerequisite did not resolve successfully; review a new release.",
+    endedAt: secondsAgo(25),
+  }),
+];
+
 /**
  * The release's sheet in every state it reaches, reading to done: each is also the dialog's
  * (`?release=<id>`), in its real frame.
@@ -1075,12 +1126,13 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
   },
   {
     id: "release-blocked-gate",
-    label: "Release · HQ holds it, in HQ's words",
+    label: "Release · HQ holds it, in HQ's words, its name for production said as Production",
     props: {
       over: {
+        environmentName: KEY_ENVIRONMENT,
         gate: {
           allowed: false,
-          reason: "Production's deploy key no longer answers. Give HQ a new one first.",
+          reason: `${KEY_ENVIRONMENT} is still taking its last release. Release once it is live.`,
         },
       },
     },
@@ -1234,6 +1286,101 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
             endedAt: secondsAgo(65),
           }),
           deploys: [],
+        },
+      },
+    },
+  },
+  {
+    id: "release-key-reading",
+    label: "Release · reading, a step per service the release lists",
+    props: {
+      over: {
+        ...KEY_RELEASE,
+        servicePlan: undefined,
+        changesPending: true,
+        expected: 2,
+        servicePlanPending: true,
+      },
+    },
+  },
+  {
+    id: "release-key-early-jobs",
+    label: "Release · the deploys' rows came before the creation's: it is still creating",
+    props: {
+      outcome: { kind: "releasing" },
+      press: { kind: "done" },
+      over: {
+        ...KEY_RELEASE,
+        started: { at: secondsAgo(15), by: "you" },
+        progress: { creation: undefined, deploys: KEY_DEPLOYS },
+      },
+    },
+  },
+  ...(
+    [
+      ["release-key-stopped", "HQ will not use production's key", { kind: "none" }, true],
+      ["release-key-renewing", "the key being renewed", { kind: "working" }, true],
+      [
+        "release-key-renewed",
+        "the key renewed, a new release the way on",
+        { kind: "renewed" },
+        true,
+      ],
+      [
+        "release-key-renew-failed",
+        "the renewal failed, in its own words",
+        { kind: "failed", words: "Zerops did not make the key: the request timed out." },
+        true,
+      ],
+      ["release-key-not-admin", "not this person's key to renew", { kind: "none" }, false],
+    ] as const
+  ).map(([id, label, run, admin]): ReleaseSheet => ({
+    id,
+    label: `Release · stopped at the creation, ${label}`,
+    props: {
+      outcome: { kind: "failed", detail: "Its production deploy failed", services: ["shop"] },
+      press: {
+        kind: "done",
+        deploys: { jobs: [], note: `HQ could not stop mail: ${KEY_WIDENED}` },
+      },
+      over: {
+        ...KEY_RELEASE,
+        started: { at: secondsAgo(40), by: "you" },
+        progress: {
+          creation: creationOf("failed", {
+            reason: KEY_WIDENED,
+            services: ["cache"],
+            at: secondsAgo(40),
+            endedAt: secondsAgo(24),
+          }),
+          deploys: KEY_DEPLOYS,
+        },
+        keyRenewal: { run, onRenew: admin ? noop : undefined },
+      },
+    },
+  })),
+  {
+    id: "release-key-deploy",
+    label: "Release · stopped at a deploy, the key HQ keeps no longer answers",
+    props: {
+      outcome: { kind: "failed", detail: "The deploy of app failed", services: ["app"] },
+      press: { kind: "done" },
+      over: {
+        environmentName: KEY_ENVIRONMENT,
+        keyRenewal: { run: { kind: "none" }, onRenew: noop },
+        progress: {
+          creation: undefined,
+          deploys: [
+            deployOf("app", "refused", {
+              reason: `${KEY_ENVIRONMENT}'s deploy token no longer answers; a person with admin access to its project renews it in Zerops Mate`,
+              endedAt: secondsAgo(40),
+            }),
+            deployOf("api", "failed", {
+              reason: "Build failed: the lockfile is out of date",
+              at: secondsAgo(120),
+              endedAt: secondsAgo(40),
+            }),
+          ],
         },
       },
     },

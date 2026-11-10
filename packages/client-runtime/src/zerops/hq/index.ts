@@ -79,6 +79,8 @@ export {
 } from "./environments.ts";
 export {
   couldntRead,
+  deployKeyTrouble,
+  type DeployKeyTrouble,
   enrollmentRefusalWords,
   HQ_HANDOVER_UNFINISHED,
   HQ_NOT_OPEN,
