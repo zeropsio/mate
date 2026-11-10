@@ -4,22 +4,26 @@
  * along it and changes its counts: a change is one bead in its Mate's tint, capped by the room its
  * segment has, then a count.
  *
- * It is a picture and nothing more: a place's state, its address, its vault and every verb are the
- * project's Places and the place's own page (the owner, 2026-11-10: "the visualisation shouldn't
- * replace prod/stages setup/navigation/state").
+ * Closed, it is a picture and nothing more: a place's state, its address, its vault and every verb
+ * are the project's Places and the place's own page (the owner, 2026-11-10: "the visualisation
+ * shouldn't replace prod/stages setup/navigation/state"). Open in full it says them too, beside
+ * Places and never in its stead.
  *
- * Behind the picture stands the line in full (`projectLineFull`): the same stations, segments and
- * beads, with what each station is under its name (its Mates, its repositories, a place's state and
- * the way to its page), a row under `main` for each further place, and a row for each Mate with its
- * own changes under the segment each is on. It reads the picture it stands behind, so what the
- * picture counts the full line counts. It stays legible however much is on its way: a Mate's row
- * holds its newest `ROW_BEADS` changes and counts the rest, and the rows past `ROWS_SHOWN` fold.
+ * Behind the picture stands the line in full (`projectLineFull`), the line as its board drew it:
+ * the same stations, segments and beads, with what each station is under its name (its Mates, its
+ * repositories, a place's state, its address and the way to its page), under each segment its count
+ * and the one verb where something on it waits on the person (review the next change, the release,
+ * put it live), a row under `main` for each copy of the code elsewhere and each further place, and
+ * a row for each Mate with its own changes under the segment each is on. It reads the picture it
+ * stands behind, so what the picture counts the full line counts. It stays legible however much is
+ * on its way: a Mate's row holds its newest `ROW_BEADS` changes and counts the rest, and the rows
+ * past `ROWS_SHOWN` fold.
  *
  * Read from what the project's page already reads: its flow (`GroupFlow`), its places
  * (`placeLines`), its changes (`pageChanges`), what waits on the viewer (`useViewerWaits`) and its
  * next release (`nextReleaseView`). Pure: no React, no clock.
  */
-import type { FlowPullRequest, GroupFlow } from "@t3tools/client-runtime/zerops";
+import { REVIEW_LABEL, type FlowPullRequest, type GroupFlow } from "@t3tools/client-runtime/zerops";
 import type { MateTintId } from "@t3tools/shared/brand";
 
 import {
@@ -449,17 +453,49 @@ export interface LineStationFull {
   readonly lines: ReadonlyArray<ReadonlyArray<LineWord>>;
   /** A place's page (`/group/$groupId/$projectId`); none for Mates' work and `main`. */
   readonly projectId: string | undefined;
+  /** A place's address: a stage's under its state, production's under the track. */
+  readonly address: { readonly host: string; readonly url: string } | undefined;
   /** What production runs, said under the track where the line is compact. */
   readonly version: string | undefined;
 }
 
-/** A further place, hung under `main`: one line. */
+/**
+ * A segment's one verb, where something on it waits on the person: the next change to review, the
+ * release (to review, to follow, or to see why it didn't go live), or putting the project live.
+ */
+export type LineVerb =
+  | { readonly kind: "review-change"; readonly label: string; readonly pull: FlowPullRequest }
+  | { readonly kind: "review-release"; readonly label: string; readonly primary: boolean }
+  | { readonly kind: "put-live"; readonly label: string };
+
+/** A segment of the line in full: the picture's, with its one verb. */
+export interface LineSegmentFull extends LineSegment {
+  readonly verb: LineVerb | undefined;
+}
+
+/** A copy of the code elsewhere (GitHub), hung under `main` with its state. */
+export interface LineCopy {
+  readonly key: string;
+  /** "GitHub". */
+  readonly host: string;
+  /** "acme/shop". */
+  readonly name: string;
+  /** Its state, as the project's Code row says it (`repoState`): "In sync · pushed 3 hours ago". */
+  readonly line: string;
+  /** None while it is in sync. */
+  readonly tone: "warning" | "danger" | "info" | undefined;
+}
+
+/** A copy of the code or a further place, hung under `main`: one line. */
 export interface LineSide {
   readonly key: string;
   readonly words: ReadonlyArray<LineWord>;
   /** The place's page, where it is one. */
   readonly projectId: string | undefined;
 }
+
+/** The work segment's verb where more than one change waits on the person. */
+export const REVIEW_NEXT_LABEL = "Review the next one";
 
 /** A Mate's row holds this many of its changes, the newest; the rest are a count. */
 export const ROW_BEADS = 8;
@@ -486,8 +522,8 @@ export interface LineMateRow {
 
 export interface ProjectLineFullView {
   readonly stations: ReadonlyArray<LineStationFull>;
-  /** The picture's segments: its beads, its counts. */
-  readonly segments: ReadonlyArray<LineSegment>;
+  /** The picture's segments: its beads, its counts; and each one's verb. */
+  readonly segments: ReadonlyArray<LineSegmentFull>;
   readonly sides: ReadonlyArray<LineSide>;
   /**
    * A row for each Mate, the ones the viewer is waited on by first, then the stuck, then by how
@@ -502,6 +538,18 @@ export interface ProjectLineFullInput extends Omit<ProjectLineInput, "mine" | "w
   readonly placeId?: ((line: PlaceLine) => string | undefined) | undefined;
   /** Its code repositories, by name. */
   readonly repos: ReadonlyArray<string>;
+  /** Its copies elsewhere (`lineCopies`), each with its state. */
+  readonly copies: ReadonlyArray<LineCopy>;
+  /**
+   * Why the last release did not go live, in the place page's own sentence
+   * (`releaseNotCreatedWords`, "v0.1.5 didn't go live: db could not be created in production");
+   * where none is told the segment says that it didn't, as the picture does.
+   */
+  readonly releaseCause?: string | undefined;
+  /** Production's own note where no release is offered ("Waiting for its first release"). */
+  readonly releaseNote?: string | undefined;
+  /** *Put it live*, where the project has no production and HQ offers one to this person. */
+  readonly putLive: string | undefined;
   /** Places being set up that no line holds yet: each a side row. */
   readonly coming?: ReadonlyArray<{
     readonly key: string;
@@ -543,7 +591,13 @@ export function projectLineFull(
   const { line: stageLine } = lineStage(input);
   const productionLine = input.places.find((line) => line.kind === "production");
   const absent = flow.production.kind === "absent";
-  const plain = { tone: "neutral", tints: [], projectId: undefined, version: undefined } as const;
+  const plain = {
+    tone: "neutral",
+    tints: [],
+    projectId: undefined,
+    address: undefined,
+    version: undefined,
+  } as const;
   const stations = picture.stations.map((station): LineStationFull => {
     const place =
       station.kind === "stage"
@@ -561,6 +615,7 @@ export function projectLineFull(
         tints: [],
         lines: placeWords(place),
         projectId: placeId(place),
+        address: view.address,
         version: view.version,
       };
     }
@@ -607,21 +662,90 @@ export function projectLineFull(
     }
   });
 
-  // What failed is its place's own word, said once on its station: before it the track is red, and
-  // its count keeps what it counts.
-  const segments = picture.segments.map((segment, at) => {
-    const next = stations[at + 1];
-    if (segment.track !== "failed" || next === undefined || next.tone !== "danger") return segment;
-    const calm = segment.caption.filter((word) => word.tone !== "danger");
-    return { ...segment, caption: calm.at(-1) === SEP ? calm.slice(0, -1) : calm };
+  const { view } = input.release;
+  const segments = picture.segments.map((segment, at): LineSegmentFull => {
+    switch (segment.key) {
+      case "work": {
+        // The newest that waits on the person stands nearest `main`: it is the next one.
+        const waits = segment.beads.filter((bead) => bead.mark === "waits");
+        const pull = waits.at(-1)?.pull;
+        return {
+          ...segment,
+          verb:
+            pull === undefined
+              ? undefined
+              : {
+                  kind: "review-change",
+                  label: waits.length === 1 ? REVIEW_LABEL : REVIEW_NEXT_LABEL,
+                  pull,
+                },
+        };
+      }
+      case "stage": {
+        // A failed deploy is the stage's own word, said once on its station: here, the red track.
+        const said = segment.track === "failed" && stations[at + 1]?.tone === "danger";
+        return { ...segment, caption: said ? [] : segment.caption, verb: undefined };
+      }
+      case "release": {
+        if (absent)
+          return {
+            ...segment,
+            verb:
+              input.putLive === undefined ? undefined : { kind: "put-live", label: input.putLive },
+          };
+        switch (view.kind) {
+          case "none":
+            return {
+              ...segment,
+              caption:
+                segment.held || input.releaseNote === undefined
+                  ? segment.caption
+                  : [{ text: input.releaseNote }],
+              verb: undefined,
+            };
+          // One on its way, and one that didn't go live, are said whether or not the changes are read.
+          case "releasing":
+            return {
+              ...segment,
+              caption: [{ text: view.title, tone: "info" }],
+              verb: { kind: "review-release", label: view.verb, primary: false },
+            };
+          case "failed": {
+            const verb: LineVerb = { kind: "review-release", label: view.verb, primary: true };
+            // Why it didn't is a sentence, no count: it leads to no group of the list.
+            return input.releaseCause === undefined
+              ? { ...segment, verb }
+              : {
+                  ...segment,
+                  caption: [{ text: input.releaseCause, tone: "danger" }],
+                  group: undefined,
+                  verb,
+                };
+          }
+          case "ready":
+            return {
+              ...segment,
+              verb: { kind: "review-release", label: view.verb, primary: true },
+            };
+        }
+      }
+    }
   });
 
-  // Hung under `main`: each further place.
+  // Hung under `main`: each copy of the code elsewhere, then each further place.
   const sides: ReadonlyArray<LineSide> = [
+    ...input.copies.map((copy): LineSide => ({
+      key: `copy:${copy.key}`,
+      words: [
+        { text: `${copy.host} ` },
+        { text: copy.name, strong: true },
+        SEP,
+        { text: copy.line, tone: copy.tone },
+      ],
+      projectId: undefined,
+    })),
     ...input.places
       .filter((line) => line.kind === "stage" && line !== stageLine)
-      // A place delivered to a branch says nothing while it follows.
-      .filter((line) => line.git === undefined || line.dot !== "none")
       .map((line, index): LineSide => {
         const [first, ...rest] = line.words;
         const tone: LineWord["tone"] = line.trouble
