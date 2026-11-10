@@ -10669,6 +10669,18 @@ button.run-bar:focus-visible {
   padding: 15px 15px 0;
 }
 
+/* On a phone the card keeps the composer's lines as it does on a desk: its frame on the composer's
+   frame, its words on the composer's words, which stand 12 px inside the frame there, not 16
+   (`rowInset`, MessagesTimeline). */
+@media (max-width: 39.999rem) {
+  .run-tray-top,
+  .run-tray-middle,
+  .run-tray-whole,
+  .run-tray-ghost {
+    padding-inline: 11px;
+  }
+}
+
 /* ==== end of the run's card ==== */
 
 /* ==== Pass 16 · the run's result ==== */

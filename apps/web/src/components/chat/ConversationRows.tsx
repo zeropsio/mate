@@ -544,7 +544,7 @@ export function StandUpAskLine({
   readonly timestampFormat: TimestampFormat;
 }) {
   return (
-    <div className="px-4.25" data-mate-standup-ask>
+    <div className="px-3.25 sm:px-4.25" data-mate-standup-ask>
       <EventShell
         at={at}
         icon={<SendIcon className="size-3.5" />}
