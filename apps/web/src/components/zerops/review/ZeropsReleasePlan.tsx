@@ -56,6 +56,11 @@ export interface ReleaseStepLog {
 
 export interface ReleasePlanProps {
   readonly steps: ReadonlyArray<ReleaseSheetStep>;
+  /**
+   * HQ has not said what happens to each service: a deploy keeps its name, its mark and its
+   * place, and its line is still being `reading`, or `unsaid` where nothing reads it now.
+   */
+  readonly unread?: "reading" | "unsaid" | undefined;
   /** The early path: creates what production lacks now, with the person's own access. */
   readonly onCreate?: (() => void) | undefined;
   /** Renews production's deploy key, on the step HQ stopped at for it; `renewing` while it runs. */
@@ -76,6 +81,7 @@ export interface ReleasePlanProps {
 
 export function ReleasePlan({
   steps,
+  unread,
   onCreate,
   onRenew,
   renewing = false,
@@ -85,12 +91,18 @@ export function ReleasePlan({
 }: ReleasePlanProps) {
   const creations = steps.filter((step) => step.kind === "create").length;
   return (
-    <ol className="rv-plan" data-zerops-surface="release-plan">
+    <ol
+      aria-busy={unread === "reading" ? true : undefined}
+      className="rv-plan"
+      data-zerops-surface="release-plan"
+    >
       {steps.map((step, index) => (
         <PlanStep
           createWords={creations > 1 ? "Create them now" : "Create it now"}
           index={index}
           key={step.key}
+          // What a deploy does to its service is the plan's to say; the rest is known without it.
+          unread={step.kind === "deploy" ? unread : undefined}
           live={step.kind === "live" && step.mark === "done" ? live : undefined}
           log={
             step.kind === "deploy" && step.service !== undefined ? logOf?.(step.service) : undefined
@@ -112,6 +124,7 @@ export function ReleasePlan({
 function PlanStep({
   step,
   index,
+  unread,
   createWords,
   onCreate,
   onRenew,
@@ -122,6 +135,7 @@ function PlanStep({
 }: {
   readonly step: ReleaseSheetStep;
   readonly index: number;
+  readonly unread: ReleasePlanProps["unread"];
   readonly createWords: string;
   readonly onCreate: (() => void) | undefined;
   readonly onRenew: (() => void) | undefined;
@@ -158,7 +172,12 @@ function PlanStep({
       </InlineButton>,
     );
   return (
-    <li className="rv-pstep" data-release-step={step.kind} data-step-mark={step.mark}>
+    <li
+      className="rv-pstep"
+      data-release-step={step.kind}
+      data-step-mark={step.mark}
+      data-unread={unread}
+    >
       <span className="rv-pmark" data-mark={step.mark}>
         {step.mark === "done" ? (
           <CheckIcon aria-label="Done" strokeWidth={2.5} />
@@ -196,30 +215,14 @@ function PlanStep({
           </InlineButton>
         </span>
       ) : null}
-      <p className="rv-pstep-l" data-tone={running === undefined ? step.tone : "quiet"}>
-        {running === undefined ? (
-          <span>
-            <WordsOf words={step.line} />
-          </span>
-        ) : (
-          // The step names the service and counts the time: the line is what the platform does.
-          <>
-            <RunningLine line={running} within="step" />
-            {step.late === true ? (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>taking longer than usual</span>
-              </>
-            ) : null}
-          </>
-        )}
-        {acts.map((act) => (
-          <Fragment key={act.key}>
-            <span aria-hidden="true">·</span>
-            {act}
-          </Fragment>
-        ))}
-      </p>
+      {unread === "unsaid" ? null : unread === "reading" ? (
+        // The line it will say, in its place and height.
+        <p aria-hidden="true" className="rv-pstep-l">
+          <span className="rv-pskel w-28" data-line="" />
+        </p>
+      ) : (
+        <PlanStepLine acts={acts} running={running} step={step} />
+      )}
       {/* Live, its ways in stand on a line of their own under the way back. */}
       {live === undefined || (live.open === undefined && live.onAddDomain === undefined) ? null : (
         <p className="rv-pstep-l rv-pstep-ways">
@@ -261,9 +264,48 @@ function PlanStep({
   );
 }
 
+/** A step's one line: what it does, or where the platform's work on it stands, and its presses. */
+function PlanStepLine({
+  step,
+  running,
+  acts,
+}: {
+  readonly step: ReleaseSheetStep;
+  readonly running: Running | undefined;
+  readonly acts: ReadonlyArray<ReactElement>;
+}) {
+  return (
+    <p className="rv-pstep-l" data-tone={running === undefined ? step.tone : "quiet"}>
+      {running === undefined ? (
+        <span>
+          <WordsOf words={step.line} />
+        </span>
+      ) : (
+        // The step names the service and counts the time: the line is what the platform does.
+        <>
+          <RunningLine line={running} within="step" />
+          {step.late === true ? (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>taking longer than usual</span>
+            </>
+          ) : null}
+        </>
+      )}
+      {acts.map((act) => (
+        <Fragment key={act.key}>
+          <span aria-hidden="true">·</span>
+          {act}
+        </Fragment>
+      ))}
+    </p>
+  );
+}
+
 /**
- * The plan while HQ has not said it: a step's place per service the release puts something on, and
- * production answering — the ready plan's size wherever it creates nothing.
+ * The plan before the project itself is read, when not even what the release lists is known: the
+ * least it holds, a service and production answering. Once the project is read its steps stand by
+ * name (`ReleasePlan`'s `unread`).
  */
 export function ReleasePlanSkeleton({ steps }: { readonly steps: number }) {
   return (

@@ -12512,6 +12512,48 @@ a.message-file:focus-visible {
 .rv-sec-h > span {
   font-weight: 400;
 }
+/* A section's own state at its label's end: its mark, its words and the press beside them. Every
+   sentence its wait will say holds the room from the start, so the one it says next never moves
+   the label; a cause too long for the label's line takes the next one, from the label's edge. */
+.rv-sec-h:has(.rv-sec-state) {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 2px;
+}
+/* On a line of its own, in a narrow sheet, it keeps the end edge it has beside the label. */
+.rv-sec-h:has(.rv-sec-state) > span {
+  margin-inline-start: auto;
+}
+.rv-sec-state {
+  display: grid;
+  justify-items: end;
+}
+.rv-sec-state > span {
+  display: inline-flex;
+  grid-area: 1 / 1;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.rv-sec-state > [data-room] {
+  visibility: hidden;
+  /* Its mark's room. */
+  padding-inline-start: 18px;
+}
+.rv-sec-state[data-tone="attention"] {
+  justify-items: start;
+  color: var(--zerops-status-attention-text);
+}
+/* A cause reads as a sentence, its press following its last word wherever that falls, as far
+   from it as the wait's own press stands from its words. */
+.rv-sec-state[data-tone="attention"] > span {
+  display: block;
+  white-space: normal;
+  text-wrap: pretty;
+}
+.rv-sec-state[data-tone="attention"] [data-release-plan-again] {
+  margin-inline-start: 3px;
+}
 .rv-words {
   margin: 0;
   font-size: 14px;
