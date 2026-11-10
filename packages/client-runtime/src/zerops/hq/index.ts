@@ -109,4 +109,4 @@ export {
   type HqRevealRecord,
 } from "./chief.ts";
 
-export { problemPresentation, problemSaid, problemsFix } from "./problems.ts";
+export { problemPresentation, problemSaid, problemsFix, unverifiedStops } from "./problems.ts";

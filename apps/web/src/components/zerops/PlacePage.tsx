@@ -106,7 +106,9 @@ import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
 import { MateFace, VerdictPanel, VerdictPanelWaiting } from "./primitives";
 import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
-import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
+import { deployAnswerSaid, unverifiedStops } from "@t3tools/client-runtime/zerops/hq";
+import type { HqProblem } from "@t3tools/shared/hqProblems";
+import { HqProblems } from "./review/HqProblems";
 import { ReleaseList, ReleaseRowsWaiting, ZeropsReleaseRows } from "./ZeropsReleaseRows";
 import { RecordedStageHistory, type RecordedStageHistoryProps } from "./RecordedStageHistory";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
@@ -699,6 +701,9 @@ function ZeropsProjectStopDetailPage({
             ? undefined
             : stopTierStops({ tierStops: declared.tierStops, platform })
         }
+        stopsUnverified={
+          withheld === null ? unverifiedStops(hqDetail.problems, projectId) : NO_PROBLEMS
+        }
         deployAnswer={deployAnswer}
         runAgain={
           redeploy === undefined || !mayRunAgain
@@ -783,6 +788,7 @@ interface StopAddService {
 
 const NOTHING_MISSING: ReadonlyArray<string> = [];
 const NO_TIER_STOPS: ReadonlyArray<StopTierStop> = [];
+const NO_PROBLEMS: ReadonlyArray<HqProblem> = [];
 const NO_FAILED_DEPLOYS: ReadonlyArray<StopFailedDeploy> = [];
 
 const NOTHING_RUNNING: ReadonlyArray<RunningLine> = [];
@@ -957,6 +963,7 @@ export function ZeropsStopPane({
   addService,
   notInZerops = NOTHING_MISSING,
   tierStops = NO_TIER_STOPS,
+  stopsUnverified = NO_PROBLEMS,
   deployAnswer,
   services: readServices,
   stop,
@@ -1079,6 +1086,8 @@ export function ZeropsStopPane({
   readonly notInZerops?: ReadonlyArray<string> | undefined;
   /** The services HQ stopped because the tier no longer declares them (`stopTierStops`). */
   readonly tierStops?: ReadonlyArray<StopTierStop> | undefined;
+  /** HQ's open findings that a service stop here is not confirmed (`unverifiedStops`). */
+  readonly stopsUnverified?: ReadonlyArray<HqProblem> | undefined;
   /** What HQ answered of the deploys the last verb pressed here asked for. */
   readonly deployAnswer?: HqDeployAnswer | undefined;
   /** What `main` has that this production does not; nothing for a stage. */
@@ -1574,6 +1583,22 @@ export function ZeropsStopPane({
                     rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
                     rows={tierStops}
                   />
+                )}
+                {stopsUnverified.length === 0 ? null : (
+                  // Never drawn as stopped: HQ has not confirmed it, and says so until it does.
+                  <div className="flex flex-col gap-2" data-zerops-surface="stop-unverified">
+                    <p className="text-sm text-muted-foreground">
+                      Stop not confirmed:{" "}
+                      {[
+                        ...new Set(
+                          stopsUnverified.flatMap(({ where }) =>
+                            where.service === undefined ? [] : [where.service],
+                          ),
+                        ),
+                      ].join(", ") || "a service"}
+                    </p>
+                    <HqProblems problems={stopsUnverified} />
+                  </div>
                 )}
                 {otherDeploys === undefined ? null : (
                   <ZeropsDeployAnswer
