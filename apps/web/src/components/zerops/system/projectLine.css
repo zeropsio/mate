@@ -359,8 +359,8 @@ span.ln-bead {
   min-width: 0;
   grid-auto-rows: auto;
   grid-template-columns: 302fr 310fr 158fr;
-  grid-template-rows: minmax(154px, auto);
-  padding: 20px 24px 2px 28px;
+  grid-template-rows: auto;
+  padding: 20px 24px 14px 28px;
 }
 
 .ln[data-stations="4"] .lnx-grid {
