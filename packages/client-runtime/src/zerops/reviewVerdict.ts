@@ -1146,7 +1146,9 @@ export interface ReleaseReviewModel extends ReviewModel {
 const RELEASE_FOLLOWS = "You can close this. Production's line on the project's card follows it.";
 /** What a release's foot says before the press: how long it takes, as measured — the run's
  *  first release went live in 98 s. */
-export const RELEASE_TAKES = "It takes a minute or two.";
+export const RELEASE_TAKES = "Takes a minute or two";
+/** What a release's foot says while HQ has not said what it carries or what production lacks. */
+export const RELEASE_READING = "Reading what production needs…";
 /** Past this, a release on its way says it takes longer than usual (`releaseOutcomeOf`). */
 export const RELEASE_ESTIMATE_MS = 2 * 60_000;
 
@@ -1337,7 +1339,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         verdict: {
           state: "released",
           tone: "done",
-          title: `Released ${tag}`,
+          title: `${tag} is live`,
           // The age is the tag's: the landing's own moment is not read.
           why: age === undefined ? "Production runs it" : `Production runs it · released ${age}`,
           fix: undefined,
@@ -1369,7 +1371,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         verdict: {
           state: "release-failed",
           tone: "failed",
-          title: `${tag} didn't go out`,
+          title: `${tag} didn't go live`,
           why: outcome.error === undefined ? said : `${said}: ${outcome.error.replace(/\.$/u, "")}`,
           fix: problemsFix(outcome.problems ?? []) ?? {
             verb: "fix it",
@@ -1409,34 +1411,31 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
     enabled: input.gate.allowed,
     safe: false,
   };
-  // Still comparing what goes out: nothing is said of it, nor refused, until it is known (the
-  // onboarding run opened on "Can't release now" and "0 changes" for 0.4 s), and the foot says
-  // what a ready one says.
+  // The title is the release, whatever holds it: what is not read yet is no refusal (the
+  // onboarding run opened on "Can't release now" and "0 changes" for 0.4 s), and a refusal is the
+  // foot's to say, beside the button it holds.
+  const title = `Release ${tag}`;
   if (!input.gate.allowed && input.gate.reason === RELEASE_CHECKING)
     return {
       verdict: {
         state: "release-blocked",
         tone: "busy",
-        title: "Checking what goes out",
-        why: "Waiting on HQ",
+        title,
+        why: RELEASE_READING,
         fix: undefined,
       },
       consequence: RELEASE_TAKES,
       primary,
     };
   if (!input.gate.allowed) {
-    const reason = input.gate.reason;
     const nothing = releaseNothingReason(input.gate) !== undefined;
     return {
       verdict: {
         state: "release-blocked",
         tone: nothing ? "done" : "attention",
-        title: nothing
-          ? "Nothing to release"
-          : input.permission?.allowed === false
-            ? "Only releasers can release"
-            : "Can't release now",
-        why: reason.replace(/\.$/u, ""),
+        title,
+        // HQ's own words: what holds it, or its rule for who may release.
+        why: input.gate.reason.replace(/\.$/u, ""),
         fix: undefined,
       },
       consequence: keeps,
@@ -1447,7 +1446,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
     verdict: {
       state: "release-ready",
       tone: "ok",
-      title: "Ready to release",
+      title,
       why: stageWhy(input),
       fix: undefined,
     },

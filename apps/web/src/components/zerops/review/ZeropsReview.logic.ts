@@ -10,13 +10,10 @@
  */
 import {
   deployedVersion,
-  type GroupFlowAddress,
   type GroupFlowPreview,
   linksChange,
   type Moved,
   type ProductionRun,
-  RELEASE_TAKES,
-  type ReleaseReviewModel,
   type ReviewPrimary,
   type ReviewState,
   type ReviewVerdict,
@@ -27,7 +24,6 @@ import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
 import { environmentTitle } from "../place/place.logic";
-import { siteOf, soleSite } from "../projects/projectCard.logic";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
 
@@ -746,138 +742,6 @@ export function changeReceipt(input: {
   };
 }
 
-/** What releasing does, said under its button: how long, and the way back. */
-export function releaseFoot(input: {
-  readonly state: ReviewState;
-  readonly consequence: string;
-  readonly live: string | undefined;
-}): string {
-  if (input.state !== "release-ready") return input.consequence;
-  const back =
-    input.live === undefined ? "" : ` You can roll back to ${input.live} from production's panel.`;
-  return `${RELEASE_TAKES}${back}`;
-}
-
-/** A release's head: its title, the line under it, the quiet line under that, and its foot. */
-export interface ReleaseHeading {
-  readonly title: string;
-  /** Before the press, what goes out (`releaseLine`); once pressed, the state says it all. */
-  readonly meta: string | undefined;
-  /** Where it stands, said once on the line: a running release's step and clock. */
-  readonly state: string | undefined;
-  /** Quiet, under the line: why it cannot go, the way back once live, what stopped it. */
-  readonly note: string | undefined;
-  /** Under the buttons: what pressing does; nothing once it is pressed. */
-  readonly foot: string;
-}
-
-/**
- * What a release's head says. Offered, it is the release to make, what goes out and what
- * pressing does; pressed, its title is where it stands — releasing, live, or stopped — and the
- * line says its step and clock once, never the offer's facts again beside it.
- */
-export function releaseHeading(input: {
-  readonly tag: string;
-  readonly model: ReleaseReviewModel;
-  /** What goes out (`releaseLine`). */
-  readonly line: string;
-  /** What production ran as it was offered. */
-  readonly live: string | undefined;
-}): ReleaseHeading {
-  const { tag, model } = input;
-  const { verdict } = model;
-  switch (verdict.state) {
-    case "releasing":
-      return {
-        title: `Releasing ${tag} to production`,
-        meta: undefined,
-        state: verdict.why,
-        note: model.consequence,
-        foot: "",
-      };
-    case "released":
-      return {
-        title: `${tag} is live`,
-        meta: undefined,
-        state: verdict.why,
-        note: model.ifWrong,
-        foot: "",
-      };
-    // Failed, "Production now" says what it still runs: its cause alone, its fix beside it.
-    case "release-failed":
-      return {
-        title: verdict.title,
-        meta: undefined,
-        state: undefined,
-        note: `${verdict.why.replace(/\.$/u, "")}.`,
-        foot: "",
-      };
-    case "release-stalled":
-    case "release-superseded":
-      return {
-        title: verdict.title,
-        meta: undefined,
-        state: undefined,
-        note: `${verdict.why.replace(/\.$/u, "")}. ${model.consequence}`,
-        foot: "",
-      };
-  }
-  const ready = verdict.state === "release-ready";
-  return {
-    title: `Release ${tag} to production`,
-    meta: ready ? input.line : input.line.replace(/\.$/u, ""),
-    state: ready ? undefined : verdict.title,
-    note: whySaid(verdict, false) ? verdict.why : undefined,
-    foot: releaseFoot({ state: verdict.state, consequence: model.consequence, live: input.live }),
-  };
-}
-
-function changesWords(n: number): string {
-  return `${String(n)} ${n === 1 ? "change" : "changes"}`;
-}
-
-/**
- * Under a release's title: how many changes, and whether the stage runs them — never that they
- * were tested there: running on a stage is no test anybody ran (the onboarding run's owner read
- * "tested on stage" of a stage nobody had opened).
- */
-export function releaseLine(input: {
-  /** How many go out; `undefined` while that is still compared, which is then not said. */
-  readonly changes: number | undefined;
-  /** The stage that follows `main`, by name. */
-  readonly stage: string | undefined;
-  /** When the stage last took what it runs (`sinceWords`). */
-  readonly since: string | undefined;
-  readonly onStage: { readonly total: number; readonly running: number } | undefined;
-  readonly live: string | undefined;
-}): string {
-  if (input.changes === undefined)
-    return input.live === undefined ? "The first release." : `Since ${input.live}.`;
-  const changes = changesWords(input.changes);
-  const onStage = input.onStage;
-  if (input.stage !== undefined && onStage !== undefined && onStage.total > 0) {
-    if (onStage.running >= onStage.total) {
-      return `${changes}, on ${input.stage}${input.since === undefined ? "" : ` since ${input.since}`}.`;
-    }
-    return `${changes}, ${String(onStage.running)} of them on ${input.stage} so far.`;
-  }
-  return input.live === undefined
-    ? `${changes}, the first release.`
-    : `${changes} since ${input.live}.`;
-}
-
-/** "Production now": what it runs, since when, and where. */
-export function productionNowLine(input: {
-  readonly live: string | undefined;
-  readonly since: string | undefined;
-  readonly host: string | undefined;
-}): string {
-  if (input.live === undefined) return "Nothing released yet.";
-  const since = input.since === undefined ? "" : ` since ${input.since}`;
-  const at = input.host === undefined ? "" : ` at ${input.host}`;
-  return `Runs ${input.live}${since}${at}.`;
-}
-
 /**
  * The code production runs, per service, where it runs one whole commit of a repository it builds
  * from: what a person can read before a release replaces it. A service running nothing, or what no
@@ -902,42 +766,8 @@ export function productionCode(input: {
 }
 
 /**
- * "Production now" for a release review: the line, and one row per part — what it runs and the
- * address it answers at — where production runs more than one (MODEL §9/5). One part keeps the
- * line, with its address when it is the only one.
- */
-export function productionNow(input: {
-  readonly live: string | undefined;
-  readonly since: string | undefined;
-  /** Production's parts by hostname, each with the version it runs as a person names it. */
-  readonly parts: ReadonlyArray<{
-    readonly hostname: string;
-    readonly version: string | undefined;
-  }>;
-  /** Each service's address (`placeAddresses`). */
-  readonly addresses: ReadonlyArray<GroupFlowAddress>;
-}): { readonly line: string; readonly rows: ReadonlyArray<string> } {
-  if (input.parts.length <= 1)
-    return { line: productionNowLine({ ...input, host: soleSite(input.addresses) }), rows: [] };
-  return {
-    line: productionNowLine({ ...input, host: undefined }),
-    rows: [...input.parts]
-      .sort((left, right) => left.hostname.localeCompare(right.hostname))
-      .map((part) => {
-        const host = siteOf(input.addresses.find((entry) => entry.service === part.hostname)?.url);
-        return [
-          part.hostname,
-          part.version ?? "runs nothing",
-          ...(host === undefined ? [] : [host]),
-        ].join(" · ");
-      }),
-  };
-}
-
-/**
- * What "Production now" says production ran as the release was offered: since when the release it
- * replaces runs — that release's own time, never a newer one's — and the parts a release puts
- * something on. A database runs no release, so it is no part here. While the release goes out, a
+ * What production ran as the release was offered: since when the release it replaces runs — that
+ * release's own time, never a newer one's — and the parts a release puts something on. A database runs no release, so it is no part here. While the release goes out, a
  * part it redeploys names the build on its way, not what it serves: it still serves the release it
  * replaces.
  */

@@ -77,7 +77,7 @@ describe("change and release reviews use HQ's release verdict", () => {
           release: gate,
         }),
       );
-      expect(dialog.verdict.title).toBe(allowed ? "Ready to release" : "Nothing to release");
+      expect(dialog.verdict.state).toBe(allowed ? "release-ready" : "release-blocked");
       expect(footer.primary).toBeUndefined();
       if (!allowed) {
         expect(footer.consequence).toBe(RELEASE_NOTHING_NEW_ON_MAIN);
@@ -598,7 +598,7 @@ describe("releaseReview", () => {
       {
         state: "release-ready",
         tone: "ok",
-        title: "Ready to release",
+        title: "Release v0.1.57",
         why: "Stage runs both changes",
       },
     ],
@@ -623,19 +623,19 @@ describe("releaseReview", () => {
       {
         state: "release-blocked",
         tone: "attention",
-        title: "Only releasers can release",
+        title: "Release v0.1.57",
         why: "You need more than Read access to this project's production to release it",
       },
     ],
     [
       "still comparing what goes out: no verdict before it is known",
       { gate: { allowed: false, reason: RELEASE_CHECKING } },
-      { state: "release-blocked", tone: "busy", title: "Checking what goes out" },
+      { state: "release-blocked", tone: "busy", title: "Release v0.1.57" },
     ],
     [
       "nothing new",
       { gate: { allowed: false, reason: RELEASE_NOTHING_NEW_ON_MAIN } },
-      { state: "release-blocked", tone: "done", title: "Nothing to release" },
+      { state: "release-blocked", tone: "done", title: "Release v0.1.57" },
     ],
     [
       "releasing",
@@ -653,7 +653,7 @@ describe("releaseReview", () => {
       {
         state: "released",
         tone: "done",
-        title: "Released v0.1.57",
+        title: "v0.1.57 is live",
         why: "Production runs it · released 3 minutes ago",
       },
     ],
@@ -670,7 +670,7 @@ describe("releaseReview", () => {
       {
         state: "release-failed",
         tone: "failed",
-        title: "v0.1.57 didn't go out",
+        title: "v0.1.57 didn't go live",
         why: "The build of app failed",
       },
     ],
@@ -707,7 +707,7 @@ describe("releaseReview", () => {
     [
       "still comparing what goes out",
       { gate: { allowed: false, reason: RELEASE_CHECKING }, replaces: { kind: "first" } },
-      "It takes a minute or two.",
+      "Takes a minute or two",
       false,
     ],
     [

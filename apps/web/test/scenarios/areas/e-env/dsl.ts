@@ -326,7 +326,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
   const releaseFromReview = Effect.gen(function* () {
     yield* click("Review release");
     yield* text("Version");
-    yield* click("Release v0.1.0 to production");
+    yield* click("Release v0.1.0");
   });
   const reload = Effect.promise(async () => {
     await page.reload();

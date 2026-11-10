@@ -56,7 +56,11 @@ vi.mock("@t3tools/client-runtime/zerops/projections", () => ({
 }));
 vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
 vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
-vi.mock("~/zerops/importServices", () => ({ useImportServices: () => vi.fn() }));
+vi.mock("~/zerops/serviceCreationRuns", () => ({
+  beginServiceCreation: vi.fn(),
+  useServiceCreation: () => ({ progress: { stage: "unknown" }, acceptedAtMs: undefined }),
+}));
+vi.mock("~/zerops/useZeropsMateOwners", () => ({ usePersonNames: () => () => undefined }));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => vi.fn() }));
 vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => NOW, useSecondsNowMs: () => NOW }));
 const compared = vi.hoisted(() => ({ asks: [] as Array<unknown> }));
@@ -241,10 +245,17 @@ async function mount(
   return { container, render };
 }
 
+/** The version stands in words until its *Change* is pressed: the field and its rules come then. */
+const changeVersion = (container: Awaited<ReturnType<typeof mount>>["container"]) =>
+  [...container.querySelectorAll<TestButton>("button")].find(
+    (button) => button.textContent === "Change",
+  )!;
+
 describe("the release dialog's press", () => {
   it("invalid version prevents releasing production", async () => {
     const release = vi.fn(async (): Promise<FlowVerbOutcome> => ({ ok: true, tag: "v0.1.5" }));
     const { container } = await mount(release);
+    await act(async () => changeVersion(container).click());
     const input = container.querySelector<TestInput>('input[aria-label="Version"]')!;
     const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"));
     const props = Reflect.get(input, key!) as {
@@ -294,6 +305,7 @@ describe("the release dialog's press", () => {
       reason: "HQ refused it",
     }));
     const { container } = await mount(release);
+    await act(async () => changeVersion(container).click());
     const field = container.querySelector<TestInput>('input[aria-label="Version"]');
     expect(field?.value).toBe("0.1.5");
     expect(container.textContent).toContain("Your code names v1.0.0.");
@@ -481,21 +493,6 @@ describe("a review from what HQ already stores", () => {
     expect(comparedOnOpen()).toBe(false);
   });
 
-  it("A release review says the changes going live are not known yet while HQ has not recorded them", async () => {
-    const { container } = await mount(
-      noRelease,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      detailOf({ releaseChanges: { state: "pending" } }),
-    );
-    expect(container.textContent).toContain("Not known yet.");
-    expect(container.textContent).not.toContain("Set version to 1.0.0");
-    expect(container.textContent).not.toContain("0 changes");
-    expect(comparedOnOpen()).toBe(false);
-  });
-
   it("A release review compares what goes out when HQ records no changes for a release", async () => {
     await mount(
       noRelease,
@@ -563,19 +560,6 @@ describe("a review from what HQ already stores", () => {
         ({ options }) => options === undefined || !(options as { compare?: boolean }).compare,
       ),
     ).toBe(true);
-  });
-
-  it("A release review says the commits outside changes are not known yet while HQ has not stored them", async () => {
-    const { container } = await mount(
-      noRelease,
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      detailOf({ releaseOutside: { count: 0, commits: [], summaryRead: "pending" } }),
-    );
-    expect(container.textContent).toContain("Commits outside changes: not known yet.");
-    expect(showCommits(container)).toBeUndefined();
   });
 
   describe("a rollback", () => {
