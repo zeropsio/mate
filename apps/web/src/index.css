@@ -11254,6 +11254,24 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   }
 }
 
+/* Under a finger the round Send and Stop take a 44 px press around their 32 to 36, as the kit's
+   buttons do. */
+@media (pointer: coarse) {
+  [data-chat-composer-form] [data-composer-primary] {
+    position: relative;
+  }
+
+  [data-chat-composer-form] [data-composer-primary]::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2.75rem;
+    height: 2.75rem;
+    translate: -50% -50%;
+  }
+}
+
 /* C4: the one control's menu — the models, and beside them the model's
    effort, its other choices and the access. Both columns share one height,
    capped by the room above the composer; the choices scroll on their own
@@ -11290,6 +11308,11 @@ html[data-theme-id] [data-chat-header] .conversation-crewmate[data-popup-open] {
   .composer-model-menu > [data-model-picker-content] {
     flex: none;
     height: 21.625rem;
+  }
+
+  /* 16 px in the search, so a phone does not zoom the page on its focus. */
+  .composer-model-menu [data-model-picker-content] input {
+    font-size: 1rem;
   }
 }
 
