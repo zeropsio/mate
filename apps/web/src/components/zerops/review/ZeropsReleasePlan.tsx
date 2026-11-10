@@ -8,7 +8,8 @@
 import type { DeployLogTarget } from "@t3tools/client-runtime/zerops/hq";
 import { CheckIcon, XIcon } from "lucide-react";
 import type { RunningLine as Running } from "@t3tools/client-runtime/zerops/activity/runningNow";
-import { Fragment, useState, type ReactElement } from "react";
+import { MOTION } from "@t3tools/shared/brand";
+import { Fragment, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 
 import { InlineButton } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
@@ -90,11 +91,43 @@ export function ReleasePlan({
   live,
 }: ReleasePlanProps) {
   const creations = steps.filter((step) => step.kind === "create").length;
+  const list = useRef<HTMLOListElement | null>(null);
+  const keys = steps.map((step) => step.key).join("\n");
+  const stood = useRef<ReadonlySet<string> | undefined>(undefined);
+  // A step the plan brings among those already standing (what production lacks is created first)
+  // comes in, and the steps after it go down to their places from where they stood: none is cut
+  // to another's. The first draw places them, and reduced motion cuts.
+  useLayoutEffect(() => {
+    const before = stood.current;
+    const now = keys.split("\n");
+    stood.current = new Set(now);
+    const node = list.current;
+    if (before === undefined || node === null) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timing = { duration: MOTION.duration.base, easing: MOTION.easing.out };
+    let pushed = 0;
+    for (const [index, row] of Array.from(node.children).entries()) {
+      if (!(row instanceof HTMLElement)) continue;
+      if (!before.has(now[index] ?? "")) {
+        pushed += row.offsetHeight;
+        // It shows once the steps over its place have left it: two steps' words never cross.
+        row.animate([{ opacity: 0 }, { opacity: 0, offset: 0.35 }, { opacity: 1 }], {
+          duration: MOTION.duration.base,
+        });
+      } else if (pushed > 0) {
+        row.animate(
+          [{ transform: `translateY(${String(-pushed)}px)` }, { transform: "none" }],
+          timing,
+        );
+      }
+    }
+  }, [keys]);
   return (
     <ol
       aria-busy={unread === "reading" ? true : undefined}
       className="rv-plan"
       data-zerops-surface="release-plan"
+      ref={list}
     >
       {steps.map((step, index) => (
         <PlanStep
