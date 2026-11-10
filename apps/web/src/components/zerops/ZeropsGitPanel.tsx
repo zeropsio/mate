@@ -4,7 +4,8 @@
  * First the project, as the Zerops panel opens with it (`MateProjectCard`): its places and what
  * waits for production; under it the project's line as a picture for this Mate (`ProjectLine`):
  * its changes as beads between the project's stations, work on disk that is no change yet among
- * them, everybody else's as a count. Then per code repository it works in, under its name and its state on
+ * them, everybody else's as a count; its corner leads to the project's page with the line in full.
+ * Then per code repository it works in, under its name and its state on
  * GitHub, this Mate's work as a change row in plain words ("1 file not committed yet", "Ready to
  * merge", "Merged · waits for production"). The change's commits and its files are the page's
  * "What changed", below.
@@ -75,6 +76,11 @@ export interface ZeropsGitPanelProps {
   readonly onOpenChange?: ((block: GitBlock, from: HTMLElement) => void) | undefined;
   /** Opens a change's sheet from its bead on the line. */
   readonly onOpenPull?: ((pull: FlowPullRequest, from: HTMLElement) => void) | undefined;
+  /**
+   * *Show the full picture*, pressed: the picture's corner leads to the project's page, which is
+   * to arrive with the line in full (a panel has no room for it).
+   */
+  readonly onShowFullPicture?: (() => void) | undefined;
   /** Opens the dialog that connects a repository to GitHub. */
   readonly onConnect?: ((repository: string) => void) | undefined;
   /** Asks again whether a repository's remote answers; no *Check again* without it. */
@@ -90,6 +96,7 @@ export function ZeropsGitPanel({
   renderBlockAction,
   onOpenChange,
   onOpenPull,
+  onShowFullPicture,
   onConnect,
   onCheckAgain,
 }: ZeropsGitPanelProps) {
@@ -104,6 +111,13 @@ export function ZeropsGitPanel({
         <div className="flex min-w-0 flex-col gap-3">
           <MateProjectCard mateName={mateName} project={project} />
           <ProjectLine
+            full={{
+              kind: "page",
+              groupId: project.groupId,
+              onOpen: () => {
+                onShowFullPicture?.();
+              },
+            }}
             onOpenChange={(pull, from) => {
               onOpenPull?.(pull, from);
             }}
