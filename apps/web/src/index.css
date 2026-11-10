@@ -10809,6 +10809,18 @@ button.run-bar:focus-visible {
   background: var(--color-accent);
   color: var(--color-foreground);
 }
+/* Under a finger the arrow takes 40 px around its 24: the rows stand 28 to 40 px apart, so two
+   arrows' presses never reach each other's glyph. */
+@media (pointer: coarse) {
+  .run-result-open {
+    position: relative;
+  }
+  .run-result-open::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
+}
 .run-result-open:focus-visible,
 .run-result-tile:focus-visible {
   outline: 2px solid color-mix(in oklab, var(--color-ring) 70%, transparent);

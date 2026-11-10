@@ -8819,7 +8819,7 @@ function ConversationView(props: ChatViewProps) {
                     or a key focused it) lets the focus go with it. */}
                 <button
                   aria-label="Scroll to end"
-                  className="pointer-events-auto flex size-8 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-popover text-foreground shadow-lg/8 transition-[opacity,translate,scale,background-color] duration-200 ease-out hover:bg-accent active:scale-95 not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0"
+                  className="pointer-events-auto relative flex size-8 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-popover text-foreground shadow-lg/8 transition-[opacity,translate,scale,background-color] duration-200 ease-out hover:bg-accent active:scale-95 not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0 pointer-coarse:after:absolute pointer-coarse:after:size-11"
                   data-shown={showScrollToBottom ? "" : undefined}
                   inert={!showScrollToBottom}
                   onClick={() => {
