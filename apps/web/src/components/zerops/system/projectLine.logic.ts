@@ -10,8 +10,10 @@
  *
  * Behind the picture stands the line in full (`projectLineFull`): the same stations, segments and
  * beads, with what each station is under its name (its Mates, its repositories, a place's state and
- * the way to its page) and a row under `main` for each further place. It reads the picture it
- * stands behind, so what the picture counts the full line counts.
+ * the way to its page), a row under `main` for each further place, and a row for each Mate with its
+ * own changes under the segment each is on. It reads the picture it stands behind, so what the
+ * picture counts the full line counts. It stays legible however much is on its way: a Mate's row
+ * holds its newest `ROW_BEADS` changes and counts the rest, and the rows past `ROWS_SHOWN` fold.
  *
  * Read from what the project's page already reads: its flow (`GroupFlow`), its places
  * (`placeLines`), its changes (`pageChanges`), what waits on the viewer (`useViewerWaits`) and its
@@ -459,11 +461,39 @@ export interface LineSide {
   readonly projectId: string | undefined;
 }
 
+/** A Mate's row holds this many of its changes, the newest; the rest are a count. */
+export const ROW_BEADS = 8;
+
+/** The Mates' rows that stand before the rest fold. */
+export const ROWS_SHOWN = 6;
+
+/** One Mate's changes on the line: under each segment, the ones that are on it. */
+export interface LineMateRow {
+  /** The Mate's project. */
+  readonly key: string;
+  readonly name: string;
+  readonly tint: MateTintId | undefined;
+  /** One for each segment, in the line's order; a segment's beads as the track orders them. */
+  readonly cells: ReadonlyArray<{
+    readonly key: LineSegment["key"];
+    /** "Wren: 3 open". */
+    readonly label: string;
+    readonly beads: ReadonlyArray<LineBead>;
+  }>;
+  /** Its changes on the line past its newest `ROW_BEADS`. */
+  readonly earlier: number;
+}
+
 export interface ProjectLineFullView {
   readonly stations: ReadonlyArray<LineStationFull>;
   /** The picture's segments: its beads, its counts. */
   readonly segments: ReadonlyArray<LineSegment>;
   readonly sides: ReadonlyArray<LineSide>;
+  /**
+   * A row for each Mate, the ones the viewer is waited on by first, then the stuck, then by how
+   * much each has on its way. None where the project has one Mate: its row would be the line.
+   */
+  readonly mates: ReadonlyArray<LineMateRow>;
 }
 
 /** What the line in full reads beyond its picture. Never one Mate's (`mine`). */
@@ -616,7 +646,60 @@ export function projectLineFull(
     })),
   ];
 
-  return { stations, segments, sides };
+  // Each Mate's own changes, under the segment each is on.
+  const movedAt = new Map(
+    input.changes.map((change) => [lineChangeKey(change.pull), change.at ?? ""]),
+  );
+  const stageName = stations.find((station) => station.kind === "stage")?.name;
+  const cellWords = (key: LineSegment["key"]) =>
+    key === "work"
+      ? "open"
+      : key === "stage"
+        ? `on the way to ${stageName ?? "the stage"}`
+        : absent
+          ? "on main"
+          : "ready for production";
+  const rows = flow.mates.map((mate, order) => {
+    const own = segments.map((segment) =>
+      segment.beads.filter((bead) => bead.pull?.mateProjectId === mate.projectId),
+    );
+    const all = own.flat();
+    // The newest by when each last moved; told no time, the ones nearest their next station.
+    const kept = new Set(
+      all
+        .map((bead, at) => ({ key: bead.key, moved: movedAt.get(bead.key) ?? "", at }))
+        .toSorted((left, right) => right.moved.localeCompare(left.moved) || right.at - left.at)
+        .slice(0, ROW_BEADS)
+        .map((bead) => bead.key),
+    );
+    const marked = (mark: LineBead["mark"]) => all.filter((bead) => bead.mark === mark).length;
+    const row: LineMateRow = {
+      key: mate.projectId,
+      name: mate.name,
+      tint: input.tintOf(mate.projectId),
+      cells: segments.map((segment, at) => ({
+        key: segment.key,
+        label: `${mate.name}: ${String(own[at]?.length ?? 0)} ${cellWords(segment.key)}`,
+        beads: (own[at] ?? []).filter((bead) => kept.has(bead.key)),
+      })),
+      earlier: all.length - kept.size,
+    };
+    return { row, order, waits: marked("waits"), stuck: marked("stuck"), count: all.length };
+  });
+  const mates =
+    rows.length < 2
+      ? []
+      : rows
+          .toSorted(
+            (left, right) =>
+              right.waits - left.waits ||
+              right.stuck - left.stuck ||
+              right.count - left.count ||
+              left.order - right.order,
+          )
+          .map((each) => each.row);
+
+  return { stations, segments, sides, mates };
 }
 
 /** A bead's side and the gap to the next, as the track lays them. */

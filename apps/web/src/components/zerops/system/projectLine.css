@@ -494,6 +494,112 @@ a.ln-name:focus-visible,
   text-underline-offset: 2px;
 }
 
+/* Under the line, a row for each Mate on the line's own columns: its changes under the segment
+   each is on, packed toward the next station as the track packs them. */
+.lnx-mates {
+  min-width: 0;
+  margin: 0 24px 0 28px;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--ov-rule, var(--border));
+}
+
+.lnx-mates-head {
+  display: flex;
+  min-width: 0;
+  height: 20px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+
+.lnx-rows {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lnx-row {
+  display: grid;
+  min-width: 0;
+  height: 24px;
+  align-items: center;
+  grid-template-columns: 302fr 310fr 158fr;
+}
+
+.ln[data-stations="4"] .lnx-row {
+  grid-template-columns: 262fr 160fr 190fr 158fr;
+}
+
+/* The Mate, then its open changes: both in the line's first column. */
+.lnx-first {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.lnx-who {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  color: color-mix(in oklab, var(--foreground) 82%, var(--ln-ground));
+  font-size: var(--text-caption);
+  line-height: 16px;
+}
+
+.lnx-who > .ln-face {
+  flex: none;
+}
+
+.lnx-who > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lnx-cell {
+  display: flex;
+  min-width: 0;
+  flex: none;
+  justify-content: flex-end;
+  padding-right: 12px;
+}
+
+.lnx-cell > ul {
+  display: flex;
+  height: 18px;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lnx-cell > ul > li {
+  display: flex;
+}
+
+/* The rows past the first six, folded: they open under the rows that stand. */
+.lnx-more {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.lnx-more[data-open] {
+  grid-template-rows: 1fr;
+}
+
+.lnx-more > .lnx-rows {
+  min-height: 0;
+  overflow: hidden;
+}
+
 /* Compact: the same picture in a panel's width, its counts in their short form. */
 @container line (max-width: 699px) {
   .ln-grid {
@@ -544,12 +650,35 @@ a.ln-name:focus-visible,
   .lnx-head > .ln-words {
     display: none;
   }
+
+  /* A Mate's row, compact: its name, then its changes in one run, a gap between segments. */
+  .lnx-mates {
+    margin-inline: 20px;
+  }
+
+  .lnx-row {
+    display: flex;
+    gap: 10px;
+  }
+
+  .lnx-first {
+    display: contents;
+  }
+
+  .lnx-cell {
+    padding-right: 0;
+  }
+
+  .lnx-cell:empty {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ln-bead,
   .ln-fold,
-  .ln-pane {
+  .ln-pane,
+  .lnx-more {
     transition: none;
   }
 }

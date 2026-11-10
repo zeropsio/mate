@@ -1,7 +1,10 @@
 /**
  * The line in full (`projectLineFull`), behind its picture (`ProjectLine`): the same stations,
  * track, beads and counts, with what each station is under its name — its Mates, its repositories,
- * a place's state — and a row under `main` for each further place.
+ * a place's state — and a row under `main` for each further place. Under the line, a row for each
+ * Mate: its own changes under the segment each is on, its newest eight and then a count; the rows
+ * past the first six fold behind *Show N more Mates*, which stands at the rows' head and so stays
+ * where it was pressed.
  *
  * It leads and never acts: a place's station and a further place's row open the place's page, a
  * bead its change's review, a count its group of the Changes list. A place's vault, its addresses
@@ -15,9 +18,13 @@
  * `held`; `onOpenChange(pull, from)`; `onShowGroup(group)`.
  */
 import { Link } from "@tanstack/react-router";
+import { useId, useState } from "react";
 
+import { InlineButton } from "~/components/ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { CutText } from "./ChangeRow";
 import {
+  Bead,
   Caption,
   SegmentBeads,
   textOf,
@@ -26,7 +33,14 @@ import {
   type OpenLineChange,
   type ShowLineGroup,
 } from "./ProjectLineParts";
-import type { LineSide, LineStationFull, ProjectLineFullView } from "./projectLine.logic";
+import {
+  moreChipWidth,
+  ROWS_SHOWN,
+  type LineMateRow,
+  type LineSide,
+  type LineStationFull,
+  type ProjectLineFullView,
+} from "./projectLine.logic";
 
 export interface ProjectLineFullProps {
   /** `undefined` while the project is unread: nothing drawn. */
@@ -38,7 +52,7 @@ export interface ProjectLineFullProps {
   readonly onShowGroup?: ShowLineGroup;
 }
 
-const UNREAD: ProjectLineFullView = { stations: [], segments: [], sides: [] };
+const UNREAD: ProjectLineFullView = { stations: [], segments: [], sides: [], mates: [] };
 
 export function ProjectLineFull({
   view,
@@ -47,7 +61,7 @@ export function ProjectLineFull({
   onOpenChange,
   onShowGroup,
 }: ProjectLineFullProps) {
-  const { stations, segments, sides } = view ?? UNREAD;
+  const { stations, segments, sides, mates } = view ?? UNREAD;
   const [widths, track] = useTrackWidths(segments.length);
   return (
     <div className="lnx" data-sides={sides.length > 0 ? "" : undefined}>
@@ -119,7 +133,117 @@ export function ProjectLineFull({
           </ul>
         )}
       </div>
+      {held || mates.length === 0 ? null : <MateRows onOpenChange={onOpenChange} rows={mates} />}
     </div>
+  );
+}
+
+/**
+ * A row for each Mate, on the line's columns. The first six stand; the rest fold behind the verb
+ * at the rows' head.
+ */
+function MateRows({
+  rows,
+  onOpenChange,
+}: {
+  readonly rows: ReadonlyArray<LineMateRow>;
+  readonly onOpenChange: OpenLineChange;
+}) {
+  const [all, setAll] = useState(false);
+  const label = useId();
+  const rest = rows.slice(ROWS_SHOWN);
+  const list = (some: ReadonlyArray<LineMateRow>) =>
+    some.map((row) => <MateRow key={row.key} onOpenChange={onOpenChange} row={row} />);
+  return (
+    <div className="lnx-mates" data-zerops-line-mates="">
+      <div className="lnx-mates-head">
+        <span className="ln-words" id={label}>
+          Each Mate’s changes
+        </span>
+        {rest.length === 0 ? null : (
+          <span className="ln-words">
+            <InlineButton
+              aria-expanded={all}
+              onClick={() => {
+                setAll((now) => !now);
+              }}
+              tone="muted"
+            >
+              {all
+                ? "Show fewer Mates"
+                : `Show ${String(rest.length)} more ${rest.length === 1 ? "Mate" : "Mates"}`}
+            </InlineButton>
+          </span>
+        )}
+      </div>
+      <ul aria-labelledby={label} className="lnx-rows">
+        {list(rows.slice(0, ROWS_SHOWN))}
+      </ul>
+      {rest.length === 0 ? null : (
+        <div className="lnx-more" data-open={all ? "" : undefined}>
+          <ul aria-label="More Mates’ changes" className="lnx-rows" inert={!all}>
+            {list(rest)}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MateRow({
+  row,
+  onOpenChange,
+}: {
+  readonly row: LineMateRow;
+  readonly onOpenChange: OpenLineChange;
+}) {
+  const [work, ...after] = row.cells;
+  const cell = (each: LineMateRow["cells"][number], earlier: number) => (
+    <span className="lnx-cell" data-seg={each.key} key={each.key}>
+      {each.beads.length === 0 && earlier === 0 ? null : (
+        <ul aria-label={each.label}>
+          {earlier === 0 ? null : (
+            <li>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span
+                      aria-label={`${String(earlier)} earlier`}
+                      className="ln-more"
+                      data-wide={moreChipWidth(earlier) > 28 ? "" : undefined}
+                      role="img"
+                      tabIndex={0}
+                    />
+                  }
+                >
+                  +{earlier}
+                </TooltipTrigger>
+                <TooltipPopup side="top">
+                  +{earlier} earlier {earlier === 1 ? "change" : "changes"}
+                </TooltipPopup>
+              </Tooltip>
+            </li>
+          )}
+          {each.beads.map((bead) => (
+            <li key={bead.key}>
+              <Bead bead={bead} onOpenChange={onOpenChange} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </span>
+  );
+  return (
+    <li className="lnx-row">
+      <span className="lnx-first">
+        <span className="lnx-who">
+          <i aria-hidden="true" className="ln-face" data-tint={row.tint} />
+          <span>{row.name}</span>
+        </span>
+        {work === undefined ? null : cell(work, row.earlier)}
+      </span>
+      {after.map((each) => cell(each, 0))}
+    </li>
   );
 }
 
