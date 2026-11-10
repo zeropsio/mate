@@ -1065,7 +1065,12 @@ function HarnessPage() {
                                   liveness="live"
                                   mate={{ name: "Dana", tint: "rose", face: "idle" }}
                                   project={scenario.project}
-                                  view={SERVICES}
+                                  // `?running`: a tool at work on the services, said at the label's end.
+                                  view={
+                                    params.get("running") === null
+                                      ? SERVICES
+                                      : { ...SERVICES, runningTool: "Stand-up · stage" }
+                                  }
                                 />
                               </ServiceBrowserLinkContext>
                             </MatePanelColumn>
