@@ -257,17 +257,6 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
   ];
   const plannedDeploys = planDeploys(input.plan);
   const deploys = plannedDeploys.length > 0 ? plannedDeploys : input.services;
-  // HQ deploys only once what the release creates stands, so a deploy it runs proves the creation
-  // where no row of it has come yet. One queued, refused or left because the service already runs
-  // the commit (live, with HQ's remark) proves nothing: the creation is still under way.
-  const proved =
-    progress !== undefined &&
-    progress.deploys.some(
-      (job) =>
-        job.state === "submitting" ||
-        job.state === "building" ||
-        (job.state === "live" && job.reason === undefined),
-    );
   const said = (words: string) =>
     inProductionWords(words, input.environmentName).replace(/\.$/u, "");
   const renewal = input.renewal ?? NOT_RENEWING;
@@ -374,8 +363,11 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
       steps.push(keyStep(base, trouble));
     } else if (creation?.state === "failed") {
       steps.push(failed(creation.reason, took(creation)));
-    } else if (creation?.state === "created" || (creation === undefined && proved)) {
-      steps.push(done(creation === undefined ? undefined : took(creation)));
+    } else if (creation?.state === "created") {
+      // Created is HQ's own word for its creation, or the release being live: a deploy job proves
+      // nothing — one seen running may be an older release's, sent again — and a step once said
+      // created would then be taken back.
+      steps.push(done(took(creation)));
     } else {
       steps.push(creating(creation === undefined ? undefined : elapsed(creation.at, input.nowMs)));
     }
