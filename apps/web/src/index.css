@@ -9335,7 +9335,10 @@ label.tm-advanced-row:not([data-disabled]) {
 :root {
   --run-tray: oklch(0.968 0.004 255.5);
   --run-tray-ring: color-mix(in oklab, var(--foreground) 7%, transparent);
-  /* Every item's one height (run 11): four of the card's 13 px lines. */
+  /* The working row's panel (the board, 2026-11-10: "one quiet log, one loud
+     now"): the one surface inside the card, a step off the tray. */
+  --run-now: color-mix(in oklab, var(--foreground) 5%, var(--run-tray));
+  /* An item's box where nothing says its lines: four of the card's 13 px lines. */
   --run-item-cap: 5rem;
   /* What the person opens under a call (what a command printed): twelve. */
   --run-detail-cap: 15rem;
@@ -9469,6 +9472,25 @@ label.tm-advanced-row:not([data-disabled]) {
 .run-now[data-run-titled] .run-now-leaving {
   top: 20px;
 }
+/* Its log hidden while it works, the head is two lines: the run, and under it
+   what happens now — the face, the chevron and the run's line keep the first. */
+.run-now[data-run-sub] {
+  align-items: start;
+}
+.run-now[data-run-sub] > .run-now-end {
+  height: 20px;
+}
+.run-now-sub {
+  display: block;
+  min-width: 0;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: var(--text-line);
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--color-muted-foreground);
+}
 .run-now-title {
   display: block;
   min-width: 0;
@@ -9564,8 +9586,21 @@ label.tm-advanced-row:not([data-disabled]) {
 .run-now[data-run-now="worked"] .run-now-head {
   white-space: normal;
 }
-.run-now-effort {
+/* A fact of what the run came to, beside its time: a quiet chip, two at most. */
+.run-now-fact {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 8px;
+  border-radius: var(--radius-control);
+  background: var(--run-now);
+  font-size: var(--text-line);
+  line-height: 22px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   color: var(--color-muted-foreground);
+}
+.run-now-fact:first-of-type {
+  margin-left: 12px;
 }
 .run-now-clock {
   font-size: 13px;
@@ -9574,25 +9609,30 @@ label.tm-advanced-row:not([data-disabled]) {
   color: var(--color-foreground);
 }
 /* p35/livecard */
-/* The live slot (pass 35): what the Mate is doing this moment, each thing as the row it becomes —
-   the same bubble, inks and caps. Under the card's head (the owner, 2026-10-11) it holds what the
-   Mate does now and nothing else: no controls, no clock, no face of its own — the head has them.
-   Under the history it stands 16 px under a hairline 16 px under the history. */
+/* The working row (pass 35; the board, 2026-11-10): what the Mate is doing this moment, the only
+   card inside the card — a panel on the card's own sides, 16 px in, holding the item with its
+   body: its face at work, its words, what it runs. Under the card's head (the owner, 2026-10-11)
+   it holds what the Mate does now and nothing else: no controls and no clock — the head has
+   them. Under the log a hairline sets it off: 16 px under the log's last row, 14 px over it. */
 .run-slot {
   position: relative;
-  margin-top: 12px;
-  padding-bottom: 4px;
+  margin-top: 10px;
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--run-now);
+}
+.run-above:not([hidden]):has(+ .run-slot:not([hidden])) {
+  padding-bottom: 16px;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
 }
 .run-above:not([hidden]) + .run-slot {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  margin-top: 14px;
 }
 .run-slot-list {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 /* The card's head: one line at the card's top in every state, the whole of it the work's toggle
    (an overlay button its words stand over), its chevron turning over as the work opens. While the
@@ -9617,8 +9657,18 @@ label.tm-advanced-row:not([data-disabled]) {
 .run-now[data-run-head] > :not(.run-now-fold) {
   pointer-events: none;
 }
-.run-now[data-run-head] .run-now-end > :not(.run-head-chevron) {
+.run-now[data-run-head] .run-now-end > :not(.run-head-chevron, .run-head-toggle-words) {
   pointer-events: auto;
+}
+/* Over, the head says what its press does beside its chevron: "Show work". */
+.run-head-toggle-words {
+  font-size: var(--text-line);
+  line-height: 20px;
+  white-space: nowrap;
+  color: var(--color-muted-foreground);
+}
+.run-now-end:has(> .run-head-toggle-words) {
+  gap: 8px;
 }
 .run-now-meta {
   font-size: 13px;
@@ -9652,13 +9702,9 @@ label.tm-advanced-row:not([data-disabled]) {
   align-items: center;
   gap: 12px;
 }
+/* The log's first row stands 14 px under the head's line (its 4 px and these). */
 .run-above {
-  margin-top: 12px;
-}
-/* A thought keeps room on its right, live and in the history alike, so its
-   plop never rewraps it — "Show full thought" stands there. */
-[data-run-chat] [data-chat-bubble="thought"] {
-  padding-right: 52px;
+  margin-top: 10px;
 }
 /* Words still being written: three quiet dots in the bubble's foot padding,
    under the last line, so the bubble keeps the height it lands with. */
@@ -9669,19 +9715,93 @@ label.tm-advanced-row:not([data-disabled]) {
   scale: 0.7;
   transform-origin: right bottom;
 }
-/* Nothing standing in it: a row as a call's — its mark in the Mate's column,
-   its words on the items' text edge, a bubble's 12 px in. "Thinking" stands as
-   the thought that takes its place: 8 px over its first line, as a thought's. */
+/* Nothing standing in it: a row as an item's — its mark in the Mate's column,
+   its words on the items' text edge, so what comes next takes its place where
+   it stands. */
 .run-slot-filler {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
 .run-slot-filler > .run-now-words {
-  padding: 7px 12px;
+  padding: 0;
 }
-.run-slot-filler[data-slot-filler="thinking"] > .run-now-words {
-  padding-block: 8px;
+/* A burst (the owner, 2026-11-10: "sometimes it pumps out 10 rows in two
+   seconds"): the working row is one line of one height — 44 px with its 12 —
+   whatever passes through it: what it is, which of how many, and a spinner
+   that ends as a check. Nothing changes height while it lasts. */
+.run-slot[data-slot-compact] {
+  padding-block: 12px;
+}
+.run-slot-compact {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--text-prose);
+  line-height: 20px;
+}
+.run-slot-compact-words {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.run-slot-compact-count {
+  flex: none;
+  font-size: var(--text-line);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted-foreground);
+}
+.run-slot-compact-mark {
+  display: flex;
+  width: 14px;
+  height: 20px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+/* Quick calls folded into one row: its count in ink between its words; while
+   its burst goes on, in a chip that turns — of one width, so the words beside
+   it never shift as it ticks. */
+.run-quick-count {
+  font-variant-numeric: tabular-nums;
+}
+.run-quick-count[data-ticking] {
+  display: inline-flex;
+  height: 20px;
+  align-items: center;
+  gap: 4px;
+  margin-inline: 2px;
+  padding: 0 6px;
+  border-radius: var(--radius-control);
+  background: var(--run-now);
+  vertical-align: top;
+  font-weight: 500;
+}
+.run-quick-count[data-ticking] > .run-quick-number {
+  min-width: 2ch;
+  text-align: center;
+}
+/* Opened in place: each of its calls a line of a tight list, under a rule in
+   the Mate's column. */
+.run-quick-list {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding-top: 10px;
+}
+.run-quick-list::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 0;
+  left: -23px;
+  width: 1px;
+  background: color-mix(in oklab, var(--color-foreground) 10%, transparent);
 }
 /* What the slot says between things, muted: "Thinking", "Writing", a wait. */
 .run-slot-word {
@@ -9720,6 +9840,26 @@ label.tm-advanced-row:not([data-disabled]) {
 .run-capped[data-capped="words"] {
   max-height: var(--run-words-cap);
 }
+/* By its own lines (the board, 2026-11-10): in the working row a command's
+   code six of them, a thought five; in the log a thought two and a command's
+   code one — the thing happening now is read, what happened is skimmed. */
+.run-capped[data-capped-lines="code"] {
+  max-height: 6lh;
+}
+.run-capped[data-capped-lines="code"][data-capped-at="log"] {
+  max-height: 1lh;
+}
+.run-capped[data-capped-lines="thought"] {
+  max-height: 5lh;
+}
+.run-capped[data-capped-lines="thought"][data-capped-at="log"] {
+  max-height: 2lh;
+}
+/* Its last line is whole to its end — a thought's with "more" over it, a
+   command's with its chevron beside its title: never faded from under. */
+.run-capped[data-capped-lines][data-capped-at="log"][data-more-below] {
+  mask-image: none;
+}
 .run-capped[data-more-above] {
   mask-image: linear-gradient(to bottom, transparent, currentColor 14px);
 }
@@ -9744,26 +9884,25 @@ label.tm-advanced-row:not([data-disabled]) {
 .run-capped[data-capped-at="log"][data-whole] {
   max-height: none;
 }
-/* A bubble cut at its head says how to reach the rest at its foot, over its
-   faded last words, under the pointer or the focus only: at rest the fade
-   says there is more (Bodhi: "Show full thought" 13 times in one card). */
+/* A line cut at its head says how to reach the rest at the end of its last
+   line, over its faded last words: one quiet word, "more", brighter under
+   the pointer or the focus (Bodhi: "Show full thought" 13 times in one card). */
 .run-item-more {
   position: absolute;
   right: 0;
   bottom: 0;
-  padding-left: 30px;
-  background: linear-gradient(to right, transparent, var(--run-item-ground) 26px);
+  padding-left: 52px;
+  background: linear-gradient(to right, transparent, var(--run-item-ground) 44px);
   font-style: normal;
-  color: var(--color-foreground);
-  opacity: 0;
-  transition: opacity 150ms cubic-bezier(0.23, 1, 0.32, 1);
+  color: color-mix(in oklab, var(--color-foreground) 80%, transparent);
+  transition: color var(--duration-quick) cubic-bezier(0.23, 1, 0.32, 1);
 }
 .run-item-open:hover > .run-item-more,
 .run-item-open:focus-visible > .run-item-more {
-  opacity: 1;
+  color: var(--color-foreground);
 }
 [data-chat-bubble="thought"] {
-  --run-item-ground: color-mix(in oklab, var(--color-foreground) 3%, var(--run-tray));
+  --run-item-ground: var(--run-tray);
 }
 [data-chat-bubble="speech"] {
   --run-item-ground: color-mix(in oklab, var(--run-speaker-tint) 17%, var(--run-tray));
@@ -10111,12 +10250,9 @@ button.run-bar:focus-visible {
 
 /* A run the person comes back to (D3): its worked line alone, "Show work" on
    its right edge — the chevron turning over as the work opens (K12) — and the
-   scroll under a hairline as far under the line as the live card's is over
-   it. */
+   log 14 px under its head, as the live card's is: no line between them. */
 .run-later-feed:not(:empty) {
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid color-mix(in oklab, var(--color-foreground) 8%, transparent);
+  margin-top: 10px;
 }
 /* Its 24 px of ground stand in the line's 20, so the words keep their
    centre. */

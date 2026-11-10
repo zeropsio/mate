@@ -887,16 +887,54 @@ export function runEffortWords(
   outcome: OutcomeModel | null | undefined,
   facts: ResultFacts = NO_FACTS,
 ): string | null {
-  if (outcome === null || outcome === undefined) return null;
+  const parts = effortParts(outcome, facts);
+  return parts.length === 0 ? null : parts.map((part) => part.words).join(" · ");
+}
+
+/** The effort in its parts, in the order it is said; `changed` what changed something for the person. */
+function effortParts(
+  outcome: OutcomeModel | null | undefined,
+  facts: ResultFacts,
+): ReadonlyArray<{ readonly words: string; readonly changed: boolean }> {
+  if (outcome === null || outcome === undefined) return [];
   const merged = mergedNumbers(outcome, facts);
   const changed = outcome.change !== null || outcome.landed.length > 0;
-  const parts = [
-    ...(merged.length > 0 ? [`merged as ${numbersWords(merged)}`] : []),
+  return [
+    ...(merged.length > 0 ? [{ words: `merged as ${numbersWords(merged)}`, changed: true }] : []),
     ...outcome.activity.flatMap((activity) =>
       activity.count <= 0 || (activity.kind === "edit" && changed)
         ? []
-        : [EFFORT_WORDS[activity.kind](activity.count)],
+        : [
+            {
+              words: EFFORT_WORDS[activity.kind](activity.count),
+              changed: activity.kind === "edit",
+            },
+          ],
     ),
   ];
-  return parts.length === 0 ? null : parts.join(" · ");
+}
+
+/** How many facts a finished run's closed line holds beside its time. */
+export const WORKED_LINE_FACTS = 2;
+
+/**
+ * A finished run's effort as its line shows it (the board, 2026-11-10: five
+ * counts in one line, "none of them what changed for you"): at most two facts
+ * stand on the closed line — what changed for the person first, a change
+ * merged or files edited, then the counts in the order they are said — and
+ * the rest are the opened work's, said in its head.
+ */
+export function runEffortFacts(
+  outcome: OutcomeModel | null | undefined,
+  facts: ResultFacts = NO_FACTS,
+): { readonly facts: ReadonlyArray<string>; readonly rest: ReadonlyArray<string> } {
+  const parts = effortParts(outcome, facts);
+  const first = [
+    ...parts.filter((part) => part.changed),
+    ...parts.filter((part) => !part.changed),
+  ].slice(0, WORKED_LINE_FACTS);
+  return {
+    facts: first.map((part) => part.words),
+    rest: parts.filter((part) => !first.includes(part)).map((part) => part.words),
+  };
 }
