@@ -5630,6 +5630,33 @@ code {
   justify-self: center;
 }
 
+/* With what runs there after its word, a place's row stays one line: the word takes what the name
+   leaves and is cut there. */
+.zerops-sites-place:has([data-zerops-surface="sidebar-project-sites-running"]) {
+  grid-template-columns: 16px auto minmax(0, 1fr);
+}
+
+.zerops-sites-place > .zerops-envpop-word {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  column-gap: 4px;
+  min-width: 0;
+  height: 1lh;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* What does not fit beside the words goes to a line that is not shown: the clock of what runs
+   there is said only where the row has the room, and the words are cut only where they alone
+   are longer than the row. */
+.zerops-sites-place > .zerops-envpop-word > span:first-child {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .zerops-sites-face {
   position: relative;
   display: inline-flex;
@@ -9301,6 +9328,18 @@ label.tm-advanced-row:not([data-disabled]) {
   font-size: 13px;
   line-height: 18px;
   color: var(--muted-foreground);
+}
+/* Above the plan while the release runs: what else production is doing, where that explains a
+   wait. One calm sentence; its clock ticks. */
+.rv-busy {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted-foreground);
+}
+.rv-busy > b {
+  font-weight: 500;
+  color: var(--foreground);
 }
 .rv-version {
   display: grid;

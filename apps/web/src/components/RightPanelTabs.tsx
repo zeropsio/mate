@@ -14,7 +14,7 @@ import {
   TerminalSquare,
   Plug,
   Users,
-  Vault,
+  KeyRound,
 } from "lucide-react";
 import {
   type ComponentType,
@@ -265,7 +265,7 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): SurfaceLaun
     case "express":
       return ExpressLauncherMark;
     case "vault":
-      return Vault;
+      return KeyRound;
     case "overview":
       return LayersIcon;
   }
@@ -554,7 +554,7 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
     case "express":
       return <ExpressMark className="size-3.5 shrink-0 rounded-xs" />;
     case "vault":
-      return <Vault className="size-3 shrink-0" />;
+      return <KeyRound className="size-3 shrink-0" />;
     case "overview":
       return <LayersIcon className="size-3 shrink-0" />;
     case "change":

@@ -2,6 +2,7 @@
  * The review in every state it reaches (pass 16, R1–R8), for `design-change.html`: the views
  * the app runs, with made-up reads. Fixtures only — no route imports this module.
  */
+import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import {
   changeReadoutOfRecord,
   changeRemarks,
@@ -750,6 +751,36 @@ const KEY_RELEASE = {
 const secondsAgo = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
 const STARTED = { at: secondsAgo(178), by: "you" } as const;
 
+/** One platform process in production, as the sheet reads it (`runningLines`). */
+const runningOf = (
+  over: Partial<RunningLine> & Pick<RunningLine, "id" | "words" | "doing">,
+): RunningLine => ({
+  service: undefined,
+  trail: undefined,
+  waiting: false,
+  behind: undefined,
+  since: secondsAgo(130),
+  version: undefined,
+  kind: "build",
+  versionId: undefined,
+  rank: 2,
+  ...over,
+});
+/** The stopped release before this one, its deploy of shop sent again once the key was renewed. */
+const SHOP_SENT_AGAIN = runningOf({
+  id: "process-shop-again",
+  service: "shop",
+  words: "Deploying v0.1.56",
+  doing: "is deploying v0.1.56",
+  version: "v0.1.56",
+  trail: [
+    { label: "Build container", state: "done" },
+    { label: "Build", state: "done" },
+    { label: "Deploy", state: "busy" },
+  ],
+  rank: 3,
+});
+
 /** One production deploy of v0.1.57, as the sheet's steps read HQ's job of it. */
 const deployOf = (
   service: string,
@@ -1313,6 +1344,115 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
         ...KEY_RELEASE,
         started: { at: secondsAgo(15), by: "you" },
         progress: { creation: undefined, deploys: KEY_DEPLOYS },
+      },
+    },
+  },
+  {
+    id: "release-early-build",
+    label: "Release · a build seen before the creation's row: nothing says created",
+    props: {
+      outcome: { kind: "releasing" },
+      press: { kind: "done" },
+      over: {
+        ...KEY_RELEASE,
+        started: { at: secondsAgo(8), by: "you" },
+        // The build HQ's answer names is an older release's, sent again: it proves nothing.
+        progress: { creation: undefined, deploys: [deployOf("shop", "building")] },
+        running: [SHOP_SENT_AGAIN],
+      },
+    },
+  },
+  {
+    id: "release-busy-production",
+    label: "Release · production busy with an older deploy: the release waits for it",
+    props: {
+      outcome: {
+        kind: "releasing",
+        clock: "Step 1 of 4 · 3m 10s · taking longer than usual",
+      },
+      press: { kind: "done" },
+      over: {
+        ...KEY_RELEASE,
+        started: { at: secondsAgo(190), by: "you" },
+        progress: {
+          creation: {
+            tag: "v0.1.57",
+            state: "creating",
+            reason: undefined,
+            services: ["cache"],
+            at: secondsAgo(106),
+            endedAt: null,
+          },
+          deploys: [deployOf("api", "queued"), deployOf("shop", "queued")],
+        },
+        running: [
+          SHOP_SENT_AGAIN,
+          runningOf({
+            id: "process-mail",
+            service: "mail",
+            words: "Restarting",
+            doing: "is restarting",
+            kind: "other",
+            since: secondsAgo(12),
+          }),
+        ],
+      },
+    },
+  },
+  {
+    id: "release-running-trails",
+    label: "Release · each deploy says where its build stands",
+    props: {
+      outcome: { kind: "releasing" },
+      press: { kind: "done" },
+      over: {
+        ...KEY_RELEASE,
+        started: { at: secondsAgo(205), by: "you" },
+        progress: {
+          creation: {
+            tag: "v0.1.57",
+            state: "created",
+            reason: undefined,
+            services: ["cache"],
+            at: secondsAgo(200),
+            endedAt: secondsAgo(150),
+          },
+          deploys: [
+            deployOf("api", "building", { at: secondsAgo(148), processId: "process-api" }),
+            deployOf("shop", "building", { at: secondsAgo(148), processId: "process-shop" }),
+          ],
+        },
+        running: [
+          runningOf({
+            id: "process-api",
+            service: "api",
+            words: "Deploying v0.1.57",
+            doing: "is deploying v0.1.57",
+            version: "v0.1.57",
+            trail: [
+              { label: "Build container", state: "done" },
+              { label: "Build", state: "done" },
+              { label: "Deploy", state: "busy" },
+            ],
+            rank: 3,
+          }),
+          runningOf({
+            id: "process-shop",
+            service: "shop",
+            words: "Building v0.1.57",
+            doing: "is building v0.1.57",
+            version: "v0.1.57",
+            trail: [
+              { label: "Build container", state: "done" },
+              { label: "Build", state: "busy" },
+              { label: "Deploy", state: "waiting" },
+            ],
+          }),
+        ],
+        logOf: (service) => ({
+          projectId: "p-production",
+          target: { jobId: `job-${service}`, processId: `process-${service}`, appVersionId: null },
+        }),
       },
     },
   },

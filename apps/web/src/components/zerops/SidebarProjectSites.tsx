@@ -1,6 +1,8 @@
 import { ProductionRemoval } from "./GitStopDetail";
+import { runningShort } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { GitDeliveryStatus } from "./GitDeliveryStatus";
+import { RunningClock } from "./system";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 /**
  * A project's places on its row (the menu by project): one popover of every address the app knows
@@ -49,6 +51,7 @@ import { useAddressesSheet } from "~/zerops/addressesSheet";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
+import { useRunningNow } from "~/zerops/activity/useRunningNow";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
@@ -725,17 +728,32 @@ function PlaceSection({
   const projectId = stop?.git === undefined ? stop?.projectId : undefined;
   const detailId = stop?.environmentId ?? projectId;
   const opens = detailId === undefined ? undefined : onOpenStop(detailId);
+  // The furthest of what its platform runs now, after its word: ` · shop building 2m`. The row
+  // stays one line, so what it runs gives its room to what is happening to it.
+  const [running] = useRunningNow(projectId);
   const row = (
     <>
       <EnvDot dot={stop?.dot ?? "off"} />
       <span className="min-w-0 truncate">
         <b className="font-medium">{title}</b>
-        {stop?.version === undefined ? null : (
+        {stop?.version === undefined || running !== undefined ? null : (
           <span className="zerops-envpop-version">{stop.version}</span>
         )}
       </span>
       <span className="zerops-envpop-word" data-tone={stop?.tone ?? "muted"}>
-        {stop?.git === undefined ? (stop?.word ?? "Reading…") : null}
+        <span>
+          {stop?.git === undefined ? (stop?.word ?? "Reading…") : null}
+          {running === undefined ? null : (
+            <span data-zerops-surface="sidebar-project-sites-running">
+              {" · "}
+              {runningShort(running)}
+            </span>
+          )}
+        </span>
+        {/* Its clock stands at the end while the line has the room, and gives it up first. */}
+        {running === undefined || running.waiting ? null : (
+          <RunningClock short since={running.since} />
+        )}
       </span>
     </>
   );

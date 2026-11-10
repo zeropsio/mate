@@ -10,6 +10,8 @@
  * Fixtures only, invented names. Nothing here ships — `design-sites.html` is not `index.html`, and
  * no route imports this module.
  */
+import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
+import { RunningNowFixture } from "~/zerops/activity/useRunningNow";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
@@ -128,7 +130,47 @@ const base = (groupId: string, projectName: string): ProjectSitesInput => ({
 const DOWN: ProductionChip = { label: "prod", state: "down", version: "v2.3.0" };
 const HEALTHY_STAGE: ProductionChip = { label: "stage", state: "ok", version: "main" };
 
+/** What the platform runs in the busy production of the release on its way. */
+const BUSY_PRODUCTION = "p-acme-production";
+const RUNNING: ReadonlyArray<RunningLine> = [
+  {
+    id: "process-shop",
+    service: "shop",
+    words: "Building v0.1.61",
+    doing: "is building v0.1.61",
+    trail: undefined,
+    waiting: false,
+    behind: undefined,
+    since: new Date(Date.now() - 126_000).toISOString(),
+    version: "v0.1.61",
+    kind: "build",
+    versionId: undefined,
+    rank: 2,
+  },
+];
+const runningIn = (projectId: string) => (projectId === BUSY_PRODUCTION ? RUNNING : []);
+
 const FIXTURES: ReadonlyArray<Fixture> = [
+  {
+    title: "A release on its way, the platform building",
+    input: {
+      ...base("acme", "Acme Shop"),
+      production: (): ChipMenuModel => ({
+        stops: [
+          stop({
+            name: "production",
+            projectId: BUSY_PRODUCTION,
+            version: "v0.1.60",
+            dot: "spinner",
+            word: "Releasing v0.1.61",
+            routes: [route("shop", "shop.acme.example")],
+          }),
+        ],
+      }),
+      mates: [mate("acme", "Juno", "sky", { routes: [] })],
+      prodChip: { label: "prod", state: "releasing", version: "v0.1.60", next: "v0.1.61" },
+    },
+  },
   {
     title: "Production down, a fix to ask for",
     input: {
@@ -387,28 +429,30 @@ function Row({ fixture, face }: { readonly fixture: Fixture; readonly face: Reac
 
 function Harness() {
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      <div
-        className="flex shrink-0 flex-col gap-0.5 border-e border-border bg-sidebar p-2.5 text-sidebar-foreground"
-        data-sites-harness="menu"
-        style={{ width: 435 }}
-      >
-        {FIXTURES.map((fixture) => (
-          <Row
-            face={
-              <MateFace
-                shape={fixture.input.mates[0]?.shape}
-                size={24}
-                state="idle"
-                tint={fixture.input.mates[0]?.tint ?? "slate"}
-              />
-            }
-            fixture={fixture}
-            key={fixture.input.groupId}
-          />
-        ))}
+    <RunningNowFixture.Provider value={runningIn}>
+      <div className="flex min-h-screen bg-background text-foreground">
+        <div
+          className="flex shrink-0 flex-col gap-0.5 border-e border-border bg-sidebar p-2.5 text-sidebar-foreground"
+          data-sites-harness="menu"
+          style={{ width: 435 }}
+        >
+          {FIXTURES.map((fixture) => (
+            <Row
+              face={
+                <MateFace
+                  shape={fixture.input.mates[0]?.shape}
+                  size={24}
+                  state="idle"
+                  tint={fixture.input.mates[0]?.tint ?? "slate"}
+                />
+              }
+              fixture={fixture}
+              key={fixture.input.groupId}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+    </RunningNowFixture.Provider>
   );
 }
 
