@@ -274,7 +274,7 @@ export interface ZeropsProjectsFlowProps<T> {
     | undefined;
   /**
    * Opens a place's vault over the page (`usePlaceVaultDrawer`): each place line that has one
-   * (`placeVaultOf`) ends in its Vault icon. None where the account reads no organization.
+   * (`placeVaultOf`) ends in its Vault door. None where the account reads no organization.
    */
   readonly openPlaceVault?: ((place: PlaceVault) => void) | undefined;
   /** One project's own page in place of the overview (`ProjectPageSlot`). */

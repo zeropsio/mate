@@ -70,7 +70,8 @@ import {
 } from "../system";
 import type { ReleaseOffer } from "../ZeropsReleaseVerb";
 import { placeVaultOf } from "../vault/placeVault.logic";
-import { PlaceVaultButton } from "../vault/StopVault";
+import { PlaceDoors } from "../place/PlaceDoors";
+import { placeSitesOf } from "../place/placeDoors.logic";
 import { StopLine } from "../ZeropsGroupDetail";
 import {
   BROUGHT_SHOWN,
@@ -409,8 +410,8 @@ const ASK_LINE: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], string> = {
 };
 
 /**
- * One card per place, production first: its line (which opens it), and on a place that is not well
- * the person's Mate to ask; on production what its live release brought, then what goes to it
+ * One card per place, production first: its line (which opens it) ending in its Sites and its
+ * Vault, and on a place that is not well the person's Mate to ask; on production what its live release brought, then what goes to it
  * next — the page's one *Review release*, ready, on its way or refused, whoever started it — or,
  * where nothing goes next, its own note and a Put it live run. A project not live yet has Going
  * live in their place (`GoingLive`), a missing stage its optional row; a half-made place offers
@@ -471,16 +472,24 @@ function ProjectPlaces<T>({
       </Button>
     );
   };
-  /** A place line's end: its fix where it is not well, then its Vault where it has one. */
+  /** A place line's end: its fix where it is not well, then its doors, Sites and Vault. */
   const placeEnd = (line: PlaceLineData) => {
     const fix = fixVerb(line);
     const open = props.openPlaceVault;
     const vault = open === undefined ? undefined : placeVaultOf(line);
-    if (vault === undefined || open === undefined) return fix;
+    const sites = placeSitesOf(line, groupId);
+    if (vault === undefined && sites === undefined) return fix;
     return (
       <span className="flex items-center gap-2">
         {fix}
-        <PlaceVaultButton name={vault.name} onOpen={() => open(vault)} />
+        <PlaceDoors
+          look={fix === undefined ? "line" : "beside-verb"}
+          name={placeLabel(line)}
+          sites={sites}
+          vault={
+            vault === undefined || open === undefined ? undefined : { onOpen: () => open(vault) }
+          }
+        />
       </span>
     );
   };
