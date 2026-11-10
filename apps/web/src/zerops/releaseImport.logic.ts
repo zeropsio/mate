@@ -1,8 +1,8 @@
 /**
  * The import a release's plan runs before it deploys: the services production lacks, which a
- * person who may release can also run on their own from the review.
+ * person who may release can also create on their own, early, from the review's step or a Mate's
+ * ask.
  */
-import type { OperationEnd } from "@t3tools/client-runtime/data";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import { stringify } from "yaml";
 
@@ -20,18 +20,4 @@ export function servicePlanImportYaml(plan: ReleaseServicePlan): string | undefi
   if (services.length === 0) return undefined;
   const document = stringify({ services });
   return document.includes("<@") ? `${PREPROCESSOR}${document}` : document;
-}
-
-/** What the person is told of an import that did not finish; `null` once Zerops took it. */
-export function importTrouble(end: NonNullable<OperationEnd>): string | null {
-  switch (end.stage) {
-    case "done":
-      return end.outcome === "succeeded" ? null : "Zerops did not create them.";
-    case "refused":
-      return end.reason;
-    case "unsent":
-      return "Zerops did not take the import. Try again.";
-    default:
-      return "The import could not be followed. Check production's services before running it again.";
-  }
 }

@@ -150,6 +150,24 @@ function deployJobSaid(outcome: HqDeployOutcome, answer: HqDeployAnswer): Deploy
   };
 }
 
+/**
+ * HQ's note for an environment whose new services wait for a person's release: `<environment>:
+ * production_effect_approval_required`. It is HQ's own word for a rule the review already says in
+ * the person's (a production gets a service a recipe adds with its next release), so the part is
+ * dropped from the note rather than shown as a code.
+ */
+const WAITS_FOR_RELEASE = /^[^;]*: production_effect_approval_required$/;
+
+/** HQ's note without the parts the review says itself; `undefined` where nothing is left. */
+export function deployNoteSaid(note: string | null | undefined): string | undefined {
+  if (note === null || note === undefined) return undefined;
+  const parts = note
+    .split(";")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0 && !WAITS_FOR_RELEASE.test(part));
+  return parts.length === 0 ? undefined : parts.join("; ");
+}
+
 /** The answer by environment, in the order HQ named them. */
 export function deployAnswerSaid(answer: HqDeployAnswer): DeployAnswerSaid {
   const environments = new Map<string, Array<DeployAnswerJob>>();
@@ -160,7 +178,7 @@ export function deployAnswerSaid(answer: HqDeployAnswer): DeployAnswerSaid {
   }
   return {
     environments: [...environments].map(([environment, jobs]) => ({ environment, jobs })),
-    note: answer.note?.trim() || undefined,
+    note: deployNoteSaid(answer.note),
   };
 }
 
@@ -260,7 +278,7 @@ export function deliveryAnswerSaid(answer: HqDeliveryAnswer): DeliveryAnswerSaid
   }
   return {
     environments: [...environments].map(([environment, jobs]) => ({ environment, jobs })),
-    note: answer.note?.trim() || undefined,
+    note: deployNoteSaid(answer.note),
   };
 }
 /** A delayed receipt names the same job and sha; another operation cannot settle this answer. */

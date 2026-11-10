@@ -18,7 +18,7 @@ import type {
 } from "@t3tools/shared/hqChanges";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { Window } from "happy-dom";
-import { act, createElement } from "react";
+import { act, createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -106,6 +106,15 @@ const hq = vi.hoisted(() => ({
   },
 }));
 vi.mock("~/zerops/accountHq", () => ({ useOfficialHq: () => hq }));
+// The sheet's ⋯ menu, drawn open: its items are buttons the test DOM can press.
+vi.mock("~/components/ui/menu", async (actual) => ({
+  ...(await actual<typeof import("~/components/ui/menu")>()),
+  Menu: ({ children }: { readonly children?: ReactNode }) => children,
+  MenuTrigger: () => null,
+  MenuPopup: ({ children }: { readonly children?: ReactNode }) => children,
+  MenuItem: (props: { readonly children?: ReactNode; readonly onClick?: () => void }) =>
+    createElement("button", { onClick: props.onClick, type: "button" }, props.children),
+}));
 vi.mock("@tanstack/react-router", async (actual) => ({
   ...(await actual<typeof import("@tanstack/react-router")>()),
   useRouter: () => ({ navigate: async () => {} }),
@@ -823,12 +832,6 @@ describe("ChangeReviewView: an open change", () => {
     expect(footOf(html)).toContain("Nothing to deliver: main already has this.");
     expect(footOf(html)).not.toContain("Adds this change");
     expect(footOf(html)).not.toContain('data-zerops-primary-action="Merge"');
-    expect(footOf(html)).toContain(">Close without merging…</button>");
-  });
-
-  it("that merges cleanly offers Merge, safe to press, and Close without merging beside it", () => {
-    const html = render(open, files);
-    expect(html).toMatch(/data-safe="true" data-zerops-primary-action="Merge"/u);
     expect(footOf(html)).toContain(">Close without merging…</button>");
   });
 

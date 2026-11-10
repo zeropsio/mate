@@ -1,5 +1,4 @@
 import type { ChangeReceiptPart } from "@t3tools/shared/hqChanges";
-import { releaseReview, type ReleaseOutcome } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -33,11 +32,6 @@ import {
   stageDeploysMerges,
   tryItPreviews,
   tryItWords,
-  productionNow,
-  productionNowLine,
-  releaseFoot,
-  releaseHeading,
-  releaseLine,
   sinceWords,
   whySaid,
   productionBefore,
@@ -667,120 +661,9 @@ describe("the sheet's footnote: what happens next", () => {
   ] as const)("%s", (_case, input, words) => {
     expect(mergeFoot({ ...input, consequence: "Adds this change to main." })).toBe(words);
   });
-
-  it.each([
-    [
-      "a release ready to go",
-      { state: "release-ready", live: "v2.3.1" },
-      "It takes a minute or two. You can roll back to v2.3.1 from production's panel.",
-    ],
-    ["the first release", { state: "release-ready", live: undefined }, "It takes a minute or two."],
-    [
-      "a release on its way: the review's own words",
-      { state: "releasing", live: "v1" },
-      "Follows.",
-    ],
-  ] as const)("%s", (_case, input, words) => {
-    expect(releaseFoot({ ...input, consequence: "Follows." })).toBe(words);
-  });
 });
 
 describe("the release sheet's lines", () => {
-  it.each([
-    [
-      "every change on the stage",
-      { changes: 4, stage: "stage", since: "14:10", onStage: { total: 4, running: 4 } },
-      "4 changes, on stage since 14:10.",
-    ],
-    [
-      "one change, the stage's time unknown",
-      { changes: 1, stage: "stage", since: undefined, onStage: { total: 1, running: 1 } },
-      "1 change, on stage.",
-    ],
-    [
-      "some not on the stage yet",
-      { changes: 3, stage: "stage", since: "14:10", onStage: { total: 3, running: 1 } },
-      "3 changes, 1 of them on stage so far.",
-    ],
-    [
-      "no stage: since the release production runs",
-      { changes: 2, stage: undefined, since: undefined, onStage: undefined, live: "v0.1.4" },
-      "2 changes since v0.1.4.",
-    ],
-    [
-      "no stage, nothing released",
-      { changes: 2, stage: undefined, since: undefined, onStage: undefined },
-      "2 changes, the first release.",
-    ],
-    // The onboarding run: "0 changes" for 0.4 s, then "1 change".
-    [
-      "no count while what goes out is still compared",
-      { changes: undefined, stage: "stage", since: undefined, onStage: undefined },
-      "The first release.",
-    ],
-    [
-      "no count while compared, after a release",
-      {
-        changes: undefined,
-        stage: undefined,
-        since: undefined,
-        onStage: undefined,
-        live: "v0.1.4",
-      },
-      "Since v0.1.4.",
-    ],
-  ] as const)("says %s", (_case, input, words) => {
-    expect(releaseLine({ live: undefined, ...input })).toBe(words);
-  });
-
-  it.each([
-    [
-      "what runs, since when and where",
-      { live: "v2.3.1", since: "Tue", host: "shop.acme.com" },
-      "Runs v2.3.1 since Tue at shop.acme.com.",
-    ],
-    ["what runs alone", { live: "v2.3.1", since: undefined, host: undefined }, "Runs v2.3.1."],
-    [
-      "nothing released",
-      { live: undefined, since: undefined, host: "shop.acme.com" },
-      "Nothing released yet.",
-    ],
-  ] as const)("says %s of production", (_case, input, words) => {
-    expect(productionNowLine(input)).toBe(words);
-  });
-
-  describe("Release review has one row per part", () => {
-    const web = { service: "web", url: "https://web-1.prg1.zerops.app" };
-    const api = { service: "api", url: "https://api-1.prg1.zerops.app/" };
-    it.each([
-      {
-        name: "A one-part release review shows its address when it is the only one",
-        parts: [{ hostname: "app", version: "v2.3.1" }],
-        addresses: [{ service: "app", url: "https://shop.acme.com" }],
-        expected: { line: "Runs v2.3.1 since Tue at shop.acme.com.", rows: [] },
-      },
-      {
-        name: "three parts: each its version and its own address, none named for the whole",
-        parts: [
-          { hostname: "api", version: "v2.3.0" },
-          { hostname: "web", version: "v2.3.1" },
-          { hostname: "worker", version: undefined },
-        ],
-        addresses: [web, api],
-        expected: {
-          line: "Runs v2.3.1 since Tue.",
-          rows: [
-            "api · v2.3.0 · api-1.prg1.zerops.app",
-            "web · v2.3.1 · web-1.prg1.zerops.app",
-            "worker · runs nothing",
-          ],
-        },
-      },
-    ])("$name", ({ parts, addresses, expected }) => {
-      expect(productionNow({ live: "v2.3.1", since: "Tue", parts, addresses })).toEqual(expected);
-    });
-  });
-
   describe("Production now is what ran as the release was offered", () => {
     const releases = [
       { tag: "v0.1.1", taggedAt: "2026-10-16T19:44:40Z", entries: [{ service: "app" }] },
@@ -922,74 +805,6 @@ describe("a change's receipt: each part's preview", () => {
     );
     const tried = changeReceipt({ receipt: receipt(part("web"), part("api")), head: HEAD });
     expect(tried?.warning).toBeUndefined();
-  });
-});
-
-describe("releaseHeading: a release's head says where it stands once", () => {
-  const NOW = Date.parse("2026-10-19T10:30:00Z");
-  const heading = (outcome: ReleaseOutcome) => {
-    const model = releaseReview({
-      tag: "v0.1.4",
-      gate: { allowed: true },
-      permission: { allowed: true },
-      changes: 1,
-      onStage: { total: 1, running: 1 },
-      services: ["app"],
-      replaces: { kind: "release", tag: "v0.1.3" },
-      outcome,
-      productionMoved: outcome.kind === "failed" ? false : undefined,
-      now: NOW,
-    });
-    return releaseHeading({
-      tag: "v0.1.4",
-      model,
-      line: "1 change, on stage since 10:19.",
-      live: "v0.1.3",
-    });
-  };
-
-  it("a running release says once that it is releasing, with its step and clock", () => {
-    expect(
-      heading({ kind: "releasing", progress: "Putting v0.1.4 live · 8s", clock: "8s" }),
-    ).toEqual({
-      title: "Releasing v0.1.4 to production",
-      meta: undefined,
-      state: "Putting v0.1.4 live · 8s",
-      note: "You can close this. Production's line on the project's card follows it.",
-      foot: "",
-    });
-  });
-
-  it("a released one says it is live, and the way back", () => {
-    expect(heading({ kind: "released", at: "2026-10-19T10:27:00Z" })).toEqual({
-      title: "v0.1.4 is live",
-      meta: undefined,
-      state: "Production runs it · released 3 minutes ago",
-      note: "Roll back to v0.1.3 from production's menu. It gets its own review.",
-      foot: "",
-    });
-  });
-
-  it("a failed one says its cause, its fix beside it", () => {
-    expect(
-      heading({ kind: "failed", detail: "The deploy of app failed", services: ["app"] }),
-    ).toEqual({
-      title: "v0.1.4 didn't go out",
-      meta: undefined,
-      state: undefined,
-      note: "The deploy of app failed.",
-      foot: "",
-    });
-  });
-
-  it("an offered one says what goes out, and under its button what pressing does", () => {
-    expect(heading({ kind: "offered" })).toEqual({
-      title: "Release v0.1.4 to production",
-      meta: "1 change, on stage since 10:19.",
-      state: undefined,
-      note: undefined,
-      foot: "It takes a minute or two. You can roll back to v0.1.3 from production's panel.",
-    });
   });
 });
 

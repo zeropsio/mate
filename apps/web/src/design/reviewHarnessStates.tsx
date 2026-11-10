@@ -9,6 +9,7 @@ import {
   releaseOutcomeOf,
   releaseSteps,
   releaseVersionField,
+  RELEASE_NOTHING_MERGED,
   type ChangeReadout,
   type FlowPullRequest,
   type FlowReleaseRow,
@@ -34,10 +35,12 @@ import {
 import { Button } from "~/components/ui/button";
 import { CrewTaskReviewView } from "~/components/zerops/review/ZeropsCrewTaskReview";
 import {
+  ReleaseReadingView,
   ReleaseReviewView,
   RollbackReviewView,
   type RollbackList,
 } from "~/components/zerops/review/ZeropsReleaseReview";
+import type { ReleaseProgress } from "~/components/zerops/review/releaseSheet.logic";
 import { useReleaseSteps, ZeropsReleaseSteps } from "~/components/zerops/review/ZeropsReleaseSteps";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
 import { ZeropsHostedFrame } from "~/components/zerops/landing/ZeropsHostedFrame";
@@ -582,6 +585,7 @@ const RELEASE_ROWS = [
     mergedAt: minutesAgo(60 * 26),
     stage: "on-stage" as const,
     face: { tint: "sky" as const },
+    mate: "Juno",
     sub: "Juno · merged 1 day ago",
   },
   {
@@ -592,6 +596,7 @@ const RELEASE_ROWS = [
     mergedAt: minutesAgo(90),
     stage: "on-stage" as const,
     face: { tint: "sand" as const },
+    mate: "Cleo",
     sub: "Cleo · merged 1 hour ago",
   },
 ];
@@ -667,29 +672,78 @@ const WHERE = [
   { service: "api", line: "redeploys from 3fa9c21" },
 ];
 
-const CREATION_PLAN: NonNullable<Parameters<typeof ReleaseReviewView>[0]["servicePlan"]> = {
-  hash: "a".repeat(64),
-  operations: [
-    {
-      kind: "create",
-      service: "agentrunner",
-      settings: {
-        hostname: "agentrunner",
-        type: "nodejs@22",
-        mode: "NON_HA",
-        minContainers: 1,
-        maxContainers: 2,
-        minCpu: 1,
-        maxCpu: 2,
-        minRam: 1,
-        maxRam: 2,
-        startWithoutCode: true,
-      },
-      cost: "Adds one billed service; resource usage is charged by Zerops according to the reviewed settings.",
-    },
-    { kind: "deploy", service: "agentrunner", sha: SEVEN_E },
-  ],
+type ReleaseProps = Parameters<typeof ReleaseReviewView>[0];
+type ReleasePlan = NonNullable<ReleaseProps["servicePlan"]>;
+
+/** HQ's plan of a release that needs a database production lacks before it deploys the app. */
+const CREATE_DB: Extract<ReleasePlan["operations"][number], { kind: "create" }> = {
+  kind: "create",
+  service: "db",
+  settings: {
+    hostname: "db",
+    type: "postgresql@18",
+    mode: "HA",
+    verticalAutoscaling: { minRam: 1, maxRam: 4 },
+  },
+  cost: "Adds one billed service; resource usage is charged by Zerops according to the reviewed settings.",
 };
+const CREATION_PLAN: ReleasePlan = {
+  hash: "a".repeat(64),
+  operations: [CREATE_DB, { kind: "deploy", service: "app", sha: SEVEN_E }],
+};
+/** The same plan read again once the database stands: it only deploys. */
+const DEPLOY_PLAN: ReleasePlan = {
+  hash: "b".repeat(64),
+  operations: [{ kind: "deploy", service: "app", sha: SEVEN_E }],
+};
+/** A release that moves the app alone: the api stays as it is. */
+const APP_ALONE = {
+  services: ["app"],
+  where: [
+    { service: "app", line: "gets v0.1.57" },
+    { service: "api", line: "stays as it is" },
+  ],
+} satisfies Partial<ReleaseProps>;
+const NO_CREATION = { run: { kind: "none" }, created: [], onCreate: noop } as const;
+const secondsAgo = (seconds: number) => new Date(NOW - seconds * 1000).toISOString();
+const STARTED = { at: secondsAgo(178), by: "you" } as const;
+
+/** One production deploy of v0.1.57, as the sheet's steps read HQ's job of it. */
+const deployOf = (
+  service: string,
+  state: ReleaseProgress["deploys"][number]["state"],
+  over: Partial<ReleaseProgress["deploys"][number]> = {},
+): ReleaseProgress["deploys"][number] => ({
+  service,
+  state,
+  reason: undefined,
+  at: secondsAgo(48),
+  endedAt: null,
+  ...over,
+});
+const creationOf = (
+  state: NonNullable<ReleaseProgress["creation"]>["state"],
+  over: Partial<NonNullable<ReleaseProgress["creation"]>> = {},
+): NonNullable<ReleaseProgress["creation"]> => ({
+  tag: "v0.1.57",
+  state,
+  reason: undefined,
+  services: ["db"],
+  at: secondsAgo(178),
+  endedAt: null,
+  ...over,
+});
+/** The steps' reads from the jobs the outcome is derived from. */
+const progressOfJobs = (jobs: ReadonlyArray<HqJob>): ReleaseProgress => ({
+  creation: undefined,
+  deploys: jobs.map((job) => ({
+    service: job.service ?? "",
+    state: job.state,
+    reason: job.reason ?? undefined,
+    at: job.at,
+    endedAt: job.endedAt,
+  })),
+});
 
 /** v0.1.57 as HQ lists it, deploying app and api from one commit. */
 const tagged57 = (over: Partial<FlowReleaseRow> = {}): FlowReleaseRow => ({
@@ -774,7 +828,7 @@ function Release({
   initialVersion,
 }: {
   readonly initialVersion?: string;
-  readonly over?: Partial<Parameters<typeof ReleaseReviewView>[0]>;
+  readonly over?: Partial<ReleaseProps> | undefined;
   readonly outcome?: Parameters<typeof ReleaseReviewView>[0]["outcome"];
   readonly press?: ReviewPress;
   readonly titleId?: string | undefined;
@@ -794,10 +848,14 @@ function Release({
       production={{
         at: minutesAgo(60 * 24 * 4),
         addresses: [{ service: "app", url: "https://beviro.app" }],
-        parts: [{ hostname: "app", version: "v0.1.12" }],
+        parts: [
+          { hostname: "app", version: "v0.1.56" },
+          { hostname: "api", version: "v0.1.56" },
+        ],
       }}
       replaces={{ kind: "release", tag: "v0.1.56" }}
-      stage={{ name: "stage", at: minutesAgo(110) }}
+      started={outcome.kind === "offered" ? undefined : STARTED}
+      commits={3}
       name="Beviro"
       now={NOW}
       onClose={onClose}
@@ -952,6 +1010,378 @@ const QUEUED_ANSWER: HqDeployAnswer = {
   ],
   note: "The preview tier could not be read.",
 };
+
+/** A release's sheet in one of its states: what `Release` is handed. */
+interface ReleaseSheet {
+  readonly id: string;
+  readonly label: string;
+  readonly props: {
+    readonly outcome?: ReleaseProps["outcome"];
+    readonly press?: ReviewPress;
+    readonly over?: Partial<ReleaseProps>;
+    readonly initialVersion?: string;
+    readonly onOpenChange?: ReleaseProps["onOpenChange"];
+  };
+}
+
+const RUNNING_JOBS = [job57("app", "building"), job57("api", "queued")];
+const FAILED_JOBS = [
+  job57("app", "failed", {
+    at: minutesAgo(3.4),
+    endedAt: minutesAgo(2),
+    reason: "Build failed: npm ERR! missing script: build",
+  }),
+];
+
+/**
+ * The release's sheet in every state it reaches, reading to done: each is also the dialog's
+ * (`?release=<id>`), in its real frame.
+ */
+export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
+  { id: "release-reading-project", label: "Release · the project is not read yet", props: {} },
+  {
+    id: "release-reading",
+    label: "Release · reading what goes out and what production needs",
+    props: { over: { changesPending: true, expected: 2, servicePlanPending: true } },
+  },
+  { id: "release", label: "A release", props: {} },
+  {
+    id: "release-one",
+    label: "Release · one change, one service: the sheet ends at its buttons",
+    props: {
+      over: { ...APP_ALONE, servicePlan: DEPLOY_PLAN, rows: [RELEASE_ROWS[1]!], commits: 1 },
+    },
+  },
+  {
+    id: "release-create",
+    label: "Release · ready, with a service to create first",
+    props: { over: { ...APP_ALONE, servicePlan: CREATION_PLAN, creation: NO_CREATION } },
+  },
+  {
+    id: "release-create-reading",
+    label: "Release · the plan is still read, the changes are listed",
+    props: { over: { servicePlanPending: true } },
+  },
+  {
+    id: "release-create-refused",
+    label: "Release · the plan could not be read, with Review again",
+    props: {
+      over: {
+        gate: { allowed: false, reason: "The production plan changed. Review it again." },
+        servicePlanFailure: "The production plan changed. Review it again.",
+        onRetryServicePlan: noop,
+      },
+    },
+  },
+  {
+    id: "release-blocked-gate",
+    label: "Release · HQ holds it, in HQ's words",
+    props: {
+      over: {
+        gate: {
+          allowed: false,
+          reason: "Production's deploy key no longer answers. Give HQ a new one first.",
+        },
+      },
+    },
+  },
+  {
+    id: "release-blocked-permission",
+    label: "Release · not this person's to press",
+    props: {
+      over: {
+        gate: { allowed: false, reason: "Ask an owner of Acme to make you a releaser." },
+        permission: { allowed: false, reason: "Ask an owner of Acme to make you a releaser." },
+      },
+    },
+  },
+  {
+    id: "release-nothing",
+    label: "Release · nothing merged to release",
+    props: { over: { gate: { allowed: false, reason: RELEASE_NOTHING_MERGED }, rows: [] } },
+  },
+  {
+    id: "release-create-early",
+    label: "Release · the early path creating the service",
+    props: {
+      over: {
+        ...APP_ALONE,
+        servicePlan: CREATION_PLAN,
+        creation: { ...NO_CREATION, run: { kind: "working", sinceMs: NOW - 100_000 } },
+      },
+    },
+  },
+  {
+    id: "release-create-early-failed",
+    label: "Release · the early path, Zerops could not create it",
+    props: {
+      over: {
+        ...APP_ALONE,
+        servicePlan: CREATION_PLAN,
+        creation: {
+          ...NO_CREATION,
+          run: {
+            kind: "failed",
+            words: "Zerops could not create db: The project has reached its limit of services.",
+          },
+        },
+      },
+    },
+  },
+  {
+    id: "release-create-early-done",
+    label: "Release · the early path created it, the release only deploys",
+    props: {
+      over: {
+        ...APP_ALONE,
+        servicePlan: DEPLOY_PLAN,
+        creation: { run: { kind: "created" }, created: [CREATE_DB], onCreate: undefined },
+      },
+    },
+  },
+  {
+    id: "release-unreviewed",
+    label: "A release carrying a commit nobody reviewed, opening in the Git browser",
+    props: { onOpenChange: noop, over: { rows: [...RELEASE_ROWS, UNREVIEWED_ROW] } },
+  },
+  {
+    id: "release-many",
+    label: "Release · more than six changes",
+    props: {
+      onOpenChange: noop,
+      over: {
+        rows: Array.from({ length: 9 }, (_, index) => ({
+          ...RELEASE_ROWS[index % 2]!,
+          key: `m${String(index)}`,
+          change: { repository: "appdev", number: 60 + index },
+        })),
+        commits: 14,
+      },
+    },
+  },
+  {
+    id: "release-first",
+    label: "The first release",
+    props: { over: { replaces: { kind: "first" } } },
+  },
+  {
+    id: "release-version",
+    label: "The person's version, with the code's declaration",
+    props: { initialVersion: "1.0.0" },
+  },
+  {
+    id: "release-version-invalid",
+    label: "A version that already exists",
+    props: { initialVersion: "0.1.56" },
+  },
+  {
+    id: "release-pressed",
+    label: "Release · pressed, HQ has not answered",
+    props: {
+      outcome: { kind: "releasing", progress: "Preparing v0.1.57" },
+      press: { kind: "running" },
+      over: { started: { at: secondsAgo(1), by: "you" } },
+    },
+  },
+  {
+    id: "release-create-running",
+    label: "Release · HQ creating the service",
+    props: {
+      outcome: { kind: "releasing" },
+      press: { kind: "done" },
+      over: {
+        ...APP_ALONE,
+        servicePlan: CREATION_PLAN,
+        started: { at: secondsAgo(100), by: "you" },
+        progress: { creation: creationOf("creating", { at: secondsAgo(100) }), deploys: [] },
+      },
+    },
+  },
+  {
+    id: "release-running-steps",
+    label: "Release · created, the app building",
+    props: {
+      outcome: { kind: "releasing" },
+      press: { kind: "done" },
+      over: {
+        ...APP_ALONE,
+        servicePlan: CREATION_PLAN,
+        progress: {
+          creation: creationOf("created", { endedAt: secondsAgo(48) }),
+          deploys: [deployOf("app", "building")],
+        },
+        logOf: () => ({
+          projectId: "p-production",
+          target: { jobId: "job-app", processId: "process-app", appVersionId: null },
+        }),
+      },
+    },
+  },
+  {
+    id: "release-create-failed",
+    label: "Release · stopped, Zerops could not create the service",
+    props: {
+      outcome: { kind: "failed", detail: "Its production deploy failed", services: [] },
+      press: { kind: "done" },
+      over: {
+        ...APP_ALONE,
+        servicePlan: CREATION_PLAN,
+        creation: NO_CREATION,
+        progress: {
+          creation: creationOf("failed", {
+            reason: "Internal Server Error",
+            at: secondsAgo(250),
+            endedAt: secondsAgo(65),
+          }),
+          deploys: [],
+        },
+      },
+    },
+  },
+  {
+    id: "releasing",
+    label: "Releasing · two services",
+    props: {
+      outcome: derived57({ tagged: tagged57(), jobs: RUNNING_JOBS }),
+      press: { kind: "done" },
+      over: {
+        progress: progressOfJobs(RUNNING_JOBS),
+        started: { at: minutesAgo(1.2), by: "Dana" },
+      },
+    },
+  },
+  {
+    id: "release-late",
+    label: "Releasing · taking longer than usual",
+    props: {
+      outcome: {
+        kind: "releasing",
+        progress: "Putting v0.1.57 live · 4m 10s · taking longer than usual",
+        clock: "4m 10s · taking longer than usual",
+      },
+      press: { kind: "done" },
+      over: {
+        started: { at: secondsAgo(250), by: "you" },
+        progress: {
+          creation: undefined,
+          deploys: [
+            deployOf("app", "live", { at: secondsAgo(250), endedAt: secondsAgo(140) }),
+            deployOf("api", "building", { at: secondsAgo(250) }),
+          ],
+        },
+      },
+    },
+  },
+  {
+    id: "released",
+    label: "Released",
+    props: {
+      outcome: { kind: "released", at: minutesAgo(3) },
+      press: { kind: "done" },
+      over: {
+        ...APP_ALONE,
+        servicePlan: CREATION_PLAN,
+        started: { at: secondsAgo(422), by: "you" },
+        progress: {
+          creation: creationOf("created", { at: secondsAgo(422), endedAt: secondsAgo(292) }),
+          deploys: [deployOf("app", "live", { at: secondsAgo(292), endedAt: secondsAgo(188) })],
+        },
+        onRollBack: noop,
+        onAddDomain: noop,
+      },
+    },
+  },
+  {
+    id: "release-failed",
+    label: "Release failed · no job says why",
+    props: {
+      outcome: {
+        kind: "failed",
+        detail: "The deploy of app failed",
+        services: ["app"],
+        at: minutesAgo(2),
+      },
+      press: { kind: "done" },
+    },
+  },
+  {
+    id: "release-failed-words",
+    label: "Release failed · the platform's words",
+    props: {
+      outcome: derived57({
+        tagged: tagged57({
+          standing: "deploy-failed",
+          failedEntries: [{ service: "app", commit: SEVEN_E }],
+        }),
+        jobs: FAILED_JOBS,
+      }),
+      press: { kind: "done" },
+      over: { progress: progressOfJobs(FAILED_JOBS), onReviewNew: noop },
+    },
+  },
+  {
+    id: "release-deploy-refused",
+    label: "Release · HQ's deploy refused at its one try",
+    props: {
+      outcome: {
+        kind: "failed",
+        detail: "The deploy of app failed",
+        services: ["app"],
+        at: minutesAgo(1),
+      },
+      press: { kind: "done" },
+      over: {
+        fixer: undefined,
+        onReviewNew: noop,
+        progress: {
+          creation: undefined,
+          deploys: [
+            deployOf("app", "refused", {
+              reason: "Zerops did not answer: timeout.",
+              endedAt: secondsAgo(40),
+            }),
+          ],
+        },
+      },
+    },
+  },
+  {
+    id: "release-stalled-reason",
+    label: "Release stalled · HQ's reason",
+    props: {
+      outcome: derived57({
+        tagged: tagged57(),
+        jobs: [],
+        stalled: {
+          tag: "v0.1.57",
+          at: minutesAgo(3),
+          reasons: ["api: Zerops refused the deploy token"],
+        },
+      }),
+      press: { kind: "done" },
+    },
+  },
+  {
+    id: "release-stalled-unknown",
+    label: "Release stalled · HQ couldn't tell",
+    props: {
+      outcome: derived57({
+        tagged: tagged57(),
+        jobs: [],
+        stalled: { tag: "v0.1.57", at: minutesAgo(3), reasons: [] },
+      }),
+      press: { kind: "done" },
+    },
+  },
+  {
+    id: "release-superseded",
+    label: "Release · a newer one was tagged after it",
+    props: {
+      outcome: { kind: "superseded", by: "v0.1.58", live: "v0.1.58" },
+      press: { kind: "done" },
+    },
+  },
+];
 
 export const REVIEW_STATES: ReadonlyArray<{
   readonly id: string;
@@ -1348,52 +1778,6 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   {
-    id: "release-deploy-answer",
-    label: "Release · xyz v0.1.2, app building",
-    node: (
-      <Release
-        press={{ kind: "done", deploys: DEPLOY_ANSWER }}
-        outcome={{ kind: "releasing", progress: "Production redeploys from v0.1.2 · 10s" }}
-        over={{
-          name: "xyz",
-          tag: "v0.1.2",
-          replaces: { kind: "release", tag: "v0.1.1" },
-          services: ["app"],
-          untold: ["app"],
-          where: [{ service: "app", line: "redeploys from 96e2309" }],
-        }}
-      />
-    ),
-  },
-  {
-    id: "release-deploy-queued",
-    label: "Release · multiple environments, queued and skipped",
-    node: (
-      <Release press={{ kind: "done", deploys: QUEUED_ANSWER }} outcome={{ kind: "releasing" }} />
-    ),
-  },
-  {
-    id: "release-deploy-refused",
-    label: "Release · deploy refused",
-    node: (
-      <Release
-        press={{
-          kind: "done",
-          deploys: {
-            ...DEPLOY_ANSWER,
-            jobs: DEPLOY_ANSWER.jobs.map((job) => ({
-              ...job,
-              state: "refused",
-              processId: null,
-              reason: "Zerops did not answer: timeout.",
-            })),
-          },
-        }}
-        outcome={{ kind: "releasing" }}
-      />
-    ),
-  },
-  {
     id: "rollback-deploy-answer",
     label: "Roll back · queued deploy",
     node: (
@@ -1434,152 +1818,16 @@ export const REVIEW_STATES: ReadonlyArray<{
       />
     ),
   },
-  { id: "release", label: "A release", node: <Release /> },
-  {
-    id: "release-create",
-    label: "Release creates a billed production service with reviewed settings",
-    node: (
-      <Release
-        over={{
-          servicePlan: CREATION_PLAN,
-          onImportServices: async () => {},
-        }}
-      />
-    ),
-  },
-  {
-    id: "release-create-reading",
-    label: "Creation review is still reading production operations",
-    node: <Release over={{ servicePlanPending: true }} />,
-  },
-  {
-    id: "release-create-refused",
-    label: "Creation review could not be read and offers an explicit retry",
-    node: (
-      <Release
-        over={{
-          servicePlanFailure: "The production plan changed. Review it again.",
-          onRetryServicePlan: noop,
-        }}
-      />
-    ),
-  },
-  {
-    id: "release-unreviewed",
-    label: "A release carrying a commit nobody reviewed, opening in the Git browser",
-    node: <Release onOpenChange={noop} over={{ rows: [...RELEASE_ROWS, UNREVIEWED_ROW] }} />,
-  },
-  {
-    id: "release-first",
-    label: "The first release: its version in words, Change behind it",
-    node: <Release over={{ replaces: { kind: "first" } }} />,
-  },
-  {
-    id: "release-version",
-    label: "The person's version, with the code's declaration",
-    node: <Release initialVersion="1.0.0" />,
-  },
-  {
-    id: "release-version-invalid",
-    label: "A version that already exists",
-    node: <Release initialVersion="0.1.56" />,
-  },
-  {
-    id: "releasing",
-    label: "Releasing",
-    node: (
-      <Release
-        outcome={{ kind: "releasing", progress: "Production redeploys from v0.1.57 · 1m 12s" }}
-        press={{ kind: "done" }}
-      />
-    ),
-  },
-  {
-    id: "released",
-    label: "Released",
-    node: <Release outcome={{ kind: "released", at: minutesAgo(3) }} press={{ kind: "done" }} />,
-  },
-  {
-    id: "release-failed",
-    label: "Release failed",
-    node: (
-      <Release
-        outcome={{
-          kind: "failed",
-          detail: "The deploy of app failed",
-          services: ["app"],
-          at: minutesAgo(2),
-        }}
-        press={{ kind: "done" }}
-      />
-    ),
-  },
-  {
-    id: "release-steps",
-    label: "Release · each service's step",
-    node: (
-      <Release
-        outcome={derived57({
-          tagged: tagged57(),
-          jobs: [job57("app", "building"), job57("api", "queued")],
-        })}
-        press={{ kind: "done" }}
-      />
-    ),
-  },
-  {
-    id: "release-failed-words",
-    label: "Release failed · the platform's words",
-    node: (
-      <Release
-        outcome={derived57({
-          tagged: tagged57({
-            standing: "deploy-failed",
-            failedEntries: [{ service: "app", commit: SEVEN_E }],
-          }),
-          jobs: [
-            job57("app", "failed", {
-              endedAt: minutesAgo(2),
-              reason: "Build failed: npm ERR! missing script: build",
-            }),
-          ],
-        })}
-        press={{ kind: "done" }}
-      />
-    ),
-  },
-  {
-    id: "release-stalled-reason",
-    label: "Release stalled · HQ's reason",
-    node: (
-      <Release
-        outcome={derived57({
-          tagged: tagged57(),
-          jobs: [],
-          stalled: {
-            tag: "v0.1.57",
-            at: minutesAgo(3),
-            reasons: ["api: Zerops refused the deploy token"],
-          },
-        })}
-        press={{ kind: "done" }}
-      />
-    ),
-  },
-  {
-    id: "release-stalled-unknown",
-    label: "Release stalled · HQ couldn't tell",
-    node: (
-      <Release
-        outcome={derived57({
-          tagged: tagged57(),
-          jobs: [],
-          stalled: { tag: "v0.1.57", at: minutesAgo(3), reasons: [] },
-        })}
-        press={{ kind: "done" }}
-      />
-    ),
-  },
+  ...RELEASE_SHEETS.map((sheet) => ({
+    id: sheet.id,
+    label: sheet.label,
+    node:
+      sheet.id === "release-reading-project" ? (
+        <ReleaseReadingView name="Beviro" onClose={noop} titleId="release-reading-project" />
+      ) : (
+        <Release {...sheet.props} />
+      ),
+  })),
   { id: "rollback", label: "Roll back", node: <Rollback /> },
   {
     id: "rollback-comparing",
@@ -1649,7 +1897,7 @@ export function ReviewStage({
         className="flex justify-center rounded-xl px-5 py-9"
         style={{ background: "color-mix(in oklab, var(--background), var(--color-black) 18%)" }}
       >
-        <div className="rv" style={{ maxHeight: "none", width: 460 }}>
+        <div className="rv" style={{ maxHeight: "none", width: 540 }}>
           {children}
         </div>
       </div>
@@ -1664,9 +1912,17 @@ const TRY_READ_MS = 600;
  * The real dialog, opened from a button, to try its motion, its focus and its keys — its files
  * arriving a moment after it opens, as they do from HQ.
  */
-export function ReviewDialogTry({ openAtStart = false }: { readonly openAtStart?: boolean }) {
+export function ReviewDialogTry({
+  openAtStart = false,
+  state,
+}: {
+  readonly openAtStart?: boolean;
+  /** One of `REVIEW_STATES` to stand in the dialog's frame in place of the change read late. */
+  readonly state?: string | undefined;
+}) {
   const [from, setFrom] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(openAtStart);
+  const stood = REVIEW_STATES.find((entry) => entry.id === state)?.node;
   const [read, setRead] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -1697,48 +1953,52 @@ export function ReviewDialogTry({ openAtStart = false }: { readonly openAtStart?
         onOpenChange={setOpen}
         open={open}
       >
-        <ChangeReviewView
-          closing={OPEN}
-          comments={read ? TALKING : comments({ kind: "reading" })}
-          environments={STAGE_AND_PRODUCTION}
-          hqAddress={HARNESS_HQ}
-          live="v0.1.0"
-          mate={NOVA}
-          now={NOW}
-          onAsk={async () => {}}
-          onOpenPage={() => {
-            setOpen(false);
-          }}
-          previews={PREVIEWS}
-          project="Beviro"
-          stages={["stage"]}
-          remarks={read ? remarksOf(TALKING) : []}
-          onClose={() => {
-            setOpen(false);
-          }}
-          onFix={noop}
-          onOpenRun={noop}
-          onClosing={noop}
-          onMerge={noop}
-          offers={DEVELOPS}
-          pictures={HARNESS_PICTURES}
-          press={IDLE}
-          pull={pull({
-            description: harnessDescription({ after: TRY_READ_MS }),
-            pipeline: {
-              head: HEAD,
-              requirements: "known",
-              checks: [
-                { id: "unit", name: "Unit tests", requirement: "required", state: "passed" },
-                { id: "lint", name: "Lint", requirement: "advisory", state: "passed" },
-              ],
-            },
-          })}
-          readout={read ? READ : READING}
-          titleId="review-try-title"
-          waitingForProduction={0}
-          release={{ allowed: true }}
-        />
+        {stood !== undefined ? (
+          stood
+        ) : (
+          <ChangeReviewView
+            closing={OPEN}
+            comments={read ? TALKING : comments({ kind: "reading" })}
+            environments={STAGE_AND_PRODUCTION}
+            hqAddress={HARNESS_HQ}
+            live="v0.1.0"
+            mate={NOVA}
+            now={NOW}
+            onAsk={async () => {}}
+            onOpenPage={() => {
+              setOpen(false);
+            }}
+            previews={PREVIEWS}
+            project="Beviro"
+            stages={["stage"]}
+            remarks={read ? remarksOf(TALKING) : []}
+            onClose={() => {
+              setOpen(false);
+            }}
+            onFix={noop}
+            onOpenRun={noop}
+            onClosing={noop}
+            onMerge={noop}
+            offers={DEVELOPS}
+            pictures={HARNESS_PICTURES}
+            press={IDLE}
+            pull={pull({
+              description: harnessDescription({ after: TRY_READ_MS }),
+              pipeline: {
+                head: HEAD,
+                requirements: "known",
+                checks: [
+                  { id: "unit", name: "Unit tests", requirement: "required", state: "passed" },
+                  { id: "lint", name: "Lint", requirement: "advisory", state: "passed" },
+                ],
+              },
+            })}
+            readout={read ? READ : READING}
+            titleId="review-try-title"
+            waitingForProduction={0}
+            release={{ allowed: true }}
+          />
+        )}
       </ZeropsReviewDialog>
     </div>
   );
@@ -1762,19 +2022,82 @@ const RELEASED: Readonly<Record<number, Partial<FlowPullRequest>>> = {
   },
 };
 
+/**
+ * One release from reading to its end, as a person lives it: the reads land, the press, HQ creating
+ * what production lacks, the deploy, and live — or stopped at the creation (`fails`), or with
+ * nothing to create (`plain`). Where the sheet ends and where its buttons stand across all of it
+ * is measured here.
+ */
+function useReleaseJourney(kind: "creates" | "fails" | "plain"): ReleaseSheet["props"] & {
+  readonly onRelease: () => void;
+} {
+  const [stage, setStage] = useState<"reading" | "ready" | "creating" | "deploying" | "ended">(
+    "reading",
+  );
+  useEffect(() => {
+    const next =
+      stage === "reading"
+        ? (["ready", 750] as const)
+        : stage === "creating"
+          ? ([kind === "fails" ? "ended" : "deploying", 2_000] as const)
+          : stage === "deploying"
+            ? (["ended", 2_000] as const)
+            : undefined;
+    if (next === undefined) return;
+    const timer = setTimeout(() => setStage(next[0]), next[1]);
+    return () => clearTimeout(timer);
+  }, [kind, stage]);
+  const sheet = (id: string) => RELEASE_SHEETS.find((entry) => entry.id === id)!.props;
+  // With nothing to create the same sheets stand without their creation: its plan only deploys.
+  const plain = (props: ReleaseSheet["props"]): ReleaseSheet["props"] =>
+    kind !== "plain"
+      ? props
+      : {
+          ...props,
+          over: {
+            ...props.over,
+            servicePlan: DEPLOY_PLAN,
+            ...(props.over?.progress === undefined
+              ? {}
+              : { progress: { ...props.over.progress, creation: undefined } }),
+          },
+        };
+  const props =
+    stage === "reading"
+      ? { over: { ...APP_ALONE, ...sheet("release-reading").over } }
+      : stage === "ready"
+        ? plain(sheet("release-create"))
+        : stage === "creating"
+          ? plain(sheet("release-create-running"))
+          : stage === "deploying"
+            ? plain(sheet("release-running-steps"))
+            : plain(sheet(kind === "fails" ? "release-create-failed" : "released"));
+  return {
+    ...props,
+    onRelease: () => setStage(kind === "plain" ? "deploying" : "creating"),
+  };
+}
+
 /** The harness's release and the change a row steps into. */
 function ReleaseTrySteps({
   onClose,
-  running,
-  creation,
+  state,
 }: {
   readonly onClose: () => void;
-  readonly running: boolean;
-  readonly creation: boolean;
+  /** A sheet's id (`RELEASE_SHEETS`), or a journey (`useReleaseJourney`): reading to its end. */
+  readonly state: string;
 }) {
   const steps = useReleaseSteps();
   const onChange = steps.step.view === "change";
   const shown = steps.shown;
+  const journey = useReleaseJourney(
+    state === "journey-fails" ? "fails" : state === "journey-plain" ? "plain" : "creates",
+  );
+  const onJourney = state.startsWith("journey");
+  const found = RELEASE_SHEETS.find((entry) => entry.id === state);
+  const { onRelease, ...lived } = journey;
+  const sheet: ReleaseSheet["props"] = onJourney ? lived : found === undefined ? {} : found.props;
+  const titleId = onChange ? undefined : "release-try-title";
   return (
     <ZeropsReleaseSteps
       change={
@@ -1812,18 +2135,17 @@ function ReleaseTrySteps({
         )
       }
       release={
-        <Release
-          onClose={onClose}
-          onOpenChange={steps.open}
-          over={creation ? { servicePlan: CREATION_PLAN } : {}}
-          titleId={onChange ? undefined : "release-try-title"}
-          {...(running
-            ? {
-                outcome: { kind: "releasing", progress: "Putting v0.1.57 live · 8s", clock: "8s" },
-                press: { kind: "done", deploys: DEPLOY_ANSWER },
-              }
-            : {})}
-        />
+        state === "release-reading-project" ? (
+          <ReleaseReadingView name="Beviro" onClose={onClose} titleId="release-try-title" />
+        ) : (
+          <Release
+            onClose={onClose}
+            onOpenChange={steps.open}
+            titleId={titleId}
+            {...sheet}
+            over={onJourney ? { ...sheet.over, onRelease } : sheet.over}
+          />
+        )
       }
       steps={steps}
     />
@@ -1831,18 +2153,18 @@ function ReleaseTrySteps({
 }
 
 /**
- * The release's dialog, opened from a button, to step into a change it carries and back: the
- * slide, the height, the focus and Esc twice. `?release=open` opens it as the page loads;
- * `?release=running`, pressed, on its way.
+ * The release's dialog, opened from a button, in its real frame: to step into a change it carries
+ * and back — the slide, the focus and Esc twice — and to stand in any state of it.
+ * `?release=<id>` opens it in that state as the page loads (`RELEASE_SHEETS`; `open` is the plain
+ * one), `?release=journey` runs one from reading to live, `journey-fails` to a failed creation,
+ * `journey-plain` one that creates nothing.
  */
 export function ReleaseDialogTry({
   openAtStart,
-  running = false,
-  creation = false,
+  state = "release",
 }: {
   readonly openAtStart: boolean;
-  readonly running?: boolean;
-  readonly creation?: boolean;
+  readonly state?: string | undefined;
 }) {
   const [from, setFrom] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(openAtStart);
@@ -1868,7 +2190,7 @@ export function ReleaseDialogTry({
         onOpenChange={setOpen}
         open={open}
       >
-        <ReleaseTrySteps onClose={close} running={running} creation={creation} />
+        <ReleaseTrySteps onClose={close} state={state} />
       </ZeropsReviewDialog>
     </div>
   );

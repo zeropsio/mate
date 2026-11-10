@@ -41,10 +41,10 @@ import {
   askedCreations,
   releaseDay,
   releaseOfferView,
+  serviceCreateRunOf,
   serviceCreateTrouble,
   serviceCreateView,
   type ServiceCreatePlan,
-  type ServiceCreateRun,
 } from "./productionAsk.logic";
 import {
   ReleaseOfferAskCard,
@@ -152,28 +152,7 @@ export function ServiceCreateAsk({
   const creation = useServiceCreation(proposal.id);
   const [sending, setSending] = useState(false);
 
-  const { progress } = creation;
-  const run: ServiceCreateRun =
-    progress.stage === "unknown"
-      ? sending
-        ? { kind: "working", sinceMs: undefined }
-        : { kind: "none" }
-      : progress.stage === "submitting" ||
-          progress.stage === "accepted" ||
-          progress.stage === "reflected" ||
-          (progress.stage === "uncertain" && progress.next === "asking-owner")
-        ? { kind: "working", sinceMs: creation.acceptedAtMs }
-        : progress.stage === "done" && progress.outcome === "succeeded"
-          ? { kind: "created" }
-          : {
-              kind: "failed",
-              words:
-                serviceCreateTrouble({
-                  stage: progress.stage,
-                  ...("outcome" in progress ? { outcome: progress.outcome } : {}),
-                  ...("reason" in progress ? { reason: progress.reason } : {}),
-                }) ?? "Zerops did not create it.",
-            };
+  const run = serviceCreateRunOf(creation, sending);
   const nowMs = useSecondsNowMs(run.kind === "working" && run.sinceMs !== undefined);
 
   const planned = planRead(flow, plan.view);

@@ -3,7 +3,7 @@ import type { GitDelivery } from "@t3tools/client-runtime/zerops";
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 /** HQ's answer replaces a service's planned deploy line, inside the section that names it. */
 import type { ReviewPress } from "@t3tools/client-runtime/zerops";
-import { deployAnswerSaid } from "@t3tools/client-runtime/zerops/hq";
+import { deployAnswerSaid, deployNoteSaid } from "@t3tools/client-runtime/zerops/hq";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import { Fragment } from "react";
 import {
@@ -131,7 +131,10 @@ function PlatformDeployAnswer({
 export function answeredDeploys(press: ReviewPress): HqDeployAnswer | undefined {
   if (press.kind !== "done" || press.deploys === undefined) return undefined;
   const { jobs, note, planned } = press.deploys;
-  return jobs.length > 0 || note?.trim() || planned === false ? press.deploys : undefined;
+  // A note that only repeats what the review says itself is no answer to show.
+  return jobs.length > 0 || deployNoteSaid(note) !== undefined || planned === false
+    ? press.deploys
+    : undefined;
 }
 
 /**

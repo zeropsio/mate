@@ -71,7 +71,7 @@ describe("owner-reported layout regressions", () => {
             offered!.sheet,
             "ASSERTION: the sheet ends well above the window's bottom",
           ).toBeLessThan(900);
-          yield* a.when.click("Release v0.1.1 to production");
+          yield* a.when.click("Release v0.1.1");
           const pressed = yield* measure;
           yield* a.when.finish("production");
           yield* a.then.text("v0.1.1 is live");

@@ -24,6 +24,7 @@ import {
   type EnvironmentCreationOutcome,
   type ReleaseFailure,
   type ReleaseGate,
+  isPlatformSubdomain,
 } from "@t3tools/client-runtime/zerops";
 
 /** Where a run stands: one step at a time, never two at once. */
@@ -637,11 +638,14 @@ export function putLiveReleased(run: PutLiveRun, nowMs: number): string {
   return `${line} · ${age}`;
 }
 
-/** The address the live card leads with: production's first, without its scheme. */
+/**
+ * The address the live card leads with, without its scheme: production's own domain where it has
+ * one — what its people open — else its first address, the platform's.
+ */
 export function putLiveAddress(
   addresses: ReadonlyArray<{ readonly url: string }>,
 ): { readonly url: string; readonly host: string } | undefined {
-  const first = addresses[0];
+  const first = addresses.find((address) => !isPlatformSubdomain(address.url)) ?? addresses[0];
   if (first === undefined) return undefined;
   return { url: first.url, host: first.url.replace(/^[a-z]+:\/\//iu, "").replace(/\/+$/u, "") };
 }

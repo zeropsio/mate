@@ -29,6 +29,34 @@ export function problemPresentation(problem: HqProblem) {
   };
 }
 
+/** Who HQ says acts next, as a person reads it; an actor HQ adds later keeps HQ's own word. */
+const NEXT_ACTOR: Readonly<Record<string, string>> = {
+  person: "you",
+  "application-mate": "a Mate of this project",
+  author: "the change's author",
+  administrator: "an administrator",
+  "hq-operator": "whoever runs HQ",
+  hq: "HQ",
+};
+
+/**
+ * HQ's finding as its review says it: what is wrong, then who acts next and how, each once. Its
+ * identifiers (where, rule, evidence) are the same `problemPresentation` gives, kept for whoever
+ * needs to quote them and shown folded.
+ */
+export function problemSaid(problem: HqProblem) {
+  const shown = problemPresentation(problem);
+  const { next } = problem;
+  return {
+    what: problem.what,
+    who: NEXT_ACTOR[next.actor] ?? next.actor,
+    action: `${next.action}${next.target === undefined ? "" : ` (${next.target})`}`,
+    where: shown.where,
+    rule: shown.rule,
+    evidence: shown.evidence,
+  };
+}
+
 /** The fix composer receives the same findings the person can read. */
 export function problemsFix(problems: ReadonlyArray<HqProblem>): ReviewFix | undefined {
   if (problems.length === 0) return undefined;

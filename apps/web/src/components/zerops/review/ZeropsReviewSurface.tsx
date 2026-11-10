@@ -9,10 +9,13 @@ import { isField } from "./ZeropsReview.logic";
  * "Sage · Tea Shop", or the project), offers its own page where it has one, and × closes it. As a
  * page, at its own address, the page's bar says where it sits, and the review is the page.
  *
- * One reading order, top to bottom: its title; one line of where it stands in plain words —
- * "#12 · Ready to merge · ✓ checks passed" — and, where that is not all, why; what it does,
- * how to try it, what it changes; what was said and its commits, folded. The buttons stand at the
- * foot, the one button first, and under them one line of what happens next.
+ * One reading order, top to bottom: where it acts and whose it is; its title; one line of where
+ * it stands in plain words — "#12 · Ready to merge · ✓ checks passed" — and, where that is not
+ * all, why; what it does, how to try it, what it changes; what was said and its commits, folded.
+ * The buttons stand at the foot: the ask and the one button a pair at the row's end, the one
+ * button last, the quiet word at its start — under the pair where the row has no room, never
+ * above the one button — and under them one line of what happens next, or why the button is held.
+ * What is rare or takes something away stands behind ⋯ in the top line.
  */
 import type { ChangeDiffFile, ReviewVerdict } from "@t3tools/client-runtime/zerops";
 import { changeFileParts } from "@t3tools/client-runtime/zerops";
@@ -24,6 +27,7 @@ import {
   CheckIcon,
   ChevronDownIcon,
   ChevronRightIcon,
+  EllipsisIcon,
   GlobeIcon,
   Maximize2Icon,
   RotateCcwIcon,
@@ -31,9 +35,19 @@ import {
   TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
-import { Fragment, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
-import { Button } from "~/components/ui/button";
+import { Badge } from "~/components/ui/badge";
+import { Button, InlineButton } from "~/components/ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Spinner } from "~/components/ui/spinner";
 import { isMacPlatform } from "~/lib/utils";
 
@@ -71,6 +85,11 @@ export interface ReviewButton {
   readonly onPress: () => void;
 }
 
+/** One of the rare ways behind ⋯: a press, or a place in the Git browser. */
+export type ReviewMenuItem =
+  | (ReviewButton & { readonly destructive?: boolean | undefined })
+  | { readonly label: string; readonly to: GitLink };
+
 export interface ReviewPrimaryButton extends ReviewButton {
   readonly enabled: boolean;
   readonly safe: boolean;
@@ -91,8 +110,22 @@ export interface ZeropsReviewSurfaceProps {
   readonly kindLabel: string;
   /** The face beside the top line: the Mate whose change it is. */
   readonly face?: ReviewFaceProps | undefined;
+  /**
+   * Where it acts, before the top line's words: "Production" — the only red — or the branch a
+   * change merges into.
+   */
+  readonly where?: { readonly words: string; readonly production?: boolean } | undefined;
+  /** The rare ways, behind ⋯ in the top line; none where there is none. */
+  readonly menu?: ReadonlyArray<ReviewMenuItem> | undefined;
   readonly title: string;
+  /** The title as it is drawn, where it sets a name apart; `title` is its text. */
+  readonly titleWords?: ReactNode;
   readonly titleId?: string | undefined;
+  /**
+   * The one line under the title, where the review says where it stands itself: it takes the
+   * place of the verdict's line and its why, and never wraps, so the head keeps its height.
+   */
+  readonly subtitle?: ReactNode;
   /** The line under the title, before the verdict's words: "#12". */
   readonly meta?: ReactNode;
   /** After the meta: where else it lives — the pull request it is on GitHub, linked. */
@@ -110,13 +143,19 @@ export interface ZeropsReviewSurfaceProps {
   readonly fix?: ReviewButton | undefined;
   /** The sections, in reading order. */
   readonly children?: ReactNode;
-  /** What happens next, under the buttons; empty when nothing more follows. */
+  /** The foot's note, under the buttons: what happens next, or why the button is held. */
   readonly consequence: string;
-  /** "Cancel" before anything was pressed, "Close" after. */
+  /** The note that will stand once what is loading has loaded: the foot keeps its room. */
+  readonly consequenceRoom?: string | undefined;
+  /** The note's tone where it says why the button is held, or what stopped. */
+  readonly consequenceTone?: "attention" | "failed" | undefined;
+  /** A press in the note: "Review again", "Roll back to v0.1.3…". */
+  readonly noteAction?: ReviewButton | undefined;
+  /** The quiet way out, at the row's start: "Cancel" before a press, "Close" or "Done" after. */
   readonly dismiss?: string | undefined;
   /** "Ask Sage to change it…": the soft button beside the one button. */
   readonly ask?: ReviewButton | undefined;
-  /** A quiet word beside the button: a change's "Close without merging…", then "Keep it open". */
+  /** A quiet word beside the way out that does not close the sheet: "Keep it open". */
   readonly secondary?: (ReviewButton & { readonly enabled: boolean }) | undefined;
   readonly primary?: ReviewPrimaryButton | undefined;
   /**
@@ -132,6 +171,11 @@ export interface ZeropsReviewSurfaceProps {
    * place of the top line.
    */
   readonly back?: ReviewButton | undefined;
+  /**
+   * Pressed: from here its buttons never rise under the pointer. A sheet as tall as what it says
+   * keeps at least the height that holds them where they stood, whatever it says next.
+   */
+  readonly held?: boolean | undefined;
   /** The sheet's way to the same review as a page, where it has one. */
   readonly onOpenPage?: (() => void) | undefined;
   readonly onClose: () => void;
@@ -142,8 +186,12 @@ export function ZeropsReviewSurface({
   kind,
   kindLabel,
   face,
+  where,
+  menu,
   title,
+  titleWords,
   titleId,
+  subtitle,
   meta,
   elsewhere,
   code,
@@ -154,6 +202,9 @@ export function ZeropsReviewSurface({
   fix,
   children,
   consequence,
+  consequenceRoom,
+  consequenceTone,
+  noteAction,
   dismiss,
   ask,
   secondary,
@@ -161,10 +212,13 @@ export function ZeropsReviewSurface({
   answers,
   settled,
   back,
+  held = false,
   onOpenPage,
   onClose,
 }: ZeropsReviewSurfaceProps) {
   const Title = frame === "page" ? "h1" : "h2";
+  const buttonsRow = useRef<HTMLDivElement | null>(null);
+  const pressed = useHeldButtons(held, buttonsRow);
   const line: Array<{ readonly key: string; readonly node: ReactNode }> = [];
   if (meta !== undefined && meta !== null) line.push({ key: "meta", node: meta });
   if (elsewhere !== undefined && elsewhere !== null)
@@ -188,6 +242,9 @@ export function ZeropsReviewSurface({
         <div className="rv-chrome">
           {back === undefined ? (
             <span className="rv-kind">
+              {where === undefined ? null : (
+                <Badge tone={where.production === true ? "danger" : "neutral"}>{where.words}</Badge>
+              )}
               {face === undefined ? null : (
                 <MateFace
                   className="size-5.5"
@@ -207,6 +264,7 @@ export function ZeropsReviewSurface({
               </button>
             </span>
           )}
+          {menu === undefined || menu.length === 0 ? null : <ReviewMenu items={menu} />}
           {onOpenPage === undefined ? null : (
             <button aria-label="Open as page" className="rv-x" onClick={onOpenPage} type="button">
               <Maximize2Icon aria-hidden="true" size={14} />
@@ -219,26 +277,37 @@ export function ZeropsReviewSurface({
       )}
       <header className="rv-head" data-review-kind={kind}>
         <Title className="rv-title" id={titleId} title={title}>
-          {title}
+          {titleWords ?? title}
         </Title>
-        <p
-          aria-live="polite"
-          className="rv-line"
-          data-review-state={verdict.state}
-          data-tone={verdict.tone}
-        >
-          {line.map((part, index) => (
-            <Fragment key={part.key}>
-              {index === 0 ? null : (
-                <span aria-hidden="true" className="rv-dot">
-                  ·
-                </span>
-              )}
-              {part.node}
-            </Fragment>
-          ))}
-        </p>
-        {whySaid || fix !== undefined ? (
+        {subtitle === undefined ? (
+          <p
+            aria-live="polite"
+            className="rv-line"
+            data-review-state={verdict.state}
+            data-tone={verdict.tone}
+          >
+            {line.map((part, index) => (
+              <Fragment key={part.key}>
+                {index === 0 ? null : (
+                  <span aria-hidden="true" className="rv-dot">
+                    ·
+                  </span>
+                )}
+                {part.node}
+              </Fragment>
+            ))}
+          </p>
+        ) : (
+          <p
+            aria-live="polite"
+            className="rv-sub"
+            data-review-state={verdict.state}
+            data-tone={verdict.tone}
+          >
+            {subtitle}
+          </p>
+        )}
+        {subtitle === undefined && (whySaid || fix !== undefined) ? (
           <div className="rv-why" data-tone={verdict.tone}>
             {whySaid ? <span>{verdict.why}</span> : null}
             {fix === undefined ? null : (
@@ -256,10 +325,11 @@ export function ZeropsReviewSurface({
       settled === undefined &&
       ask === undefined &&
       secondary === undefined &&
+      noteAction === undefined &&
       (dismiss === undefined || frame === "page") &&
       consequence === "" ? null : (
         <footer className="rv-foot">
-          <div className="rv-btns">
+          <div className="rv-btns" ref={buttonsRow}>
             {answers !== undefined ? (
               answers
             ) : (
@@ -267,7 +337,11 @@ export function ZeropsReviewSurface({
                 {(dismiss === undefined || frame === "page") && secondary === undefined ? null : (
                   <div className="rv-btns-quiet">
                     {dismiss === undefined || frame === "page" ? null : (
-                      <Button onClick={onClose} variant="ghost">
+                      <Button
+                        data-review-secondary={secondary === undefined ? "" : undefined}
+                        onClick={onClose}
+                        variant="ghost"
+                      >
                         {dismiss}
                       </Button>
                     )}
@@ -306,7 +380,10 @@ export function ZeropsReviewSurface({
                         }
                         data-zerops-primary-action={primary.label}
                         disabled={!primary.enabled || primary.busy === true}
-                        onClick={primary.onPress}
+                        onClick={() => {
+                          pressed();
+                          primary.onPress();
+                        }}
                       >
                         {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
                         {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
@@ -326,7 +403,29 @@ export function ZeropsReviewSurface({
               </>
             )}
           </div>
-          {consequence === "" ? null : <p className="rv-conseq">{consequence}</p>}
+          {consequence === "" && noteAction === undefined ? null : (
+            <p
+              className="rv-conseq"
+              data-room={consequenceRoom === undefined ? undefined : ""}
+              data-tone={consequenceTone}
+            >
+              {consequence === "" ? null : <span>{consequence}</span>}
+              {consequenceRoom === undefined ? null : (
+                <span aria-hidden="true" className="rv-conseq-room">
+                  {consequenceRoom}
+                </span>
+              )}
+              {noteAction === undefined ? null : (
+                <InlineButton
+                  data-review-note-action=""
+                  onClick={noteAction.onPress}
+                  tone={consequence === "" ? "muted" : "default"}
+                >
+                  {noteAction.label}
+                </InlineButton>
+              )}
+            </p>
+          )}
         </footer>
       )}
     </>
@@ -357,6 +456,73 @@ export function ZeropsReviewSurface({
       {content}
     </div>
   );
+}
+
+/**
+ * The buttons' place, held from the press: the one button records where the row stands as it is
+ * pressed, and while the review is `held` its sheet takes whatever height keeps the row no higher
+ * than that — or than anywhere it has stood since. A sheet already the window's height has no
+ * more to take. A review opened on something already under way holds from where it first stood.
+ */
+function useHeldButtons(held: boolean, row: RefObject<HTMLDivElement | null>): () => void {
+  const floor = useRef<number | undefined>(undefined);
+  // Whether this review set the sheet's height: a review beside it in the sheet leaves it be.
+  const holding = useRef(false);
+  useLayoutEffect(() => {
+    const node = row.current;
+    const sheet = node?.closest<HTMLElement>(".rv-viewport > .rv");
+    if (node === null || sheet === null || sheet === undefined) return;
+    if (!held) {
+      floor.current = undefined;
+      if (holding.current) sheet.style.minHeight = "";
+      holding.current = false;
+      return;
+    }
+    const top = node.getBoundingClientRect().top;
+    if (floor.current === undefined || top >= floor.current) {
+      floor.current = top;
+      return;
+    }
+    const room = window.innerHeight - 24;
+    const taller = sheet.getBoundingClientRect().height + (floor.current - top);
+    sheet.style.minHeight = `${String(Math.min(taller, room))}px`;
+    holding.current = true;
+  });
+  return () => {
+    floor.current = row.current?.getBoundingClientRect().top;
+  };
+}
+
+/** The rare ways behind ⋯: a short menu at the top line's end. */
+function ReviewMenu({ items }: { readonly items: ReadonlyArray<ReviewMenuItem> }) {
+  return (
+    <Menu>
+      <MenuTrigger render={<button aria-label="More" className="rv-x" type="button" />}>
+        <EllipsisIcon aria-hidden="true" size={16} />
+      </MenuTrigger>
+      <MenuPopup align="end">
+        {items.map((item) =>
+          "to" in item ? (
+            <ReviewMenuLink item={item} key={item.label} />
+          ) : (
+            <MenuItem
+              key={item.label}
+              onClick={item.onPress}
+              variant={item.destructive === true ? "destructive" : "default"}
+            >
+              {item.label}
+            </MenuItem>
+          ),
+        )}
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+function ReviewMenuLink({ item }: { readonly item: Extract<ReviewMenuItem, { to: GitLink }> }) {
+  const link = useGitLinkProps(item.to);
+  // The link's own handler leaves for the Git browser on a plain press: no second navigation.
+  return <MenuItem render={<a href={link.href} onClick={link.onClick} />}>{item.label}</MenuItem>;
 }
 
 /** A section folded to its one row: open or not, and the press that turns it. */
@@ -799,6 +965,8 @@ const STAGE_WORDS: Record<ReleaseChangeRow["stage"], string | undefined> = {
 
 export type ReviewReleaseRow = ReleaseChangeRow & {
   readonly face?: ReviewFaceProps;
+  /** Its Mate, by name, where it has one. */
+  readonly mate?: string;
   readonly sub: string;
 };
 
@@ -828,16 +996,18 @@ export function ReviewReleaseRows({
               <span />
             ) : (
               <MateFace
-                className="size-5.5"
+                className="size-4.5"
                 shape={row.face.shape}
-                size={20}
+                size={16}
                 state={row.face.state ?? "idle"}
                 tint={row.face.tint}
               />
             )}
             <span className="rv-relrow-t">{row.title}</span>
             {mark === undefined ? (
-              <span className="rv-relrow-sub">{row.sub}</span>
+              row.sub === "" ? null : (
+                <span className="rv-relrow-sub">{row.sub}</span>
+              )
             ) : (
               <span className="rv-on" data-mark={row.stage}>
                 {mark}
