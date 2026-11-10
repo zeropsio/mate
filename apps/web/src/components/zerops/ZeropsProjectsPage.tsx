@@ -76,7 +76,7 @@ import {
 } from "@t3tools/client-runtime/zerops/knowledge";
 import { heldCandidates, listsNoProject } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
-import { useAddMate } from "~/zerops/newMate";
+import { newMateView, useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import { useOpenPutLive, usePutLive } from "~/zerops/putLive";
@@ -104,7 +104,7 @@ import {
   type MatePress,
 } from "~/zerops/matePress";
 import { useCreations } from "~/zerops/creations";
-import { placedNewProjects } from "~/zerops/newProjectBirth";
+import { newProjectView, placedNewProjects } from "~/zerops/newProjectBirth";
 import {
   placedSharedBirths,
   sharedBirthPresentation,
@@ -2728,17 +2728,24 @@ export function ZeropsProjectsContent({
           const birth = sharedBirths.find(
             (entry) => entry.projectId === projectId || entry.id === projectId,
           );
-          return birth === undefined
-            ? undefined
-            : {
-                line: sharedBirthPresentation(birth).line,
-                menu: (
-                  <ZeropsProjectMenu
-                    actions={mateActions.birthActionsFor(birth.id)}
-                    label={`More for ${birth.intent?.placement.name ?? "Mate"}`}
-                  />
-                ),
-              };
+          if (birth === undefined) return undefined;
+          // The row says how far it got; why, and who can continue, are its own page's.
+          const shown = sharedBirthPresentation(birth);
+          return {
+            line: shown.row,
+            stopped: shown.attention,
+            onOpen: () => {
+              void navigate(
+                birth.projectId === null ? newProjectView(birth.id) : newMateView(birth.projectId),
+              );
+            },
+            menu: (
+              <ZeropsProjectMenu
+                actions={mateActions.birthActionsFor(birth.id)}
+                label={`More for ${birth.intent?.placement.name ?? "Mate"}`}
+              />
+            ),
+          };
         }}
         mateTint={(candidate: ZeropsCandidatePresentation) =>
           tints.get(candidate.project.id) ?? "slate"

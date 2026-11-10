@@ -142,10 +142,15 @@ export function applicationPlaceFacts<T extends PlaceItem>(input: {
     if (pending !== undefined) addressPending.set(stop.projectId, pending);
     stageChips.set(stop.projectId, drawnChip(stageStopChip({ stop, serving, releases })));
   }
+  // Production runs its release since the newest of its services went live: one service's own
+  // deploy can be months older than a release that left it alone.
   const since =
     prodStop === undefined
       ? undefined
-      : (deployActivatedAt(deploymentsOf(prodStop.projectId)) ?? prodItem?.services?.deployedAt);
+      : newestOf(
+          deployActivatedAt(deploymentsOf(prodStop.projectId)) ?? undefined,
+          prodItem?.services?.deployedAt,
+        );
   // The release on its way, where it is a roll back: production's line says what it goes back to.
   const rollsBackTo = chip?.rollsBackTo;
   return {
@@ -190,6 +195,13 @@ export function applicationStage(read: ZeropsProjectFlow | undefined):
     runsRelease:
       marks.size === 0 ? undefined : [...marks.values()].every((mark) => mark === "on-stage"),
   };
+}
+
+/** The later of two times, either of which may be unknown. */
+function newestOf(left: string | undefined, right: string | undefined): string | undefined {
+  if (left === undefined) return right;
+  if (right === undefined) return left;
+  return Date.parse(right) > Date.parse(left) ? right : left;
 }
 
 /**

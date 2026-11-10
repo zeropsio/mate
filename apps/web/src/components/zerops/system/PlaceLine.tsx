@@ -3,7 +3,8 @@
  * panel (`placeLineView`): dot · name · a pill where not calm · version · since · address ↗.
  *
  * - `compact` (overview card, Mate panels): its name opens the place's page; since-when is left out.
- * - `row` (the project page): the whole line opens the place's page, a chevron at its end.
+ * - `row` (the project page): the whole line opens the place's page — it fills under the pointer
+ *   as a list's row does — a chevron at its end.
  * - `header` (the place's own page, beside its title): no name; the state word said even when calm.
  */
 import { Link } from "@tanstack/react-router";
@@ -118,7 +119,13 @@ export function PlaceLine({
   if (density === "row")
     return (
       <div
-        className="relative flex min-h-8 min-w-0 items-center gap-2 rounded-control text-body"
+        className={cn(
+          "relative flex min-h-8 min-w-0 items-center gap-2 rounded-control text-body",
+          // What opens answers the pointer as a list's row does; its address and its verbs are
+          // their own presses and leave it still.
+          opens &&
+            "-mx-2 px-2 transition-colors duration-150 has-[[data-zerops-place-name]:hover]:bg-foreground/5 has-[[data-zerops-place-name]:focus-visible]:bg-foreground/5 motion-reduce:transition-none",
+        )}
         data-zerops-place-line="row"
         data-zerops-place={line.kind}
       >

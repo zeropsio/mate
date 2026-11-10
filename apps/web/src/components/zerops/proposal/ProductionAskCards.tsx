@@ -2,20 +2,22 @@
  * A Mate's two asks about its application's production, on the ask card. Creating what production
  * lacks: each service as HQ's plan settles it, that it is billed and deploys nothing, the import
  * itself on request, and the press in production's colour — it runs with the person's access.
- * Releasing what waits: the changes that would go out, what the release creates first and what
- * production runs now, and *Review release*, which opens the review every other door opens: the
- * card never releases. Props only: the containers read HQ's plan, the flow and the decision record.
+ * Releasing what waits: one quiet line (how many changes since the live release, what the release
+ * creates first), the changes themselves, and *Review release*, which opens the review every other
+ * door opens: the card never releases. Each fact once: the chip says where, so the title does not;
+ * the changes say why, so the Mate's reason shows only where the card cannot list them. Props
+ * only: the containers read HQ's plan, the flow and the decision record.
  */
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
 import type { ReactNode } from "react";
 
 import { AskCard, AskFacts, AskFooter } from "../../ask/AskCard";
-import { namesWords } from "../../ask/ask.logic";
 import { Button } from "../../ui/button";
 import {
-  releaseOfferTitle,
-  serviceCreateTitle,
+  releaseOfferCardTitle,
+  releaseOfferSummary,
+  serviceCreateCardTitle,
   type ReleaseOfferView,
   type ServiceCreateView,
 } from "./productionAsk.logic";
@@ -85,7 +87,7 @@ export function ServiceCreateAskCard(props: ServiceCreateAskCardProps) {
         }
         kind="proposal"
         state={state.kind}
-        title={serviceCreateTitle(proposal.params.services)}
+        title={serviceCreateCardTitle(proposal.params.services)}
         where={PRODUCTION}
         why={whyOf(proposal, props.mateName)}
       >
@@ -116,8 +118,8 @@ export interface ReleaseOfferAskCardProps {
   readonly more: number;
   /** The services the release creates in production first, as HQ's plan says; none where none. */
   readonly creates: ReadonlyArray<string>;
-  /** What production runs now: its release and the day HQ made it. */
-  readonly now: { readonly tag: string; readonly since: string | undefined } | undefined;
+  /** What production runs now: its release. */
+  readonly now: { readonly tag: string } | undefined;
   readonly onReview: () => void;
   readonly onNotNow: () => void;
   readonly refusal?: string | undefined;
@@ -126,22 +128,13 @@ export interface ReleaseOfferAskCardProps {
 export function ReleaseOfferAskCard(props: ReleaseOfferAskCardProps) {
   const { proposal, view } = props;
   const { state } = view;
-  const facts = [
-    ...(props.creates.length === 0
-      ? []
-      : [{ label: "first", value: `creates ${namesWords(props.creates)} in production` }]),
-    ...(props.now === undefined
-      ? []
-      : [
-          {
-            label: "now",
-            value:
-              props.now.since === undefined
-                ? `runs ${props.now.tag}`
-                : `runs ${props.now.tag} since ${props.now.since}`,
-          },
-        ]),
-  ];
+  const summary = releaseOfferSummary({
+    changes: props.changes.length + props.more,
+    live: props.now?.tag,
+    creates: props.creates,
+  });
+  // The changes are the why: the Mate's reason stands in only where the card knows none of them.
+  const known = props.changes.length + props.more > 0;
   return (
     <div data-proposal={proposal.id} data-proposal-kind={proposal.kind}>
       <AskCard
@@ -162,17 +155,22 @@ export function ReleaseOfferAskCard(props: ReleaseOfferAskCardProps) {
               onPress: props.onReview,
               disabled: view.blocked !== undefined,
             }}
-            note={view.blocked ?? "Nothing goes live until you release there"}
+            note={view.blocked}
             onNotNow={props.onNotNow}
             state={state}
           />
         }
         kind="proposal"
         state={state.kind}
-        title={releaseOfferTitle(view.suggestion)}
+        title={releaseOfferCardTitle(view.suggestion)}
         where={PRODUCTION}
-        why={view.collapsed ? null : whyOf(proposal, props.mateName)}
+        why={view.collapsed || known ? null : whyOf(proposal, props.mateName)}
       >
+        {view.collapsed || summary === null ? null : (
+          <p className="text-body text-muted-foreground" data-release-summary>
+            {summary}
+          </p>
+        )}
         {view.collapsed || view.moved === undefined ? null : (
           <p className="text-caption text-muted-foreground" data-release-moved>
             {view.moved}
@@ -193,7 +191,6 @@ export function ReleaseOfferAskCard(props: ReleaseOfferAskCardProps) {
             )}
           </ul>
         )}
-        {view.collapsed || facts.length === 0 ? null : <AskFacts rows={facts} />}
         {refusalOf(props.refusal)}
       </AskCard>
     </div>

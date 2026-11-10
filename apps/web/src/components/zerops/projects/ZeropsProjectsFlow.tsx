@@ -113,6 +113,20 @@ export interface CardWait {
   readonly onVerb: (from: HTMLElement) => void;
 }
 
+/**
+ * A Mate still being created, on a card's or a page's row, as HQ's birth says it: one statement
+ * that fits the row, its tone where the setup stopped, the birth's own page (which says why and who
+ * can continue), and its ⋯.
+ */
+export interface ComingBirthRow {
+  readonly line: string;
+  /** Its setup stopped: the line is said in the menu row's amber. */
+  readonly stopped: boolean;
+  /** Opens the birth's own page. */
+  readonly onOpen: (() => void) | undefined;
+  readonly menu: ReactNode;
+}
+
 export interface ZeropsProjectsFlowProps<T> {
   /** In the page's order. */
   readonly groups: ReadonlyArray<ProjectsFlowGroup<T>>;
@@ -148,10 +162,8 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly renderMateFace: (item: T, size: MateFaceSize) => ReactNode;
   /** A Mate's tint: the colour of its changes on the project's line. */
   readonly mateTint?: ((item: T) => MateTintId | undefined) | undefined;
-  /** A pending shared birth's phase and its actions, where HQ has one. */
-  readonly renderComingBirth?:
-    | ((projectId: string) => { readonly line: string; readonly menu: ReactNode } | undefined)
-    | undefined;
+  /** A pending shared birth's row, where HQ has one. */
+  readonly renderComingBirth?: ((projectId: string) => ComingBirthRow | undefined) | undefined;
   /**
    * How a Mate opens into its conversation, wherever the list names it;
    * `undefined` where it cannot open yet (coming up, busy), and the name is
