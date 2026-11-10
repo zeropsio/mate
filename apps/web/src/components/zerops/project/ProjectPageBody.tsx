@@ -35,6 +35,7 @@ import {
   placeLabel,
   placeLines,
   projectWaitWords,
+  sinceWords,
   type CardChange,
   type PlaceLine as PlaceLineData,
   type ProjectWait,
@@ -80,6 +81,7 @@ import {
   linesProductionFirst,
   productionFirst,
   waitingChanges,
+  type ChangeGroup,
 } from "./projectPage.logic";
 import { SetupCard } from "./SetupCard";
 
@@ -901,14 +903,18 @@ const GROUP_LIT_MS = 1400;
  * (`projectLineFull`: what each station is and opens, each segment's one verb, each copy of the
  * code and further place under `main`), which this device remembers per project. Open, the line
  * says a place's state and its release's verb beside Places; a place's doors and addresses are
- * Places' alone. Then the list, less the
- * changes Waiting on you lists: open ones each
- * with what stops it, merged ones grouped by where they went — the group's label says it once, in
- * the picture's words ("On stage, ready for production · 12"), and with one group the section's
- * label is it ("On main, not live yet · 5") — setup files last, quiet. The group a release would
- * carry names no verb: *Review release* is production's, the page's one. *All history* opens its
- * releases in place, each with the changes it put live; with no history, *All changes* lists past
- * the first few.
+ * Places' alone.
+ *
+ * Then the list, less the changes Waiting on you lists, in two zones told apart by ground, ink and
+ * room. What is not live yet is the card, the part that moves: open ones each with what stops it,
+ * merged ones grouped by where they stand — the group's label says it once, in the picture's words
+ * ("On stage, ready for production · 12"), and with one group and nothing live the section's label
+ * is it ("On main, not live yet · 5"). What is live is the record under it, on the page's own
+ * ground: a group for each release with when it was made, rows between hairlines, titles in the
+ * muted ink. With nothing on its way the card says so in one line; with nothing live there is no
+ * record. Setup files stand last, quiet. The group a release would carry names no verb: *Review
+ * release* is production's, the page's one. *All history* opens its releases in place, each with
+ * the changes it put live; with no history, *All changes* lists past the first few.
  */
 function ProjectChanges<T>({
   entry,
@@ -930,10 +936,11 @@ function ProjectChanges<T>({
   const door = releaseDoor(entry, props, facts);
   const listed = facts.changes.filter((change) => !waiting.has(changeKey(change.pull)));
   const changes = all ? listed : listed.slice(0, PAGE_CHANGES);
-  const { open, groups, setup } = changeGroups(changes);
+  const { open, groups, live, setup } = changeGroups(changes);
   // A group counts every change that went there, the rows past the first few too.
-  const every = changeGroups(listed).groups;
-  const countOf = (group: (typeof groups)[number]) =>
+  const whole = changeGroups(listed);
+  const every = [...whole.groups, ...whole.live];
+  const countOf = (group: ChangeGroup) =>
     every.find((each) => each.label === group.label)?.changes.length ?? group.changes.length;
   const mateName = (projectId: string) =>
     entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
@@ -942,8 +949,11 @@ function ProjectChanges<T>({
     return item === undefined ? undefined : props.renderMateFace(item, 20);
   };
   const historyShown = history && facts.repo !== undefined;
-  // One group alone, and nothing open beside it: its place is the section's label.
-  const only = open.length === 0 && groups.length === 1 ? groups[0] : undefined;
+  // One group alone, nothing open beside it and no record under it: its place is the section's label.
+  const only =
+    open.length === 0 && groups.length === 1 && live.length === 0 ? groups[0] : undefined;
+  // The record stands under the card; setup files last, in the record where there is one.
+  const record = !historyShown && live.length > 0;
   const groupId = entry.group.groupId;
   const pictureInput = {
     flow: entry.flow,
@@ -1043,6 +1053,12 @@ function ProjectChanges<T>({
       tone={change.tone}
     />
   );
+  const setupRows =
+    setup.length === 0 ? null : (
+      <ChangeList label="Setup files" page>
+        {setup.map((change) => row(change, change.words))}
+      </ChangeList>
+    );
   const action =
     facts.repo !== undefined ? (
       <SectionAction
@@ -1123,6 +1139,13 @@ function ProjectChanges<T>({
           )
         ) : (
           <>
+            {open.length > 0 || groups.length > 0 || !record ? null : (
+              <p className="pp-empty">
+                {facts.changes.some((change) => change.open)
+                  ? "Nothing else is on its way to production."
+                  : "Nothing is waiting to go live."}
+              </p>
+            )}
             {open.length === 0 ? null : (
               <ChangeList page group="open" label="Open changes">
                 {open.map((change) =>
@@ -1138,7 +1161,7 @@ function ProjectChanges<T>({
                   key={group.label}
                 >
                   <SectionLabel count={countOf(group)} level={3}>
-                    {group.label}
+                    <GroupWords group={group} />
                   </SectionLabel>
                   <ChangeList page>
                     {group.changes.map((change) => row(change, undefined))}
@@ -1150,16 +1173,44 @@ function ProjectChanges<T>({
                 {only.changes.map((change) => row(change, undefined))}
               </ChangeList>
             )}
-            {setup.length === 0 ? null : (
-              <ChangeList label="Setup files" page>
-                {setup.map((change) => row(change, change.words))}
-              </ChangeList>
-            )}
+            {record ? null : setupRows}
           </>
         )}
       </div>
+      {record ? (
+        <div className="pp-record" data-zerops-changes-record="">
+          {live.map((group) => (
+            <div className="pp-change-group" key={group.label}>
+              <SectionLabel count={countOf(group)} level={3}>
+                <GroupWords group={group} />
+                <LiveSince at={group.release?.at} />
+              </SectionLabel>
+              <ChangeList page>{group.changes.map((change) => row(change, undefined))}</ChangeList>
+            </div>
+          ))}
+          {setupRows}
+        </div>
+      ) : null}
     </section>
   );
+}
+
+/** A group's words: where its changes stand, a release's version in the face of a real name. */
+function GroupWords({ group }: { readonly group: ChangeGroup }) {
+  const tag = group.release?.tag;
+  if (tag === undefined || !group.label.endsWith(tag)) return group.label;
+  return (
+    <>
+      {group.label.slice(0, -tag.length)}
+      <span className="real-name">{tag}</span>
+    </>
+  );
+}
+
+/** When a release was made, after its name: "since Tue", as a place says since when it runs. */
+function LiveSince({ at }: { readonly at: string | undefined }) {
+  const words = sinceWords(at, useNowMs());
+  return words === undefined ? null : ` ${words}`;
 }
 
 /** A section opened at the main column's foot from a side row: brought into view, closed by its own word. */

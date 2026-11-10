@@ -318,6 +318,39 @@
   }
 }
 
+/* What is live, under the card of what is not: a record on the page's own ground, unboxed, a
+   hairline over each row, its titles in the muted ink. Twice the room that parts two groups stands
+   between the two; its rows keep the card's columns and its edges. */
+.pp-record {
+  --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  margin-top: 20px;
+  padding-inline: 8px;
+}
+
+.dark .pp-record {
+  --ov-rule: color-mix(in oklab, var(--foreground) 9%, transparent);
+}
+
+.pp-record > .ov-changes,
+.pp-record > .pp-change-group > .ov-changes {
+  margin: 0;
+}
+
+.pp-record > .ov-changes:not(:first-child) {
+  margin-top: 6px;
+}
+
+[data-zerops-surface="project-changes"] > .pp-record .ov-change-row {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-record .ov-change-title {
+  color: var(--muted-foreground);
+}
+
 /* A group of changes inside the Changes card, where they went said once over its rows. */
 .pp-change-group + .pp-change-group {
   margin-top: 6px;
