@@ -20,6 +20,7 @@ export {
   type NextReleaseView,
 } from "./NextRelease.logic";
 export { PageHeader } from "./PageHeader";
+export { PageRows } from "./pageRows";
 export { PlaceLine, type PlaceLineDensity } from "./PlaceLine";
 export { placeLineAddress, placeLineView, type PlaceLineView } from "./PlaceLine.logic";
 export { ProjectLine, type ProjectLineProps } from "./ProjectLine";

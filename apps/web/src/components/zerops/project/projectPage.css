@@ -93,7 +93,7 @@
 .pp-card {
   --ov-ground: var(--card);
   --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--card));
-  --ov-hover: color-mix(in oklab, var(--foreground) 3%, transparent);
+  --ov-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
   --ov-rule: color-mix(in oklab, var(--foreground) 7%, transparent);
   display: grid;
   min-width: 0;
@@ -493,7 +493,8 @@ button.pp-hist-head:hover {
   border-radius: 0;
 }
 
-.pp-hist-body .ov-change:hover {
+.pp-hist-body .ov-change:hover,
+.pp-hist-body .ov-change:focus-visible {
   background: none;
 }
 

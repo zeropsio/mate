@@ -51,6 +51,7 @@ import {
   NextRelease,
   nextReleaseView,
   PageHeader,
+  PageRows,
   PlaceLine,
   ProjectLine,
   projectLine,
@@ -322,7 +323,7 @@ function ProjectWaits<T>({
         Waiting on you
       </SectionLabel>
       <div className="pp-card pp-list">
-        <ChangeList>
+        <ChangeList page>
           {waits.map(({ wait, face, onVerb }) => {
             if (wait.kind === "ask")
               return (
@@ -819,11 +820,11 @@ function ProjectMates<T>({
       <SectionLabel count={mates.length > 1 ? mates.length : undefined} id="pp-mates">
         Mates
       </SectionLabel>
-      <div className="pp-card pp-list" role="list">
+      <div className="pp-card pp-list ov-mates-page" role="list">
         {mates.length === 0 ? (
           <p className="pp-empty">No Mates yet. Add one to start work here.</p>
         ) : (
-          mates.map(draw)
+          <PageRows value>{mates.map(draw)}</PageRows>
         )}
       </div>
     </section>
@@ -1036,7 +1037,7 @@ function ProjectChanges<T>({
         ) : (
           <>
             {open.length === 0 ? null : (
-              <ChangeList group="open" label="Open changes">
+              <ChangeList page group="open" label="Open changes">
                 {open.map((change) =>
                   row(change, changeRowLine(mateName(change.pull.mateProjectId), change.words)),
                 )}
@@ -1052,16 +1053,18 @@ function ProjectChanges<T>({
                   <SectionLabel count={countOf(group)} level={3}>
                     {group.label}
                   </SectionLabel>
-                  <ChangeList>{group.changes.map((change) => row(change, undefined))}</ChangeList>
+                  <ChangeList page>
+                    {group.changes.map((change) => row(change, undefined))}
+                  </ChangeList>
                 </div>
               ))
             ) : (
-              <ChangeList group={lineGroupOf(only)} label={only.label}>
+              <ChangeList page group={lineGroupOf(only)} label={only.label}>
                 {only.changes.map((change) => row(change, undefined))}
               </ChangeList>
             )}
             {setup.length === 0 ? null : (
-              <ChangeList label="Setup files">
+              <ChangeList label="Setup files" page>
                 {setup.map((change) => row(change, change.words))}
               </ChangeList>
             )}

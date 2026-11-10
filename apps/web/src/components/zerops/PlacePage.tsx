@@ -1232,7 +1232,7 @@ export function ZeropsStopPane({
   const nextRows =
     changeRows.length + subjectRows.length === 0 && untold.length === 0 ? undefined : (
       <>
-        <ChangeList label={production ? "Changes in the next release" : "Changes to approve"}>
+        <ChangeList label={production ? "Changes in the next release" : "Changes to approve"} page>
           {changeRows}
           {subjectRows}
         </ChangeList>

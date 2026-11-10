@@ -2,16 +2,18 @@
  * A Mate's row, the one drawing of a Mate on the overview card and the project page: its face, its
  * name (a press opens its conversation), its time with the menu's dot, and its second line in the
  * menu row's own words (`cardMateReading`). Where it waits on the viewer it is lifted, its verbs
- * under its line.
+ * under its line. In a page's list (`PageRows`) its time stands after its name, and a row that
+ * opens ends in a chevron while it is pointed at or focused.
  */
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
-import { ArrowUpRightIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { ArrowUpRightIcon, ChevronRightIcon } from "lucide-react";
+import { use, type ReactNode } from "react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { MateDot } from "../MateDot";
 import { drawn } from "../projects/flowSteps";
 import type { CardMateReading } from "../projects/projectCard.logic";
+import { PageRows } from "./pageRows";
 
 /**
  * Props: `name`; `face` (its `MateFace`, 32 px on a card); `time` (the right of its name: a
@@ -58,10 +60,12 @@ export function MateRow({
   mark,
 }: MateRowProps) {
   const lifted = reading.lift !== undefined;
+  const page = use(PageRows);
   return (
     <div
       className="ov-mate"
       data-lift={lifted ? reading.lift?.kind : undefined}
+      data-page={page ? "" : undefined}
       data-zerops-surface="card-mate"
       role="listitem"
     >
@@ -100,6 +104,11 @@ export function MateRow({
         </span>
         {drawn(actions) ? <span className="ov-acts">{actions}</span> : null}
       </span>
+      {page && onOpen !== undefined ? (
+        <span className="ov-mate-end">
+          <ChevronRightIcon aria-hidden="true" className="ov-go" />
+        </span>
+      ) : null}
     </div>
   );
 }
