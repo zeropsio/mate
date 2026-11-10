@@ -39,7 +39,6 @@ import { changeTitle } from "../projects/projectHistory.logic";
 import { useProductionAddresses } from "../review/reviewReads";
 import {
   askedCreations,
-  releaseDay,
   releaseOfferView,
   serviceCreateRunOf,
   serviceCreateTrouble,
@@ -336,11 +335,7 @@ export function ReleaseOfferAsk({
       creates={creates}
       mateName={ask.mateName}
       more={Math.max(titled.length, offer?.summary?.changeCount ?? 0) - listed.length}
-      now={
-        live === undefined || view.state.kind === "done"
-          ? undefined
-          : { tag: live.tag, since: releaseDay(live.taggedAt) }
-      }
+      now={live === undefined || view.state.kind === "done" ? undefined : { tag: live.tag }}
       onNotNow={() => void ask.decide({ state: "declined", at: new Date().toISOString() })}
       onReview={() => {
         if (groupId === undefined) return;

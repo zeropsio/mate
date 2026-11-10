@@ -46,11 +46,13 @@ import {
 } from "./projectCard.logic";
 import { comingMateLine, stopLine } from "./projectsView.logic";
 import { nextReleaseTitle } from "../system/NextRelease.logic";
+import { ComingMateRow } from "../system/MateRow";
 import { PlaceLine } from "../system/PlaceLine";
 import { placeVaultOf, type PlaceVault } from "../vault/placeVault.logic";
 import { PlaceVaultButton } from "../vault/StopVault";
 import { SectionAction, SectionLabel } from "../system/SectionLabel";
 import type {
+  ComingBirthRow,
   ProjectsFlowGroup,
   StageSettingUp,
   ZeropsProjectsFlowProps,
@@ -332,21 +334,17 @@ function CardComingMate<T>({
   birth,
 }: {
   readonly mate: Extract<FlowMateEntry<T>, { kind: "coming" }>;
-  readonly birth: { readonly line: string; readonly menu: ReactNode } | undefined;
+  readonly birth: ComingBirthRow | undefined;
 }) {
   return (
-    <div aria-busy="true" className="ov-mate" data-zerops-surface="mate-coming" role="listitem">
-      <span className="ov-mate-face">
-        <ComingMateFace coming={mate.coming} size={24} />
-      </span>
-      <span className="ov-mate-text">
-        <span className="ov-mate-l1">
-          <span className="ov-mate-name">{mate.mate.name}</span>
-        </span>
-        <span className="ov-mate-l2">{birth?.line ?? comingMateLine(mate.coming)}</span>
-      </span>
-      {birth?.menu}
-    </div>
+    <ComingMateRow
+      face={<ComingMateFace coming={mate.coming} size={24} />}
+      line={birth?.line ?? comingMateLine(mate.coming)}
+      menu={birth?.menu}
+      name={mate.mate.name}
+      onOpen={birth?.onOpen}
+      stopped={birth?.stopped ?? false}
+    />
   );
 }
 
