@@ -112,7 +112,12 @@ import { ZeropsDeployAnswer } from "./ZeropsDeployAnswer";
 import { deployAnswerSaid, unverifiedStops } from "@t3tools/client-runtime/zerops/hq";
 import type { HqProblem } from "@t3tools/shared/hqProblems";
 import { HqProblems } from "./review/HqProblems";
-import { ReleaseList, ReleaseRowsWaiting, ZeropsReleaseRows } from "./ZeropsReleaseRows";
+import {
+  ReleaseList,
+  ReleaseListFoot,
+  ReleaseRowsWaiting,
+  ZeropsReleaseRows,
+} from "./ZeropsReleaseRows";
 import { RecordedStageHistory, type RecordedStageHistoryProps } from "./RecordedStageHistory";
 import { ZeropsStopMenu } from "./ZeropsStopMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
@@ -1501,20 +1506,20 @@ export function ZeropsStopPane({
                       releases={listed}
                       releasing={releasing}
                     />
+                    {earlier === 0 || allReleases ? null : (
+                      <ReleaseListFoot>
+                        <Button
+                          onClick={() => {
+                            setAllReleases(true);
+                          }}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          {earlierReleasesLabel(earlier)}
+                        </Button>
+                      </ReleaseListFoot>
+                    )}
                   </ReleaseList>
-                  {earlier === 0 || allReleases ? null : (
-                    <span className="flex px-2 pt-1 pb-1.5">
-                      <Button
-                        onClick={() => {
-                          setAllReleases(true);
-                        }}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        {earlierReleasesLabel(earlier)}
-                      </Button>
-                    </span>
-                  )}
                 </div>
               </PlaceSection>
             )}
