@@ -47,6 +47,7 @@ import { ownerMark } from "~/components/zerops/SidebarMateRow.logic";
 import { GitPullRequestIcon } from "lucide-react";
 import { CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
 import { MateCard } from "~/components/zerops/system/MateCard";
+import { PlaceDoors } from "~/components/zerops/place/PlaceDoors";
 import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
 import { PageHeader } from "~/components/zerops/system/PageHeader";
 import { PlaceLine } from "~/components/zerops/system/PlaceLine";
@@ -1346,58 +1347,105 @@ function HarnessPage() {
                       Review
                     </button>
                   );
-                // On its project's page a Mate is a card, from the same reading (`MateCard`).
+                const lifted =
+                  reading.lift === undefined ? null : (
+                    <CardMateLiftActions
+                      lift={reading.lift}
+                      name={entry.name}
+                      onApprove={() => acted.push(`approve:${entry.id}`)}
+                      onFix={() => acted.push(`fix:${entry.id}`)}
+                      onReply={(text) => acted.push(`reply:${entry.id}:${text}`)}
+                      onReview={() => acted.push(`review:${entry.id}`)}
+                      choices={(entry.choices ?? []).map((choice) => ({
+                        label: choice,
+                        primary: false,
+                        onPick: () => acted.push(`pick:${entry.id}:${choice}`),
+                      }))}
+                    />
+                  );
                 const card = options.layout === "page-card";
-                const Drawn = card ? MateCard : MateRow;
-                return (
-                  <Drawn
-                    actions={
-                      reading.lift === undefined ? (
-                        card ? (
-                          review
-                        ) : null
-                      ) : (
-                        <CardMateLiftActions
-                          lift={reading.lift}
+                const face = (
+                  <>
+                    <MateFace size={card ? 64 : 32} state={entry.face} tint={entry.tint} />
+                    {mineOf(entry) ? null : (
+                      <MateOwnerMark
+                        className={card ? "mc-owner" : "ov-mate-owner"}
+                        seat={{
+                          kind: "person",
+                          mark: ownerMark({
+                            name: entry.owner.name,
+                            initials: entry.owner.initials,
+                            avatarUrl: null,
+                          }),
+                        }}
+                      />
+                    )}
+                  </>
+                );
+                const mark = entry.automated === true ? <MateAutomatedMark /> : undefined;
+                const time = <MateRowTime dot={entry.view.dot}>{entry.time}</MateRowTime>;
+                // On its project's page a Mate is a card, from the same reading (`MateCard`): its
+                // previews behind its Sites door, its vault beside it, and a change that waits
+                // said as a line. Its own change is its line; a colleague's Mate says its own
+                // words and, under them, that a change of its waits (`OverviewCardMate`).
+                if (card) {
+                  const waits = review !== null;
+                  const own = waits && !mineOf(entry);
+                  const said = own
+                    ? cardMateReading({
+                        view: entry.view,
+                        status: entry.status,
+                        mine: false,
+                        review: undefined,
+                      })
+                    : reading;
+                  return (
+                    <MateCard
+                      actions={reading.lift?.kind === "review" ? null : lifted}
+                      changes={own ? { count: 1, mine: true } : undefined}
+                      doors={
+                        <PlaceDoors
+                          look="card"
                           name={entry.name}
-                          onApprove={() => acted.push(`approve:${entry.id}`)}
-                          onFix={() => acted.push(`fix:${entry.id}`)}
-                          onReply={(text) => acted.push(`reply:${entry.id}:${text}`)}
-                          onReview={() => acted.push(`review:${entry.id}`)}
-                          choices={(entry.choices ?? []).map((choice) => ({
-                            label: choice,
-                            primary: false,
-                            onPick: () => acted.push(`pick:${entry.id}:${choice}`),
-                          }))}
+                          sites={
+                            options.parts.length === 0
+                              ? undefined
+                              : { groupId: PAGE ?? "", mateProjectId: entry.id }
+                          }
+                          vault={{
+                            onOpen: () =>
+                              placeVault.open?.({ projectId: entry.id, name: entry.name }),
+                          }}
                         />
-                      )
-                    }
-                    face={
-                      <>
-                        <MateFace size={card ? 64 : 32} state={entry.face} tint={entry.tint} />
-                        {mineOf(entry) ? null : (
-                          <MateOwnerMark
-                            className={card ? "mc-owner" : "ov-mate-owner"}
-                            seat={{
-                              kind: "person",
-                              mark: ownerMark({
-                                name: entry.owner.name,
-                                initials: entry.owner.initials,
-                                avatarUrl: null,
-                              }),
-                            }}
-                          />
-                        )}
-                      </>
-                    }
+                      }
+                      face={face}
+                      key={entry.id}
+                      line={
+                        waits && !own ? (
+                          <span className="mc-change" data-zerops-surface="card-mate-change">
+                            <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+                            {reading.text}
+                          </span>
+                        ) : undefined
+                      }
+                      mark={mark}
+                      name={entry.name}
+                      onOpen={() => acted.push(`open:${entry.id}`)}
+                      reading={{
+                        ...said,
+                        lift: reading.lift?.kind === "review" ? undefined : reading.lift,
+                      }}
+                      time={time}
+                    />
+                  );
+                }
+                return (
+                  <MateRow
+                    actions={lifted}
+                    face={face}
                     key={entry.id}
                     line={
-                      review === null ? undefined : card ? (
-                        <span className="mc-change" data-zerops-surface="card-mate-change">
-                          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
-                          {reading.text}
-                        </span>
-                      ) : (
+                      review === null ? undefined : (
                         <span className="ov-mate-change" data-zerops-surface="card-mate-change">
                           <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
                           <span className="ov-mate-change-title">{reading.text}</span>
@@ -1405,12 +1453,12 @@ function HarnessPage() {
                         </span>
                       )
                     }
-                    mark={entry.automated === true ? <MateAutomatedMark /> : undefined}
+                    mark={mark}
                     name={entry.name}
                     onOpen={() => acted.push(`open:${entry.id}`)}
                     parts={options.parts}
                     reading={reading}
-                    time={<MateRowTime dot={entry.view.dot}>{entry.time}</MateRowTime>}
+                    time={time}
                   />
                 );
               }}

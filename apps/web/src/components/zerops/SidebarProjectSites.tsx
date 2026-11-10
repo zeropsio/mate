@@ -1296,6 +1296,51 @@ export function PlaceSites({
   );
 }
 
+/**
+ * One Mate's Sites, from its card on its project's page: the same panel, narrowed to that Mate's
+ * own workspaces and previews. The project's places are not said here: each has its own door on
+ * its line.
+ */
+export function MateSites({
+  sites,
+  mateProjectId,
+  name,
+  trigger,
+  children,
+}: {
+  readonly sites: ProjectSitesInput;
+  readonly mateProjectId: string;
+  /** The Mate as its card names it. */
+  readonly name: string;
+  readonly trigger: ReactElement;
+  readonly children: ReactNode;
+}) {
+  const narrowed = useMemo(
+    (): ProjectSitesInput => ({
+      ...sites,
+      line: undefined,
+      production: undefined,
+      stages: undefined,
+    }),
+    [sites],
+  );
+  const mates = useMemo(
+    () => sites.mates.filter((mate) => mate.candidate.project.id === mateProjectId),
+    [mateProjectId, sites.mates],
+  );
+  return (
+    <SitesPopover
+      label={`Sites of ${name}`}
+      mates={mates}
+      sites={narrowed}
+      surface="mate-sites"
+      trigger={trigger}
+    >
+      {children}
+    </SitesPopover>
+  );
+}
+
 /** The Sites panel in a popover of its own, under the door that opens it. */
 function SitesPopover({
   sites,

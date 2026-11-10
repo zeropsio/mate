@@ -16,6 +16,12 @@ export interface PlaceSitesDoor {
   readonly projectId: string;
 }
 
+/** A Mate whose Sites a door opens: its own previews, by its Zerops project. */
+export interface MateSitesDoor {
+  readonly groupId: string;
+  readonly mateProjectId: string;
+}
+
 /** A place line's Sites, where it has any. */
 export function placeSitesOf(
   line: Pick<PlaceLine, "projectId" | "git" | "kind" | "addresses" | "nothingDeployed">,

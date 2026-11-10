@@ -2417,6 +2417,12 @@ export function ZeropsProjectsContent({
           key={candidate.key}
           name={name}
           onOpen={select}
+          // Its card's Vault door, on its project's page: the page's one drawer, on its own values.
+          onVault={
+            layout === "page-card" && placeVault.open !== undefined
+              ? () => placeVault.open?.({ projectId: candidate.project.id, name })
+              : undefined
+          }
           outsideHq={input.outsideHq === true}
           quiet={quiet === true}
           shape={shape}

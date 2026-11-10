@@ -8132,32 +8132,6 @@ a.ov-chip-who:focus-visible {
   align-content: center;
 }
 
-/* Where the card leads, in its top corner: said at rest, inked under the pointer and on focus. */
-.tm-card-corner {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  display: flex;
-  color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
-  transition: color var(--duration-quick) var(--ease-out-strong);
-}
-
-.tm-card-corner > svg {
-  width: 16px;
-  height: 16px;
-}
-
-.tm-card:has(> .tm-card-body:hover) .tm-card-corner,
-.tm-card:has(> .tm-card-body:focus-visible) .tm-card-corner {
-  color: var(--foreground);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tm-card-corner {
-    transition: none;
-  }
-}
-
 .tm-card:has(> .tm-card-body:focus-visible) {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
@@ -8184,6 +8158,34 @@ a.ov-chip-who:focus-visible {
 .tm-card-foot[data-held] {
   align-content: center;
   min-height: 50px;
+}
+
+/* A foot under a hairline: a row of the card's own doors, one height whatever stands in it (a
+   32 px control over its own padding), so every card of a row ends alike. */
+.tm-card-foot[data-ruled] {
+  min-height: 45px;
+  margin-top: 0;
+  padding: 6px 12px;
+  border-top: 1px solid var(--ov-rule);
+}
+
+.tm-card:has(> .tm-card-foot[data-ruled]) > .tm-card-body {
+  padding-bottom: 16px;
+}
+
+/* A few quiet characters in the body's top corner: when it last moved, the menu's dot before it. */
+.tm-card-stamp {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .tm-card-trouble {
@@ -8291,19 +8293,14 @@ a.ov-chip-who:focus-visible {
   text-overflow: ellipsis;
 }
 
-/* When it last moved, under its name, with the menu's dot before it; its seat kept where a Mate
-   still coming has no time. */
-.mc-time {
-  display: inline-flex;
-  min-height: 16px;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-  color: var(--muted-foreground);
-  font-size: var(--text-caption);
-  line-height: 16px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+/* Two facts, a line each, in the room its one reading takes over two lines: a card is as tall
+   whichever it says. */
+.mc-two {
+  display: grid;
+  height: 36px;
+  min-width: 0;
+  max-width: 100%;
+  justify-items: center;
 }
 
 /* Its owner's mark on the corner of its 64 px face, where it is a colleague's. */
@@ -8325,17 +8322,13 @@ a.ov-chip-who:focus-visible {
   vertical-align: -2px;
 }
 
-/* Its previews, then its verb, centred on one line of its foot while they fit. */
+/* Its doors, then a verb only it has, centred on one line of its foot while they fit. */
 .mc-foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 4px 6px;
-}
-
-.mc-foot > .ov-mate-parts {
-  display: contents;
 }
 
 /* The grid's last cell, the door that adds a Mate: a dashed slot, as the page's empty setups are. */
@@ -8364,17 +8357,29 @@ a.ov-chip-who:focus-visible {
   align-content: center;
 }
 
+/* Its mark, its words and its line are one group in the card's middle: the mark close over the
+   words it belongs to, never where a face would stand. */
 .mc-add-mark {
-  width: 64px;
-  height: 64px;
+  display: flex;
+  width: 40px;
+  height: 40px;
   align-items: center;
   justify-content: center;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  background: var(--ov-hover);
   color: var(--muted-foreground);
 }
 
 .mc-add-mark > svg {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
+}
+
+/* Its one line wraps where the card is narrow, and takes only the room it needs. */
+.mc-add-line {
+  white-space: normal;
+  text-wrap: balance;
 }
 
 .mc-add:disabled .mc-add-mark,
