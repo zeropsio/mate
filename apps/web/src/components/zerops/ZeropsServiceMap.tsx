@@ -43,6 +43,7 @@ import type {
   ZeropsTopologyService,
 } from "@t3tools/client-runtime/zerops/topology";
 import { Button } from "~/components/ui/button";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "~/components/ui/menu";
 import { Popover, PopoverPopup, PopoverTrigger } from "~/components/ui/popover";
@@ -922,30 +923,47 @@ export function ZeropsServiceMap({
             ) : undefined
           }
           action={
-            error !== undefined ? (
-              <LivenessLine
-                data-zerops-map-degraded="true"
-                label={error}
-                state="last-read-failed"
-              />
-            ) : liveness === "recovering" ? (
-              <LivenessLine
-                data-zerops-map-liveness="recovering"
-                label="Connecting live updates"
-                state="recovering"
-              />
-            ) : undefined
+            <span className="flex items-center gap-3">
+              {error !== undefined ? (
+                <LivenessLine
+                  data-zerops-map-degraded="true"
+                  label={error}
+                  state="last-read-failed"
+                />
+              ) : liveness === "recovering" ? (
+                <LivenessLine
+                  data-zerops-map-liveness="recovering"
+                  label="Connecting live updates"
+                  state="recovering"
+                />
+              ) : view.runningTool === undefined ? null : (
+                // A tool at work on these services is the section's state, at the label's end and
+                // in its type: alone under the label it took the panel's base size and read as a
+                // heading.
+                <span className="text-caption text-muted-foreground">
+                  <Badge
+                    dot
+                    data-zerops-running-tool={view.runningTool}
+                    tone="info"
+                  >{`${view.runningTool} running`}</Badge>
+                </span>
+              )}
+              {/* The Mate's own Zerops project, where these services run: the way out to it. */}
+              <Button
+                render={
+                  <a href={zeropsProjectUrl(view.project.id)} rel="noreferrer" target="_blank" />
+                }
+                size="sm"
+                variant="link"
+              >
+                Open in Zerops
+                <ArrowUpRightIcon aria-hidden="true" />
+              </Button>
+            </span>
           }
         >
           {servicesLabel}
         </SectionLabel>
-        {view.runningTool === undefined ? null : (
-          <Badge
-            dot
-            data-zerops-running-tool={view.runningTool}
-            tone="info"
-          >{`${view.runningTool} running`}</Badge>
-        )}
         {view.isEmpty || services.length === 0 ? (
           <p
             className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
