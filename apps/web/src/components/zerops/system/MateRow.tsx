@@ -1,19 +1,17 @@
 /**
- * A Mate's row, the one drawing of a Mate on the overview card and the project page: its face, its
+ * A Mate's row, the drawing of a Mate on its project's overview card: its face, its
  * name (a press opens its conversation), its time with the menu's dot, and its second line in the
  * menu row's own words (`cardMateReading`). Where it waits on the viewer it is lifted, its verbs
- * under its line. In a page's list (`PageRows`) its time stands after its name, and a row that
- * opens ends in a chevron while it is pointed at or focused.
+ * under its line. On its project's own page a Mate is a card (`MateCard`), from the same props.
  */
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
-import { ArrowUpRightIcon, ChevronRightIcon } from "lucide-react";
-import { use, type ReactNode } from "react";
+import { ArrowUpRightIcon } from "lucide-react";
+import type { ReactNode } from "react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { MateDot } from "../MateDot";
 import { drawn } from "../projects/flowSteps";
 import type { CardMateReading } from "../projects/projectCard.logic";
-import { PageRows } from "./pageRows";
 
 /**
  * Props: `name`; `face` (its `MateFace`, 32 px on a card); `time` (the right of its name: a
@@ -60,12 +58,10 @@ export function MateRow({
   mark,
 }: MateRowProps) {
   const lifted = reading.lift !== undefined;
-  const page = use(PageRows);
   return (
     <div
       className="ov-mate"
       data-lift={lifted ? reading.lift?.kind : undefined}
-      data-page={page ? "" : undefined}
       data-zerops-surface="card-mate"
       role="listitem"
     >
@@ -104,19 +100,15 @@ export function MateRow({
         </span>
         {drawn(actions) ? <span className="ov-acts">{actions}</span> : null}
       </span>
-      {page && onOpen !== undefined ? (
-        <span className="ov-mate-end">
-          <ChevronRightIcon aria-hidden="true" className="ov-go" />
-        </span>
-      ) : null}
     </div>
   );
 }
 
 /**
- * A Mate still being created, on a card's or a page's row: its face asleep, its name, one statement
+ * A Mate still being created, on an overview card's row: its face asleep, its name, one statement
  * of how far its setup has got — amber where it stopped — and its ⋯ at the row's end. The row opens
- * the birth's own page, which says why and who can continue.
+ * the birth's own page, which says why and who can continue. On its project's page it is a card
+ * (`ComingMateCard`).
  *
  * Props: `name`; `face` (`ComingMateFace`); `line`; `stopped`; `onOpen` (its own page; `undefined`
  * where it has none yet); `menu` (its ⋯). Renders `role="listitem"`: put it in a list.
@@ -136,13 +128,11 @@ export function ComingMateRow({
   readonly onOpen?: (() => void) | undefined;
   readonly menu?: ReactNode;
 }) {
-  const page = use(PageRows);
   return (
     <div
       // Under way it is busy; stopped, nothing is coming until someone continues it.
       aria-busy={stopped ? undefined : true}
       className="ov-mate"
-      data-page={page ? "" : undefined}
       data-zerops-surface="mate-coming"
       role="listitem"
     >
@@ -175,7 +165,7 @@ export function ComingMateRow({
  * A part's chip on a Mate's row: a door to its preview, else to its dev, by that service's real
  * hostname; muted, with why in its title, where it has neither address.
  */
-function MateRowPart({ mate, part }: { readonly mate: string; readonly part: MatePart }) {
+export function MateRowPart({ mate, part }: { readonly mate: string; readonly part: MatePart }) {
   const door =
     part.preview?.url === undefined
       ? part.dev.find((entry) => entry.url !== undefined)

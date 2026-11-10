@@ -70,6 +70,7 @@ import {
   ownerBadge,
 } from "../SidebarMateRow.logic";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
+import { MateCard } from "../system/MateCard";
 import { MateRow, MateRowTime } from "../system/MateRow";
 import { cardMateReading, cardSecondWords, type CardMateReading } from "./projectCard.logic";
 
@@ -91,6 +92,7 @@ export function OverviewCardMate({
   containerActions,
   onOpen,
   quiet = false,
+  card = false,
 }: {
   readonly candidate: ZeropsCandidate;
   readonly name: string;
@@ -117,6 +119,12 @@ export function OverviewCardMate({
    * carries no verb of its own, only its words and its time.
    */
   readonly quiet?: boolean;
+  /**
+   * On its project's own page: the same reading as a card in the Mates grid (`MateCard`) — its
+   * face at 64 px, and its change's *Review* at the card's foot where the row has it at the
+   * change's end.
+   */
+  readonly card?: boolean;
 }) {
   const projectId = candidate.project.id;
   // What its row in the menu reads (`useProjectMateActivity`): HQ's word, or its socket's.
@@ -328,11 +336,19 @@ export function OverviewCardMate({
         Review
       </button>
     );
+  const Drawn = card ? MateCard : MateRow;
   return (
-    <MateRow
+    <Drawn
       actions={
         reading.lift === undefined ? (
-          containerActions
+          card && reviewButton !== null ? (
+            <>
+              {containerActions}
+              {reviewButton}
+            </>
+          ) : (
+            containerActions
+          )
         ) : (
           <CardMateWrite
             environmentId={candidate.group === "connected" ? candidate.environmentId : undefined}
@@ -362,11 +378,13 @@ export function OverviewCardMate({
             known={face.known}
             restarting={face.restarting}
             shape={shape}
-            size={32}
+            size={card ? 64 : 32}
             state={view.face}
             tint={tint}
           />
-          {badge === null ? null : <MateOwnerMark className="ov-mate-owner" seat={badge} />}
+          {badge === null ? null : (
+            <MateOwnerMark className={card ? "mc-owner" : "ov-mate-owner"} seat={badge} />
+          )}
         </>
       }
       line={
@@ -375,7 +393,13 @@ export function OverviewCardMate({
           <CardComingLine coming={view.coming} />
         ) : (
           (containerLine ??
-          (marked ? (
+          (marked && card ? (
+            // A card's line wraps: the change's mark before its title, its Review at the foot.
+            <span className="mc-change" data-zerops-surface="card-mate-change">
+              <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+              {reading.text}
+            </span>
+          ) : marked ? (
             <span className="ov-mate-change" data-zerops-surface="card-mate-change">
               <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
               <span className="ov-mate-change-title">{reading.text}</span>
@@ -390,7 +414,7 @@ export function OverviewCardMate({
       onOpen={onOpen}
       reading={reading}
       time={
-        reading.lift?.kind === "review" ? null : reviewButton !== null && !marked ? (
+        reading.lift?.kind === "review" ? null : reviewButton !== null && !marked && !card ? (
           reviewButton
         ) : (
           <MateRowTime dot={view.dot}>

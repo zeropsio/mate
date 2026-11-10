@@ -42,7 +42,11 @@ import { MateFace } from "~/components/zerops/primitives";
 import type { MateRowView } from "~/components/zerops/SidebarMateRow.logic";
 import type { ProductionChip } from "~/components/zerops/SidebarProductionChip.logic";
 import { MateAutomatedMark } from "~/components/zerops/MateAutomatedMark";
+import { MateOwnerMark } from "~/components/zerops/MateOwnerMark";
+import { ownerMark } from "~/components/zerops/SidebarMateRow.logic";
+import { GitPullRequestIcon } from "lucide-react";
 import { CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
+import { MateCard } from "~/components/zerops/system/MateCard";
 import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
 import { PageHeader } from "~/components/zerops/system/PageHeader";
 import { PlaceLine } from "~/components/zerops/system/PlaceLine";
@@ -572,6 +576,8 @@ const PROJECTS: ReadonlyArray<Project> = [
   }),
   // The line's states stand on their own pages (`?page=line-calm`), never among the cards.
   ...(params.get("page")?.startsWith("line-") === true ? lineProjects() : []),
+  // The Mates section's states stand on their own pages too (`?page=mates-seven`).
+  ...(params.get("page")?.startsWith("mates-") === true ? matesProjects() : []),
 ];
 
 /** A change waiting for the viewer's review, as the flow lists it. */
@@ -586,6 +592,161 @@ function conflicting(number: number, title: string, mateProjectId: string) {
     mergeability: "conflicting",
   };
   return { ...inReview(number, title, mateProjectId), pull };
+}
+
+/** A colleague's Mate nobody has signed in yet: it waits for its person. */
+function waitsForSignIn(id: string, name: string, tint: MateTintId, time: string) {
+  return mate(id, name, tint, {
+    owner: INES,
+    time,
+    view: { state: "idle", ask: undefined, reply: words("Waiting for sign-in"), dot: undefined },
+  });
+}
+
+/**
+ * The Mates section's states on a project's page: (two) one whose change waits for review and one
+ * whose setup stopped; (three) two waiting for a colleague's sign-in and one with long last words;
+ * (seven) every state at once; (twelve) a crowd; (none); (coming) one Mate being created.
+ */
+function matesProjects(): ReadonlyArray<Project> {
+  const live = (id: string): GroupFlowProduction => ({
+    kind: "live",
+    stop: stop(`${id}-prod`, "production", {
+      version: version("v0.3.1"),
+      addresses: [{ service: "app", url: "https://teashop.example" }],
+    }),
+    line: "",
+  });
+  const page = (
+    id: string,
+    mates: ReadonlyArray<Mate>,
+    over: Partial<Parameters<typeof project>[0]> = {},
+  ) =>
+    project({
+      id: `mates-${id}`,
+      name: "Tea Shop",
+      mates,
+      production: live(id),
+      chip: { label: "prod", state: "ok", version: "v0.3.1" },
+      since: ago(60 * 24 * 5),
+      ...over,
+    });
+  const stopped = (name: string): GroupFlowMate => ({
+    projectId: STUCK_BIRTH.id,
+    name,
+    previews: [],
+    waiting: false,
+    talked: false,
+    coming: { face: { tint: "coral", shape: undefined } as never, failed: true },
+  });
+  // A colleague's Mate whose change waits for review: its row carries the change's Review.
+  const juno = (id: string) =>
+    mate(id, "Juno", "sky", {
+      owner: INES,
+      time: "12m",
+      view: {
+        state: "idle",
+        ask: undefined,
+        reply: words("Gift cards at checkout"),
+        dot: undefined,
+      },
+      flow: partsOf(["app"], "tea"),
+    });
+  const vale = (id: string) =>
+    mate(id, "Vale", "violet", {
+      time: "3d",
+      view: {
+        state: "idle",
+        ask: undefined,
+        reply: words(
+          "Done. The price per 100 g now leads on every tea card, the sold-out switch is remembered across visits, and I left the two older cards as they were so you can compare them side by side before I remove them.",
+        ),
+        dot: undefined,
+      },
+      flow: partsOf(["app"], "vale"),
+    });
+  const seven = [
+    juno("juno-m7"),
+    {
+      ...working(
+        "wren-m7",
+        "Wren",
+        "amber",
+        "Adding the tea of the month banner to the home page",
+        "1m",
+      ),
+      flow: partsOf(["app"], "wren"),
+    },
+    mate("raya-m7", "Raya", "olive", {
+      face: "needs",
+      status: "input",
+      time: "26m",
+      view: {
+        state: "needs",
+        ask: "Gift boxes",
+        reply: words(
+          "Should a gift box cost the same in every size, or go by its weight like the loose tea does?",
+          "ink",
+        ),
+        dot: "attention",
+      },
+      flow: partsOf(["api", "web"], "raya"),
+    }),
+    mate("tess-m7", "Tess", "rose", {
+      time: "2h",
+      view: {
+        state: "idle",
+        ask: undefined,
+        reply: words("Waiting for your sign-in", "ink"),
+        dot: "attention",
+      },
+    }),
+    vale("vale-m7"),
+    waitsForSignIn("odo-m7", "Odo", "slate", "2d"),
+  ];
+  return [
+    page("two", [juno("juno-m2")], {
+      coming: [stopped("Sol")],
+      pullRequests: [toReview(71, "Gift cards at checkout", "juno-m2")],
+    }),
+    page("three", [
+      waitsForSignIn("odo-m3", "Odo", "slate", "2d"),
+      waitsForSignIn("mira-m3", "Mira", "sand", "5d"),
+      vale("vale-m3"),
+    ]),
+    page("seven", seven, {
+      coming: [stopped("Sol")],
+      pullRequests: [toReview(71, "Gift cards at checkout", "juno-m7")],
+    }),
+    page(
+      "twelve",
+      [
+        ...seven,
+        mate("pell-m12", "Pell", "olive", { time: "4d" }),
+        mate("pim-m12", "Pim", "sky", { time: "6d", owner: INES }),
+        mate("nell-m12", "Nell", "amber", { time: "8d" }),
+        { ...mate("kara-m12", "Kara", "coral", { time: "9d" }), automated: true },
+        mate("milo-m12", "Milo", "violet", { time: "12d" }),
+      ],
+      {
+        coming: [stopped("Sol")],
+        pullRequests: [toReview(71, "Gift cards at checkout", "juno-m7")],
+      },
+    ),
+    page("none", []),
+    page("coming", [], {
+      coming: [
+        {
+          projectId: "fen-coming",
+          name: "Fen",
+          previews: [],
+          waiting: false,
+          talked: false,
+          coming: { face: { tint: "olive", shape: undefined } as never },
+        },
+      ],
+    }),
+  ];
 }
 
 /**
@@ -1170,10 +1331,32 @@ function HarnessPage() {
                 });
                 // On a card its wait stands in Waiting on you: the row is never lifted.
                 const reading = options.quiet === true ? { ...read, lift: undefined } : read;
+                // A change waiting for review that is not lifted carries its own Review, at the
+                // change's end, as the app's row has it (`OverviewCardMate`).
+                const review =
+                  options.review === undefined ||
+                  options.quiet === true ||
+                  reading.lift !== undefined ? null : (
+                    <button
+                      className="ov-review"
+                      data-zerops-surface="card-mate-review"
+                      onClick={() => acted.push(`review:${entry.id}`)}
+                      type="button"
+                    >
+                      Review
+                    </button>
+                  );
+                // On its project's page a Mate is a card, from the same reading (`MateCard`).
+                const card = options.layout === "page-card";
+                const Drawn = card ? MateCard : MateRow;
                 return (
-                  <MateRow
+                  <Drawn
                     actions={
-                      reading.lift === undefined ? null : (
+                      reading.lift === undefined ? (
+                        card ? (
+                          review
+                        ) : null
+                      ) : (
                         <CardMateLiftActions
                           lift={reading.lift}
                           name={entry.name}
@@ -1189,8 +1372,39 @@ function HarnessPage() {
                         />
                       )
                     }
-                    face={<MateFace size={32} state={entry.face} tint={entry.tint} />}
+                    face={
+                      <>
+                        <MateFace size={card ? 64 : 32} state={entry.face} tint={entry.tint} />
+                        {mineOf(entry) ? null : (
+                          <MateOwnerMark
+                            className={card ? "mc-owner" : "ov-mate-owner"}
+                            seat={{
+                              kind: "person",
+                              mark: ownerMark({
+                                name: entry.owner.name,
+                                initials: entry.owner.initials,
+                                avatarUrl: null,
+                              }),
+                            }}
+                          />
+                        )}
+                      </>
+                    }
                     key={entry.id}
+                    line={
+                      review === null ? undefined : card ? (
+                        <span className="mc-change" data-zerops-surface="card-mate-change">
+                          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+                          {reading.text}
+                        </span>
+                      ) : (
+                        <span className="ov-mate-change" data-zerops-surface="card-mate-change">
+                          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+                          <span className="ov-mate-change-title">{reading.text}</span>
+                          {review}
+                        </span>
+                      )
+                    }
                     mark={entry.automated === true ? <MateAutomatedMark /> : undefined}
                     name={entry.name}
                     onOpen={() => acted.push(`open:${entry.id}`)}
