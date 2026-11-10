@@ -915,7 +915,9 @@ function SlotBox({
   }, [words]);
   // Standing at its foot, it tells each frame where its last line is: the answer it becomes lands
   // there. Read as painted, never in the commit that takes it away — that commit may already have
-  // swapped its words and clamped its scroll to their head.
+  // swapped its words and clamped its scroll to their head. In every frame, and only while the
+  // Mate's words stand here: the row the answer becomes asks whether they stood as it is first
+  // drawn, before any commit could be read ahead of (`AsPainted`).
   useEffect(() => {
     const box = boxRef.current;
     if (stood === undefined || box === null || typeof requestAnimationFrame !== "function") return;
@@ -5659,10 +5661,10 @@ function RunScroll({
     const element = scrollRef.current;
     const list = listRef.current;
     if (element === null || list === null || drawingEarlierRef.current) return;
-    const above = element.scrollTop - spacer;
-    if (above < KEPT_ABOVE_PX + SET_ASIDE_PAST_PX || follow.moving()) return;
     // Drawn outside a page (a test's renderer), it has no rows to read.
-    if (typeof list.getBoundingClientRect !== "function") return;
+    if (typeof list.getBoundingClientRect !== "function" || list.children === undefined) return;
+    const above = element.scrollTop - spacer;
+    if (!(above >= KEPT_ABOVE_PX + SET_ASIDE_PAST_PX) || follow.moving()) return;
     const selection = typeof getSelection === "function" ? getSelection() : null;
     if (
       selection !== null &&
