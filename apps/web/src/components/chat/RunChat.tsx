@@ -689,8 +689,10 @@ function CappedBox(props: CappedBoxProps) {
  * said nothing of what ran past. Closed, it shows the head of what it holds —
  * the head names it, the newest words were for while it ran — a fade at its
  * foot where more runs past; opened by its item, all of it. One that stood at
- * its end in the working row rolls back to its head as it lands, so the swap
- * reads as the one box moving.
+ * its end in the working row lands at its head, its words fading in: rolled
+ * back there, a thought showed its end, its middle and its start in 220 ms,
+ * and read as three texts (2026-11-10). One the cap cut nothing of is the
+ * same words in both, and does not move at all.
  */
 function LogBox({
   detail = false,
@@ -745,7 +747,7 @@ function LogBox({
   const tellCut = useEffectEvent((next: boolean) => onCut?.(next));
   useEffect(() => tellCut(cut), [cut]);
   // Once, as it lands: the carried end is spent.
-  const rollBack = useEffectEvent(() => {
+  const settleAtHead = useEffectEvent(() => {
     if (!stoodAtEnd) return;
     setStoodAtEnd(false);
     const box = boxRef.current;
@@ -753,12 +755,12 @@ function LogBox({
     if (box === null || content === null || typeof content.animate !== "function") return;
     const past = content.offsetHeight - box.clientHeight;
     if (past < 1 || prefersReducedMotion()) return;
-    content.animate([{ transform: `translateY(${-past}px)` }, { transform: "none" }], {
-      duration: FOLD_EASE_MS,
+    content.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: HEAD_SETTLE_MS,
       easing: FOLD_EASING,
     });
   });
-  useLayoutEffect(() => rollBack(), []);
+  useLayoutEffect(() => settleAtHead(), []);
   return (
     <div
       ref={boxRef}
@@ -774,6 +776,9 @@ function LogBox({
     </div>
   );
 }
+
+/** How long a box that stood at its end takes to show its head as it lands in the log. */
+const HEAD_SETTLE_MS = 150;
 
 /** A burst of words grows their box by more than this: it glides there. */
 const WORDS_LEAP_PX = 48;
