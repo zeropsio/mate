@@ -54,8 +54,30 @@ export function waitForBirthPlacement(
   });
 }
 
+/** A birth that stopped, on a list's row: how far it got, in one statement that fits the row. */
+const ROW_STOPPED: Record<SharedBirth["progress"]["phase"], string> = {
+  "creating-project": "Setup stopped while creating its project",
+  "project-created": "Setup stopped after its project was created",
+  "import-accepted": "Setup stopped while its services were being made",
+  "container-starting": "Setup stopped while its computer was starting",
+};
+
+/** A birth under way, on a list's row. */
+const ROW_GOING: Record<SharedBirth["progress"]["phase"], string> = {
+  "creating-project": "Creating its project…",
+  "project-created": "Its project is made, setting it up…",
+  "import-accepted": "Making its services…",
+  "container-starting": "Starting its computer…",
+};
+
 export function sharedBirthPresentation(birth: SharedBirth): {
+  /** Everything known, for the birth's own page: its phase, why it stopped, who can continue. */
   readonly line: string;
+  /**
+   * One statement for a list's row, which opens the birth's own page for the rest: "Setup stopped
+   * while creating its project".
+   */
+  readonly row: string;
   readonly attention: boolean;
   readonly actions: ReadonlyArray<"continue" | "delete">;
 } {
@@ -113,7 +135,14 @@ export function sharedBirthPresentation(birth: SharedBirth): {
                   ? "Continue will register the Mate."
                   : "Continue will attach the Mate."
                 : null;
+  const attention =
+    reason !== null ||
+    next.kind === "unknown" ||
+    next.kind === "blocked" ||
+    (next.kind === "wait" && next.for === "several-services") ||
+    birth.progress.sessionEnded === true;
   return {
+    row: (attention ? ROW_STOPPED : ROW_GOING)[phase],
     line: [
       phaseLine,
       birth.progress.sessionEnded === true ? "Setup session ended" : null,
@@ -131,12 +160,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     ]
       .filter((part) => part !== null)
       .join(" · "),
-    attention:
-      reason !== null ||
-      next.kind === "unknown" ||
-      next.kind === "blocked" ||
-      (next.kind === "wait" && next.for === "several-services") ||
-      birth.progress.sessionEnded === true,
+    attention,
     actions: [
       ...(birth.canContinue ? ["continue" as const] : []),
       ...(birth.canDelete ? ["delete" as const] : []),

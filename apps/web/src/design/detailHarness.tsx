@@ -558,6 +558,81 @@ const ACME_REFUSED_RELEASES: ReadonlyArray<FlowRelease> = [
   ...ACME_RELEASES,
 ];
 
+/**
+ * Relay's production after a change was released three times: v0.1.4 and v0.1.5 didn't go live,
+ * v0.1.6 carried the same change and did, and v0.1.7 went live after it. Every release lists the
+ * changes HQ recorded for it; the three share one commit of `main`.
+ */
+const RELAY_COMMITS = ["d4a91c70", "6be203f5", "3f7c8a12", "91e5d0b4", "c2084e6a", "7a1f39d8"];
+const RELAY_CHANGES: ReadonlyArray<ReadonlyArray<readonly [number, string]>> = [
+  [[12, "Steer the bot while it answers"]],
+  [[11, "A hidden browser for web work, the desktop's browser for sign-ins"]],
+  [[11, "A hidden browser for web work, the desktop's browser for sign-ins"]],
+  [[11, "A hidden browser for web work, the desktop's browser for sign-ins"]],
+  [
+    [9, "Connect notes and boards in one step"],
+    [8, "Everyone gets the bot, which guides their sign-in"],
+  ],
+  [[7, "Quiet hours for the whole team"]],
+  [[5, "A daily digest of what was asked"]],
+  [[3, "Answer in the thread it was asked in"]],
+];
+const RELAY_RELEASES: ReadonlyArray<FlowRelease> = RELAY_CHANGES.map((changes, index) => {
+  // v0.1.6, v0.1.5 and v0.1.4 were made from one commit of main.
+  const commit = RELAY_COMMITS[index < 1 ? 0 : index < 4 ? 1 : index - 2] ?? "";
+  return {
+    tag: `v0.1.${String(7 - index)}`,
+    verdict: "approved",
+    detail: undefined,
+    line: `bot ${commit.slice(0, 7)}`,
+    entries: [{ service: "bot", commit: sha(commit) }],
+    taggedAt: new Date(NOW - (index * 0.6 + 0.2) * 86_400_000).toISOString(),
+    history: {
+      ranges: [],
+      changes: changes.map(([number, title]) => ({ repo: "appdev", number, title })),
+      commitCount: changes.length,
+      outsideCommitCount: 0,
+    },
+  };
+});
+const RELAY_RUNNING: Deployment = {
+  kind: "running",
+  activatedAt: new Date(NOW - 7_200_000).toISOString(),
+  version: deployedVersion(`${sha(RELAY_COMMITS[0] ?? "")} v0.1.7 wren`),
+};
+/** What each carried, as HQ compared it: its changes, a commit each. */
+const RELAY_CARRIED: ReadonlyMap<string, MovedCommits> = new Map(
+  RELAY_RELEASES.map((release, index) => {
+    const commits = (RELAY_CHANGES[index] ?? []).map(([number, title]) =>
+      commit(`${title} (#${String(number)})`, `${String(number)}f0e1d2`, index * 14 + 5, "wren"),
+    );
+    return [
+      release.tag,
+      {
+        state: "known",
+        moved: [
+          {
+            repository: "appdev",
+            services: ["bot"],
+            commits,
+            total: commits.length,
+            truncated: false,
+          },
+        ],
+      },
+    ];
+  }),
+);
+const RELAY_ROUTES = [
+  { service: "bot", port: 3000, host: "relay.acme.example", url: "https://relay.acme.example" },
+  {
+    service: "bot",
+    port: 3000,
+    host: "bot-5c1e-3000.prg1.zerops.app",
+    url: "https://bot-5c1e-3000.prg1.zerops.app",
+  },
+];
+
 /** Three changes merged since v0.1.13, waiting for a release that goes live. */
 const MERGED_THREE = [
   {
@@ -1201,15 +1276,13 @@ function State({
   readonly note: string;
   readonly children: React.ReactNode;
 }) {
+  const id = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-|-$/gu, "");
+  if (ONLY !== null) return ONLY === id ? <>{children}</> : null;
   return (
-    <section
-      className="flex flex-col gap-2"
-      data-detail-harness-state={label}
-      id={label
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/gu, "-")
-        .replace(/^-|-$/gu, "")}
-    >
+    <section className="flex flex-col gap-2" data-detail-harness-state={label} id={id}>
       <div className="px-2">
         <span className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
           {label}
@@ -1265,9 +1338,32 @@ const GIT_RELEASES = ["v0.2.1", "v0.2.0", "v0.1.9"].map((tag, index) => ({
   rollbackOf: null,
 }));
 
+/**
+ * `?only=<a state's id>`: that state alone, as the app frames a page — beside the menu's 435 px,
+ * the page scrolling in its own region — so it can be looked at at the reference viewport.
+ */
+const ONLY = new URLSearchParams(location.search).get("only");
+
 function Harness() {
+  if (ONLY !== null)
+    return (
+      <div className="flex h-dvh bg-background text-foreground">
+        <aside className="w-[435px] shrink-0 border-e border-border bg-sidebar" />
+        <main className="min-w-0 flex-1 overflow-y-auto bg-background" data-slot="sidebar-inset">
+          <HarnessStates />
+        </main>
+      </div>
+    );
   return (
     <div className="flex flex-col gap-10 bg-background p-6">
+      <HarnessStates />
+    </div>
+  );
+}
+
+function HarnessStates() {
+  return (
+    <>
       {(["building", "queued", "refused", "skipped"] as const).map((state) => (
         <State
           key={state}
@@ -1662,6 +1758,34 @@ function Harness() {
       </State>
 
       <State
+        label="A production whose change was released again"
+        note="Relay: v0.1.4 and v0.1.5 didn't go live, v0.1.6 carried the same change and did, v0.1.7 went live after it. A failure with a live release after it is history; a release of the same changes says so."
+      >
+        <StopState
+          fixture={{
+            tier: "production",
+            group: "Relay",
+            services: [service("bot", RELAY_COMMITS[0], "v0.1.7", "live", "appdev"), managed("db")],
+            deployment: RELAY_RUNNING,
+            routes: RELAY_ROUTES,
+            releases: RELAY_RELEASES,
+            carried: RELAY_CARRIED,
+            failedDeploys: (["v0.1.5", "v0.1.4"] as const).map((tag) => ({
+              tag,
+              service: "bot",
+              sha: sha(RELAY_COMMITS[1] ?? ""),
+              refused: true,
+            })),
+            access: { summary: ACME_PEOPLE, line: null },
+            release: { ...RELEASE_WAITING, tag: "v0.1.8" },
+            ready: READY_TWO,
+            next: MERGED_WAITING,
+            liveBy: "Dana K.",
+          }}
+        />
+      </State>
+
+      <State
         label="A production whose releases were refused on a missing service"
         note="Acme: v0.1.14 and v0.1.15 needed a db production does not have, and HQ refused every deploy of both. One sentence says it, cause first, with no Run again; the next release keeps its ordinary card and verb; the storefront keeps its calm line; db stands as a slot the next release creates."
       >
@@ -1919,7 +2043,7 @@ function Harness() {
           }}
         />
       </State>
-    </div>
+    </>
   );
 }
 

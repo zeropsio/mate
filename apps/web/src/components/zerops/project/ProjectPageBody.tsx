@@ -27,7 +27,7 @@ import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
-import { ENVIRONMENT_NOT_ADDED, REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
+import { ENVIRONMENT_NOT_ADDED } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { ComingMateFace, drawn, matesOf, type FlowMateEntry } from "../projects/flowSteps";
 import {
@@ -43,6 +43,7 @@ import {
 import { comingMateLine } from "../projects/projectsView.logic";
 import type {
   CardWait,
+  ComingBirthRow,
   ProjectsFlowGroup,
   ZeropsProjectsFlowProps,
 } from "../projects/ZeropsProjectsFlow";
@@ -50,10 +51,12 @@ import {
   ChangeList,
   ChangeRow,
   changeRowLine,
+  ComingMateRow,
   lineChangeKey,
   NextRelease,
   nextReleaseView,
   PageHeader,
+  PageRows,
   PlaceLine,
   ProjectLine,
   projectLine,
@@ -77,7 +80,6 @@ import {
   pageAddresses,
   linesProductionFirst,
   productionFirst,
-  releaseGroup,
   waitingChanges,
 } from "./projectPage.logic";
 import { SetupCard, SetupRow } from "./SetupCard";
@@ -327,7 +329,7 @@ function ProjectWaits<T>({
         Waiting on you
       </SectionLabel>
       <div className="pp-card pp-list">
-        <ChangeList>
+        <ChangeList page>
           {waits.map(({ wait, face, onVerb }) => {
             if (wait.kind === "ask")
               return (
@@ -824,38 +826,34 @@ function ProjectMates<T>({
       <SectionLabel count={mates.length > 1 ? mates.length : undefined} id="pp-mates">
         Mates
       </SectionLabel>
-      <div className="pp-card pp-list" role="list">
+      <div className="pp-card pp-list ov-mates-page" role="list">
         {mates.length === 0 ? (
           <p className="pp-empty">No Mates yet. Add one to start work here.</p>
         ) : (
-          mates.map(draw)
+          <PageRows value>{mates.map(draw)}</PageRows>
         )}
       </div>
     </section>
   );
 }
 
-/** A Mate being created: waking, named, how far its birth has got, nothing to press. */
+/** A Mate being created: waking, named, how far its birth has got; its row opens the birth's page. */
 function ComingMate<T>({
   mate,
   birth,
 }: {
   readonly mate: Extract<FlowMateEntry<T>, { kind: "coming" }>;
-  readonly birth: { readonly line: string; readonly menu: ReactNode } | undefined;
+  readonly birth: ComingBirthRow | undefined;
 }) {
   return (
-    <div aria-busy="true" className="ov-mate" data-zerops-surface="mate-coming" role="listitem">
-      <span className="ov-mate-face">
-        <ComingMateFace coming={mate.coming} size={24} />
-      </span>
-      <span className="ov-mate-text">
-        <span className="ov-mate-l1">
-          <span className="ov-mate-name">{mate.mate.name}</span>
-        </span>
-        <span className="ov-mate-l2">{birth?.line ?? comingMateLine(mate.coming)}</span>
-      </span>
-      {birth?.menu}
-    </div>
+    <ComingMateRow
+      face={<ComingMateFace coming={mate.coming} size={24} />}
+      line={birth?.line ?? comingMateLine(mate.coming)}
+      menu={birth?.menu}
+      name={mate.mate.name}
+      onOpen={birth?.onOpen}
+      stopped={birth?.stopped ?? false}
+    />
   );
 }
 
@@ -893,8 +891,9 @@ const GROUP_LIT_MS = 1400;
  * with what stops it, merged ones grouped by where they went — the group's label says it once, in
  * the picture's words ("On stage, ready for production · 12"), and with one group the section's
  * label is it ("On main, not live yet · 5") — setup files last, quiet. The group a release would
- * carry ends in a quiet *Review release*. *All history* opens its releases in place, each with the
- * changes it put live; with no history, *All changes* lists past the first few.
+ * carry names no verb: *Review release* is production's, the page's one. *All history* opens its
+ * releases in place, each with the changes it put live; with no history, *All changes* lists past
+ * the first few.
  */
 function ProjectChanges<T>({
   entry,
@@ -921,12 +920,6 @@ function ProjectChanges<T>({
   const every = changeGroups(listed).groups;
   const countOf = (group: (typeof groups)[number]) =>
     every.find((each) => each.label === group.label)?.changes.length ?? group.changes.length;
-  // The changes a release would carry: their group carries its verb.
-  const carried =
-    door.view.kind === "ready" || door.view.kind === "failed" ? releaseGroup(groups) : undefined;
-  const reviewRelease = (
-    <SectionAction onClick={facts.release.onReview}>{REVIEW_RELEASE_LABEL} →</SectionAction>
-  );
   const mateName = (projectId: string) =>
     entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
   const faceOf = (projectId: string) => {
@@ -934,10 +927,8 @@ function ProjectChanges<T>({
     return item === undefined ? undefined : props.renderMateFace(item, 20);
   };
   const historyShown = history && facts.repo !== undefined;
-  // One group alone, and nothing open beside it: its place is the section's label, unless it
-  // carries the release's verb beside the section's own.
-  const only =
-    open.length === 0 && groups.length === 1 && groups[0] !== carried ? groups[0] : undefined;
+  // One group alone, and nothing open beside it: its place is the section's label.
+  const only = open.length === 0 && groups.length === 1 ? groups[0] : undefined;
   const groupId = entry.group.groupId;
   const pictureInput = {
     flow: entry.flow,
@@ -1090,7 +1081,7 @@ function ProjectChanges<T>({
         ) : (
           <>
             {open.length === 0 ? null : (
-              <ChangeList group="open" label="Open changes">
+              <ChangeList page group="open" label="Open changes">
                 {open.map((change) =>
                   row(change, changeRowLine(mateName(change.pull.mateProjectId), change.words)),
                 )}
@@ -1103,23 +1094,21 @@ function ProjectChanges<T>({
                   data-zerops-change-group={lineGroupOf(group)}
                   key={group.label}
                 >
-                  <SectionLabel
-                    action={group === carried ? reviewRelease : undefined}
-                    count={countOf(group)}
-                    level={3}
-                  >
+                  <SectionLabel count={countOf(group)} level={3}>
                     {group.label}
                   </SectionLabel>
-                  <ChangeList>{group.changes.map((change) => row(change, undefined))}</ChangeList>
+                  <ChangeList page>
+                    {group.changes.map((change) => row(change, undefined))}
+                  </ChangeList>
                 </div>
               ))
             ) : (
-              <ChangeList group={lineGroupOf(only)} label={only.label}>
+              <ChangeList page group={lineGroupOf(only)} label={only.label}>
                 {only.changes.map((change) => row(change, undefined))}
               </ChangeList>
             )}
             {setup.length === 0 ? null : (
-              <ChangeList label="Setup files">
+              <ChangeList label="Setup files" page>
                 {setup.map((change) => row(change, change.words))}
               </ChangeList>
             )}
