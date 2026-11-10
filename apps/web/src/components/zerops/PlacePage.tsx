@@ -87,6 +87,7 @@ import {
   useStopDeploymentsShown,
 } from "~/zerops/projectFlows";
 import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
+import { useRenewDeployKey, type RenewDeployKey } from "~/zerops/useRenewDeployKey";
 import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
@@ -470,6 +471,17 @@ function ZeropsProjectStopDetailPage({
   // *Run again* asks HQ, by its rule for who develops the application.
   const mayRunAgain = useEnvironmentDeployOffer()(projectId);
   const mayKeepKey = useKeepDeployKeyOffer();
+  // The place's deploy key, renewed from its own sentence: the release sheet's verb, here.
+  const renewKey = useRenewDeployKey(
+    declared === undefined
+      ? undefined
+      : {
+          appId: groupId,
+          projectId,
+          name: declared.environment,
+          place: declared.tier === "production" ? "production" : "the stage",
+        },
+  );
   // Why HQ refused the last *Run again*, until another is pressed.
   const [runAgainRefused, setRunAgainRefused] = useState<string | null>(null);
   // What HQ answered of the deploys the last verb pressed here asked for.
@@ -531,7 +543,11 @@ function ZeropsProjectStopDetailPage({
     keyGap:
       declared === undefined
         ? undefined
-        : stopKeyGap({ ...declared, mayKeep: mayKeepKey(projectId), project: stop.name }),
+        : withRenewal(
+            stopKeyGap({ ...declared, mayKeep: mayKeepKey(projectId), project: stop.name }),
+            // By the viewer's role on the project, and never where HQ's own rule refuses the key.
+            renewKey.onRenew !== undefined && mayKeepKey(projectId) !== false,
+          ),
     firstDeploy,
     notCreated,
   });
@@ -692,6 +708,7 @@ function ZeropsProjectStopDetailPage({
         }
         stop={stop}
         tags={tags}
+        renewKey={renewKey}
         trouble={verbs.trouble}
         verdict={verdict}
         view={view}
@@ -754,6 +771,10 @@ interface StopAddService {
 const NOTHING_MISSING: ReadonlyArray<string> = [];
 const NO_TIER_STOPS: ReadonlyArray<StopTierStop> = [];
 const NO_FAILED_DEPLOYS: ReadonlyArray<StopFailedDeploy> = [];
+
+/** The key's gap with whether the viewer may renew it from the page; none stays none. */
+const withRenewal = (gap: ReturnType<typeof stopKeyGap>, mayRenew: boolean) =>
+  gap === undefined ? undefined : { ...gap, mayRenew };
 
 /** A stop's role, as its tag reads beside its name. */
 const ROLE_TAG: Record<GroupEnvironmentTier, ZeropsEnvironmentRole> = {
@@ -926,6 +947,7 @@ export function ZeropsStopPane({
   stop,
   tags,
   trouble,
+  renewKey,
   untold,
   verdict,
   view,
@@ -1018,6 +1040,8 @@ export function ZeropsStopPane({
   /** What the stop runs, as the left menu reads it — its menu is that menu. */
   readonly view: StopView;
   readonly verdict: StopVerdict;
+  /** The renewal of its deploy key, where the verdict offers it (`useRenewDeployKey`). */
+  readonly renewKey?: Pick<RenewDeployKey, "run" | "onRenew"> | undefined;
   /**
    * The code services as HQ deploys them; undefined until the recipe and the complete platform
    * listing are read, or for good where HQ declares none (`servicesRead`).
@@ -1082,6 +1106,8 @@ export function ZeropsStopPane({
   const earlier = Math.max(0, releases.length - RELEASES_SHOWN);
   const listed = allReleases ? releases : releases.slice(0, RELEASES_SHOWN);
   const verb = verdict.verb;
+  // Where the key's renewal stands, while the verdict is still its key.
+  const renewing = verb?.kind === "renew-key" ? renewKey?.run : undefined;
   const answer = deployAnswer === undefined ? undefined : deployAnswerSaid(deployAnswer);
   const answered = new Map(
     answer?.environments
@@ -1144,7 +1170,11 @@ export function ZeropsStopPane({
         text: `${head.title} is down.`,
         detail: headerLine.words.slice(1).join(" · ") || undefined,
       }
-    : verdict;
+    : // Renewed, until HQ says the key works and the sentence goes with the fact: never the old
+      // sentence again.
+      renewing?.kind === "renewed"
+      ? { tone: "ok" as const, text: "Key renewed.", detail: undefined }
+      : verdict;
   const verdictShown =
     down ||
     verdict.tone === "failed" ||
@@ -1236,7 +1266,11 @@ export function ZeropsStopPane({
       {!verdictShown ? null : (
         <div>
           <VerdictPanel detail={panel.detail} text={panel.text} tone={panel.tone}>
-            {askToFix === undefined || panel.tone !== "failed" || reviewNext ? null : (
+            {askToFix === undefined ||
+            panel.tone !== "failed" ||
+            reviewNext ||
+            // Its key is the person's to renew, here: no Mate is asked.
+            verb?.kind === "renew-key" ? null : (
               <Button
                 onClick={() => {
                   askToFix.onAsk(
@@ -1256,6 +1290,20 @@ export function ZeropsStopPane({
                 {`Ask ${askToFix.mateName} to fix it`}
               </Button>
             )}
+            {!down &&
+            verb?.kind === "renew-key" &&
+            renewKey?.onRenew !== undefined &&
+            renewing?.kind !== "renewed" ? (
+              <Button
+                data-zerops-primary-action="Renew the key"
+                disabled={renewing?.kind === "working"}
+                onClick={renewKey.onRenew}
+                size="sm"
+                variant="secondary"
+              >
+                {renewing?.kind === "working" ? "Renewing…" : "Renew the key"}
+              </Button>
+            ) : null}
             {!down && verb?.kind === "run-again" && runAgain !== undefined ? (
               <Button
                 data-zerops-primary-action="Run again"
@@ -1272,6 +1320,9 @@ export function ZeropsStopPane({
           </VerdictPanel>
           {runAgain?.refused === null || runAgain?.refused === undefined ? null : (
             <p className="mt-1.5 px-3 text-sm text-status-failed-text">{runAgain.refused}</p>
+          )}
+          {down || renewing?.kind !== "failed" ? null : (
+            <p className="mt-1.5 px-3 text-sm text-status-failed-text">{renewing.words}</p>
           )}
           {down || verdict.why === undefined ? null : (
             // HQ's own words for the cause, under the sentence that names it.

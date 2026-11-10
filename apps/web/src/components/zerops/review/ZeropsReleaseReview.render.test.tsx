@@ -61,6 +61,9 @@ vi.mock("~/zerops/serviceCreationRuns", () => ({
   useServiceCreation: () => ({ progress: { stage: "unknown" }, acceptedAtMs: undefined }),
 }));
 vi.mock("~/zerops/useZeropsMateOwners", () => ({ usePersonNames: () => () => undefined }));
+vi.mock("~/zerops/usePlatformCapabilities", () => ({
+  useProjectCapabilities: () => ({ projectAccessKnown: false, administer: false }),
+}));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => vi.fn() }));
 vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => NOW, useSecondsNowMs: () => NOW }));
 const compared = vi.hoisted(() => ({ asks: [] as Array<unknown> }));

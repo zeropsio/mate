@@ -1059,7 +1059,7 @@ describe("ZeropsStopPane", () => {
       },
       contains: [
         "It has no deploy key yet.",
-        "Someone with Full access to the stage project in Zerops mints one here.",
+        "Someone with Full access to the stage project in Zerops mints one.",
       ],
       lacks: ["Run again"],
     },
@@ -1093,7 +1093,7 @@ describe("ZeropsStopPane", () => {
       },
       contains: [
         "Its deploy key no longer works.",
-        "Someone with Full access to the stage project in Zerops mints a new one here.",
+        "Someone with Full access to the stage project in Zerops mints a new one.",
       ],
       lacks: ["Run again"],
     },
