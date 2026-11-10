@@ -199,6 +199,10 @@
       "types": "./src/zerops/activity/attribution.ts",
       "default": "./src/zerops/activity/attribution.ts"
     },
+    "./zerops/activity/runningNow": {
+      "types": "./src/zerops/activity/runningNow.ts",
+      "default": "./src/zerops/activity/runningNow.ts"
+    },
     "./zerops/activity/buildLog": {
       "types": "./src/zerops/activity/buildLog.ts",
       "default": "./src/zerops/activity/buildLog.ts"

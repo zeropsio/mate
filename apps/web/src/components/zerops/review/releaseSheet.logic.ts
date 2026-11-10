@@ -20,6 +20,10 @@ import {
   type DeployKeyTrouble,
   type HqJob,
 } from "@t3tools/client-runtime/zerops/hq";
+import {
+  runningSentence,
+  type RunningLine,
+} from "@t3tools/client-runtime/zerops/activity/runningNow";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { NOT_RENEWING, type KeyRenewal } from "~/zerops/renewDeployKey.logic";
@@ -99,6 +103,9 @@ export interface ReleaseDeployProgress {
   /** When HQ began it; `undefined` for one only the press's answer has said so far. */
   readonly at: string | undefined;
   readonly endedAt: string | null;
+  /** The platform's handles of what HQ started for it, once it started something. */
+  readonly processId?: string | null | undefined;
+  readonly appVersionId?: string | null | undefined;
 }
 
 /** What HQ does in production for the release, as its jobs there stand. */
@@ -128,6 +135,8 @@ export interface ReleaseSheetStep {
   readonly action: "create-now" | "create-again" | "renew-key" | undefined;
   /** What stopped it is production's deploy key, which HQ will not use (`deployKeyTrouble`). */
   readonly deployKey?: DeployKeyTrouble | undefined;
+  /** A deploy under way past the release's usual time: said after where its build stands. */
+  readonly late?: true | undefined;
 }
 
 export type { KeyRenewal };
@@ -438,6 +447,7 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
           line: [`${job.state === "building" ? "Building…" : "Starting the build…"}${late}`],
           tone: "busy",
           aside: elapsed(job.at, input.nowMs),
+          ...(late === "" ? {} : { late: true as const }),
         });
         return;
       case "failed":
@@ -738,4 +748,84 @@ export function releaseStepWords(input: {
     default:
       return { note: "", tone: "quiet" };
   }
+}
+
+/** Production's platform work as the release's sheet reads it. */
+export interface ReleaseRunning {
+  /** By step key: the process a busy step of this release is, where the platform runs one. */
+  readonly ofStep: ReadonlyMap<string, RunningLine>;
+  /** What runs or waits in production and is no step of this release, the furthest along first. */
+  readonly outside: ReadonlyArray<RunningLine>;
+  /** Nothing of this release runs while something else does: it waits for that. */
+  readonly waits: boolean;
+}
+
+const NOTHING_RUNNING: ReleaseRunning = { ofStep: new Map(), outside: [], waits: false };
+
+/**
+ * Production's running work (`runningLines`) told apart: each of this release's own deploys under
+ * its step, everything else as what production is busy with. A build is this release's by the
+ * handles HQ's job of the service names, else by the version it makes being the release's tag;
+ * one that names another version, or runs where HQ has started nothing of this release, is not —
+ * an older release's deploy sent again is exactly that. One the platform has not named yet, on a
+ * service HQ says it is building for this release, is taken as this release's.
+ */
+export function releaseRunning(input: {
+  readonly lines: ReadonlyArray<RunningLine>;
+  readonly steps: ReadonlyArray<ReleaseSheetStep>;
+  readonly tag: string;
+  readonly progress: ReleaseProgress | undefined;
+}): ReleaseRunning {
+  if (input.lines.length === 0) return NOTHING_RUNNING;
+  const ofStep = new Map<string, RunningLine>();
+  const outside: Array<RunningLine> = [];
+  for (const line of input.lines) {
+    const step = input.steps.find(
+      (candidate) =>
+        candidate.service !== undefined &&
+        candidate.service === line.service &&
+        ((candidate.kind === "deploy" && line.kind === "build") ||
+          (candidate.kind === "create" && line.kind === "create")),
+    );
+    if (step === undefined) {
+      outside.push(line);
+      continue;
+    }
+    if (step.kind === "create") {
+      ofStep.set(step.key, line);
+      continue;
+    }
+    const job = input.progress?.deploys.find((entry) => entry.service === line.service);
+    const started = job?.state === "submitting" || job?.state === "building";
+    const named =
+      (job?.processId != null && job.processId === line.id) ||
+      (job?.appVersionId != null && job.appVersionId === line.versionId) ||
+      line.version === input.tag;
+    const unnamed =
+      started && line.version === undefined && job.processId == null && job.appVersionId == null;
+    if (named || unnamed) ofStep.set(step.key, line);
+    else outside.push(line);
+  }
+  return {
+    ofStep,
+    outside,
+    waits: outside.length > 0 && [...ofStep.values()].every((line) => line.waiting),
+  };
+}
+
+/** `shop is deploying v0.1.60`, and how many more: what production is busy with, as a sentence. */
+export function productionBusyWords(outside: ReadonlyArray<RunningLine>):
+  | {
+      readonly first: RunningLine;
+      readonly words: string;
+      readonly more: string;
+    }
+  | undefined {
+  const [first, ...rest] = outside;
+  if (first === undefined) return undefined;
+  return {
+    first,
+    words: runningSentence(first),
+    more: rest.length === 0 ? "" : ` and ${String(rest.length)} more`,
+  };
 }

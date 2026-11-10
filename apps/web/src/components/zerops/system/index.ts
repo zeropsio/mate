@@ -9,6 +9,7 @@ export {
 } from "./ChangeRow.logic";
 export { Crumbs, usePageTrail, type Crumb } from "./Crumbs";
 export { pageTrail, type TrailStep, type TrailTarget } from "./Crumbs.logic";
+export { GrowsInPlace } from "./GrowsInPlace";
 export { MateRow, MateRowTime, type MateRowProps } from "./MateRow";
 export { NextBlock, NextRelease, type NextReleaseInput } from "./NextRelease";
 export {
@@ -35,6 +36,7 @@ export {
   type ProjectLineInput,
   type ProjectLineView,
 } from "./projectLine.logic";
+export { RunningClock, RunningLine, RunningNow, RunningTrail } from "./RunningLine";
 export { SectionAction, SectionLabel } from "./SectionLabel";
 export { ServiceList, ServiceMeters, ServiceRow } from "./ServiceRow";
 export {

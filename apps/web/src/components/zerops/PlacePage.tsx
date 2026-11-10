@@ -1,3 +1,4 @@
+import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
 import { GitStopDetailPage } from "./GitStopDetail";
 import { HqEnvironmentId, type ProjectId } from "@t3tools/contracts";
@@ -88,6 +89,7 @@ import {
 } from "~/zerops/projectFlows";
 import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { useRenewDeployKey, type RenewDeployKey } from "~/zerops/useRenewDeployKey";
+import { useRunningNow } from "~/zerops/activity/useRunningNow";
 import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
 import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
@@ -156,6 +158,7 @@ import {
   changeRowLine,
   PlaceLine,
   readyOfFlow,
+  RunningNow,
   SectionLabel,
   useApplicationPlaces,
   usePageTrail,
@@ -426,6 +429,7 @@ function ZeropsProjectStopDetailPage({
   );
   // Every service the place runs, with its use and its last day, for the services table.
   const serviceMap = usePlaceServiceMap(withheld === null ? projectId : undefined);
+  const runningNow = useRunningNow(withheld === null ? projectId : undefined);
   // Only a countdown reads the clock, and nothing here counts down: the time
   // the page was first drawn is enough, as it is for the left menu's rows.
   const [nowMs] = useState(Date.now);
@@ -581,6 +585,7 @@ function ZeropsProjectStopDetailPage({
         usageRead={serviceMap.usageRead}
         vault={orgId === null ? undefined : { orgId, open: vaultOpen, onOpenChange: setVaultOpen }}
         readAgain={<StopReadAgain projectId={projectId} />}
+        runningNow={runningNow}
         readFailures={
           <ProjectReadFailures recipe={recipeFailure} comparison={flow.release.comparisonFailure} />
         }
@@ -772,6 +777,8 @@ const NOTHING_MISSING: ReadonlyArray<string> = [];
 const NO_TIER_STOPS: ReadonlyArray<StopTierStop> = [];
 const NO_FAILED_DEPLOYS: ReadonlyArray<StopFailedDeploy> = [];
 
+const NOTHING_RUNNING: ReadonlyArray<RunningLine> = [];
+
 /** The key's gap with whether the viewer may renew it from the page; none stays none. */
 const withRenewal = (gap: ReturnType<typeof stopKeyGap>, mayRenew: boolean) =>
   gap === undefined ? undefined : { ...gap, mayRenew };
@@ -948,6 +955,7 @@ export function ZeropsStopPane({
   tags,
   trouble,
   renewKey,
+  runningNow,
   untold,
   verdict,
   view,
@@ -1042,6 +1050,8 @@ export function ZeropsStopPane({
   readonly verdict: StopVerdict;
   /** The renewal of its deploy key, where the verdict offers it (`useRenewDeployKey`). */
   readonly renewKey?: Pick<RenewDeployKey, "run" | "onRenew"> | undefined;
+  /** What the platform runs or holds waiting there now (`runningLines`); none while nothing does. */
+  readonly runningNow?: ReadonlyArray<RunningLine> | undefined;
   /**
    * The code services as HQ deploys them; undefined until the recipe and the complete platform
    * listing are read, or for good where HQ declares none (`servicesRead`).
@@ -1493,74 +1503,77 @@ export function ZeropsStopPane({
           </div>
 
           <aside className="flex min-w-0 flex-col gap-8" aria-label={`${head.title} setup`}>
-            <PlaceSection
-              label={
-                <SectionLabel count={servicesWaiting ? undefined : table.length}>
-                  Services
-                </SectionLabel>
-              }
-            >
-              {servicesWaiting ? (
-                <PlaceServicesWaiting />
-              ) : projectId === undefined ? null : (
-                <PlaceServiceTable
-                  answered={answered}
-                  deployAgain={deployAgain}
-                  projectId={projectId}
-                  rows={table}
-                  said={verdict.detail}
-                  usageRead={usageRead}
-                >
-                  {notInZerops.map((hostname) => (
-                    <PlaceMissingService
-                      answer={answered.get(hostname)}
-                      byRelease={production}
-                      hostname={hostname}
-                      key={hostname}
-                      verb={
-                        // A production gets a service only by a release: HQ refuses the verb.
-                        addService === undefined || production ? null : (
-                          <Button
-                            disabled={addService.running(hostname)}
-                            onClick={() => addService.onAdd(hostname)}
-                            size="sm"
-                            variant="secondary"
-                          >
-                            {addService.running(hostname)
-                              ? flowVerbLabel("add-service", true)
-                              : `${flowVerbLabel("add-service", false)} ${hostname}`}
-                          </Button>
-                        )
-                      }
-                    />
-                  ))}
-                </PlaceServiceTable>
-              )}
-              {servicesWaiting || table.length > 0 || notInZerops.length > 0 ? null : (
-                // Its code services and the platform's both: a place with a database alone has one.
-                <p
-                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
-                  data-zerops-surface="place-services-empty"
-                >
-                  Nothing runs here yet. Its services appear as its first deploy lands.
-                </p>
-              )}
-              {projectId === undefined || tierStops.length === 0 ? null : (
-                <StopTierStops
-                  projectId={projectId}
-                  rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
-                  rows={tierStops}
-                />
-              )}
-              {otherDeploys === undefined ? null : (
-                <ZeropsDeployAnswer
-                  answer={otherDeploys}
-                  showEnvironment={otherDeploys.jobs.some(
-                    ({ environment }) => environment !== stop.name,
-                  )}
-                />
-              )}
-            </PlaceSection>
+            <div className="min-w-0">
+              <RunningNow lines={runningNow ?? NOTHING_RUNNING} />
+              <PlaceSection
+                label={
+                  <SectionLabel count={servicesWaiting ? undefined : table.length}>
+                    Services
+                  </SectionLabel>
+                }
+              >
+                {servicesWaiting ? (
+                  <PlaceServicesWaiting />
+                ) : projectId === undefined ? null : (
+                  <PlaceServiceTable
+                    answered={answered}
+                    deployAgain={deployAgain}
+                    projectId={projectId}
+                    rows={table}
+                    said={verdict.detail}
+                    usageRead={usageRead}
+                  >
+                    {notInZerops.map((hostname) => (
+                      <PlaceMissingService
+                        answer={answered.get(hostname)}
+                        byRelease={production}
+                        hostname={hostname}
+                        key={hostname}
+                        verb={
+                          // A production gets a service only by a release: HQ refuses the verb.
+                          addService === undefined || production ? null : (
+                            <Button
+                              disabled={addService.running(hostname)}
+                              onClick={() => addService.onAdd(hostname)}
+                              size="sm"
+                              variant="secondary"
+                            >
+                              {addService.running(hostname)
+                                ? flowVerbLabel("add-service", true)
+                                : `${flowVerbLabel("add-service", false)} ${hostname}`}
+                            </Button>
+                          )
+                        }
+                      />
+                    ))}
+                  </PlaceServiceTable>
+                )}
+                {servicesWaiting || table.length > 0 || notInZerops.length > 0 ? null : (
+                  // Its code services and the platform's both: a place with a database alone has one.
+                  <p
+                    className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                    data-zerops-surface="place-services-empty"
+                  >
+                    Nothing runs here yet. Its services appear as its first deploy lands.
+                  </p>
+                )}
+                {projectId === undefined || tierStops.length === 0 ? null : (
+                  <StopTierStops
+                    projectId={projectId}
+                    rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
+                    rows={tierStops}
+                  />
+                )}
+                {otherDeploys === undefined ? null : (
+                  <ZeropsDeployAnswer
+                    answer={otherDeploys}
+                    showEnvironment={otherDeploys.jobs.some(
+                      ({ environment }) => environment !== stop.name,
+                    )}
+                  />
+                )}
+              </PlaceSection>
+            </div>
 
             {projectId === undefined ? null : (
               <PlaceSection label={<SectionLabel>Addresses</SectionLabel>}>
