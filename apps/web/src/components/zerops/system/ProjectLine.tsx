@@ -11,7 +11,7 @@
  * while the project's reads have not answered. Under 700 px of its own width it is compact: short
  * captions, the same beads (a container query; a Mate's Code page).
  *
- * Behind it stands the line in full (`ProjectLineFull`: each station's state and door, each
+ * Behind it stands the line in full (`ProjectLineFull`: each station's state and page, each
  * segment's verb, the rows under `main`), by one control in the card's corner. `full.kind` says
  * where: `here`, the card grows in place into it and back (the project's page), the control in the
  * top corner in both states, and the door carries what the full line acts on
@@ -130,7 +130,6 @@ export function ProjectLine({
                 onPutLive={here.onPutLive}
                 onReviewRelease={here.onReviewRelease}
                 onShowGroup={onShowGroup}
-                stationEnds={here.stationEnds}
                 view={here.view}
               />
             </div>

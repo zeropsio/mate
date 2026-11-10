@@ -899,7 +899,8 @@ const GROUP_LIT_MS = 1400;
  * leads to its group below; the control in its corner grows it in place into the line in full
  * (`projectLineFull`: what each station is and opens, each segment's one verb, each copy of the
  * code and further place under `main`), which this device remembers per project. Open, the line
- * repeats what Places says of a place and its release, verbs included. Then the list, less the
+ * says a place's state and its release's verb beside Places; a place's doors and addresses are
+ * Places' alone. Then the list, less the
  * changes Waiting on you lists: open ones each
  * with what stops it, merged ones grouped by where they went — the group's label says it once, in
  * the picture's words ("On stage, ready for production · 12"), and with one group the section's
@@ -972,36 +973,6 @@ function ProjectChanges<T>({
     : undefined;
   const productionNote = facts.slots.find(
     (slot) => slot.kind === "environment" && slot.tier === "production",
-  );
-  // A place's vault, at the end of its station's name: shown while the station is pointed at or
-  // holds focus, always where nothing hovers.
-  const openVault = props.openPlaceVault;
-  const stationEnds = new Map(
-    openVault === undefined
-      ? []
-      : lines.flatMap((line): ReadonlyArray<readonly [string, ReactNode]> => {
-          const id = placeId(line);
-          const vault = withheld(line) === null ? placeVaultOf(line) : undefined;
-          return id === undefined || vault === undefined
-            ? []
-            : [
-                [
-                  id,
-                  // The same two doors a place wears on its line under Places, as icons: a
-                  // station's head has no room for their words.
-                  <PlaceDoors
-                    key={id}
-                    name={placeLabel(line)}
-                    sites={placeSitesOf(line, groupId)}
-                    vault={{
-                      onOpen: () => {
-                        openVault(vault);
-                      },
-                    }}
-                  />,
-                ],
-              ];
-        }),
   );
   const full = projectLineFull(
     {
@@ -1122,7 +1093,6 @@ function ProjectChanges<T>({
               facts.onAdd("production");
             },
             onReviewRelease: facts.release.onReview,
-            stationEnds,
           }}
           held={entry.awaiting}
           onOpenChange={(pull, from) => {
