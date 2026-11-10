@@ -141,6 +141,7 @@ import {
   quickCallsSpanMs,
   quickCallsWords,
 } from "./quickCalls.logic";
+import { AsPainted } from "./AsPainted";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { restartWords } from "../../zerops/restartWords";
@@ -150,6 +151,7 @@ import { useCalmLine } from "./useCalmLine";
 import {
   headStood,
   headStoodJustNow,
+  watchPainted,
   wordsCutUnder,
   wordsStood,
   wordsStoodUnder,
@@ -4436,20 +4438,18 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const turnOverRef = useRef(turnOver);
   // How tall the card stood as last painted while its turn went on.
   const paintedHeightRef = useRef<number | null>(null);
+  // Read as painted before each commit that draws the card or its conversation again
+  // (`AsPainted`): never in every frame, which ran the page's main thread sixty times a second
+  // for as long as a run went on.
   useEffect(() => {
-    if (
-      turnOver ||
-      typeof requestAnimationFrame !== "function" ||
-      typeof cancelAnimationFrame !== "function"
-    )
-      return;
-    let frame = requestAnimationFrame(function tell() {
-      const head = rootRef.current?.querySelector<HTMLElement>(":scope > [data-run-head]");
-      if (head != null) headStood(head, head.getBoundingClientRect().top);
-      paintedHeightRef.current = heightOf(rootRef.current);
-      frame = requestAnimationFrame(tell);
+    const root = rootRef.current;
+    // Drawn outside a page (a test's renderer), it has no head to find.
+    if (turnOver || root === null || typeof root.querySelector !== "function") return;
+    return watchPainted(root, () => {
+      const head = root.querySelector<HTMLElement>(":scope > [data-run-head]");
+      if (head !== null) headStood(head, head.getBoundingClientRect().top);
+      paintedHeightRef.current = heightOf(root);
     });
-    return () => cancelAnimationFrame(frame);
   }, [turnOver]);
   // Its turn over while what it started runs on, the card stands at the height it showed without
   // its slot: its history never grows into the room the slot gave back, which pushed the answer
@@ -4943,6 +4943,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           <div key="below" ref={feedRef} className="run-later-feed">
             {above ? null : scroll}
           </div>
+          <AsPainted key="painted" of={row} />
         </div>
       </ResultPicturesContext>
     </CarriedOpenContext>
