@@ -397,7 +397,8 @@ function returnedLines(
 }
 
 /**
- * The line of the one deploy that stands open on its card in the live slot:
+ * The line of the one deploy or stand-up that stands open in the live slot, a deploy on its card,
+ * a stand-up on its services:
  * the newest running one, else, none running, the newest as it ended there —
  * the others stay a line each, so the slot never outgrows its room. The one
  * standing open (`held`) keeps standing until it plops: one that ended first
@@ -408,7 +409,10 @@ export function slotOpenDeployLine(
   lines: ReadonlyArray<{ readonly key: string; readonly operation: ZeropsOperation }>,
   held: string | null = null,
 ): string | null {
-  const deploys = lines.filter((line) => line.operation.kind === "deploy");
+  // A stand-up's services are its progress, as a deploy's pipeline is its own: both stand open.
+  const deploys = lines.filter(
+    (line) => line.operation.kind === "deploy" || line.operation.kind === "standup",
+  );
   const newestRunning = deploys.findLast((line) => line.operation.phase === "running");
   const standing = deploys.find((line) => line.key === held);
   if (
