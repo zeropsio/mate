@@ -49,6 +49,8 @@ import {
   rollbackReview,
   RELEASE_CHECKING,
   RELEASE_READING,
+  RELEASE_READING_LATE,
+  RELEASE_READING_WORKING,
   RELEASE_TAKES,
   rollbackServices,
   shortCommit,
@@ -78,7 +80,11 @@ import { useFixMates } from "~/zerops/fixMates";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
-import { releaseRequestOf, type HqAppDetailRead } from "@t3tools/client-runtime/data";
+import {
+  NO_ANSWER_IN_TIME,
+  releaseRequestOf,
+  type HqAppDetailRead,
+} from "@t3tools/client-runtime/data";
 import { NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
 import { releasePressKey, useReleasePresses } from "~/zerops/releasePresses";
 import { useRunningNow } from "~/zerops/activity/useRunningNow";
@@ -86,7 +92,11 @@ import { useRenewDeployKey } from "~/zerops/useRenewDeployKey";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
-import { useReleaseServicePlan } from "~/zerops/useReleaseServicePlan";
+import {
+  useReleasePlanWait,
+  useReleaseServicePlan,
+  type ReleasePlanWait,
+} from "~/zerops/useReleaseServicePlan";
 import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 import { randomUUID } from "~/lib/utils";
 import { useAccountOperationsOptional } from "~/zerops/accountOperations";
@@ -164,6 +174,7 @@ import {
 } from "@t3tools/client-runtime/zerops/hq";
 import { useDeployAnswerFollowing } from "~/zerops/activity/useDeployAnswerFollowing";
 import { Button, InlineButton } from "~/components/ui/button";
+import { Spinner } from "~/components/ui/spinner";
 import { GitBrowserLink, gitCodeLink } from "../gitBrowser/GitBrowserLink";
 import { changeTitle } from "../projects/projectHistory.logic";
 
@@ -556,20 +567,36 @@ function ReleaseData({
   }, [canCheck, checking]);
 
   const reviewing = press.kind === "idle" || press.kind === "refused";
+  const listedServices = useMemo(
+    () => [...new Set(flow.release.entries.map((entry) => entry.service))],
+    [flow.release.entries],
+  );
   const plan = useReleaseServicePlan(
     flow,
     chosen.error === undefined ? chosen.tag : undefined,
     reviewing,
   );
   const reviewedPlan = plan.required && plan.view.kind === "ready" ? plan.view.plan : undefined;
+  // The read's own deadline passed is HQ slow, not HQ's answer: the data layer asks it again by
+  // itself, so the review still waits, and says so.
+  const unanswered = plan.view.kind === "failed" && plan.view.reason === NO_ANSWER_IN_TIME;
   // HQ reads no plan for someone it does not offer the release: that is a refusal, never a wait.
-  const planPending =
+  const planWaiting =
     reviewing &&
     plan.required &&
     flow.release.permission?.allowed !== false &&
-    plan.view.kind === "pending";
+    (plan.view.kind === "pending" || unanswered);
+  // The wait is the review's to end: nothing is asked for a version it cannot review under.
+  const planWait = useReleasePlanWait(planWaiting && plan.asked);
+  const planPending = planWaiting && planWait.stage !== "expired";
   const planFailure =
-    reviewing && plan.required && plan.view.kind === "failed" ? plan.view.reason : undefined;
+    !reviewing || !plan.required
+      ? undefined
+      : plan.view.kind === "failed" && !unanswered
+        ? plan.view.reason
+        : planWaiting && planWait.stage === "expired"
+          ? NO_ANSWER_IN_TIME
+          : undefined;
   const [heldPlan, setHeldPlan] = useState<ReleaseServicePlan>();
   const shownPlan = reviewing ? reviewedPlan : heldPlan;
   const reviewedRequest = releaseRequestOf(flow.release, chosen.tag, reviewedPlan);
@@ -778,12 +805,16 @@ function ReleaseData({
     <ReleaseReviewView
       servicePlan={shownPlan}
       servicePlanPending={planPending}
+      servicePlanWait={planWait.stage === "expired" ? undefined : planWait.stage}
       problems={flow.release.problems}
       servicePlanFailure={planFailure}
       servicePlanProblems={
         reviewing && plan.required && plan.view.kind === "failed" ? plan.view.problems : undefined
       }
-      onRetryServicePlan={plan.again}
+      onRetryServicePlan={() => {
+        planWait.restart();
+        plan.again();
+      }}
       creation={{
         run,
         created,
@@ -830,7 +861,7 @@ function ReleaseData({
         renewKey.reset();
       }}
       environmentName={production?.environment}
-      entries={flow.release.entries.length}
+      listed={listedServices}
       keyRenewal={renewKey}
       git={
         flow.release.git === undefined
@@ -1048,6 +1079,8 @@ export interface ReleaseReviewViewProps {
   /** Read from HQ for these exact immutable release inputs, never reconstructed in the browser. */
   readonly servicePlan?: ReleaseServicePlan | undefined;
   readonly servicePlanPending?: boolean | undefined;
+  /** How long that read has been waited for, as the person saw it wait; just begun where unsaid. */
+  readonly servicePlanWait?: ReleasePlanWait | undefined;
   readonly servicePlanFailure?: string | undefined;
   readonly servicePlanProblems?: ReadonlyArray<HqProblem> | undefined;
   readonly onRetryServicePlan?: () => void;
@@ -1083,8 +1116,8 @@ export interface ReleaseReviewViewProps {
   readonly commits?: number | undefined;
   /** Production as HQ names it: where HQ's words lead with that name, the sheet says Production. */
   readonly environmentName?: string | undefined;
-  /** How many services the release lists, known before HQ's plan: the places its steps hold. */
-  readonly entries?: number | undefined;
+  /** The services the release lists, known before HQ's plan: the steps it names while it is read. */
+  readonly listed?: ReadonlyArray<string> | undefined;
   /**
    * The renewal of production's deploy key, for a release HQ stopped because it will not use the
    * one it keeps: where the sheet's own run of it stands, and its press — absent for a person
@@ -1181,14 +1214,22 @@ export function ReleaseReadingView({
   readonly titleId: string;
   readonly onClose: () => void;
 }) {
+  const stateId = useId();
   return (
     <ZeropsReviewSurface
-      consequence={RELEASE_READING}
+      consequence=""
+      consequenceRoom={RELEASE_TAKES}
       dismiss="Cancel"
       kind="release"
       kindLabel={name ?? ""}
       onClose={onClose}
-      primary={{ label: "Release", enabled: false, safe: false, onPress: () => undefined }}
+      primary={{
+        label: "Release",
+        enabled: false,
+        safe: false,
+        held: { by: stateId, words: RELEASE_READING },
+        onPress: () => undefined,
+      }}
       subtitle={<span aria-hidden="true" className="rv-pskel my-1 w-56" />}
       title="Release"
       titleId={titleId}
@@ -1206,7 +1247,10 @@ export function ReleaseReadingView({
       <ReviewSection title="What goes out">
         <ReleaseRowsSkeleton count={1} />
       </ReviewSection>
-      <ReviewSection title="What happens in production">
+      <ReviewSection
+        aside={<PlanState id={stateId} state={READING_STARTED} />}
+        title="What happens in production"
+      >
         <ReleasePlanSkeleton steps={2} />
       </ReviewSection>
     </ZeropsReviewSurface>
@@ -1225,6 +1269,72 @@ function ReleaseRowsSkeleton({ count }: { readonly count: number }) {
         </div>
       ))}
     </div>
+  );
+}
+
+/** What "What happens in production" says of itself at its label: its wait, or why it is not read. */
+type PlanStateSaid =
+  | { readonly kind: "reading"; readonly wait: ReleasePlanWait }
+  | { readonly kind: "failed"; readonly words: string; readonly again: string };
+
+const READING_STARTED: PlanStateSaid = { kind: "reading", wait: "started" };
+const WAIT_WORDS: Record<ReleasePlanWait, string> = {
+  started: RELEASE_READING,
+  working: RELEASE_READING_WORKING,
+  late: RELEASE_READING_LATE,
+};
+const WAITS: ReadonlyArray<ReleasePlanWait> = ["started", "working", "late"];
+/** Asks HQ now, where it has not answered; where it answered that it could not, it reviews again. */
+const TRY_AGAIN = "Try again";
+const REVIEW_AGAIN = "Review again";
+
+const planStateWords = (state: PlanStateSaid): string =>
+  state.kind === "failed" ? state.words : WAIT_WORDS[state.wait];
+
+/**
+ * The section's state at its label's end: the mark and the words of its wait — what it reads
+ * once that lasts, then that it is late, with the way to ask now — or why it was not read, with
+ * the same way. The wait's longest words hold its room from the start: what it says next never
+ * moves the label.
+ */
+function PlanState({
+  id,
+  state,
+  onAgain,
+}: {
+  readonly id: string;
+  readonly state: PlanStateSaid;
+  readonly onAgain?: (() => void) | undefined;
+}) {
+  const again =
+    onAgain !== undefined && (state.kind === "failed" || state.wait === "late") ? (
+      <InlineButton data-release-plan-again="" onClick={onAgain}>
+        {state.kind === "failed" ? state.again : TRY_AGAIN}
+      </InlineButton>
+    ) : null;
+  return (
+    <span
+      aria-live="polite"
+      className="rv-sec-state"
+      data-release-plan-state={state.kind === "failed" ? "failed" : state.wait}
+      data-tone={state.kind === "failed" ? "attention" : undefined}
+    >
+      <span>
+        {state.kind === "reading" ? <Spinner aria-hidden="true" size="xs" tone="muted" /> : null}
+        <span id={id}>{planStateWords(state)}</span>
+        {/* A cause's press follows it as a word does; the wait's own row sets its gaps. */}
+        {again === null ? null : " "}
+        {again}
+      </span>
+      {state.kind === "failed"
+        ? null
+        : WAITS.filter((wait) => wait !== state.wait).map((wait) => (
+            <span aria-hidden="true" data-room="" key={wait}>
+              <span>{WAIT_WORDS[wait]}</span>
+              {wait === "late" && onAgain !== undefined ? <span>{TRY_AGAIN}</span> : null}
+            </span>
+          ))}
+    </span>
   );
 }
 
@@ -1325,6 +1435,10 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
   const blocked = offered && !reading && !props.gate.allowed;
   // Nothing to release is nothing to plan: no steps, no version to name.
   const nothing = blocked && model.verdict.tone === "done";
+  // HQ's plan not said, or not read: what the release lists is known all the same, and stands.
+  const unread = offered && (reading || props.servicePlanFailure !== undefined);
+  const plan = unread ? undefined : props.servicePlan;
+  const services = unread ? (props.listed ?? props.services) : props.services;
   const refused = press.kind === "refused" ? press.reason : undefined;
   const problems =
     press.kind === "refused"
@@ -1336,16 +1450,16 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
   const early = props.creation?.run ?? NO_CREATION;
   const made = props.creation === undefined ? NO_OPERATIONS : props.creation.created;
   const open = putLiveAddress(props.production === undefined ? [] : props.production.addresses);
-  const deployed = planDeployServices(props.servicePlan, props.services);
+  const deployed = planDeployServices(plan, services);
   const steps = releaseSheetSteps({
     tag,
     outcome,
     pressing: press.kind === "running",
-    plan: props.servicePlan,
+    plan,
     created: made,
     early,
     canCreate: props.creation?.onCreate !== undefined,
-    services: props.services,
+    services,
     untouched: props.where
       .map((entry) => entry.service)
       .filter((service) => !deployed.includes(service)),
@@ -1456,6 +1570,31 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       ? [{ label: "Review a new release", onPress: onReviewNew }]
       : [];
   const press1 = releasePressLabel(tag, creates);
+  // The section's own state, at its label: the wait for HQ's plan, or why it was not read. A
+  // version that cannot be reviewed under asks HQ nothing: its field says what is wrong.
+  const stateId = useId();
+  const planState: PlanStateSaid | undefined = !unread
+    ? undefined
+    : props.servicePlanFailure !== undefined
+      ? {
+          kind: "failed",
+          // HQ's finding stands above in its own words: the section says only what it holds back.
+          words:
+            problems !== undefined && problems.length > 0
+              ? "Nothing is released until this is fixed"
+              : inProductionWords(props.servicePlanFailure, props.environmentName).replace(
+                  /\.$/u,
+                  "",
+                ),
+          again: props.servicePlanFailure === NO_ANSWER_IN_TIME ? TRY_AGAIN : REVIEW_AGAIN,
+        }
+      : checkedVersion?.error !== undefined
+        ? undefined
+        : {
+            kind: "reading",
+            // The wait counted is the plan's: what can be released is the project's own read.
+            wait: props.gate.allowed ? (props.servicePlanWait ?? "started") : "started",
+          };
   const primary: ReviewPrimaryButton | undefined = offered
     ? {
         label: press1,
@@ -1466,6 +1605,8 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
           props.servicePlanFailure === undefined &&
           early.kind !== "working",
         safe: false,
+        held:
+          planState === undefined ? undefined : { by: stateId, words: planStateWords(planState) },
         onPress: props.onRelease,
       }
     : wayOut;
@@ -1489,29 +1630,15 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
         : { words: where.note, tone: where.tone }
     : refused !== undefined
       ? { words: inProductionWords(refused, props.environmentName), tone: "failed" }
-      : reading
-        ? { words: RELEASE_READING }
-        : props.servicePlanFailure !== undefined
+      : unread
+        ? // The section says it, at its label: the foot keeps its seat and says nothing twice.
+          { words: "" }
+        : blocked
           ? {
-              // HQ's finding stands above in its own words: the foot says only what it holds back.
-              words:
-                problems !== undefined && problems.length > 0
-                  ? "Nothing is released until this is fixed"
-                  : inProductionWords(props.servicePlanFailure, props.environmentName).replace(
-                      /\.$/u,
-                      "",
-                    ),
-              tone: "attention",
-              ...(props.onRetryServicePlan === undefined
-                ? {}
-                : { action: { label: "Review again", onPress: props.onRetryServicePlan } }),
+              words: inProductionWords(model.verdict.why, props.environmentName),
+              ...(model.verdict.tone === "attention" ? { tone: "attention" as const } : {}),
             }
-          : blocked
-            ? {
-                words: inProductionWords(model.verdict.why, props.environmentName),
-                ...(model.verdict.tone === "attention" ? { tone: "attention" as const } : {}),
-              }
-            : { words: creates.length > 0 ? "Takes a few minutes" : RELEASE_TAKES };
+          : { words: creates.length > 0 ? "Takes a few minutes" : RELEASE_TAKES };
 
   // HQ's own note on what it asked for at the press, where it left one.
   const answer = useReviewDeploys(press);
@@ -1545,6 +1672,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
   return (
     <ZeropsReviewSurface
       consequence={note.words}
+      consequenceRoom={unread && note.words === "" ? RELEASE_TAKES : undefined}
       consequenceTone={note.tone}
       dismiss={offered ? "Cancel" : outcome.kind === "released" ? "Done" : "Close"}
       held={!offered}
@@ -1632,38 +1760,39 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
           {untold.length === 0 ? null : <p className="rv-note">{cannotTellWhatRuns(untold)}.</p>}
         </ReviewSection>
       )}
-      {/* What HQ's plan would say is not known where it could not be read: the foot says why. */}
-      {props.servicePlanFailure !== undefined || nothing ? null : (
-        <ReviewSection title="What happens in production">
+      {nothing ? null : (
+        <ReviewSection
+          aside={
+            planState === undefined ? undefined : (
+              <PlanState id={stateId} onAgain={props.onRetryServicePlan} state={planState} />
+            )
+          }
+          title="What happens in production"
+        >
           <GrowsInPlace>
-            {reading ? (
-              // A step per service the release lists, known before HQ's plan, and production
-              // answering: the plan then only adds what it creates.
-              <ReleasePlanSkeleton steps={(props.entries ?? deployed.length) + 1} />
-            ) : (
-              <>
-                {busy === undefined ? null : (
-                  <p className="rv-busy" data-zerops-surface="release-production-busy">
-                    <b>Production is busy:</b> {busy.words} ·{" "}
-                    <RunningClock since={busy.first.since} />
-                    {busy.more}.{" "}
-                    {platform?.waits === true
-                      ? `This release waits for ${busy.more === "" ? "it" : "them"}.`
-                      : null}
-                  </p>
-                )}
-                <ReleasePlan
-                  live={{ open, onAddDomain: props.onAddDomain }}
-                  logOf={props.logOf}
-                  running={platform?.ofStep}
-                  // Stopped, the way out is the foot's button: the step does not say it twice.
-                  onCreate={stopped ? undefined : onCreate}
-                  onRenew={onRenew}
-                  renewing={renewal.kind === "working"}
-                  steps={renewal.kind === "renewed" ? keyRenewedSteps(steps) : steps}
-                />
-              </>
+            {busy === undefined ? null : (
+              <p className="rv-busy" data-zerops-surface="release-production-busy">
+                <b>Production is busy:</b> {busy.words} · <RunningClock since={busy.first.since} />
+                {busy.more}.{" "}
+                {platform?.waits === true
+                  ? `This release waits for ${busy.more === "" ? "it" : "them"}.`
+                  : null}
+              </p>
             )}
+            {/* One list from reading to done. Unread, it holds a step per service the release
+                lists, by its name, and production answering: HQ's plan then says each one's line
+                in place and adds what it creates. */}
+            <ReleasePlan
+              live={{ open, onAddDomain: props.onAddDomain }}
+              logOf={props.logOf}
+              running={platform?.ofStep}
+              // Stopped, the way out is the foot's button: the step does not say it twice.
+              onCreate={stopped ? undefined : onCreate}
+              onRenew={onRenew}
+              renewing={renewal.kind === "working"}
+              steps={renewal.kind === "renewed" ? keyRenewedSteps(steps) : steps}
+              unread={!unread ? undefined : planState?.kind === "reading" ? "reading" : "unsaid"}
+            />
           </GrowsInPlace>
           {answerNote === undefined ? null : <p className="rv-note">{answerNote}</p>}
         </ReviewSection>

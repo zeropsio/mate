@@ -126,11 +126,11 @@ describe("ReleaseReviewView", () => {
     ({ props, message, actions }) => {
       const page = new Window().document;
       page.body.innerHTML = render({ servicePlan: CREATION_PLAN, ...props });
-      const foot = page.querySelector(".rv-foot");
-      expect(foot?.textContent).toContain(message.replace(/\.$/u, ""));
-      expect(page.querySelector("[data-release-step]")).toBeNull();
+      const said = page.querySelector("[data-release-plan-state]");
+      expect(said?.textContent).toContain(message.replace(/\.$/u, ""));
+      expect(page.querySelector("[data-release-step=create]")).toBeNull();
       expect(
-        [...(foot?.querySelectorAll("[data-review-note-action]") ?? [])].map(
+        [...(said?.querySelectorAll("[data-release-plan-again]") ?? [])].map(
           (button) => button.textContent,
         ),
       ).toEqual(actions);
