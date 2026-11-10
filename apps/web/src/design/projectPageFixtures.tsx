@@ -164,6 +164,8 @@ const MATES: Readonly<Record<string, { readonly name: string; readonly tint: Mat
   "milo-k": { name: "Milo", tint: "violet" },
   "kai-k": { name: "Kai", tint: "sky" },
   "nell-k": { name: "Nell", tint: "coral" },
+  "juno-k": { name: "Juno", tint: "sky" },
+  "ravi-k": { name: "Ravi", tint: "olive" },
 };
 
 /** A change a Mate landed `minutes` ago, mirrored to GitHub's pull request `github`. */
@@ -454,6 +456,31 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
     }),
     stage: stageRuns(sha("c32"), [HEAD]),
     repos: [lineRepo("shop", "acme/tea-house", IN_SYNC)],
+  },
+  // One change merged and waiting, the rest live: what the page says once, and where.
+  "line-once": {
+    releases: [
+      shipped("v0.1.7", 3 * DAY, { standing: "live", by: "dana" }),
+      shipped("v0.1.6", 5 * DAY),
+    ],
+    merged: [
+      onMain(44, "Kites sorted by wind, lightest first", "juno-k", 50),
+      onMain(
+        41,
+        "A hidden browser for web work, the desktop's browser for sign-ins",
+        "juno-k",
+        3 * DAY + 30,
+      ),
+      onMain(40, "Postcards keep their stamp when they are forwarded", "ravi-k", 5 * DAY + 20),
+      {
+        ...landed(2, "Add a mail queue to the setup", "juno-k", 6 * DAY),
+        repository: "group",
+        kind: "recipe" as const,
+        pullRequest: undefined,
+      },
+    ],
+    stage: stageRuns(HEAD),
+    repos: [lineRepo("post", "acme/kite-post", IN_SYNC)],
   },
   "line-notlive": {
     releases: [],

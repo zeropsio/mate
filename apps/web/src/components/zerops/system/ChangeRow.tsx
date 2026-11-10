@@ -5,8 +5,8 @@
  * pull request on GitHub stands beside it where it is mirrored to one.
  */
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
-import { ArrowUpRightIcon, GitMergeIcon, GitPullRequestIcon } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowUpRightIcon, ChevronRightIcon, GitMergeIcon, GitPullRequestIcon } from "lucide-react";
+import { use, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
@@ -16,6 +16,7 @@ import { useNowMs } from "~/zerops/useNowMs";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import type { CardChange } from "../projects/projectCard.logic";
 import { changeTitle } from "../projects/projectHistory.logic";
+import { PageRows } from "./pageRows";
 
 /** How long a cut line is pointed at before its whole shows, as a tooltip waits. */
 const CUT_TEXT_DELAY_MS = 500;
@@ -110,7 +111,9 @@ export type ChangeRowProps = ChangeRowSubject & {
 /**
  * One row of a change, or of work that is no change yet. Renders an `<li>`: put it in a
  * `ChangeList`, whose columns its trailing facts stand in — its pull request, then when it last
- * moved, then its verb — so they run down the list whichever rows have them.
+ * moved, then its verb — so they run down the list whichever rows have them. In a page's list
+ * (`ChangeList page`) when it last moved stands after its title instead, and a row that opens and
+ * has no verb ends in a chevron while it is pointed at or focused.
  */
 export function ChangeRow(props: ChangeRowProps) {
   const { pull, open = false, line, tone, at, by, face, onOpen, verb } = props;
@@ -119,6 +122,19 @@ export function ChangeRow(props: ChangeRowProps) {
   const Icon = open ? GitPullRequestIcon : GitMergeIcon;
   const github = pull?.pullRequest;
   const review = open && verb === undefined && onOpen !== undefined;
+  const page = use(PageRows);
+  // Where it leads: only a row that opens, and says so with no verb of its own.
+  const goes = page && onOpen !== undefined && !review && (verb === undefined || verb === null);
+  const when =
+    by === undefined ? (
+      <ChangeAge at={at} />
+    ) : (
+      <span className="ov-change-time">
+        {by}
+        {at === undefined ? null : " · "}
+        <ChangeAge at={at} />
+      </span>
+    );
   const contents = (
     <>
       {face === undefined || face === null ? (
@@ -133,7 +149,14 @@ export function ChangeRow(props: ChangeRowProps) {
         </span>
       )}
       <span className="ov-change-text">
-        <CutText className="ov-change-title" text={title} />
+        {page ? (
+          <span className="ov-change-head">
+            <CutText className="ov-change-title" text={title} />
+            <span className="ov-change-age">{when}</span>
+          </span>
+        ) : (
+          <CutText className="ov-change-title" text={title} />
+        )}
         {line === undefined ? null : (
           <span className="ov-change-line" data-tone={tone}>
             {line}
@@ -143,22 +166,16 @@ export function ChangeRow(props: ChangeRowProps) {
       {/* Review on a change still open, as the menu has it (the owner, 2026-10-12: "more
           limited in functionality than the left menu"); the row opens it too. */}
       {/* When it last moved: the list's last column of facts, after its pull request's. */}
-      <span className="ov-change-when">
-        {by === undefined ? (
-          <ChangeAge at={at} />
-        ) : (
-          <span className="ov-change-time">
-            {by}
-            {at === undefined ? null : " · "}
-            <ChangeAge at={at} />
-          </span>
-        )}
-      </span>
+      {page ? null : <span className="ov-change-when">{when}</span>}
       {review ? (
         <span className="ov-change-act">
           <span className="ov-review" data-zerops-surface="card-change-review">
             Review
           </span>
+        </span>
+      ) : goes ? (
+        <span className="ov-change-act">
+          <ChevronRightIcon aria-hidden="true" className="ov-go" />
         </span>
       ) : null}
     </>
@@ -204,16 +221,24 @@ export function ChangeList({
   children,
   label,
   group,
+  page = false,
 }: {
   readonly children: ReactNode;
   /** Its accessible name where no heading names it. */
   readonly label?: string;
   /** The group of a page's changes it is, by which the page's picture leads to it. */
   readonly group?: string | undefined;
+  /** A page's own list, as wide as its column (`PageRows`). */
+  readonly page?: boolean;
 }) {
   return (
-    <ul aria-label={label} className="ov-changes" data-zerops-change-group={group}>
-      {children}
+    <ul
+      aria-label={label}
+      className="ov-changes"
+      data-page={page ? "" : undefined}
+      data-zerops-change-group={group}
+    >
+      <PageRows value={page}>{children}</PageRows>
     </ul>
   );
 }
