@@ -25,6 +25,11 @@
  *   next, which takes it in one change; only a longer quiet says "Thinking",
  *   and once said it stands its minimum against words — a call takes its
  *   place once it has stood the pace, so the call shows as it runs.
+ * - A burst (the owner, 2026-11-10: "sometimes it pumps out 10 rows in two
+ *   seconds"): once `SLOT_BURST_WAITING` wait behind what stands, the slot is
+ *   in a burst until what stood and waited has passed — the working row is
+ *   then one compact line of one height, saying which of how many passes
+ *   (`slotBurst`), so nothing changes height while it lasts.
  * - What the record holds when the slot is first drawn is history at once,
  *   and so is what is read in before its newest line (a live card paging
  *   back), and
@@ -70,6 +75,9 @@ export const SLOT_RUSH_WAITING = 8;
  */
 export const SLOT_HOLD_MS = 1200;
 
+/** How many items waiting behind what stands make a burst: "more than two". */
+export const SLOT_BURST_WAITING = 3;
+
 /** How many items the slot draws at once; the rest are "+N more running". */
 export const SLOT_MAX_ROWS = 3;
 
@@ -100,6 +108,11 @@ export interface LiveSlot {
   readonly pending: ReadonlyArray<string>;
   /** When the last item plopped: the next plops no sooner than `SLOT_BUSY_SHOW_MS` after it. */
   readonly lastPlopAt: number | null;
+  /**
+   * The burst it is in, by how many items passed through it since it began;
+   * null while it is calm.
+   */
+  readonly burst: { readonly passed: number } | null;
 }
 
 /** What the caller offers: what is live, what the record holds, and whether the run is over. */
@@ -133,6 +146,29 @@ type Queue = Pick<LiveSlot, "entries" | "live" | "pending">;
 function waiting(slot: Queue): number {
   const shown = new Set(slot.entries.map((entry) => entry.key));
   return slot.live.filter((key) => !shown.has(key)).length + slot.pending.length;
+}
+
+/**
+ * The burst after a change of the slot, `plopped` items having passed in it:
+ * it begins once enough wait behind what stands, counts what passes, and is
+ * over once nothing waits and nothing that ended stands — the last of it
+ * stands its time in it, and what runs next is shown whole.
+ */
+function burstAfter(burst: LiveSlot["burst"], after: Queue, plopped: number): LiveSlot["burst"] {
+  const behind = waiting(after);
+  if (burst === null) return behind >= SLOT_BURST_WAITING ? { passed: 0 } : null;
+  if (behind === 0 && after.entries.every((entry) => entry.endedAt === null)) return null;
+  return plopped === 0 ? burst : { passed: burst.passed + plopped };
+}
+
+/**
+ * Which of how many passes through the slot in a burst — "3 of 10": what
+ * passed, the one standing, and what still waits — or null while it is calm.
+ */
+export function slotBurst(slot: LiveSlot): { readonly at: number; readonly of: number } | null {
+  if (slot.burst === null) return null;
+  const of = slot.burst.passed + slot.entries.length + waiting(slot);
+  return { at: Math.min(of, slot.burst.passed + 1), of };
 }
 
 /** How long an item stands once shown: less while three or more wait behind it, less again past eight. */
@@ -245,6 +281,7 @@ export function slotStart(offer: Omit<SlotOffer, "final">): LiveSlot {
     quietSince: quietAfter(entries, quietStart(offer), offer.at),
     pending: [],
     lastPlopAt: null,
+    burst: null,
   };
 }
 
@@ -265,7 +302,7 @@ export function slotResync(slot: LiveSlot, offer: Omit<SlotOffer, "final">): Liv
     offer.live.length === slot.live.length &&
     offer.live.every((key, index) => slot.live[index] === key) &&
     seen.size === slot.seen.size;
-  return same && slot.pending.length === 0
+  return same && slot.pending.length === 0 && slot.burst === null
     ? slot
     : {
         entries,
@@ -274,6 +311,7 @@ export function slotResync(slot: LiveSlot, offer: Omit<SlotOffer, "final">): Liv
         quietSince: quietAfter(entries, quietStart(offer), offer.at),
         pending: [],
         lastPlopAt: slot.lastPlopAt,
+        burst: null,
       };
 }
 
@@ -291,9 +329,12 @@ export function slotSettle(slot: LiveSlot, at: number): LiveSlot {
   if (plopping === null) {
     const admitted = admit(slot, at, slot.quietSince);
     const quietSince = quietAfter(admitted.entries, slot.quietSince, at);
-    return admitted.entries === slot.entries && quietSince === slot.quietSince
+    const burst = burstAfter(slot.burst, { ...slot, ...admitted }, 0);
+    return admitted.entries === slot.entries &&
+      quietSince === slot.quietSince &&
+      burst === slot.burst
       ? slot
-      : { ...slot, ...admitted, quietSince };
+      : { ...slot, ...admitted, quietSince, burst };
   }
   const left = slot.entries.filter((entry) => entry !== plopping);
   // What plops makes way for what waited at once: one change, never a "Thinking" between.
@@ -303,6 +344,7 @@ export function slotSettle(slot: LiveSlot, at: number): LiveSlot {
     ...admitted,
     quietSince: quietAfter(admitted.entries, null, at),
     lastPlopAt: at,
+    burst: burstAfter(slot.burst, { ...slot, ...admitted }, 1),
   };
 }
 
@@ -323,6 +365,7 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
       quietSince: null,
       pending: [],
       lastPlopAt: null,
+      burst: null,
     };
   }
   const live = new Set(offer.live);
@@ -393,6 +436,7 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
       quietSince: entries.length > 0 ? null : slot.quietSince,
       pending,
       lastPlopAt: slot.lastPlopAt,
+      burst: slot.burst,
     },
     offer.at,
   );
