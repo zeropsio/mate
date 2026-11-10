@@ -14,12 +14,18 @@
  * described at its head (a draft asks nothing), its Mate at rest (D7). A recipe change is the
  * group's document and is left to the projects page.
  *
- * A change that does not merge as it stands — it conflicts with `main`, HQ still checks it, or
- * `main` holds all of it — waits on the Mate or on HQ, not on the person, yet the header counts it:
- * the strip lists it too, after those that merge, in the word its row says (`changeState`: one
- * answer on every surface) and with the fix its review offers (`Ask Wren to resolve it`), so the
- * header's count and the strip's never part (the rehearsal of 2026-10-25: "Review 2" over a strip
- * of one). Only a change that merges makes the Mate's face need the person (`waiting`).
+ * A change that does not merge as it stands — it conflicts with `main`, or HQ still checks it —
+ * waits on the Mate or on HQ, not on the person, yet the header counts it: the strip lists it too,
+ * after those that merge, in the word its row says (`changeState`: one answer on every surface)
+ * and with the fix its review offers (`Ask Wren to resolve it`), so the header's count and the
+ * strip's never part (the rehearsal of 2026-10-25: "Review 2" over a strip of one). Only a change
+ * that merges makes the Mate's face need the person (`waiting`).
+ *
+ * A change `main` already holds all of waits on nobody and has no fix to offer, so neither the
+ * header nor the strip counts it (`changeAsksForReview`): it is finished, not waiting (the owner,
+ * 2026-11-10 — a strip of three changes waiting for a review, the third one saying `Nothing to
+ * merge` under a Review of its own). HQ closes one another change's landing carried, and its own
+ * page says which it was merged as part of (`landedWith`).
  *
  * A Mate may hold several changes at once, one per branch: the conversation offers every one of
  * them, the change on the branch its lease is bound to first, then the newest that merge, then the
@@ -45,8 +51,8 @@ export const MATE_NEXT_STEP_LINES = 3;
 
 /**
  * What a change that does not merge as it stands says on its line: the word its row says
- * (`changeState` — `Conflicts with main`, `Checking`, `Nothing to merge`), and the fix its review
- * offers (`changeMergeVerdict`), where the Mate is the viewer's and its name is known.
+ * (`changeState` — `Conflicts with main`, `Checking`), and the fix its review offers
+ * (`changeMergeVerdict`), where the Mate is the viewer's and its name is known.
  */
 export interface MateNextStepVerdict {
   readonly title: string;

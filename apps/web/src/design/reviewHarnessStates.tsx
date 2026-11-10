@@ -2077,6 +2077,11 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: <Change over={{ state: "closed", merged: false }} />,
   },
   {
+    id: "landed-with",
+    label: "Merged as part of another change, which was built on it and merged first",
+    node: <Change over={{ state: "closed", merged: false, landedWith: 38 }} />,
+  },
+  {
     id: "mate-gone",
     label: "Its Mate gone: Close, or Hand to another Mate",
     node: <Change over={{ mateGone: true }} mate={GONE} heirs={HEIRS} />,
