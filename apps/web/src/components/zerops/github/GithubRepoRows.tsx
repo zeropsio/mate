@@ -458,8 +458,11 @@ function RepoRow({
 const DOT_WORDS = { ok: "Working", warn: "Needs attention", bad: "Stopped" } as const;
 
 /**
- * Line two: the state's one line, on one line in every state. Its mark (a dot, or a spinner while
- * a press is on its way) stands on the words' x-height.
+ * Line two: the state's one line. Calm, it is one line, cut at the row's end. Where something
+ * stopped or needs the person, why is the row's content and is said whole, on as many lines as
+ * it takes: a reason cut after four words with the rest behind a hover is a reason not given
+ * (nothing needs a hover to be read). Its mark (a dot, or a spinner while a press is on its way)
+ * stands on the words' x-height.
  */
 function StateLine({ state }: { readonly state: RepoState }) {
   const mark =
@@ -488,10 +491,17 @@ function StateLine({ state }: { readonly state: RepoState }) {
       )}
       role={state.tone === "busy" ? "status" : undefined}
     >
-      <CutText className="block truncate" text={state.line}>
-        {mark}
-        {state.line}
-      </CutText>
+      {state.tone === "warn" || state.tone === "bad" ? (
+        <span className="block text-pretty">
+          {mark}
+          {state.line}
+        </span>
+      ) : (
+        <CutText className="block truncate" text={state.line}>
+          {mark}
+          {state.line}
+        </CutText>
+      )}
     </p>
   );
 }
