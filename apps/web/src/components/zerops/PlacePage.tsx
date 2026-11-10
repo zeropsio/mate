@@ -348,6 +348,13 @@ function ZeropsProjectStopDetailPage({
     hqDetail.unavailableReason !== undefined;
   // The environment's vault beside its page, where the account reads its organization.
   const orgId = useAccountOrgId();
+  // HQ's findings on the application: navigation re-reads them on the commit that writes or
+  // clears one, and says `[]` once none is left.
+  const appProblems = useProjection(
+    canonicalHqNavigation,
+    orgId,
+    NO_ROUTE_NAVIGATION,
+  )?.structure?.apps.find((app) => app.id === groupId)?.problems;
   // Closed on every place's page as it opens: the drawer is this page's, never carried across.
   const [vaultOpen, setVaultOpen] = useState(false);
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
@@ -688,9 +695,7 @@ function ZeropsProjectStopDetailPage({
             ? undefined
             : stopTierStops({ tierStops: declared.tierStops, platform })
         }
-        stopsUnverified={
-          withheld === null ? unverifiedStops(hqDetail.problems, projectId) : NO_PROBLEMS
-        }
+        stopsUnverified={unverifiedStops(appProblems, projectId)}
         deployAnswer={deployAnswer}
         runAgain={
           redeploy === undefined || !mayRunAgain
