@@ -14,6 +14,7 @@ import { Button, InlineButton } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { PersonAvatar } from "../zerops/primitives";
+import { FaceCard, FaceCardLine, FaceCards } from "../zerops/system/FaceCard";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { forgetInvitationSent, invitationSentTo } from "./invitationSent";
 import type { ResentInvitation } from "@t3tools/client-runtime/data";
@@ -205,7 +206,7 @@ export function TeamList({
           <p className="tm-empty">Nobody matches “{query.trim()}”.</p>
         ) : (
           <>
-            <ul aria-label="People" className="tm-cards">
+            <FaceCards label="People">
               {shown.map((card) => (
                 <li
                   className="grid"
@@ -226,7 +227,7 @@ export function TeamList({
                   />
                 </li>
               ))}
-            </ul>
+            </FaceCards>
             {view.kind === "people" && view.people.length === 1 && view.invite.length > 0 ? (
               <p className="tm-empty" data-part="alone">
                 Only you so far. People you invite sign in with their own Zerops account.
@@ -240,8 +241,9 @@ export function TeamList({
 }
 
 /**
- * One person: their face, name, role, e-mail — and what a developer or guest reaches. The card
- * opens their page; an invitation's *Send again* sits under it, outside that link.
+ * One person: their face, name, role, e-mail — and what a developer or guest reaches, on the
+ * face card a project's Mates share (`FaceCard`). The card opens their page; an invitation's *Send
+ * again* sits under it, outside that link.
  */
 function PersonCard({
   card,
@@ -256,44 +258,9 @@ function PersonCard({
   const reach =
     person.reach === null || person.reach.kind === "everything" ? null : reachWords(person.reach);
   const offer = onSendAgain === undefined ? null : card.offer;
-  const content = (
-    <>
-      <span className="tm-card-face">
-        <PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />
-      </span>
-      <span className="tm-card-name" data-part="name">
-        {person.name === person.email ? <Address address={person.name} /> : person.name}
-      </span>
-      <span className="tm-card-badges">
-        <span className="tm-badge" data-part="role">
-          {person.role}
-        </span>
-        {person.you ? (
-          <span className="tm-badge" data-part="you" data-tone="muted">
-            You
-          </span>
-        ) : null}
-      </span>
-      {card.invited === null ? null : (
-        <span className="tm-card-mail" data-part="pending">
-          {card.invited}
-        </span>
-      )}
-      {person.email === null || person.email === person.name ? null : (
-        <span className="tm-card-mail" data-part="email">
-          <Address address={person.email} />
-        </span>
-      )}
-      {reach === null ? null : (
-        <span className="tm-card-mail" data-part="reach">
-          {reach.charAt(0).toUpperCase() + reach.slice(1)}
-        </span>
-      )}
-    </>
-  );
   const foot =
     offer === null && card.trouble === null && !card.busy ? null : (
-      <span className="tm-card-foot">
+      <>
         {card.trouble === null ? null : (
           <span className="tm-card-trouble" role="alert">
             {card.trouble}
@@ -314,23 +281,46 @@ function PersonCard({
                 : "Send again"}
           </InlineButton>
         )}
-      </span>
+      </>
     );
   return (
-    <div className="tm-card" data-pending={person.pending || undefined}>
-      {card.listed ? (
-        <Link
-          className="tm-card-body"
-          params={{ clientUserId: person.key }}
-          to="/settings/team/$clientUserId"
-        >
-          {content}
-        </Link>
-      ) : (
-        <div className="tm-card-body">{content}</div>
+    <FaceCard
+      chips={
+        <>
+          <span className="tm-badge" data-part="role">
+            {person.role}
+          </span>
+          {person.you ? (
+            <span className="tm-badge" data-part="you" data-tone="muted">
+              You
+            </span>
+          ) : null}
+        </>
+      }
+      faded={person.pending}
+      figure={<PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />}
+      foot={foot}
+      press={
+        card.listed ? (
+          <Link params={{ clientUserId: person.key }} to="/settings/team/$clientUserId" />
+        ) : undefined
+      }
+      title={person.name === person.email ? <Address address={person.name} /> : person.name}
+    >
+      {card.invited === null ? null : (
+        <FaceCardLine data-part="pending">{card.invited}</FaceCardLine>
       )}
-      {foot}
-    </div>
+      {person.email === null || person.email === person.name ? null : (
+        <FaceCardLine data-part="email">
+          <Address address={person.email} />
+        </FaceCardLine>
+      )}
+      {reach === null ? null : (
+        <FaceCardLine data-part="reach">
+          {reach.charAt(0).toUpperCase() + reach.slice(1)}
+        </FaceCardLine>
+      )}
+    </FaceCard>
   );
 }
 
