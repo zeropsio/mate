@@ -808,11 +808,14 @@ export const makeZeropsHqLink = (
             attempt = 0;
             continue;
           }
-          // Only an admitted link that stayed up, one the Mate's own newer link superseded, or one
-          // HQ handed over on purpose resets the wait; a link that never gets state is a failure.
+          // Only an admitted link that stayed up, or one the Mate's own newer link superseded, resets
+          // the wait. A handover of any other link climbs like a failure: an HQ that keeps closing
+          // links must not be redialled by every Mate at the shortest wait.
           const lived = (yield* Clock.currentTimeMillis) - began;
           attempt =
-            planned || (ran.opened && ran.stated && lived >= LINK_STABLE_MS) ? 0 : attempt + 1;
+            close?.code === SUPERSEDED || (ran.opened && ran.stated && lived >= LINK_STABLE_MS)
+              ? 0
+              : attempt + 1;
           const delay = delays[Math.min(Math.max(attempt - 1, 0), delays.length - 1)] ?? 1_000;
           // Up to a quarter more, so Mates that lost one HQ do not all knock on the next at once.
           const spread = yield* Random.nextIntBetween(0, Math.floor(delay / 4) + 1);
