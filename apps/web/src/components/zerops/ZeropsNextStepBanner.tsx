@@ -212,7 +212,10 @@ export function ZeropsNextStepStrip({
         data-composer-top="review"
       >
         <MateFace shape={strip.shape} size={24} state="needs" tint={strip.tint} />
-        <p className="truncate font-medium text-foreground text-line leading-4.5">{strip.title}</p>
+        {/* On a phone it wraps: cut, it ended mid-word ("a review of 3 chan…"). */}
+        <p className="truncate font-medium text-foreground text-line leading-4.5 max-sm:whitespace-normal">
+          {strip.title}
+        </p>
         {dismissButton(strip.target, onDismiss, "-my-1 justify-self-end")}
         {lines.map((line) => (
           <div
@@ -260,7 +263,10 @@ export function ZeropsNextStepStrip({
     >
       <MateFace shape={strip.shape} size={24} state="needs" tint={strip.tint} />
       <div className="min-w-0">
-        <p className="truncate font-medium text-foreground text-line leading-4.5">{strip.title}</p>
+        {/* On a phone it wraps: cut, it ended mid-word ("a review of 3 chan…"). */}
+        <p className="truncate font-medium text-foreground text-line leading-4.5 max-sm:whitespace-normal">
+          {strip.title}
+        </p>
         <p className="truncate text-muted-foreground text-line leading-4.5">{strip.detail}</p>
       </div>
       {/* A change's one door is its review, where it is merged: never *Put it live*, which makes
