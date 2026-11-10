@@ -307,7 +307,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import { isEditableFocused } from "../lib/editableFocus";
 import { undoLatestThreadAction } from "../hooks/showUndoToast";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
-import { ArrowDownIcon, PaperclipIcon } from "lucide-react";
+import { ArrowDownIcon, PaperclipIcon, XIcon } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -9242,7 +9242,24 @@ function ConversationView(props: ChatViewProps) {
             // (pr-3 in the tab bar plus this pixel equals the absolute
             // right inset plus mr-px), so the cluster does not creep when
             // the sheet opens.
-            layoutControls={<div className="mr-px flex items-center">{panelToggleControls}</div>}
+            layoutControls={
+              <div className="mr-px flex items-center">
+                {isMobileViewport ? (
+                  // A phone's sheet covers the conversation whole: its way back is a close, where
+                  // the toggle that opened it stood.
+                  <Button
+                    aria-label="Close panel"
+                    onClick={closePreviewPanel}
+                    size="icon-md"
+                    variant="ghost"
+                  >
+                    <XIcon />
+                  </Button>
+                ) : (
+                  panelToggleControls
+                )}
+              </div>
+            }
             surfaces={rightPanelState.surfaces}
             activeSurfaceId={activeRightPanelSurface?.id ?? null}
             pendingSurfaceIds={pendingFileSurfaceIds}
