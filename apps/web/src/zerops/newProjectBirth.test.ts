@@ -33,6 +33,7 @@ import {
   newProjectSteps,
   newProjectView,
   placedNewProjects,
+  refusedAddBirth,
   runAdd,
   runNewProjectBirth,
   type CreationAsk,
@@ -1348,6 +1349,38 @@ describe("creationEnds — a creation that stopped can end", () => {
     },
   ])("$case", ({ made, want }) => {
     expect(creationEnds(made)).toEqual(want);
+  });
+});
+
+// The owner's 2026-11-10 menu: an Add refused for certain, started over, stood twice for everyone,
+// its first HQ birth left open with nothing to continue.
+describe("refusedAddBirth — the HQ birth an ended Add lets go of", () => {
+  const refused = { reason: "No room.", uncertain: false };
+  // witness: apps/web/src/zerops/newProjectBirth.ts | if (birth.failed === null || birth.failed.uncertain) return null; → if (birth.failed === null) return null;
+  it.each([
+    {
+      case: "an Add refused for certain, its birth recorded: let go of",
+      made: added({ intent: "b-ida", failed: refused }),
+      want: { appId: "app-acme", birthId: "b-ida" },
+    },
+    {
+      case: "an Add Zerops may have made: kept, it places that project",
+      made: added({ intent: "b-ida", failed: { reason: "Lost.", uncertain: true } }),
+      want: null,
+    },
+    {
+      case: "an Add refused before HQ recorded its birth: nothing to let go of",
+      made: added({ failed: refused }),
+      want: null,
+    },
+    { case: "running: kept", made: added({ intent: "b-ida" }), want: null },
+    {
+      case: "a New project refused for certain: kept, its own Try again",
+      made: birth({ intent: "b-1", failed: refused }),
+      want: null,
+    },
+  ])("$case", ({ made, want }) => {
+    expect(refusedAddBirth(made)).toEqual(want);
   });
 });
 

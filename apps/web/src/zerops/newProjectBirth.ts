@@ -626,6 +626,20 @@ export function creationEnds(birth: NewProjectBirth): {
   };
 }
 
+/**
+ * The HQ birth an Add refused for certain recorded, which its *Dismiss* or *Start over* lets go of
+ * with it: Zerops took no project, so nobody continues it, and kept it stays open for everyone, a
+ * second row once Add is pressed again. One Zerops may have taken keeps its birth, which places
+ * that project. Null for any other.
+ */
+export function refusedAddBirth(
+  birth: NewProjectBirth,
+): { readonly appId: string; readonly birthId: string } | null {
+  if (birth.adds === undefined || birth.intent === null || birth.projectId !== null) return null;
+  if (birth.failed === null || birth.failed.uncertain) return null;
+  return { appId: birth.adds.appId, birthId: birth.intent };
+}
+
 /** The managed services a recipe's yaml names, in its order: none where it names none. */
 export function recipeManaged(yaml: string): ReadonlyArray<string> | undefined {
   const managed = (recipeTierServices(yaml) ?? []).flatMap((service) =>
