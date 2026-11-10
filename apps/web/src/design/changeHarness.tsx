@@ -7,8 +7,9 @@
  * `?review=<id>` shows one state alone, `?review=all` every one (the default); `?theme=dark` the
  * dark palette. The page's states are `page`, `page-settle` and `page-reading`; `settle` is the
  * dialog's reads landing late, to set its first frame against its settled one. `?release=<id>`
- * opens the release's sheet in that state (`open` the plain one, `journey` reading to live), its
- * change rows stepping into each change's review and back; `?sheet=change` opens the change's.
+ * opens the release's sheet in that state (`open` the plain one, `journey` reading to live,
+ * `reading-play` its wait for HQ's plan through time), its change rows stepping into each change's
+ * review and back; `?sheet=change` opens the change's.
  *
  * Fixtures only. Nothing here ships in the app bundle — `design-change.html` is not
  * `index.html`, and no route imports this module.
