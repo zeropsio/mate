@@ -65,6 +65,7 @@ import {
 } from "~/components/zerops/projects/ZeropsProjectsFlow";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
+import { showHarnessPlaces } from "./placeSitesFixtures";
 import {
   CROWD_MATES,
   crowdTitle,
@@ -793,7 +794,9 @@ function lineProjects(): ReadonlyArray<Project> {
           version: version("v0.1.7"),
           addresses: [
             { service: "app", url: "https://kitepost.example" },
+            { service: "app", url: "https://www.kitepost.example" },
             { service: "api", url: "https://api-kitepost-4d1a.prg1.zerops.app" },
+            { service: "app", url: "https://app-kitepost-4d1a.prg1.zerops.app" },
           ],
         }),
         line: "",
@@ -840,6 +843,31 @@ function lineProjects(): ReadonlyArray<Project> {
 }
 
 const byId = new Map(PROJECTS.map((entry) => [entry.entry.group.groupId, entry]));
+
+// Each project's places as the menu would have drawn them: a place's Sites opens from them.
+for (const { entry } of PROJECTS) {
+  const { production, stages } = entry.flow;
+  showHarnessPlaces(entry.group.groupId, entry.group.name, [
+    ...("stop" in production
+      ? [
+          {
+            kind: "production" as const,
+            projectId: production.stop.projectId,
+            name: production.stop.name,
+            version: production.stop.version?.label,
+            addresses: production.stop.addresses,
+          },
+        ]
+      : []),
+    ...stages.map((stage) => ({
+      kind: "stage" as const,
+      projectId: stage.projectId,
+      name: stage.name,
+      version: stage.version?.label,
+      addresses: stage.addresses,
+    })),
+  ]);
+}
 const mineOf = (entry: Mate) => entry.owner === NOVA;
 
 /**

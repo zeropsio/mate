@@ -7,6 +7,7 @@ import {
   canonicalAppEnvironments,
   canonicalHqNavigation,
   environmentById,
+  type VaultView,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import * as Schema from "effect/Schema";
@@ -14,7 +15,9 @@ import * as Option from "effect/Option";
 import { useAccountDataOptional, useProjection } from "~/zerops/accountData";
 import { useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
-import { StopVaultDrawer, StopVaultToggle } from "./vault/StopVault";
+import { StopVaultDrawer } from "./vault/StopVault";
+import { useProjectVault } from "./vault/VaultPanelContainer";
+import { vaultOverview } from "./vault/vaultOverview.logic";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 /**
@@ -130,7 +133,9 @@ import {
   type StopDeployAgain,
 } from "./place/PlaceServices";
 import { PlaceAccessCard } from "./place/PlaceAccess";
+import { PlaceDoors } from "./place/PlaceDoors";
 import { PlaceNextCard, PlaceNextRelease } from "./place/PlaceNext";
+import { PlaceVaultCard } from "./place/PlaceVaultCard";
 import { usePlaceServiceMap } from "./place/usePlaceServiceMap";
 import {
   placeServiceRows,
@@ -361,6 +366,9 @@ function ZeropsProjectStopDetailPage({
   )?.structure?.apps.find((app) => app.id === groupId)?.problems;
   // Closed on every place's page as it opens: the drawer is this page's, never carried across.
   const [vaultOpen, setVaultOpen] = useState(false);
+  // Its vault as the drawer reads it, held while the page is drawn: the aside's card says it at a
+  // glance. Only where the drawer is offered, and for this one project.
+  const vaultView = useProjectVault(orgId === null ? null : projectId);
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
   const deployments = useStopDeploymentsShown();
@@ -593,7 +601,11 @@ function ZeropsProjectStopDetailPage({
         groupName={stopGroupName}
         platformServices={serviceMap.rows}
         usageRead={serviceMap.usageRead}
-        vault={orgId === null ? undefined : { orgId, open: vaultOpen, onOpenChange: setVaultOpen }}
+        vault={
+          orgId === null
+            ? undefined
+            : { orgId, open: vaultOpen, onOpenChange: setVaultOpen, view: vaultView }
+        }
         onManageAddresses={
           orgId === null
             ? undefined
@@ -1016,6 +1028,11 @@ export function ZeropsStopPane({
         readonly onOpenChange: (open: boolean) => void;
         /** What the drawer holds; the project's vault unless given (a harness's fixture). */
         readonly body?: React.ReactNode;
+        /**
+         * The vault as the drawer reads it (`useProjectVault`), for the aside's card: held while
+         * the page is drawn. Absent, no card.
+         */
+        readonly view?: VaultView | undefined;
       }
     | undefined;
   readonly readFailures?: React.ReactNode;
@@ -1139,6 +1156,12 @@ export function ZeropsStopPane({
   readonly routeTrouble?: string | null;
 }) {
   const [allReleases, setAllReleases] = useState(false);
+  // The part of the vault its drawer opens at: a part's row of the aside's card; else its top.
+  const [vaultPart, setVaultPart] = useState<string | undefined>(undefined);
+  const openVault = (part?: string) => {
+    setVaultPart(part);
+    vault?.onOpenChange(true);
+  };
   const services = readServices ?? NO_SERVICE_ROWS;
   const production = stop.tier === "production";
   // One more than the list holds is listed too: a verb to show one row is no shorter than the row.
@@ -1269,9 +1292,21 @@ export function ZeropsStopPane({
     <DetailShell
       actions={
         <>
-          {vault === undefined ? null : (
-            <StopVaultToggle onOpenChange={vault.onOpenChange} open={vault.open} />
-          )}
+          {/* The place's two doors, as its line has them wherever it is named. */}
+          <PlaceDoors
+            look="page"
+            name={head.title}
+            sites={
+              projectId === undefined || routes.length === 0
+                ? undefined
+                : { groupId, kind: production ? "production" : "stage", projectId }
+            }
+            vault={
+              vault === undefined || projectId === undefined
+                ? undefined
+                : { onOpen: () => openVault(), open: vault.open }
+            }
+          />
           {projectId === undefined ? null : (
             <ZeropsStopMenu
               groupId={groupId}
@@ -1533,120 +1568,61 @@ export function ZeropsStopPane({
           </div>
 
           <aside className="flex min-w-0 flex-col gap-8" aria-label={`${head.title} setup`}>
+            {/* Live state leads, only while something runs; then what is set up once, the most
+                used first: where it answers, what it is given, who reaches it, what it runs on. */}
             <div className="min-w-0">
               <RunningNow lines={runningNow ?? NOTHING_RUNNING} />
-              <PlaceSection
-                label={
-                  <SectionLabel count={servicesWaiting ? undefined : table.length}>
-                    Services
-                  </SectionLabel>
-                }
-              >
-                {servicesWaiting ? (
-                  <PlaceServicesWaiting />
-                ) : projectId === undefined ? null : (
-                  <PlaceServiceTable
-                    answered={answered}
-                    deployAgain={deployAgain}
+              {projectId === undefined ? null : (
+                <PlaceSection
+                  label={
+                    <SectionLabel
+                      action={
+                        onManageAddresses === undefined ? undefined : (
+                          <Button onClick={onManageAddresses} size="sm" variant="link">
+                            Manage
+                          </Button>
+                        )
+                      }
+                    >
+                      Addresses
+                    </SectionLabel>
+                  }
+                >
+                  <PlaceAddressCard
+                    enablingServiceId={enablingServiceId ?? null}
+                    offers={offers}
+                    onEnableRoute={onEnableRoute}
                     projectId={projectId}
-                    rows={table}
-                    said={verdict.detail}
-                    usageRead={usageRead}
-                  >
-                    {notInZerops.map((hostname) => (
-                      <PlaceMissingService
-                        answer={answered.get(hostname)}
-                        byRelease={production}
-                        hostname={hostname}
-                        key={hostname}
-                        verb={
-                          // A production gets a service only by a release: HQ refuses the verb.
-                          addService === undefined || production ? null : (
-                            <Button
-                              disabled={addService.running(hostname)}
-                              onClick={() => addService.onAdd(hostname)}
-                              size="sm"
-                              variant="secondary"
-                            >
-                              {addService.running(hostname)
-                                ? flowVerbLabel("add-service", true)
-                                : `${flowVerbLabel("add-service", false)} ${hostname}`}
-                            </Button>
-                          )
-                        }
-                      />
-                    ))}
-                  </PlaceServiceTable>
-                )}
-                {servicesWaiting || table.length > 0 || notInZerops.length > 0 ? null : (
-                  // Its code services and the platform's both: a place with a database alone has one.
-                  <p
-                    className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
-                    data-zerops-surface="place-services-empty"
-                  >
-                    Nothing runs here yet. Its services appear as its first deploy lands.
-                  </p>
-                )}
-                {projectId === undefined || tierStops.length === 0 ? null : (
-                  <StopTierStops
-                    projectId={projectId}
-                    rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
-                    rows={tierStops}
+                    routes={routes}
                   />
-                )}
-                {stopsUnverified.length === 0 ? null : (
-                  // Never drawn as stopped: HQ has not confirmed it, and says so until it does.
-                  <div className="flex flex-col gap-2" data-zerops-surface="stop-unverified">
-                    <p className="text-sm text-muted-foreground">
-                      Stop not confirmed:{" "}
-                      {[
-                        ...new Set(
-                          stopsUnverified.flatMap(({ where }) =>
-                            where.service === undefined ? [] : [where.service],
-                          ),
-                        ),
-                      ].join(", ") || "a service"}
-                    </p>
-                    <HqProblems problems={stopsUnverified} />
-                  </div>
-                )}
-                {otherDeploys === undefined ? null : (
-                  <ZeropsDeployAnswer
-                    answer={otherDeploys}
-                    showEnvironment={otherDeploys.jobs.some(
-                      ({ environment }) => environment !== stop.name,
-                    )}
-                  />
-                )}
-              </PlaceSection>
+                  {routeTrouble === null || routeTrouble === undefined ? null : (
+                    <p className="text-sm text-status-failed-text">{routeTrouble}</p>
+                  )}
+                </PlaceSection>
+              )}
             </div>
 
-            {projectId === undefined ? null : (
+            {vault?.view === undefined || projectId === undefined ? null : (
               <PlaceSection
                 label={
                   <SectionLabel
                     action={
-                      onManageAddresses === undefined ? undefined : (
-                        <Button onClick={onManageAddresses} size="sm" variant="link">
-                          Manage
-                        </Button>
-                      )
+                      <Button
+                        onClick={() => {
+                          openVault();
+                        }}
+                        size="sm"
+                        variant="link"
+                      >
+                        Open
+                      </Button>
                     }
                   >
-                    Addresses
+                    Vault
                   </SectionLabel>
                 }
               >
-                <PlaceAddressCard
-                  enablingServiceId={enablingServiceId ?? null}
-                  offers={offers}
-                  onEnableRoute={onEnableRoute}
-                  projectId={projectId}
-                  routes={routes}
-                />
-                {routeTrouble === null || routeTrouble === undefined ? null : (
-                  <p className="text-sm text-status-failed-text">{routeTrouble}</p>
-                )}
+                <PlaceVaultCard onOpen={openVault} overview={vaultOverview(vault.view)} />
               </PlaceSection>
             )}
 
@@ -1679,6 +1655,91 @@ export function ZeropsStopPane({
                 <PlaceAccessCard line={access.line} summary={access.summary} />
               </PlaceSection>
             )}
+
+            <PlaceSection
+              label={
+                <SectionLabel count={servicesWaiting ? undefined : table.length}>
+                  Services
+                </SectionLabel>
+              }
+            >
+              {servicesWaiting ? (
+                <PlaceServicesWaiting />
+              ) : projectId === undefined ? null : (
+                <PlaceServiceTable
+                  answered={answered}
+                  deployAgain={deployAgain}
+                  projectId={projectId}
+                  rows={table}
+                  said={verdict.detail}
+                  usageRead={usageRead}
+                >
+                  {notInZerops.map((hostname) => (
+                    <PlaceMissingService
+                      answer={answered.get(hostname)}
+                      byRelease={production}
+                      hostname={hostname}
+                      key={hostname}
+                      verb={
+                        // A production gets a service only by a release: HQ refuses the verb.
+                        addService === undefined || production ? null : (
+                          <Button
+                            disabled={addService.running(hostname)}
+                            onClick={() => addService.onAdd(hostname)}
+                            size="sm"
+                            variant="secondary"
+                          >
+                            {addService.running(hostname)
+                              ? flowVerbLabel("add-service", true)
+                              : `${flowVerbLabel("add-service", false)} ${hostname}`}
+                          </Button>
+                        )
+                      }
+                    />
+                  ))}
+                </PlaceServiceTable>
+              )}
+              {servicesWaiting || table.length > 0 || notInZerops.length > 0 ? null : (
+                // Its code services and the platform's both: a place with a database alone has one.
+                <p
+                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  data-zerops-surface="place-services-empty"
+                >
+                  Nothing runs here yet. Its services appear as its first deploy lands.
+                </p>
+              )}
+              {projectId === undefined || tierStops.length === 0 ? null : (
+                <StopTierStops
+                  projectId={projectId}
+                  rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
+                  rows={tierStops}
+                />
+              )}
+              {stopsUnverified.length === 0 ? null : (
+                // Never drawn as stopped: HQ has not confirmed it, and says so until it does.
+                <div className="flex flex-col gap-2" data-zerops-surface="stop-unverified">
+                  <p className="text-sm text-muted-foreground">
+                    Stop not confirmed:{" "}
+                    {[
+                      ...new Set(
+                        stopsUnverified.flatMap(({ where }) =>
+                          where.service === undefined ? [] : [where.service],
+                        ),
+                      ),
+                    ].join(", ") || "a service"}
+                  </p>
+                  <HqProblems problems={stopsUnverified} />
+                </div>
+              )}
+              {otherDeploys === undefined ? null : (
+                <ZeropsDeployAnswer
+                  answer={otherDeploys}
+                  showEnvironment={otherDeploys.jobs.some(
+                    ({ environment }) => environment !== stop.name,
+                  )}
+                />
+              )}
+            </PlaceSection>
           </aside>
         </div>
       </div>
@@ -1690,6 +1751,7 @@ export function ZeropsStopPane({
           name={head.title}
           onOpenChange={vault.onOpenChange}
           open={vault.open}
+          part={vaultPart}
           orgId={vault.orgId}
           projectId={projectId}
         />
