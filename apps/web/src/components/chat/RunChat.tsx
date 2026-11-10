@@ -1337,13 +1337,11 @@ function Mark({
   readonly line?: MarkLine | undefined;
   readonly children: ReactNode;
 }) {
-  const inSlot = use(InSlotContext);
   return (
     <span
       aria-hidden="true"
       className={cn(MARK_COLUMN, "flex justify-center", MARK_LINE[line])}
       data-run-mark=""
-      data-slot-mark={inSlot ? "" : undefined}
     >
       <span className="flex h-[1lh] items-center">{children}</span>
     </span>
@@ -3958,41 +3956,24 @@ function writeStyle(element: HTMLElement, name: string, value: string | null): v
 }
 
 /**
- * Places the live slot's face and clock on its first line, and says the room
- * the slot takes, its gap above it included: on a short page the card holds
- * it whole once the history has none left to give.
+ * Says the room the live slot takes, its gap above it included: on a short
+ * page the card holds it whole once the history has none left to give.
  */
 function placeSlot(list: HTMLOListElement | null): void {
   // Drawn outside a page (a test's renderer), it has no layout to read.
   if (typeof list?.querySelector !== "function") return;
-  const mark = list.querySelector<HTMLElement>("[data-slot-mark] > span");
   const slotBox = list.parentElement;
-  if (slotBox === null) return;
+  const chat = slotBox?.parentElement ?? null;
+  if (slotBox === null || chat === null) return;
   // Every box read before anything is written: a write between two reads
   // restyled the card, and the second read laid it out again.
-  const line = mark?.getBoundingClientRect();
   const slotRect = slotBox.getBoundingClientRect();
-  const y = line === undefined ? null : line.top + line.height / 2 - slotRect.top;
-  // The room the slot takes, its gap above it included: on a short page
-  // the card holds it whole once the history has none left to give.
-  const chat = slotBox.parentElement;
   const above = slotBox.previousElementSibling ?? null;
   const from =
-    chat === null
-      ? null
-      : above === null
-        ? chat.getBoundingClientRect().top
-        : above.getBoundingClientRect().bottom;
-  writeStyle(slotBox, "--run-slot-line", y === null ? null : `${y}px`);
-  // Said on the card, which every line of it inherits: written only when it changes.
-  if (chat !== null && from !== null) {
-    writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from)}px`);
-  }
-  // They move with the first line only once placed: a first paint, a
-  // thread opened or a card scrolled back to never slides them in.
-  if (!slotBox.hasAttribute("data-placed")) {
-    requestAnimationFrame(() => slotBox.setAttribute("data-placed", ""));
-  }
+    above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
+  // Said on the card for its own cap (`@property --run-slot-room`): nothing
+  // under it inherits it, so a change of it restyles the card's box alone.
+  writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from)}px`);
 }
 
 /**
