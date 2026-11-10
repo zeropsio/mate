@@ -70,7 +70,9 @@ export function CommandPaletteContent({
         </CommandPanel>
         <CommandFooter
           className={cn(
-            "max-sm:flex-col max-sm:items-start",
+            // A narrow window stacks the keys' long row; under a finger only what is typed is
+            // left, and it fits one line.
+            "max-sm:flex-col max-sm:items-start max-sm:pointer-coarse:flex-row max-sm:pointer-coarse:items-center",
             // Nothing but a keyboard's keys in it: no bar at all under a finger.
             footerKeys === undefined &&
               (footerTrailing === undefined || footerTrailing === null) &&
