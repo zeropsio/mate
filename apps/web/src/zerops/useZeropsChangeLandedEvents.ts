@@ -89,11 +89,35 @@ export function useZeropsMateAppDetailHold(environmentId: string | null | undefi
 
 const NO_APPS: ReadonlyArray<string> = [];
 
+/**
+ * The Mate that lives in `environmentId`, as the listing has it. A listing row names its
+ * environment only while its link is up, so the project found last stands in while the same
+ * environment is asked for and its link is down: what a conversation shows of its application (a
+ * landed change, how a release ended) stays in its timeline through a reconnect instead of
+ * leaving it and coming back, moving everything under it twice.
+ */
+function useMateOfEnvironment(environmentId: string | null | undefined) {
+  const rows = useHeldZeropsDetailCandidates();
+  const linked = rows.find((row) => String(row.environmentId) === environmentId);
+  const [last, setLast] = useState<
+    { readonly environmentId: string; readonly projectId: string } | undefined
+  >(undefined);
+  if (
+    linked !== undefined &&
+    typeof environmentId === "string" &&
+    (last?.environmentId !== environmentId || last.projectId !== linked.project.id)
+  )
+    setLast({ environmentId, projectId: linked.project.id });
+  if (linked !== undefined) return linked;
+  return last !== undefined && last.environmentId === environmentId
+    ? rows.find((row) => row.project.id === last.projectId)
+    : undefined;
+}
+
 export function useZeropsChangeLandedEvents(
   environmentId: string | null | undefined,
 ): ReadonlyArray<ChangeLandedEvent> {
-  const rows = useHeldZeropsDetailCandidates();
-  const mate = rows.find((row) => String(row.environmentId) === environmentId);
+  const mate = useMateOfEnvironment(environmentId);
   // Only the Mate's own application's changes are read, while its conversation is drawn.
   const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
   const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
@@ -116,8 +140,7 @@ export function useZeropsChangeLandedEvents(
 export function useZeropsProductionLive(
   environmentId: string | null | undefined,
 ): ProductionLive | undefined {
-  const rows = useHeldZeropsDetailCandidates();
-  const mate = rows.find((row) => String(row.environmentId) === environmentId);
+  const mate = useMateOfEnvironment(environmentId);
   const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
   const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
   const live = productionRelease(useCompactProjectFlows(appIds).flows.get(groupId ?? ""));
@@ -226,8 +249,7 @@ export function useAppReleaseEnded(groupId: string | undefined): ReadonlyArray<R
 export function useZeropsReleaseEnded(
   environmentId: string | null | undefined,
 ): ReadonlyArray<ReleaseEndedEvent> {
-  const rows = useHeldZeropsDetailCandidates();
-  const mate = rows.find((row) => String(row.environmentId) === environmentId);
+  const mate = useMateOfEnvironment(environmentId);
   const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
   return useAppReleaseEnded(groupId ?? undefined);
 }
@@ -296,8 +318,7 @@ export function useZeropsConversationReleases(
   asks: ReadonlyArray<string>,
 ): ReadonlyArray<ReleaseEndedEvent> {
   const hqAddress = useHqAddress();
-  const rows = useHeldZeropsDetailCandidates();
-  const mate = rows.find((row) => String(row.environmentId) === environmentId);
+  const mate = useMateOfEnvironment(environmentId);
   const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
   const appIds = useMemo(
     () => (groupId === undefined || groupId === null ? NO_APPS : [groupId]),

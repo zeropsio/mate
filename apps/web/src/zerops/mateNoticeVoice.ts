@@ -137,20 +137,29 @@ import {
   type MateVoiceInput,
 } from "@t3tools/client-runtime/zerops/environments";
 
+type SpokenVoice = Exclude<MateVoice, { readonly surface: "none" }> & {
+  readonly face?: "idle" | "sleep" | "waking";
+  readonly severity?: "info" | "attention" | "danger" | undefined;
+  readonly headline?: string;
+  /** The source is still opening the conversation; its waiting pose follows readiness. */
+  readonly opening?: true;
+  readonly secondary?: string;
+  readonly details?: string;
+  /** Its container is restarting: its face plays the restart for as long as it lasts. */
+  readonly restarting?: true;
+  readonly restartLines?: ReadonlyArray<string>;
+};
+
+/**
+ * Where the web says it: the banner over the composer, the stage, or `header`: beside the Mate's
+ * name in the conversation's header, where a link that is only reconnecting says so and moves
+ * nothing (the owner, 2026-11-10: a notice that pops in over the composer and shifts the whole
+ * conversation, twice, for a tab left a minute).
+ */
 export type WebMateVoice =
   | { readonly surface: "none" }
-  | (Exclude<MateVoice, { readonly surface: "none" }> & {
-      readonly face?: "idle" | "sleep" | "waking";
-      readonly severity?: "info" | "attention" | "danger" | undefined;
-      readonly headline?: string;
-      /** The source is still opening the conversation; its waiting pose follows readiness. */
-      readonly opening?: true;
-      readonly secondary?: string;
-      readonly details?: string;
-      /** Its container is restarting: its face plays the restart for as long as it lasts. */
-      readonly restarting?: true;
-      readonly restartLines?: ReadonlyArray<string>;
-    });
+  | SpokenVoice
+  | (Omit<SpokenVoice, "surface"> & { readonly surface: "header" });
 
 /** Web copy and pose follow source evidence. Native clients keep their current presentation. */
 export function mateNoticeVoice(
@@ -166,6 +175,8 @@ export function mateNoticeVoice(
     readonly lastKnown?: string | undefined;
     readonly offlineSince?: string | undefined;
     readonly timestampFormat?: TimestampFormat;
+    /** A lost link over a shown conversation has lasted past `MATE_VOICE_QUIET_MS`: no blip. */
+    readonly linkHeld?: boolean;
     /** A lost link over a shown conversation has lasted past `MATE_VOICE_SLOW_MS`. */
     readonly linkSlow?: boolean;
     /** HQ's word on the Mate's key, from its own config (`ServerConfig.hqKey`). */
@@ -182,7 +193,7 @@ export function mateNoticeVoice(
     face: "idle" | "sleep" | "waking" = "sleep",
     actions: Exclude<MateVoice, { surface: "none" }>["actions"] = [],
     processes = false,
-  ): Exclude<WebMateVoice, { readonly surface: "none" }> => ({
+  ): SpokenVoice => ({
     surface,
     severity: decision.severity,
     headline,
@@ -336,16 +347,22 @@ export function mateNoticeVoice(
       );
     case "reconnecting":
     case "retrying": {
-      // Over a shown conversation a lost link is a blip until it is slow: the conversation stays
-      // where it was and the header's sync spinner says it catches up. Slow, one line in the
-      // Mate's name and Try now — the conversation already shows what the Mate last said, and a
-      // raw cause waits under Details.
+      // Over a shown conversation a lost link never takes the composer's banner: the conversation
+      // stays where it was. A blip says nothing; past it, one line in the Mate's name stands
+      // beside that name in the header, and Try now joins it once the link is slow. The
+      // conversation already shows what the Mate last said, and a raw cause waits under Details.
       if (surface === "banner") {
-        if (input.linkSlow !== true) return { surface: "none" };
+        if (input.linkHeld !== true && input.linkSlow !== true) return { surface: "none" };
         const cause =
           reachability.kind === "reconnecting" ? reachability.unavailableReason : undefined;
         return {
-          ...say(`Reconnecting to ${name}…`, "", "sleep", ["try-now"]),
+          ...say(
+            `Reconnecting to ${name}…`,
+            "",
+            "sleep",
+            input.linkSlow === true ? ["try-now"] : [],
+          ),
+          surface: "header",
           severity: "info",
           ...(cause === undefined ? {} : { details: cause }),
         };

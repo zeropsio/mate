@@ -440,11 +440,12 @@ describe("a lost link over a shown conversation", () => {
     { kind: "reconnecting", retryAtMs: 4_000 },
     { kind: "retrying", retryAtMs: 4_000, last: { kind: "network" }, restart: false },
   ] satisfies Reachability[];
-  const over = (reachability: Reachability, linkSlow: boolean) =>
+  const over = (reachability: Reachability, lost: "blip" | "held" | "slow") =>
     mateNoticeVoice({
       reachability,
       conversationShown: true,
-      linkSlow,
+      linkHeld: lost !== "blip",
+      linkSlow: lost === "slow",
       nowMs: 0,
       mateName: "Rosa",
       offlineSince: "2026-11-05T22:46:00.000Z",
@@ -452,16 +453,29 @@ describe("a lost link over a shown conversation", () => {
         "Last known 10:21: Rosa had no active work. The store now keeps its files in a bucket.",
     });
 
-  it.each(LOST)("stays quiet while reconnecting is not yet slow: %j", (reachability) => {
-    expect(over(reachability, false)).toEqual({ surface: "none" });
+  // witness: apps/web/src/zerops/mateNoticeVoice.ts | if (input.linkHeld !== true && input.linkSlow !== true) return { surface: "none" }; → if (false) return { surface: "none" };
+  it.each(LOST)("stays quiet while a lost link is a blip: %j", (reachability) => {
+    expect(over(reachability, "blip")).toEqual({ surface: "none" });
   });
+
+  // witness: apps/web/src/zerops/mateNoticeVoice.ts | input.linkSlow === true ? ["try-now"] : [] → ["try-now"]
+  it.each(LOST)(
+    "says it is reconnecting beside the Mate's name once the blip is over, never over the composer, and offers no verb until the link is slow: %j",
+    (reachability) => {
+      expect(over(reachability, "held")).toMatchObject({
+        surface: "header",
+        text: "Reconnecting to Rosa…",
+        actions: [],
+      });
+    },
+  );
 
   it.each(LOST)(
     "says one short line in the Mate's name once reconnecting is slow, never its last words, a countdown or the raw cause: %j",
     (reachability) => {
-      const voice = over(reachability, true);
+      const voice = over(reachability, "slow");
       expect(voice).toMatchObject({
-        surface: "banner",
+        surface: "header",
         headline: "Reconnecting to Rosa…",
         text: "Reconnecting to Rosa…",
         actions: ["try-now"],
@@ -478,7 +492,7 @@ describe("a lost link over a shown conversation", () => {
   );
 
   it("keeps a raw cause under its Details", () => {
-    expect(over(WITH_CAUSE, true)).toMatchObject({
+    expect(over(WITH_CAUSE, "slow")).toMatchObject({
       details: "WebSocket closed (1006) before the server said why",
     });
   });

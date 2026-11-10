@@ -6556,7 +6556,7 @@ function ConversationView(props: ChatViewProps) {
     if (activeEnvironmentUnavailable) {
       // A Mate's banner already says where its link is (`mateVoice`): no second voice. Where the
       // banner has no words yet, the refused send says so itself.
-      if (mateVoiceSpeaks(mateLinkVoice)) return "declined";
+      if (mateLinkVoice.surface !== "header" && mateVoiceSpeaks(mateLinkVoice)) return "declined";
       toastManager.add(
         stackedThreadToast({
           type: "warning",
