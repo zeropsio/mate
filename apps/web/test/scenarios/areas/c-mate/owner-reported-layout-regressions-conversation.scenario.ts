@@ -161,6 +161,109 @@ describe("owner-reported layout regressions", () => {
           ).toBeGreaterThanOrEqual(0);
         }),
     );
+
+    // The owner, 2026-11-10: while the Mate's words stood in the working row, the three dots that
+    // say they are still being written were "positioned overlapping both the text and the bottom
+    // row". They stood inside the bubble, in its foot, under its last line.
+    // witness: apps/web/src/index.css | margin: 0 0 9px 8px; → margin: 0 0 9px -48px;
+    it.effect.each([
+      {
+        case: "one line of words",
+        text: "Running the full test suite on shop now (it takes several minutes).",
+      },
+      {
+        case: "words past one line",
+        text: Array.from(
+          { length: 6 },
+          (_, index) =>
+            `Sentence ${index + 1}: the suite is running on shop and each file reports as it ends.`,
+        ).join(" "),
+      },
+    ])(
+      "the dots that say the Mate's words are still being written stand beside the bubble on its last line, on no words and no edge: $case",
+      ({ text }) =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+          yield* s.given.project("Ada", { mate: true });
+          const chat = mateChat(s);
+          chat
+            .fixture()
+            .exchange("Previous navigation", "The existing conversation is still here.");
+          const engine = chat.fixture().wire.engine;
+          yield* s.given.signedIn;
+          yield* Effect.promise(() => ownerMenu(s.page));
+          yield* chat.when.open();
+          yield* chat.when.send("Run the tests and tell me as you go");
+          const run = [...engine.runs.values()].at(-1)!.id;
+          const note = engine.item(run, { kind: "note", text: "", streaming: true, answer: false });
+          engine.stream(note, text);
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(
+              (words: string) =>
+                document
+                  .querySelector("[data-run-chat][data-run-live] [data-note-writing]")
+                  ?.previousElementSibling?.textContent?.includes(words) === true,
+              { polling: "raf" },
+              text.slice(-24),
+            ),
+          );
+          yield* Effect.promise(() => waitForStillFrames(s.page, { stillFrames: 12 }));
+          const seen = yield* Effect.promise(() =>
+            s.page.evaluate(() => {
+              const seat = document.querySelector(
+                "[data-run-chat][data-run-live] [data-note-writing]",
+              )!;
+              const bubble = seat.previousElementSibling!;
+              const edges = (element: Element) => {
+                const rect = element.getBoundingClientRect();
+                return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
+              };
+              // The words' own boxes, a line each: never the boxes that hold them.
+              const words: DOMRect[] = [];
+              const walker = document.createTreeWalker(bubble, NodeFilter.SHOW_TEXT);
+              for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                words.push(...range.getClientRects());
+              }
+              const foot = Math.max(...words.map((rect) => rect.bottom));
+              const last = words.filter((rect) => rect.bottom > foot - 4);
+              return {
+                dots: edges(seat.firstElementChild!),
+                bubble: edges(bubble),
+                row: edges(seat.closest("[data-chat-row]")!),
+                lines: new Set(words.map((rect) => Math.round(rect.bottom))).size,
+                lastLine: { top: Math.min(...last.map((rect) => rect.top)), bottom: foot },
+              };
+            }),
+          );
+          const { dots, bubble, row, lastLine } = seen;
+          const middle = (dots.top + dots.bottom) / 2;
+          if (text.length > 200)
+            expect(
+              seen.lines,
+              `ASSERTION: the words run past one line: ${quoted(seen)}`,
+            ).toBeGreaterThan(1);
+          expect(
+            dots.left - bubble.right,
+            `ASSERTION: the dots stand after the bubble, on none of its words and not on its edge: ${quoted(seen)}`,
+          ).toBeGreaterThanOrEqual(4);
+          expect(
+            row.right - dots.right,
+            `ASSERTION: the dots stand inside their row: ${quoted(seen)}`,
+          ).toBeGreaterThanOrEqual(-0.5);
+          expect(
+            middle > lastLine.top && middle < lastLine.bottom,
+            `ASSERTION: the dots stand on the words' last line: ${quoted(seen)}`,
+          ).toBe(true);
+          expect(
+            bubble.bottom - dots.bottom,
+            `ASSERTION: the dots end over the bubble's foot, never on what stands under it: ${quoted(seen)}`,
+          ).toBeGreaterThanOrEqual(0);
+          yield* s.then.noExternalNetwork;
+        }),
+    );
   });
 
   describe("Decision: geometry relations only; no style pins.", () => {
