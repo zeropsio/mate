@@ -24,6 +24,7 @@ import { STATUS_BADGE_TONE } from "./primitives";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
 import { releaseRowTone } from "./ZeropsProjectRow.logic";
+import { DIDNT_GO_LIVE_QUIET, releaseFailureIsOver, releaseTitle } from "./ZeropsReleaseRows.logic";
 import { gitReleaseHistory } from "./GitHistory.logic";
 import { changeTitle } from "./projects/projectHistory.logic";
 import { Badge } from "~/components/ui/badge";
@@ -46,6 +47,12 @@ export interface ZeropsReleasesCarried {
 interface ReleaseRowsProps {
   readonly groupId: string;
   readonly releases: ReadonlyArray<FlowReleaseRow>;
+  /**
+   * Every release of the production, newest first, where `releases` lists only the first few: a
+   * row reads beside the ones before it (`releaseTitle`, `releaseFailureIsOver`). `releases` where
+   * absent.
+   */
+  readonly every?: ReadonlyArray<FlowReleaseRow> | undefined;
   /** The verbs under way (`flowVerbKey`): a release rolling back holds its verb. */
   readonly pending: ReadonlySet<string>;
   /**
@@ -113,13 +120,16 @@ const EMPTY_RELEASES: ReadonlyMap<string, ReadonlyArray<string>> = new Map();
 
 /**
  * A production's releases, newest first, as its page lists them: one row each — its version, the
- * live one's pill, the first change it brought with how many in all, and when. A calm release says
- * no word; one that is not calm says its own (Deploy failed, Refused). The way back to an earlier
- * one shows on the row's hover or focus, and its review asks before anything moves. The rows only:
- * the card around them is the caller's.
+ * live one's pill, the first change it brought that the last live release had not, with how many in
+ * all, and when; one that carries a failed release's changes again says that instead. A calm
+ * release says no word; one that is not calm says its own (Deploy failed, Refused), as a pill while
+ * nothing live came after it and quietly once one did. The way back to an earlier one shows on the
+ * row's hover or focus, and its review asks before anything moves. The rows only: the card around
+ * them is the caller's.
  *
- * Given `carried`, a row also opens onto the commits its release carried. Without it, or before
- * the commits are read, a row is its tag and its shas.
+ * Given `carried`, a row also opens onto the commits its release carried — the whole row is the
+ * press, its chevron at its start as on everything that opens in place. Without it, or before the
+ * commits are read, a row is its tag and its shas.
  */
 export function ZeropsReleaseRows({
   carried,
@@ -148,6 +158,7 @@ const plural = (count: number, one: string, many: string) =>
 function ReleaseRow({
   release,
   releases,
+  every = releases,
   groupId,
   pending,
   onRollBack,
@@ -170,6 +181,7 @@ function ReleaseRow({
   // A refused release's line is HQ's reason, and the reason stays. A roll back carried nothing
   // new: it says what it went back to.
   const back = rolledBackTo(release, releases);
+  const titled = releaseTitle(release, every, releasing);
   const description: { readonly primary: string; readonly secondary: string | undefined } =
     release.verdict === "refused" && release.detail !== undefined
       ? { primary: release.detail, secondary: release.line }
@@ -180,11 +192,13 @@ function ReleaseRow({
               // A release of commits that belong to no change is titled by what it carried, never
               // "No changes" over a count of commits.
               primary:
-                release.history.changes[0] !== undefined
-                  ? changeTitle(release.history.changes[0].title)
-                  : release.history.commitCount > 0
-                    ? plural(release.history.commitCount, "commit", "commits")
-                    : "No changes",
+                titled !== undefined
+                  ? titled.text
+                  : release.history.changes[0] !== undefined
+                    ? changeTitle(release.history.changes[0].title)
+                    : release.history.commitCount > 0
+                      ? plural(release.history.commitCount, "commit", "commits")
+                      : "No changes",
               secondary: [
                 release.history.changes.length === 0
                   ? undefined
@@ -203,12 +217,20 @@ function ReleaseRow({
   const tone = releaseRowTone(release);
   const rollingBack = pending.has(flowVerbKey({ kind: "roll-back", groupId, tag: release.tag }));
   // Only a state that is not calm says its word, after the title: Live, Releasing, Didn't go
-  // live, Deploy failed, Refused.
+  // live, Deploy failed, Refused. A failure with a live release after it is history: no pill, its
+  // words quiet.
   const pill = live ? (
     <Badge tone="success">{release.word}</Badge>
   ) : releasing === release.tag && tone === "ok" ? (
     <Badge tone="info">{RELEASING_WORD}</Badge>
-  ) : tone === "ok" ? null : (
+  ) : tone === "ok" ? null : releaseFailureIsOver(release, every) ? (
+    <span
+      className="shrink-0 text-caption whitespace-nowrap text-muted-foreground"
+      data-zerops-surface="release-over"
+    >
+      {DIDNT_GO_LIVE_QUIET}
+    </span>
+  ) : (
     <Badge tone={STATUS_BADGE_TONE[tone]}>
       {notDeployed?.has(release.tag) === true ? RELEASE_DIDNT_GO_LIVE : release.word}
     </Badge>
@@ -269,12 +291,19 @@ function ReleaseRow({
       data-zerops-release={release.tag}
       data-zerops-release-live={live || undefined}
     >
-      <div className={cn(RELEASE_ROW_CLASS, !live && "group-hover/release:bg-accent/40")}>
+      <div
+        className={cn(
+          RELEASE_ROW_CLASS,
+          // Only a row with something to press answers the pointer.
+          !live && (expandable || release.rollBack) && "group-hover/release:bg-accent/40",
+        )}
+      >
         {expandable ? (
+          // The whole row opens it in place (`after`); its way back stands over the row's end.
           <button
             aria-expanded={open}
             aria-label={releaseCarriedToggleLabel(release.tag, open)}
-            className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
+            className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground group-hover/release:text-foreground after:absolute after:inset-0 after:rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden"
             onClick={toggle}
             type="button"
           >
@@ -302,7 +331,11 @@ function ReleaseRow({
           {/* The title, then its state on the same line; too narrow for both, the state under it. */}
           <span className="flex min-w-0 flex-col items-start gap-1 @lg/releases:flex-row @lg/releases:items-center @lg/releases:gap-3.5">
             <span
-              className="max-w-full min-w-0 truncate text-sm text-foreground"
+              className={cn(
+                "max-w-full min-w-0 truncate text-sm",
+                // The same changes again are no news: said, and quiet.
+                titled?.kind === "again" ? "text-muted-foreground" : "text-foreground",
+              )}
               data-zerops-surface="release-description"
             >
               {description.primary}

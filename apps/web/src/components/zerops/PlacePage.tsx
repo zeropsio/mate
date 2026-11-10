@@ -1444,6 +1444,7 @@ export function ZeropsStopPane({
                       onRollBack={onRollBack}
                       pending={pending}
                       notDeployed={releasesNotDeployed}
+                      every={releases}
                       releases={listed}
                       releasing={releasing}
                     />
