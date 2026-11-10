@@ -5300,6 +5300,12 @@ function RunScroll({
   // first line drawn, so nothing drawn moves and the scroll is as long.
   const [aside, setAside] = useState<ReadonlyArray<AsideStretch>>(NO_STRETCHES);
   const spacer = useMemo(() => aside.reduce((sum, stretch) => sum + stretch.height, 0), [aside]);
+  // The rows it draws: its lines from the first one drawn, each run of calls in one card.
+  const shown = gatherCalls(
+    (from > 0 ? lines.slice(from) : lines).map((line) =>
+      plopsIn(landing, line.key) ? { ...line, plops: true } : line,
+    ),
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const easesRef = useRef(eases);
@@ -5835,11 +5841,6 @@ function RunScroll({
       follow.heard({ kind: "ended" });
     }, SCROLL_QUIET_MS);
   };
-  const shown = gatherCalls(
-    (from > 0 ? lines.slice(from) : lines).map((line) =>
-      plopsIn(landing, line.key) ? { ...line, plops: true } : line,
-    ),
-  );
   return (
     <RunScrollHoldContext value={follow.hold}>
       <ChatShownContext value={shownRef}>
