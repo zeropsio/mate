@@ -589,8 +589,9 @@ function conflicting(number: number, title: string, mateProjectId: string) {
 }
 
 /**
- * The line's states: (calm) a stage and a production, one change ready; (stuck) a release that did
- * not go live; (busy) ten times the activity and three more places; (notlive) no production yet;
+ * The line's states, its board's four first: (calm) a stage and a production, one change ready;
+ * (stuck) a release that did not go live; (busy) ten times the activity, a copy on GitHub behind
+ * and three more places, one delivered to a branch; (notlive) no production yet;
  * (nostage) live without a stage; for the line in full (`&picture=full`), (three) three Mates and a
  * release waiting, and (crowd) sixty changes from twelve Mates. `line-mine` draws the busy one compact, for one Mate.
  */
@@ -642,6 +643,27 @@ function lineProjects(): ReadonlyArray<Project> {
       }),
       stop("busy-perf", "stage-perf", { state: "failed" }),
       stop("busy-demo", "demo", { version: version("v2.3.1") }),
+      // A place delivered to a branch, which follows: the line in full hangs it under `main`.
+      stop("busy-branch", "release branch", {
+        git: {
+          kind: "git",
+          standing: "pushed",
+          line: "Pushed v2.4.0",
+          version: "v2.4.0",
+          activeVersion: undefined,
+          queuedVersion: undefined,
+          previousVersion: "v2.3.1",
+          repositories: [],
+          pushed: 1,
+          total: 1,
+          lastPushed: new Map(),
+          nextActor: "none",
+          nextAction: "",
+          blocked: false,
+          recheck: false,
+          release: { allowed: true, reason: undefined, actions: [] },
+        },
+      }),
     ],
     chip: { label: "prod", state: "ok", version: "v2.4.0" },
     since: ago(60 * 24 * 3),

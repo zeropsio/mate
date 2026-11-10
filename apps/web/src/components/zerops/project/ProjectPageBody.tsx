@@ -65,6 +65,7 @@ import {
   SectionAction,
   SectionLabel,
   usePageTrail,
+  type LineCopy,
   type LineGroup,
   type NextReleaseView,
 } from "../system";
@@ -95,6 +96,13 @@ export interface ProjectPageFacts {
   readonly changesUnknown: string | undefined;
   /** Its repositories, as a git place's delivery names them. */
   readonly repos: ZeropsProjectFlow["repos"];
+  /** Its code's copies elsewhere (`lineCopies`): each a row under `main` on the line in full. */
+  readonly copies: ReadonlyArray<LineCopy>;
+  /**
+   * Why its last release did not go live, in the place page's own sentence
+   * (`releaseNotCreatedWords`); none where it went live, or where HQ names no cause.
+   */
+  readonly releaseCause: string | undefined;
   readonly environments: ReadonlyArray<EnvironmentRow>;
   /** Its places: what exists, and a slot for each tier that does not (`environmentSlots`). */
   readonly slots: ReadonlyArray<EnvironmentSlotRow>;
@@ -895,8 +903,10 @@ const GROUP_LIT_MS = 1400;
  * The project's recent changes. First their picture (`ProjectLine`): where each change is between
  * the Mates' work, `main`, the stage and production, a bead each, a count under each segment that
  * leads to its group below; the control in its corner grows it in place into the line in full
- * (`projectLineFull`: what each station is, each further place), which this device remembers per
- * project. Then the list, less the changes Waiting on you lists: open ones each
+ * (`projectLineFull`: what each station is and opens, each segment's one verb, each copy of the
+ * code and further place under `main`), which this device remembers per project. Open, the line
+ * repeats what Places says of a place and its release, verbs included. Then the list, less the
+ * changes Waiting on you lists: open ones each
  * with what stops it, merged ones grouped by where they went — the group's label says it once, in
  * the picture's words ("On stage, ready for production · 12"), and with one group the section's
  * label is it ("On main, not live yet · 5") — setup files last, quiet. The group a release would
@@ -956,23 +966,71 @@ function ProjectChanges<T>({
   // opens as it was left.
   const fullOpen = useUiStateStore((state) => state.projectLineFullById[groupId] === true);
   const setFullOpen = useUiStateStore((state) => state.setProjectLineFull);
+  const withheld = (line: PlaceLineData) =>
+    line.projectId === undefined ? null : (facts.withheldNotice?.(line.projectId) ?? null);
+  // Opened by its environment, as a bookmark names it: the same through a rename.
+  const placeId = (line: PlaceLineData) =>
+    facts.environments.find(
+      (row) => row.target.kind === "zerops" && row.target.projectId === line.projectId,
+    )?.id ?? line.projectId;
+  const productionSlot = facts.declared
+    ? facts.slots.find((slot) => slot.kind === "slot" && slot.tier === "production")
+    : undefined;
+  const productionNote = facts.slots.find(
+    (slot) => slot.kind === "environment" && slot.tier === "production",
+  );
+  // A place's vault, at the end of its station's name: shown while the station is pointed at or
+  // holds focus, always where nothing hovers.
+  const openVault = props.openPlaceVault;
+  const stationEnds = new Map(
+    openVault === undefined
+      ? []
+      : lines.flatMap((line): ReadonlyArray<readonly [string, ReactNode]> => {
+          const id = placeId(line);
+          const vault = withheld(line) === null ? placeVaultOf(line) : undefined;
+          return id === undefined || vault === undefined
+            ? []
+            : [
+                [
+                  id,
+                  // The same two doors a place wears on its line under Places, as icons: a
+                  // station's head has no room for their words.
+                  <PlaceDoors
+                    key={id}
+                    name={placeLabel(line)}
+                    sites={placeSitesOf(line, groupId)}
+                    vault={{
+                      onOpen: () => {
+                        openVault(vault);
+                      },
+                    }}
+                  />,
+                ],
+              ];
+        }),
+  );
   const full = projectLineFull(
     {
       ...pictureInput,
       // A place the grant withholds says so in place of its state.
       places: lines.map((line) => {
-        const notice =
-          line.projectId === undefined ? null : (facts.withheldNotice?.(line.projectId) ?? null);
+        const notice = withheld(line);
         return notice === null
           ? line
           : { ...line, dot: "unknown", words: [notice], trouble: false, addresses: [] };
       }),
-      // Opened by its environment, as a bookmark names it: the same through a rename.
-      placeId: (line) =>
-        facts.environments.find(
-          (row) => row.target.kind === "zerops" && row.target.projectId === line.projectId,
-        )?.id ?? line.projectId,
+      placeId,
       repos: (facts.repos ?? []).map((repo) => repo.name).filter((name) => name !== RECIPE_REPO),
+      copies: facts.copies,
+      releaseCause: facts.releaseCause,
+      releaseNote:
+        productionNote?.kind === "environment" && door.view.kind === "none"
+          ? productionNote.note?.text
+          : undefined,
+      putLive:
+        productionSlot?.kind === "slot" && productionSlot.add
+          ? environmentDoorLabel("production", productionSlot.name)
+          : undefined,
       coming: facts.slots.flatMap((slot) =>
         slot.kind === "devstage" || (slot.kind === "creating" && slot.tier === "stage")
           ? [{ key: slot.id, name: placeLabel({ kind: "stage", name: "stage" }), line: slot.line }]
@@ -1060,6 +1118,17 @@ function ProjectChanges<T>({
             onOpen: (open) => {
               setFullOpen(groupId, open);
             },
+            onOpenMates: () => {
+              const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+              document
+                .getElementById("pp-mates")
+                ?.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "center" });
+            },
+            onPutLive: () => {
+              facts.onAdd("production");
+            },
+            onReviewRelease: facts.release.onReview,
+            stationEnds,
           }}
           held={entry.awaiting}
           onOpenChange={(pull, from) => {

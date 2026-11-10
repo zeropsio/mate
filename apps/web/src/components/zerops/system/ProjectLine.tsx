@@ -3,19 +3,20 @@
  * on one horizontal track, by name; the changes between them are beads; a count stands under each
  * segment.
  *
- * It shows and never acts for a place: no state line, no address, no verb — those are the
- * project's Places and the place's page. A bead names its change on hover and focus and opens it
- * when pressed; a count leads to the group of the Changes list it counts.
+ * The picture shows and never acts for a place: no state line, no address, no verb — those are
+ * the project's Places and the place's page. A bead names its change on hover and focus and opens
+ * it when pressed; a count leads to the group of the Changes list it counts.
  *
  * Its height is the same in every state, and `held` keeps its shape (names, track, dots, no bead)
  * while the project's reads have not answered. Under 700 px of its own width it is compact: short
  * captions, the same beads (a container query; a Mate's Code page).
  *
- * Behind it stands the line in full (`ProjectLineFull`), by one control in the card's corner.
- * `full.kind` says where: `here`, the card grows in place into it and back (the project's page),
- * the control in the top corner in both states; `page`, the control is the way to the project's
- * page, which arrives with it open (a Mate's panel has no room for it), in the corner under
- * production.
+ * Behind it stands the line in full (`ProjectLineFull`: each station's state and door, each
+ * segment's verb, the rows under `main`), by one control in the card's corner. `full.kind` says
+ * where: `here`, the card grows in place into it and back (the project's page), the control in the
+ * top corner in both states, and the door carries what the full line acts on
+ * (`ProjectLineFullActs`); `page`, the control is the way to the project's page, which arrives
+ * with it open (a Mate's panel has no room for it), in the corner under production.
  *
  * Props: `view` (`projectLine(…)`; `undefined` while the project is unread: the card holds the
  * line's height, nothing drawn); `held`; `onOpenChange(pull, from)` (a bead: the change's review,
@@ -28,7 +29,7 @@ import { useState } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import { ProjectLineFull } from "./ProjectLineFull";
+import { ProjectLineFull, type ProjectLineFullActs } from "./ProjectLineFull";
 import {
   Caption,
   SegmentBeads,
@@ -43,14 +44,14 @@ export const SHOW_FULL_PICTURE = "Show the full picture";
 const SHOW_LESS = "Show less";
 
 export type ProjectLineFullDoor =
-  | {
+  | ({
       readonly kind: "here";
       /** The line in full (`projectLineFull(…)`), read whether or not it is open. */
       readonly view: ProjectLineFullView | undefined;
       readonly groupId: string;
       readonly open: boolean;
       readonly onOpen: (open: boolean) => void;
-    }
+    } & ProjectLineFullActs)
   | {
       readonly kind: "page";
       readonly groupId: string;
@@ -125,7 +126,11 @@ export function ProjectLine({
                 groupId={here.groupId}
                 held={held}
                 onOpenChange={onOpenChange}
+                onOpenMates={here.onOpenMates}
+                onPutLive={here.onPutLive}
+                onReviewRelease={here.onReviewRelease}
                 onShowGroup={onShowGroup}
+                stationEnds={here.stationEnds}
                 view={here.view}
               />
             </div>
