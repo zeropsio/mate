@@ -41,9 +41,11 @@ describe("a continued birth's original plan", () => {
         },
       },
     };
-    expect(continuedBirthPlan(tier, "org", undefined).ok).toBe(false);
-    expect(continuedBirthPlan(tier, "org", { ...recipe, revision: "new-main" }).ok).toBe(false);
-    const plan = continuedBirthPlan(tier, "org", recipe);
+    expect(continuedBirthPlan(tier, "org", undefined, "OWNER").ok).toBe(false);
+    expect(continuedBirthPlan(tier, "org", { ...recipe, revision: "new-main" }, "OWNER").ok).toBe(
+      false,
+    );
+    const plan = continuedBirthPlan(tier, "org", recipe, "OWNER");
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;
     expect(plan.steps.map(({ kind }) => kind)).toEqual([
@@ -68,6 +70,18 @@ describe("a continued birth's original plan", () => {
     expect(imported?.kind === "import-container" && imported.tier?.yaml).toContain("hostname: api");
   });
 
+  // witness: packages/client-runtime/src/zerops/projectAccess.ts | : list.filter((entry) => asOrgRole(entry.roleCode) !== "OWNER"); → : list;
+  it("drops its maker's recorded owner marker when an admin continues it, which Zerops refuses them", () => {
+    const ada = { clientUserId: "ada", roleCode: "READ_ONLY" };
+    const plan = continuedBirthPlan(
+      { ...birth, intent: { ...birth.intent!, userRoles: [...birth.intent!.userRoles, ada] } },
+      "org",
+      undefined,
+      "ADMIN",
+    );
+    expect(plan.ok && plan.steps[0]).toMatchObject({ kind: "create-project", userRoles: [ada] });
+  });
+
   it.each([
     { name: "A clean Mate", role: "dev" as const, tier: null },
     { name: "D stage with a Mate", role: "stage" as const, tier: "stage" as const },
@@ -84,6 +98,7 @@ describe("a continued birth's original plan", () => {
       { ...birth, intent },
       "org",
       tier === null ? undefined : { ...recipe, tier },
+      "OWNER",
     );
     expect(plan.ok).toBe(true);
     if (!plan.ok) return;

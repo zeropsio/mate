@@ -972,11 +972,13 @@ describe("finishMateSetup — the harden path", () => {
   });
 
   // Decision: Adding a Mate to an existing project whose row carries no OWNER override, by a person
-  // whose org role is ADMIN or OWNER, writes that person's OWNER override on the project before
-  // the Mate record is made; a project that already has an OWNER override is left as it is.
-  // Decision: A Mate on a project with no OWNER override and an adder below ADMIN shows the honest
+  // whose org role is OWNER, writes that person's OWNER override on the project before the Mate
+  // record is made; a project that already has an OWNER override is left as it is. Zerops refuses
+  // an ADMIN that grant (a live Add, 2026-11-10).
+  // Decision: A Mate on a project with no OWNER override and an adder below OWNER shows the honest
   // "no owner yet" state and the hand-over offer for ADMIN/OWNERs; no client-side role invention.
   // (That state and offer are HQ's words: `mateOwnerView`'s empty seat, `handOverOffered`.)
+  // witness: packages/client-runtime/src/zerops/projectAccess.ts | roleAtLeast(roleCode, "OWNER") → roleAtLeast(roleCode, "ADMIN")
   it.each<{
     readonly case: string;
     readonly roleCode: string;
@@ -984,10 +986,16 @@ describe("finishMateSetup — the harden path", () => {
     readonly marked: ReadonlyArray<string>;
   }>([
     {
-      case: "by an admin, on a project nobody owns, marks them its owner before its record",
-      roleCode: "ADMIN",
+      case: "by an organization owner, on a project nobody owns, marks them its owner before its record",
+      roleCode: "OWNER",
       userRoles: [],
       marked: ["roles cu-me OWNER p-old"],
+    },
+    {
+      case: "by an admin, on a project nobody owns, writes no grant: it stays no one's",
+      roleCode: "ADMIN",
+      userRoles: [],
+      marked: [],
     },
     {
       case: "on a project somebody owns leaves its owner as they are",

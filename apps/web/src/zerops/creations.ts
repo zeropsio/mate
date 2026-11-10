@@ -15,12 +15,14 @@ import { useMemo } from "react";
 import { create } from "zustand";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
+import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
 import { useNewMateDialog } from "./newMate";
 import { whilePressing } from "./matePress";
 import {
   creationEnds,
   creationOf,
   creationRunId,
+  refusedAddBirth,
   type CreationAsk,
   type NewProjectAsk,
   type NewProjectBirth,
@@ -117,6 +119,38 @@ export function startAddOver(creation: NewProjectBirth): void {
   if (startOver == null) return;
   dismissCreation(creation.birthId);
   useNewMateDialog.getState().ask(startOver.groupId, startOver.again);
+}
+
+/**
+ * *Dismiss* and *Start over* as a stopped creation's surfaces offer them: each lets go of the HQ
+ * birth an Add refused for certain recorded (`refusedAddBirth`), so Add pressed again leaves no
+ * second row. A delete HQ refuses leaves the row in the menu with its own Delete.
+ */
+export function useCreationEnds(): {
+  readonly dismiss: (creation: NewProjectBirth) => void;
+  readonly startOver: (creation: NewProjectBirth) => void;
+} {
+  const operations = useAccountOperationsOptional();
+  return useMemo(() => {
+    const release = (creation: NewProjectBirth) => {
+      const birth = refusedAddBirth(creation);
+      if (birth === null || operations === null) return;
+      const orgId = creation.organizationId;
+      operations
+        .run({ kind: "delete-birth", orgId, ...birth }, { orgId, unobserved: HQ_UNFOLLOWED })
+        .catch(() => undefined);
+    };
+    return {
+      dismiss: (creation) => {
+        release(creation);
+        dismissCreation(creation.birthId);
+      },
+      startOver: (creation) => {
+        release(creation);
+        startAddOver(creation);
+      },
+    };
+  }, [operations]);
 }
 
 /** An Add pressed whole again, under its next press's id (`creationRunId`). */

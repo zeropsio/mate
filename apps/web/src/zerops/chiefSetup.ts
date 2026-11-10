@@ -142,6 +142,7 @@ export function useChiefSetupRunner(): {
     const ask: NewProjectAsk = {
       organizationId: activeOrganization.id,
       creator: activeOrganization.membershipId,
+      creatorRole: activeOrganization.roleCode,
       birthId: randomUUID(),
       ...chiefNames(user),
       face: CHIEF_FACE,

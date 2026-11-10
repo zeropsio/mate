@@ -226,6 +226,7 @@ function NewProjectDialog() {
     const ask: NewProjectAsk = {
       organizationId,
       creator: activeOrganization.membershipId,
+      creatorRole: activeOrganization.roleCode,
       birthId: randomUUID(),
       name,
       botName,
