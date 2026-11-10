@@ -15,7 +15,7 @@ import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
  * `index.html`, and no route imports this module.
  */
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import { StrictMode, useState, type ReactNode } from "react";
+import { StrictMode, useLayoutEffect, useState, type ReactNode } from "react";
 import {
   createMemoryHistory,
   createRootRoute,
@@ -24,6 +24,8 @@ import {
 } from "@tanstack/react-router";
 import type { AppRouter } from "~/router";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
+import { NOT_READ_VAULT, type VaultView } from "@t3tools/client-runtime/data";
+import { showHarnessPlaces } from "./placeSitesFixtures";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
 import { createRoot } from "react-dom/client";
@@ -628,6 +630,18 @@ const RELAY_ROUTES = [
   {
     service: "bot",
     port: 3000,
+    host: "www.relay.acme.example",
+    url: "https://www.relay.acme.example",
+  },
+  {
+    service: "api",
+    port: 8080,
+    host: "api-5c1e-8080.prg1.zerops.app",
+    url: "https://api-5c1e-8080.prg1.zerops.app",
+  },
+  {
+    service: "bot",
+    port: 3000,
     host: "bot-5c1e-3000.prg1.zerops.app",
     url: "https://bot-5c1e-3000.prg1.zerops.app",
   },
@@ -930,6 +944,8 @@ interface StopFixture {
   readonly access?: React.ComponentProps<typeof ZeropsStopPane>["access"];
   /** Whether the place offers its vault drawer; `"open"` draws it open. */
   readonly vault?: boolean | "open";
+  /** What its vault holds, as the drawer and the aside's card read it; the vault fixture's unless given. */
+  readonly vaultView?: VaultView;
   /** The changes that go next: merged ones waiting for a release, or a stage's open ones. */
   readonly next?: ReadonlyArray<FlowPullRequest>;
   /** What waits for production's next release. */
@@ -950,21 +966,70 @@ interface StopFixture {
   readonly releasesRead?: React.ComponentProps<typeof ZeropsStopPane>["releasesRead"];
 }
 
-/** Acme production's vault, its values the vault fixture's. */
-const HARNESS_VAULT = {
+/** A harness place's vault: the drawer's body and the aside's card read the one view. */
+const harnessVault = (view: VaultView) => ({
   orgId: "harness",
+  view,
   body: (
     <VaultPanelBody
       actor="environment"
-      impactOf={(scope, write) => vaultFixtureImpact(VAULT_FIXTURE, scope, write)}
+      impactOf={(scope, write) => vaultFixtureImpact(view, scope, write)}
       onRestart={() => Promise.resolve()}
       onWrite={() => Promise.resolve({ ok: true })}
       pending={new Map()}
       restarting={new Set()}
-      view={VAULT_FIXTURE}
+      view={view}
       who={{ kind: "environment", name: "Production" }}
     />
   ),
+});
+
+/**
+ * Relay production's vault: what every app gets and the bot's own, one value written empty, and
+ * the bot still running a value as it stood before it was changed.
+ */
+const RELAY_VAULT: VaultView = {
+  ...VAULT_FIXTURE,
+  scopes: VAULT_FIXTURE.scopes.map((scope) => {
+    const bot = (hostname: string) => (hostname === "appdev" ? "bot" : hostname);
+    const values = scope.values.map((value) => ({
+      ...value,
+      readers: value.readers.map((reader) => ({ ...reader, hostname: bot(reader.hostname) })),
+    }));
+    return {
+      ...scope,
+      hostname: scope.hostname === null ? null : bot(scope.hostname),
+      values:
+        scope.kind !== "shared"
+          ? values
+          : [
+              ...values,
+              {
+                id: "v-smtp",
+                key: "SMTP_HOST",
+                sensitive: false,
+                value: "",
+                createdAt: null,
+                changedAt: null,
+                madeByZerops: false,
+                readers: [],
+              },
+            ],
+    };
+  }),
+  notLive: VAULT_FIXTURE.notLive.flatMap((item) =>
+    item.kind === "restart" ? [{ ...item, hostname: "bot" }] : [],
+  ),
+};
+
+/** A vault nobody put anything in: its database's own values are not the person's. */
+const EMPTY_VAULT: VaultView = {
+  status: "ready",
+  complete: true,
+  scopes: VAULT_FIXTURE.scopes.flatMap((scope) =>
+    scope.kind === "managed" ? [scope] : scope.kind === "shared" ? [{ ...scope, values: [] }] : [],
+  ),
+  notLive: [],
 };
 
 /** The full commit each service runs, as the release rows and the stop's name read it. */
@@ -1106,6 +1171,17 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
   const production = fixture.tier === "production";
   const name = production ? "production" : "stage";
   const group = fixture.group ?? "Shop";
+  // The place as the menu would have drawn it: its header's Sites opens from that.
+  useLayoutEffect(() => {
+    showHarnessPlaces(group.toLowerCase(), group, [
+      {
+        kind: production ? "production" : "stage",
+        projectId: `${group}-${name}`,
+        name,
+        addresses: fixture.routes ?? [],
+      },
+    ]);
+  }, [fixture.routes, group, name, production]);
   const running = runningCommits(fixture.services);
   const listing = production ? (fixture.releases ?? []) : [];
   const row = environmentRow({
@@ -1245,7 +1321,11 @@ function StopState({ fixture }: { readonly fixture: StopFixture }) {
       vault={
         fixture.vault === undefined || fixture.vault === false
           ? undefined
-          : { ...HARNESS_VAULT, open: vaultOpen, onOpenChange: setVaultOpen }
+          : {
+              ...harnessVault(fixture.vaultView ?? VAULT_FIXTURE),
+              open: vaultOpen,
+              onOpenChange: setVaultOpen,
+            }
       }
       releasing={fixture.releasing}
       deployFailed={failedDeploys.length > 0}
@@ -1777,6 +1857,8 @@ function HarnessStates() {
               refused: true,
             })),
             access: { summary: ACME_PEOPLE, line: null },
+            vault: true,
+            vaultView: RELAY_VAULT,
             release: { ...RELEASE_WAITING, tag: "v0.1.8" },
             ready: READY_TWO,
             next: MERGED_WAITING,
@@ -2026,6 +2108,36 @@ function HarnessStates() {
           }}
         />
       </State>
+
+      {(
+        [
+          [
+            "A place whose vault holds nothing yet",
+            "ready and empty: one quiet line, and Open.",
+            EMPTY_VAULT,
+          ],
+          [
+            "A place whose vault is still being read",
+            "Two rows of the settled shape, never a sentence that goes away.",
+            NOT_READ_VAULT,
+          ],
+        ] as const
+      ).map(([label, note, vaultView]) => (
+        <State key={label} label={label} note={`The Vault card, ${note}`}>
+          <StopState
+            fixture={{
+              tier: "stage",
+              group: "Relay",
+              services: [service("bot", "b21d904c", undefined)],
+              deployment: STAGE_RUNNING,
+              routes: RELAY_ROUTES.slice(3),
+              access: { summary: ACME_PEOPLE, line: null },
+              vault: true,
+              vaultView,
+            }}
+          />
+        </State>
+      ))}
 
       <State
         label="A stage with a service nobody can reach"
