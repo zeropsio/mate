@@ -68,6 +68,7 @@ import {
 import {
   createContext,
   Fragment,
+  memo,
   use,
   useCallback,
   useEffect,
@@ -141,6 +142,7 @@ import {
   quickCallsSpanMs,
   quickCallsWords,
 } from "./quickCalls.logic";
+import { AsPainted } from "./AsPainted";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { restartWords } from "../../zerops/restartWords";
@@ -150,6 +152,7 @@ import { useCalmLine } from "./useCalmLine";
 import {
   headStood,
   headStoodJustNow,
+  watchPainted,
   wordsCutUnder,
   wordsStood,
   wordsStoodUnder,
@@ -209,6 +212,7 @@ import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
+  sameRecordItem,
   shouldPreserveAssistantLineBreaks,
   thoughtParagraphs,
   type ConversationEvent,
@@ -239,6 +243,11 @@ import {
   slotWords,
   operationNowWords,
   reachesEarlier,
+  stretchesAside,
+  stretchesBack,
+  KEPT_ABOVE_PX,
+  SET_ASIDE_PAST_PX,
+  type AsideStretch,
   runCardShows,
   chooseLiveRunFold,
   runFoldOf,
@@ -517,12 +526,22 @@ const PlopsContext = createContext(false);
 /** A call riding in a new card that lands by a plop: it rises in, the card plops. */
 const RidesContext = createContext(false);
 
+/**
+ * Whether the log draws lines over the ones in view in this commit — earlier
+ * ones as the person scrolls up to them, ones set aside coming back: they
+ * were there all along, and are simply there.
+ */
+const DrawnEarlierContext = createContext<{ readonly current: boolean } | null>(null);
+
 /** Whether this bubble arrived while the person watched: what the chat opened onto is simply there. */
 function useArrivedLive(): boolean {
   const shown = use(ChatShownContext);
+  const earlier = use(DrawnEarlierContext);
   // What a resync brings nobody watched happen: it is simply there.
   const { syncing } = use(TimelineRowCtx);
-  const [arrived] = useState(() => (shown?.current ?? false) && !syncing);
+  const [arrived] = useState(
+    () => (shown?.current ?? false) && !syncing && !(earlier?.current ?? false),
+  );
   return arrived;
 }
 
@@ -896,7 +915,9 @@ function SlotBox({
   }, [words]);
   // Standing at its foot, it tells each frame where its last line is: the answer it becomes lands
   // there. Read as painted, never in the commit that takes it away — that commit may already have
-  // swapped its words and clamped its scroll to their head.
+  // swapped its words and clamped its scroll to their head. In every frame, and only while the
+  // Mate's words stand here: the row the answer becomes asks whether they stood as it is first
+  // drawn, before any commit could be read ahead of (`AsPainted`).
   useEffect(() => {
     const box = boxRef.current;
     if (stood === undefined || box === null || typeof requestAnimationFrame !== "function") return;
@@ -1335,13 +1356,11 @@ function Mark({
   readonly line?: MarkLine | undefined;
   readonly children: ReactNode;
 }) {
-  const inSlot = use(InSlotContext);
   return (
     <span
       aria-hidden="true"
       className={cn(MARK_COLUMN, "flex justify-center", MARK_LINE[line])}
       data-run-mark=""
-      data-slot-mark={inSlot ? "" : undefined}
     >
       <span className="flex h-[1lh] items-center">{children}</span>
     </span>
@@ -3857,6 +3876,7 @@ interface RunMotion {
 }
 
 const NO_KEYS: ReadonlyArray<string> = [];
+const NO_STRETCHES: ReadonlyArray<AsideStretch> = [];
 const NO_TOPS: ReadonlyMap<string, number> = new Map();
 const NO_HOLDS: ReadonlySet<string> = new Set();
 
@@ -3956,41 +3976,24 @@ function writeStyle(element: HTMLElement, name: string, value: string | null): v
 }
 
 /**
- * Places the live slot's face and clock on its first line, and says the room
- * the slot takes, its gap above it included: on a short page the card holds
- * it whole once the history has none left to give.
+ * Says the room the live slot takes, its gap above it included: on a short
+ * page the card holds it whole once the history has none left to give.
  */
 function placeSlot(list: HTMLOListElement | null): void {
   // Drawn outside a page (a test's renderer), it has no layout to read.
   if (typeof list?.querySelector !== "function") return;
-  const mark = list.querySelector<HTMLElement>("[data-slot-mark] > span");
   const slotBox = list.parentElement;
-  if (slotBox === null) return;
+  const chat = slotBox?.parentElement ?? null;
+  if (slotBox === null || chat === null) return;
   // Every box read before anything is written: a write between two reads
   // restyled the card, and the second read laid it out again.
-  const line = mark?.getBoundingClientRect();
   const slotRect = slotBox.getBoundingClientRect();
-  const y = line === undefined ? null : line.top + line.height / 2 - slotRect.top;
-  // The room the slot takes, its gap above it included: on a short page
-  // the card holds it whole once the history has none left to give.
-  const chat = slotBox.parentElement;
   const above = slotBox.previousElementSibling ?? null;
   const from =
-    chat === null
-      ? null
-      : above === null
-        ? chat.getBoundingClientRect().top
-        : above.getBoundingClientRect().bottom;
-  writeStyle(slotBox, "--run-slot-line", y === null ? null : `${y}px`);
-  // Said on the card, which every line of it inherits: written only when it changes.
-  if (chat !== null && from !== null) {
-    writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from)}px`);
-  }
-  // They move with the first line only once placed: a first paint, a
-  // thread opened or a card scrolled back to never slides them in.
-  if (!slotBox.hasAttribute("data-placed")) {
-    requestAnimationFrame(() => slotBox.setAttribute("data-placed", ""));
-  }
+    above === null ? chat.getBoundingClientRect().top : above.getBoundingClientRect().bottom;
+  // Said on the card for its own cap (`@property --run-slot-room`): nothing
+  // under it inherits it, so a change of it restyles the card's box alone.
+  writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from)}px`);
 }
 
 /**
@@ -4354,6 +4357,8 @@ function LiveSlot({
 export function RunChat({ row }: { readonly row: RecordRow }) {
   // What the person opened, kept as a row lands from the slot in the history.
   const [carriedOpen] = useState(() => new Map<string, Carried>());
+  // Its log's lines as last built: one that draws the same is the same line (`chatLines`).
+  const [lineCache] = useState<LineCache>(() => new Map());
   const ctx = use(TimelineRowCtx);
   // An engine run too long to read whole: its effort from its summary, its lines a page at a time.
   const paging = row.paging;
@@ -4436,20 +4441,18 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const turnOverRef = useRef(turnOver);
   // How tall the card stood as last painted while its turn went on.
   const paintedHeightRef = useRef<number | null>(null);
+  // Read as painted before each commit that draws the card or its conversation again
+  // (`AsPainted`): never in every frame, which ran the page's main thread sixty times a second
+  // for as long as a run went on.
   useEffect(() => {
-    if (
-      turnOver ||
-      typeof requestAnimationFrame !== "function" ||
-      typeof cancelAnimationFrame !== "function"
-    )
-      return;
-    let frame = requestAnimationFrame(function tell() {
-      const head = rootRef.current?.querySelector<HTMLElement>(":scope > [data-run-head]");
-      if (head != null) headStood(head, head.getBoundingClientRect().top);
-      paintedHeightRef.current = heightOf(rootRef.current);
-      frame = requestAnimationFrame(tell);
+    const root = rootRef.current;
+    // Drawn outside a page (a test's renderer), it has no head to find.
+    if (turnOver || root === null || typeof root.querySelector !== "function") return;
+    return watchPainted(root, () => {
+      const head = root.querySelector<HTMLElement>(":scope > [data-run-head]");
+      if (head !== null) headStood(head, head.getBoundingClientRect().top);
+      paintedHeightRef.current = heightOf(root);
     });
-    return () => cancelAnimationFrame(frame);
   }, [turnOver]);
   // Its turn over while what it started runs on, the card stands at the height it showed without
   // its slot: its history never grows into the room the slot gave back, which pushed the answer
@@ -4789,7 +4792,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
     burst === null ? null : { at: Math.min(passedBefore + 1, passingOf), of: passingOf };
   const logged =
     lone !== undefined && !burstBase?.has(lone.item.key) ? entered.slice(0, -1) : entered;
-  const lines = above || !folded ? chatLines(logged, undone, burst !== null) : [];
+  const lines = above || !folded ? chatLines(logged, undone, burst !== null, lineCache) : [];
   // The scroll mounts with its first line, so its box is there from its
   // first frame for what keeps it at its foot.
   const scroll =
@@ -4943,6 +4946,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           <div key="below" ref={feedRef} className="run-later-feed">
             {above ? null : scroll}
           </div>
+          <AsPainted key="painted" of={row} />
         </div>
       </ResultPicturesContext>
     </CarriedOpenContext>
@@ -4955,30 +4959,76 @@ function stepOfSelected({ item }: RecordRow["chatItems"][number]): WorkStep | nu
 }
 
 /**
+ * A run's lines as they were last built, by key: what each was built from,
+ * and the line. An item that draws the same keeps its line — the same object,
+ * so React leaves its row alone. Every event of a run rebuilds its record's
+ * items; built anew each time, every row of the log was drawn again for one
+ * word streamed into the working row (at 1000 rows, a fifth of every second).
+ */
+type LineCache = Map<
+  string,
+  {
+    readonly items: ReadonlyArray<RecordItem>;
+    readonly undone: boolean;
+    readonly pairs: boolean;
+    readonly ticks: boolean;
+    readonly line: ChatLine;
+  }
+>;
+
+/**
  * Build bubbles only for the selected history once its work is drawn: each
  * item its line, quick calls in a row folded into one (`foldQuickCalls`).
  * `ticks`: a burst goes on, and the folded row at the log's foot counts it.
+ * A line whose items draw as they did is the line `cache` holds.
  */
 function chatLines(
   items: RecordRow["chatItems"],
   undone: ReadonlySet<string>,
-  ticks = false,
+  ticks: boolean,
+  cache: LineCache,
 ): ChatLine[] {
   const folded = foldQuickCalls(items, stepOfSelected, ({ item }) => item.key);
-  return folded.map((entry, index) => {
-    if (!("quick" in entry)) return { ...itemLine(entry.item, undone), pairs: entry.pairs };
-    return {
-      key: entry.key,
-      bubble: (
-        <QuickCallsBubble
-          lines={entry.quick.map(({ item }) => itemLine(item, undone))}
-          steps={entry.quick.flatMap((line) => stepOfSelected(line) ?? [])}
-          ticks={ticks && index === folded.length - 1}
-        />
-      ),
-      call: true,
-    };
+  const drawn = new Set<string>();
+  const lines = folded.map((entry, index) => {
+    const quick = "quick" in entry;
+    const key = quick ? `quick:${entry.key}` : entry.item.key;
+    const made = quick ? entry.quick.map(({ item }) => item) : [entry.item];
+    const fails = made.some((item) => undone.has(item.key));
+    const pairs = quick ? false : entry.pairs;
+    const counts = quick && ticks && index === folded.length - 1;
+    drawn.add(key);
+    const held = cache.get(key);
+    if (
+      held !== undefined &&
+      held.undone === fails &&
+      held.pairs === pairs &&
+      held.ticks === counts &&
+      held.items.length === made.length &&
+      held.items.every((item, at) => sameRecordItem(item, made[at]!))
+    ) {
+      return held.line;
+    }
+    const line: ChatLine = quick
+      ? {
+          key: entry.key,
+          bubble: (
+            <QuickCallsBubble
+              lines={made.map((item) => itemLine(item, undone))}
+              steps={entry.quick.flatMap((selected) => stepOfSelected(selected) ?? [])}
+              ticks={counts}
+            />
+          ),
+          call: true,
+        }
+      : { ...itemLine(entry.item, undone), pairs };
+    cache.set(key, { items: made, undone: fails, pairs, ticks: counts, line });
+    return line;
   });
+  // What left the log is not kept: the cache holds one run's lines as drawn.
+  if (cache.size > drawn.size)
+    for (const key of cache.keys()) if (!drawn.has(key)) cache.delete(key);
+  return lines;
 }
 
 /**
@@ -5245,6 +5295,17 @@ function RunScroll({
   // Where the chat starts: its newest lines when it opens. What arrives after
   // only ever joins at the end, so the window grows and never slides.
   const [from, setFrom] = useState(() => (opensAtStart ? 0 : chatOpensAt(lines.length)));
+  // The lines set aside over the first one drawn, far above the view
+  // (`stretchesAside`), newest last, and the room they took: kept over the
+  // first line drawn, so nothing drawn moves and the scroll is as long.
+  const [aside, setAside] = useState<ReadonlyArray<AsideStretch>>(NO_STRETCHES);
+  const spacer = useMemo(() => aside.reduce((sum, stretch) => sum + stretch.height, 0), [aside]);
+  // The rows it draws: its lines from the first one drawn, each run of calls in one card.
+  const shown = gatherCalls(
+    (from > 0 ? lines.slice(from) : lines).map((line) =>
+      plopsIn(landing, line.key) ? { ...line, plops: true } : line,
+    ),
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const easesRef = useRef(eases);
@@ -5535,6 +5596,9 @@ function RunScroll({
       putAt,
       keep,
       glide,
+      /** Whether anything of the card moves it this moment: its glide, a room easing in it, beside it or around it. */
+      moving: () =>
+        gliding.frame !== 0 || (roomRef.current?.easing() ?? false) || slotEases() || heldAbove(),
       hold: (key: string, opens: boolean) => {
         const element = scrollRef.current;
         // A move of theirs not heard yet is theirs, before the press counts.
@@ -5579,11 +5643,76 @@ function RunScroll({
   // over the ones in view.
   const keepFromFootRef = useRef<number | null>(null);
   const drawEarlier = (position: RunScrollPosition) => {
-    if (!reachesEarlier(position, from)) return;
+    // How far under the first drawn line the view stands: the room of the lines set aside is not it.
+    const above = position.scrollTop - spacer;
+    if (!reachesEarlier({ scrollTop: above }, from)) return;
     drawingEarlierRef.current = true;
     keepFromFootRef.current = position.scrollHeight - position.scrollTop;
-    setFrom(earlierShown(from).next);
+    // The lines set aside come back first, the newest stretch of them: as tall
+    // as they stood, so the scroll is as long. Then the ones never drawn.
+    const back = stretchesBack(aside, above);
+    if (back.length === 0) {
+      setFrom(earlierShown(from).next);
+      return;
+    }
+    setAside(aside.slice(0, aside.length - back.length));
+    setFrom(from - back.reduce((lines, stretch) => lines + stretch.lines, 0));
   };
+  // The view may come to stand over lines set aside with no scroll heard — its
+  // node put back on the page at its start, its box shown again after "Hide
+  // work": asked as its box changes size, while it does not follow its foot
+  // (following, it is put back there) and is on the page at all.
+  const drawEarlierHere = useEffectEvent(() => {
+    const element = scrollRef.current;
+    if (element === null || followRef.current.follows || element.clientHeight === 0) return;
+    drawEarlier(positionOf(element));
+  });
+  // Lines far above the view are set aside (`stretchesAside`): asked as the
+  // scroll moves and as its lines or its box change size, answered at once
+  // while they do not reach that far. Never while anything of the card moves
+  // — a row's place is read — nor a row the person holds: the focus in it, a
+  // selection begun in the log.
+  const setLinesAside = useEffectEvent(() => {
+    const element = scrollRef.current;
+    const list = listRef.current;
+    if (element === null || list === null || drawingEarlierRef.current) return;
+    // Drawn outside a page (a test's renderer), it has no rows to read.
+    if (typeof list.getBoundingClientRect !== "function" || list.children === undefined) return;
+    const above = element.scrollTop - spacer;
+    if (!(above >= KEPT_ABOVE_PX + SET_ASIDE_PAST_PX) || follow.moving()) return;
+    const selection = typeof getSelection === "function" ? getSelection() : null;
+    if (
+      selection !== null &&
+      !selection.isCollapsed &&
+      selection.anchorNode !== null &&
+      list.contains(selection.anchorNode)
+    ) {
+      return;
+    }
+    const rows = list.children;
+    if (rows.length === 0) return;
+    // A row's room starts where its margin does: one that keeps more air over
+    // it, or draws into the row before it, takes that with it.
+    const startOf = (row: Element) =>
+      row.getBoundingClientRect().top - (Number.parseFloat(getComputedStyle(row).marginTop) || 0);
+    const first = startOf(rows[0]!);
+    const focused = document.activeElement;
+    const over: Array<{ readonly lines: number; readonly nextTop: number }> = [];
+    // The last row always stays; read only as far as rows go.
+    for (let index = 0; index < rows.length - 1 && index < shown.length - 1; index += 1) {
+      if (focused !== null && rows[index]!.contains(focused)) break;
+      const entry = shown[index]!;
+      const nextTop = startOf(rows[index + 1]!) - first;
+      over.push({ lines: "calls" in entry ? entry.calls.length : 1, nextTop });
+      if (nextTop > above - KEPT_ABOVE_PX) break;
+    }
+    const stretches = stretchesAside(over, above);
+    if (stretches.length === 0) return;
+    // They take no room they did not take: nothing eases for it.
+    drawingEarlierRef.current = true;
+    setAside([...aside, ...stretches]);
+    setFrom(from + stretches.reduce((lines, stretch) => lines + stretch.lines, 0));
+  });
   // It opens at its foot — or its start — before the first paint.
   const opensAtStartRef = useRef(opensAtStart);
   useLayoutEffect(() => {
@@ -5702,6 +5831,8 @@ function RunScroll({
       forgetPadding(element);
       follow.keep();
       redraw();
+      drawEarlierHere();
+      setLinesAside();
     });
     observer.observe(list);
     observer.observe(element);
@@ -5724,72 +5855,86 @@ function RunScroll({
       follow.heard({ kind: "ended" });
     }, SCROLL_QUIET_MS);
   };
-  const shown = gatherCalls(
-    (from > 0 ? lines.slice(from) : lines).map((line) =>
-      plopsIn(landing, line.key) ? { ...line, plops: true } : line,
-    ),
-  );
   return (
     <RunScrollHoldContext value={follow.hold}>
       <ChatShownContext value={shownRef}>
-        <div
-          ref={scrollRef}
-          aria-label={label}
-          className="run-scroll"
-          data-run-scroll=""
-          onScroll={(event) => {
-            // One read of where it stands serves the whole event, and every
-            // read comes before its fades are written: a write between two
-            // reads restyled and laid out the page again, on every tick.
-            const position = positionOf(event.currentTarget);
-            const followed = followRef.current.follows;
-            follow.read(position);
-            redraw();
-            const element = scrollRef.current;
-            if (element !== null) {
-              // Brought back to the foot it set out for, it glides on to
-              // where the foot moved on since — at once under reduced
-              // motion, which moves it: then it is read anew.
-              if (!followed && followRef.current.follows) {
-                follow.glide();
-                markEdges(element);
-              } else markEdges(element, position);
-            }
-            drawEarlier(position);
-            readPage(position);
-            endsOnQuiet();
-          }}
-          onScrollEnd={() => follow.heard({ kind: "ended" })}
-          role="region"
-          tabIndex={0}
-        >
-          <ol ref={listRef} className="flex min-w-0 flex-col gap-4">
-            {shown.map((entry) =>
-              "calls" in entry ? (
-                <CallsCard key={entry.key} entry={entry} />
-              ) : (
-                <PlopsContext key={entry.key} value={entry.plops === true}>
-                  <ChatRow
-                    across={entry.across === true}
-                    lineKey={entry.key}
-                    mark={entry.mark}
-                    markLine={entry.markLine}
-                    pairs={entry.pairs === true}
-                    said={entry.said === true}
-                    theirs={entry.theirs === true}
-                  >
-                    {entry.bubble}
-                  </ChatRow>
-                </PlopsContext>
-              ),
-            )}
-          </ol>
-          <div ref={endRef} aria-hidden="true" data-run-scroll-end="" />
-        </div>
+        <DrawnEarlierContext value={drawingEarlierRef}>
+          <div
+            ref={scrollRef}
+            aria-label={label}
+            className="run-scroll"
+            data-run-scroll=""
+            onScroll={(event) => {
+              // One read of where it stands serves the whole event, and every
+              // read comes before its fades are written: a write between two
+              // reads restyled and laid out the page again, on every tick.
+              const position = positionOf(event.currentTarget);
+              const followed = followRef.current.follows;
+              follow.read(position);
+              redraw();
+              const element = scrollRef.current;
+              if (element !== null) {
+                // Brought back to the foot it set out for, it glides on to
+                // where the foot moved on since — at once under reduced
+                // motion, which moves it: then it is read anew.
+                if (!followed && followRef.current.follows) {
+                  follow.glide();
+                  markEdges(element);
+                } else markEdges(element, position);
+              }
+              drawEarlier(position);
+              readPage(position);
+              setLinesAside();
+              endsOnQuiet();
+            }}
+            onScrollEnd={() => follow.heard({ kind: "ended" })}
+            role="region"
+            tabIndex={0}
+          >
+            <ol
+              ref={listRef}
+              className="flex min-w-0 flex-col gap-4"
+              // The room of the lines set aside over the first one drawn.
+              style={spacer > 0 ? { paddingTop: spacer } : undefined}
+            >
+              {shown.map((entry) =>
+                "calls" in entry ? (
+                  <CallsCard key={entry.key} entry={entry} />
+                ) : (
+                  <LogLine key={entry.key} line={entry} />
+                ),
+              )}
+            </ol>
+            <div ref={endRef} aria-hidden="true" data-run-scroll-end="" />
+          </div>
+        </DrawnEarlierContext>
       </ChatShownContext>
     </RunScrollHoldContext>
   );
 }
+
+/**
+ * A line of the log on its own row. Drawn again only when its line is another
+ * (`chatLines` keeps the line of an item that draws the same): the log's
+ * other rows stand as they are while one word streams into the working row.
+ */
+const LogLine = memo(function LogLine({ line }: { readonly line: ChatLine }) {
+  return (
+    <PlopsContext value={line.plops === true}>
+      <ChatRow
+        across={line.across === true}
+        lineKey={line.key}
+        mark={line.mark}
+        markLine={line.markLine}
+        pairs={line.pairs === true}
+        said={line.said === true}
+        theirs={line.theirs === true}
+      >
+        {line.bubble}
+      </ChatRow>
+    </PlopsContext>
+  );
+});
 
 /** Where an element stands on screen; null drawn outside a page (a test's renderer). */
 function boxOf(element: HTMLElement | null): DOMRect | null {
@@ -6109,26 +6254,33 @@ function glideShifted(
 
 /**
  * A card of calls in the history. One that a call starting it lands with
- * plops as that call does, and never rises in on top of the plop.
+ * plops as that call does, and never rises in on top of the plop. Drawn again
+ * only when a call of it is another line, or one joined it (`LogLine`).
  */
-function CallsCard({ entry }: { readonly entry: Extract<ChatEntry, { calls: unknown }> }) {
-  const plops = entry.calls.some((line) => line.plops === true);
-  return (
-    <PlopsContext value={plops}>
-      <ChatRow across={false} lineKey={entry.key} theirs={false}>
-        <CallGroup>
-          {entry.calls.map((line) => (
-            <ChatLineContext key={line.key} value={line.key}>
-              <PlopsContext value={line.plops === true}>
-                <RidesContext value={plops && line.plops !== true}>{line.bubble}</RidesContext>
-              </PlopsContext>
-            </ChatLineContext>
-          ))}
-        </CallGroup>
-      </ChatRow>
-    </PlopsContext>
-  );
-}
+const CallsCard = memo(
+  function CallsCard({ entry }: { readonly entry: Extract<ChatEntry, { calls: unknown }> }) {
+    const plops = entry.calls.some((line) => line.plops === true);
+    return (
+      <PlopsContext value={plops}>
+        <ChatRow across={false} lineKey={entry.key} theirs={false}>
+          <CallGroup>
+            {entry.calls.map((line) => (
+              <ChatLineContext key={line.key} value={line.key}>
+                <PlopsContext value={line.plops === true}>
+                  <RidesContext value={plops && line.plops !== true}>{line.bubble}</RidesContext>
+                </PlopsContext>
+              </ChatLineContext>
+            ))}
+          </CallGroup>
+        </ChatRow>
+      </PlopsContext>
+    );
+  },
+  (was, now) =>
+    was.entry.key === now.entry.key &&
+    was.entry.calls.length === now.entry.calls.length &&
+    was.entry.calls.every((line, index) => line === now.entry.calls[index]),
+);
 
 /** Whether a line lands by a plop: it stood in the slot (a rider rises in on its own). */
 function plopsIn(landing: ReadonlyMap<string, number> | null, key: string): boolean {

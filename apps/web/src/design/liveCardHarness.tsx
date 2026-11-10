@@ -20,7 +20,8 @@
  *   (a ledger of thoughts, commands, a tool and what the Mate said, a command
  *   of six lines running at 13 s to 17.5 s, one of fifteen to open at 22 s);
  *   `reads` ten reads inside two seconds between two thoughts, the board's
- *   burst; `send` a conversation at its end
+ *   burst; `deep` a run forty minutes in, `?steps=<n>` rows in its log (300)
+ *   that never fold, its working row changing every second or so; `send` a conversation at its end
  *   under a finished run, the person's message sent a second in (`?draft=<px>`
  *   for a draft that tall, which the composer gives back as it goes; `?ack=<s>`
  *   for how long the card stands on its head alone; `?short` for a
@@ -107,6 +108,8 @@ const LEFT = params.has("left");
 const CREW = params.has("crew");
 /** `?long=N`: N turns stand above the one before the send, so the list is long and virtualized. */
 const TURNS_ABOVE = Number(params.get("long") ?? 0);
+/** `?steps=<n>`: how many rows the `deep` run's log holds as it opens. */
+const STEPS = Math.max(2, Number(params.get("steps") ?? 300));
 const ENVIRONMENT = EnvironmentId.make("environment-harness");
 const TURN = TurnId.make("live-turn");
 const COMPOSER_HEIGHT = 132;
@@ -194,6 +197,16 @@ interface Run {
    * under a run that finished before: until then nothing runs.
    */
   readonly sendAt?: number;
+  /** When it began, where that was before the page opened: its clock counts from there. */
+  readonly from?: number;
+  /**
+   * Its entries at `t`, where the items above do not say them (`deep`): the
+   * same array while nothing happened, the same entry while it did not
+   * change — as a conversation's store hands them on.
+   */
+  readonly entries?: (t: number) => TimelineEntry[];
+  /** What happened last by `t`, as a key: the harness draws again only when it changes. */
+  readonly eventKey?: (t: number) => string;
 }
 
 const THOUGHT1 =
@@ -781,6 +794,9 @@ const STANDING: Run = {
 };
 
 /** What a stand-up's call reads of its services while it runs (`StandupReadings`). */
+/** No stand-up reads anything: the same map, so what reads it is not drawn again for nothing. */
+const NO_READINGS: ReadonlyMap<string, StandupReading> = new Map();
+
 function standupReadingsAt(t: number): ReadonlyMap<string, StandupReading> {
   const readings = new Map<string, StandupReading>();
   for (const item of RUN.items) {
@@ -795,11 +811,191 @@ function standupReadingsAt(t: number): ReadonlyMap<string, StandupReading> {
       ),
     );
   }
-  return readings;
+  return readings.size === 0 ? NO_READINGS : readings;
 }
+
+/**
+ * A run forty minutes in (the owner, 2026-11-10: "Working · 41:17 · 299
+ * steps … running on like 5 FPS"): `?steps` rows that never fold — a
+ * two-line thought, then a command with a title and one line of code, every
+ * tenth what the Mate said — and under them the run going on, ten seconds a
+ * round: a thought growing line by line for three seconds, a command taking
+ * its place, its four lines of code arriving a second later, a second call
+ * running on a line of its own under it, then four and a half seconds with
+ * nothing moving until both land and the next round begins.
+ *
+ * Its rows stand before the page opened; they are handed over in the first
+ * half second, after the card is drawn, so the log holds every one of them —
+ * as it does for the person who watched the run from its start — and not
+ * only the newest forty a card opened later draws.
+ */
+const DEEP_ROUND = 10;
+const DEEP_FIRST = 1.5;
+const DEEP_STEP_SECONDS = 8;
+const DEEP_THOUGHTS = [
+  "The orders page asks its loader for a page of rows and a total, and draws the pager from the total alone. The loader counts on every request, which is the slow half of it, so the count can be kept beside the rows for a minute.",
+  "The catalogue's tests build their own fixtures instead of reading the shared ones, so a column added to the shared ones never reaches them. Moving them over is mechanical, and each test keeps its own assertions as they are.",
+  "The footer links are a list in one file and a second list in the sitemap, kept the same by hand. One list both read from removes the drift, and the sitemap keeps its order by a field the footer ignores.",
+  "The payment form validates the card number twice, once in the field and once in the submit handler, with two messages for the same mistake. The handler can trust the field and keep only what the field cannot know.",
+] as const;
+const DEEP_SAID = [
+  "The loader is the slow half, so I'm starting there.",
+  "The shared fixtures cover this, so I'm moving the tests over.",
+  "One list for both, then. I'll keep the sitemap's order.",
+  "The field already checks this, so the handler gets simpler.",
+] as const;
+const DEEP_NOW =
+  "The next piece is the catalogue's search. It filters in the page after loading every row, which is fine at two hundred teas and will not be at two thousand. The loader already takes a query, so the filter can move there and the page keeps only the input and its debounce. The tests for the page stay as they are, and the loader gains two: one for a match in a name, one for none at all. I'll read the loader and its tests before changing either.";
+
+function deepHistory(): TimelineEntry[] {
+  const rows: TimelineEntry[] = [];
+  for (let index = 0; index < STEPS; index += 1) {
+    const at = (index - STEPS) * DEEP_STEP_SECONDS;
+    const round = Math.floor(index / 2);
+    if (index % 10 === 9) {
+      rows.push(
+        message(`deep-said-${index}`, "assistant", at, DEEP_SAID[round % DEEP_SAID.length]!),
+      );
+    } else if (index % 2 === 0) {
+      rows.push(
+        message(
+          `deep-thought-${index}`,
+          "reasoning",
+          at,
+          DEEP_THOUGHTS[round % DEEP_THOUGHTS.length]!,
+        ),
+      );
+    } else {
+      rows.push(
+        work(`deep-command-${index}`, at, {
+          label: "Command run",
+          itemType: "command_execution",
+          command: `pnpm test -- step-${index} --reporter dot && pnpm lint -- src/steps/step-${index}.ts`,
+          callInput: { description: `Check step ${index + 1} of the plan` },
+          toolLifecycleStatus: "completed",
+          sourceActivityKind: "tool.completed",
+          updatedAt: iso(at + 3),
+        }),
+      );
+    }
+  }
+  return rows;
+}
+
+/** Where the `deep` run stands at `t`: its round, and how far into it. */
+function deepAt(t: number) {
+  const since = Math.max(0, t - DEEP_FIRST);
+  const round = t < DEEP_FIRST ? -1 : Math.floor(since / DEEP_ROUND);
+  return { round, into: round < 0 ? 0 : since - round * DEEP_ROUND };
+}
+
+function deepEventKey(t: number): string {
+  const { round, into } = deepAt(t);
+  if (t < 0.5) return "opening";
+  if (round < 0) return "opened";
+  // A thought streams a tenth of a second at a time, three seconds long.
+  if (into < 3) return `${round}:thought:${Math.floor(into * 10)}`;
+  if (into < 3.2) return `${round}:thought`;
+  if (into < 4.2) return `${round}:command`;
+  if (into < 4.6) return `${round}:code`;
+  if (into < 9.2) return `${round}:beside`;
+  return `${round}:returned`;
+}
+
+const DEEP_BEGAN = -(STEPS + 3) * DEEP_STEP_SECONDS;
+
+function deepEntries(): (t: number) => TimelineEntry[] {
+  // Made as the run is first asked for: the page's clock is not set before.
+  let history: TimelineEntry[] | null = null;
+  const before = () => [
+    message("ask", "user", DEEP_BEGAN, "Work through the plan, a step at a time."),
+  ];
+  let opening: TimelineEntry[] | null = null;
+  // A second call beside the command, from its code's arrival to its end: a line of its own under it.
+  const beside = (round: number, returned: boolean) => {
+    const start = DEEP_FIRST + round * DEEP_ROUND + 4.6;
+    return work(`deep-now-beside-${round}`, start, {
+      itemType: "dynamic_tool_call",
+      detail: `Read: ${JSON.stringify({ file_path: "src/pages/catalogue.tsx" })}`,
+      callInput: { filePath: "src/pages/catalogue.tsx" },
+      toolLifecycleStatus: returned ? "completed" : "inProgress",
+      sourceActivityKind: returned ? "tool.completed" : "tool.started",
+      ...(returned ? { updatedAt: iso(start + 4.6) } : {}),
+    });
+  };
+  // The rounds that ended, as they ended: never built again.
+  const ended: TimelineEntry[] = [];
+  let last: { readonly key: string; readonly entries: TimelineEntry[] } | null = null;
+  const thought = (round: number, shown: number) => {
+    const text = DEEP_NOW.slice(0, Math.max(1, Math.round(DEEP_NOW.length * Math.min(1, shown))));
+    return message(
+      `deep-now-thought-${round}`,
+      "reasoning",
+      DEEP_FIRST + round * DEEP_ROUND,
+      text,
+      shown < 1,
+    );
+  };
+  const command = (round: number, state: "said" | "coded" | "returned") => {
+    const start = DEEP_FIRST + round * DEEP_ROUND + 3.2;
+    return work(`deep-now-command-${round}`, start, {
+      label: "Command run",
+      itemType: "command_execution",
+      ...(state === "said"
+        ? {}
+        : {
+            command: [
+              "for f in src/loaders/catalogue.ts src/loaders/catalogue.test.ts; do",
+              `  echo "== $f"; sed -n '1,120p' "$f"`,
+              "done",
+              `grep -rn "searchCatalogue" src --include='*.ts' | head -20`,
+            ].join("\n"),
+            callInput: {
+              description: `Read the catalogue's loader and its tests, round ${round + 1}`,
+            },
+          }),
+      toolLifecycleStatus: state === "returned" ? "completed" : "inProgress",
+      sourceActivityKind: state === "returned" ? "tool.completed" : "tool.started",
+      ...(state === "returned" ? { updatedAt: iso(start + 6) } : {}),
+    });
+  };
+  return (t) => {
+    const key = deepEventKey(t);
+    if (last?.key === key) return last.entries;
+    history ??= [...before(), ...deepHistory()];
+    opening ??= history.slice(0, 4);
+    const { round, into } = deepAt(t);
+    while (ended.length / 3 < round) {
+      const done = ended.length / 3;
+      ended.push(thought(done, 1), command(done, "returned"), beside(done, true));
+    }
+    const now: TimelineEntry[] = [];
+    if (round >= 0) {
+      now.push(thought(round, into / 3));
+      if (into >= 3.2)
+        now.push(command(round, into < 4.2 ? "said" : into < 9.2 ? "coded" : "returned"));
+      if (into >= 4.6) now.push(beside(round, into >= 9.2));
+    }
+    const entries = [...(t < 0.5 ? opening : history), ...ended, ...now];
+    last = { key, entries };
+    return entries;
+  };
+}
+
+const DEEP: Run = {
+  ask: "Work through the plan, a step at a time.",
+  items: [],
+  write: 100_000,
+  end: 100_000,
+  answer: "",
+  from: DEEP_BEGAN,
+  entries: deepEntries(),
+  eventKey: deepEventKey,
+};
 
 const RUN: Run =
   {
+    deep: DEEP,
     main: MAIN,
     board: BOARD,
     reads: READS,
@@ -1064,6 +1260,7 @@ function runBefore(t: number): ReadonlyArray<TimelineEntry> {
 
 /** The run's timeline at `t` seconds in. */
 function entriesAt(t: number): TimelineEntry[] {
+  if (RUN.entries !== undefined) return RUN.entries(t);
   const entries: TimelineEntry[] = SHORT ? [] : [...EARLIER];
   if (RUN.sendAt !== undefined) entries.push(...turnsBefore(), ...runBefore(t));
   if (t >= (RUN.sendAt ?? 0)) entries.push(message("ask", "user", RUN.sendAt ?? 0, RUN.ask));
@@ -1162,14 +1359,32 @@ const SENT_AT = RUN.sendAt === undefined ? undefined : RUN.sendAt - (CREW ? 0.4 
 function useRunClock(
   /** The person's send, told in the update that makes its message a row: one commit, as ChatView's. */
   onSend: () => void,
-): readonly [number, () => void, (to: number) => void] {
+): readonly [number, () => void, (to: number) => void, { readonly current: () => number }] {
   const [origin, setOrigin] = useState(() => performance.now() - (START_AT * 1000) / SPEED);
+  const nowRef = useRef(() => START_AT);
+  useLayoutEffect(() => {
+    nowRef.current = () => ((performance.now() - origin) * SPEED) / 1000;
+  }, [origin]);
   const [seconds, setSeconds] = useState(START_AT);
   const onSendRef = useRef(onSend);
   useLayoutEffect(() => {
     onSendRef.current = onSend;
   }, [onSend]);
   useEffect(() => {
+    const { eventKey } = RUN;
+    if (eventKey !== undefined) {
+      // A run that says its events is drawn again as one happens, and never
+      // between: nothing of the harness runs in a frame nothing changed in.
+      let said = eventKey(START_AT);
+      const timer = setInterval(() => {
+        const next = ((performance.now() - origin) * SPEED) / 1000;
+        const key = eventKey(next);
+        if (key === said) return;
+        said = key;
+        setSeconds(next);
+      }, 20);
+      return () => clearInterval(timer);
+    }
     let frame = 0;
     let before = ((performance.now() - origin) * SPEED) / 1000;
     const tick = () => {
@@ -1194,7 +1409,7 @@ function useRunClock(
     setOrigin(performance.now() - (to * 1000) / SPEED);
     setSeconds(to);
   }, []);
-  return [seconds, restart, jump];
+  return [seconds, restart, jump, nowRef];
 }
 
 const keptForever = () => true;
@@ -1367,7 +1582,7 @@ function Pane() {
     onPersonInput,
     sent,
   } = useFollow(listRef, routeThreadKey);
-  const [seconds, restart, jump] = useRunClock(sent);
+  const [seconds, restart, jump, nowRef] = useRunClock(sent);
   useEffect(() => {
     (window as unknown as { __liveHarness: unknown }).__liveHarness = {
       restart: () => {
@@ -1376,6 +1591,8 @@ function Pane() {
         restart();
       },
       seconds: () => seconds,
+      // Where the run stands this moment, between two draws too.
+      now: () => nowRef.current(),
       resync: (to: number) => {
         setSyncing(true);
         jump(to);
@@ -1384,8 +1601,8 @@ function Pane() {
       follows: () => follows,
       followLog: () => logRef.current,
     };
-  }, [epoch, follows, jump, logRef, restart, seconds]);
-  const step = Math.floor(seconds * 20) / 20;
+  }, [epoch, follows, jump, logRef, nowRef, restart, seconds]);
+  const step = RUN.eventKey === undefined ? Math.floor(seconds * 20) / 20 : seconds;
   // The person's send: until then the conversation rests under a finished run.
   const asked = RUN.sendAt === undefined || step >= RUN.sendAt;
   // The draft the person sends: typed half-way to the send, it stands in the
@@ -1418,7 +1635,7 @@ function Pane() {
           : {
               turnId: TURN,
               state: ended ? ("completed" as const) : ("running" as const),
-              startedAt: iso(RUN.sendAt ?? 0),
+              startedAt: iso(RUN.from ?? RUN.sendAt ?? 0),
               completedAt: ended ? iso(RUN.end) : null,
             },
     [asked, beforeWorks, ended, second],
@@ -1451,7 +1668,7 @@ function Pane() {
                 ? null
                 : second
                   ? iso(RUN.interrupt!.at + 0.5)
-                  : iso(beforeWorks ? 0 : (RUN.sendAt ?? 0)),
+                  : iso(beforeWorks ? 0 : (RUN.from ?? RUN.sendAt ?? 0)),
               listRef,
               timelineEntries: entries,
               latestTurn,
@@ -1477,7 +1694,8 @@ function Pane() {
               onManualNavigation,
               hideEmptyPlaceholder: false,
               loading: false,
-              syncing,
+              // The `deep` run's rows are handed over as a catch-up brings them: there at once.
+              syncing: syncing || (RUN.entries !== undefined && step < 1),
               topFadeEnabled: true,
             }}
           />
