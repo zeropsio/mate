@@ -1046,6 +1046,13 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
   },
   { id: "release", label: "A release", props: {} },
   {
+    id: "release-one",
+    label: "Release · one change, one service: the sheet ends at its buttons",
+    props: {
+      over: { ...APP_ALONE, servicePlan: DEPLOY_PLAN, rows: [RELEASE_ROWS[1]!], commits: 1 },
+    },
+  },
+  {
     id: "release-create",
     label: "Release · ready, with a service to create first",
     props: { over: { ...APP_ALONE, servicePlan: CREATION_PLAN, creation: NO_CREATION } },
@@ -2017,10 +2024,11 @@ const RELEASED: Readonly<Record<number, Partial<FlowPullRequest>>> = {
 
 /**
  * One release from reading to its end, as a person lives it: the reads land, the press, HQ creating
- * what production lacks, the deploy, and live — or stopped at the creation (`fails`). What the
- * sheet's size and its buttons do across all of it is measured here.
+ * what production lacks, the deploy, and live — or stopped at the creation (`fails`), or with
+ * nothing to create (`plain`). Where the sheet ends and where its buttons stand across all of it
+ * is measured here.
  */
-function useReleaseJourney(fails: boolean): ReleaseSheet["props"] & {
+function useReleaseJourney(kind: "creates" | "fails" | "plain"): ReleaseSheet["props"] & {
   readonly onRelease: () => void;
 } {
   const [stage, setStage] = useState<"reading" | "ready" | "creating" | "deploying" | "ended">(
@@ -2031,26 +2039,43 @@ function useReleaseJourney(fails: boolean): ReleaseSheet["props"] & {
       stage === "reading"
         ? (["ready", 750] as const)
         : stage === "creating"
-          ? ([fails ? "ended" : "deploying", 2_000] as const)
+          ? ([kind === "fails" ? "ended" : "deploying", 2_000] as const)
           : stage === "deploying"
             ? (["ended", 2_000] as const)
             : undefined;
     if (next === undefined) return;
     const timer = setTimeout(() => setStage(next[0]), next[1]);
     return () => clearTimeout(timer);
-  }, [fails, stage]);
+  }, [kind, stage]);
   const sheet = (id: string) => RELEASE_SHEETS.find((entry) => entry.id === id)!.props;
+  // With nothing to create the same sheets stand without their creation: its plan only deploys.
+  const plain = (props: ReleaseSheet["props"]): ReleaseSheet["props"] =>
+    kind !== "plain"
+      ? props
+      : {
+          ...props,
+          over: {
+            ...props.over,
+            servicePlan: DEPLOY_PLAN,
+            ...(props.over?.progress === undefined
+              ? {}
+              : { progress: { ...props.over.progress, creation: undefined } }),
+          },
+        };
   const props =
     stage === "reading"
       ? { over: { ...APP_ALONE, ...sheet("release-reading").over } }
       : stage === "ready"
-        ? sheet("release-create")
+        ? plain(sheet("release-create"))
         : stage === "creating"
-          ? sheet("release-create-running")
+          ? plain(sheet("release-create-running"))
           : stage === "deploying"
-            ? sheet("release-running-steps")
-            : sheet(fails ? "release-create-failed" : "released");
-  return { ...props, onRelease: () => setStage("creating") };
+            ? plain(sheet("release-running-steps"))
+            : plain(sheet(kind === "fails" ? "release-create-failed" : "released"));
+  return {
+    ...props,
+    onRelease: () => setStage(kind === "plain" ? "deploying" : "creating"),
+  };
 }
 
 /** The harness's release and the change a row steps into. */
@@ -2059,13 +2084,15 @@ function ReleaseTrySteps({
   state,
 }: {
   readonly onClose: () => void;
-  /** A sheet's id (`RELEASE_SHEETS`), or `journey` / `journey-fails`: reading to its end. */
+  /** A sheet's id (`RELEASE_SHEETS`), or a journey (`useReleaseJourney`): reading to its end. */
   readonly state: string;
 }) {
   const steps = useReleaseSteps();
   const onChange = steps.step.view === "change";
   const shown = steps.shown;
-  const journey = useReleaseJourney(state === "journey-fails");
+  const journey = useReleaseJourney(
+    state === "journey-fails" ? "fails" : state === "journey-plain" ? "plain" : "creates",
+  );
   const onJourney = state.startsWith("journey");
   const found = RELEASE_SHEETS.find((entry) => entry.id === state);
   const { onRelease, ...lived } = journey;
@@ -2129,7 +2156,8 @@ function ReleaseTrySteps({
  * The release's dialog, opened from a button, in its real frame: to step into a change it carries
  * and back — the slide, the focus and Esc twice — and to stand in any state of it.
  * `?release=<id>` opens it in that state as the page loads (`RELEASE_SHEETS`; `open` is the plain
- * one), `?release=journey` runs one from reading to live, `journey-fails` to a failed creation.
+ * one), `?release=journey` runs one from reading to live, `journey-fails` to a failed creation,
+ * `journey-plain` one that creates nothing.
  */
 export function ReleaseDialogTry({
   openAtStart,

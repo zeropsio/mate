@@ -7,7 +7,15 @@
  */
 import type { DeployLogTarget } from "@t3tools/client-runtime/zerops/hq";
 import { CheckIcon, XIcon } from "lucide-react";
-import { Fragment, useState, type ReactElement } from "react";
+import { MOTION } from "@t3tools/shared/brand";
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
 import { InlineButton } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
@@ -44,6 +52,34 @@ function keyedWords(words: Words) {
     at += text.length;
   }
   return keyed;
+}
+
+/**
+ * What grows in place: when what it holds gets taller — the plan bringing a step the places did
+ * not hold, a step opening its import — it eases there, so what stands under it goes down and
+ * never jumps. Getting shorter is not eased. Reduced motion cuts.
+ */
+export function GrowsInPlace({ children }: { readonly children: ReactNode }) {
+  const box = useRef<HTMLDivElement | null>(null);
+  const stood = useRef<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const node = box.current;
+    if (node === null) return;
+    // Its laid-out height: the sheet's entrance scales what a client rect would say.
+    const now = node.offsetHeight;
+    const before = stood.current;
+    stood.current = now;
+    if (before === undefined || now - before < 1) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    node.animate(
+      [
+        { height: `${String(before)}px`, overflow: "clip" },
+        { height: `${String(now)}px`, overflow: "clip" },
+      ],
+      { duration: MOTION.duration.base, easing: MOTION.easing.out },
+    );
+  });
+  return <div ref={box}>{children}</div>;
 }
 
 /** A deploy's log, where Zerops holds it: the project it ran in and the job to read. */
@@ -212,12 +248,16 @@ function PlanStep({
   );
 }
 
-/** The plan while HQ has not said it: three steps' places, in the size they will stand. */
-export function ReleasePlanSkeleton() {
+/**
+ * The plan while HQ has not said it: a step's place per service the release puts something on, and
+ * production answering — the ready plan's size wherever it creates nothing.
+ */
+export function ReleasePlanSkeleton({ steps }: { readonly steps: number }) {
   return (
     <ol aria-busy="true" className="rv-plan" data-zerops-surface="release-plan">
-      {[0, 1, 2].map((index) => (
-        <li className="rv-pstep" key={index}>
+      {Array.from({ length: Math.max(2, steps) }, (_, index) => index % 3).map((index, at) => (
+        // oxlint-disable-next-line react/no-array-index-key -- Places, alike and never reordered.
+        <li className="rv-pstep" key={at}>
           <span className="rv-pmark" data-mark="skeleton" />
           <span aria-hidden="true" className="rv-pstep-t">
             <span className={`rv-pskel my-1.25 ${["w-36", "w-44", "w-52"][index]!}`} />

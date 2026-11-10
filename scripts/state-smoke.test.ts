@@ -376,6 +376,7 @@ const selection3806 = [
   "e-env/observation",
   "e-env/parts",
   "e-env/projects-layout",
+  "e-env/release-sheet-fits",
   "f-create/creation",
   "f-create/new-mate-fits",
   "f-create/stage-paint",

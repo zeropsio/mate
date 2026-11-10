@@ -42,6 +42,7 @@ export const scenarioDurations: Readonly<Record<string, number>> = {
   "apps/web/test/scenarios/areas/f-create/birth-before-import.scenario.ts": 11_984,
   "apps/web/test/scenarios/areas/c-mate/overview-filter.scenario.ts": 11_915,
   "apps/web/test/scenarios/areas/f-create/stage-paint.scenario.ts": 11_490,
+  "apps/web/test/scenarios/areas/e-env/release-sheet-fits.scenario.ts": 11_124,
   "apps/web/test/scenarios/areas/f-create/birth-chief.scenario.ts": 10_603,
   "apps/web/test/scenarios/areas/f-create/birth-tier-stage.scenario.ts": 10_061,
   "apps/web/test/scenarios/areas/f-create/birth-clean.scenario.ts": 9_900,

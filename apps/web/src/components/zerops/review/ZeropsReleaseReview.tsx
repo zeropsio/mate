@@ -9,8 +9,9 @@ import { GitDeliveryStatus, gitWhereLine } from "../GitDeliveryStatus";
  * production: the steps HQ runs, in its order, a creation per service production lacks, a deploy
  * per service, and production answering (`ZeropsReleasePlan`). One button does all of it and names
  * the version. Pressed, it stays: the same steps tick in place, and it ends live, or stopped on
- * the step that stopped with the way out of that failure (S6). The sheet is one size from reading
- * to done; nothing it reads moves its buttons.
+ * the step that stopped with the way out of that failure (S6). The sheet is as tall as what it
+ * says: while it reads, its places stand in the ready sheet's size, a step the plan brings more
+ * only pushes the buttons down, and from the press they never rise.
  *
  * Each change row opens that change's review in place (`ZeropsReleaseSteps`): the change, merged,
  * and "← Release" back to where the release was.
@@ -96,6 +97,7 @@ import { useZeropsReviewMates, type ZeropsReviewMate } from "~/zerops/useZeropsR
 
 import { ZeropsChangeReview } from "./ZeropsChangeReview";
 import {
+  GrowsInPlace,
   ReleasePlan,
   ReleasePlanSkeleton,
   WordsOf,
@@ -1060,8 +1062,8 @@ const NO_CREATION: ServiceCreateRun = { kind: "none" };
 const ROWS_SHOWN = 6;
 
 /**
- * The release before its project is read: the sheet in its size, every section's place held, the
- * button waiting. Nothing here is taken back when the reads land.
+ * The release before its project is read: every section's place held, the button waiting. Nothing
+ * here is taken back when the reads land.
  */
 export function ReleaseReadingView({
   name,
@@ -1092,11 +1094,13 @@ export function ReleaseReadingView({
       }}
       where={PRODUCTION}
     >
+      {/* The least a release says: one change, one service and production answering. What the
+          project's reads bring more of only pushes the buttons down. */}
       <ReviewSection title="What goes out">
-        <ReleaseRowsSkeleton count={3} />
+        <ReleaseRowsSkeleton count={1} />
       </ReviewSection>
       <ReviewSection title="What happens in production">
-        <ReleasePlanSkeleton />
+        <ReleasePlanSkeleton steps={2} />
       </ReviewSection>
     </ZeropsReviewSurface>
   );
@@ -1177,7 +1181,7 @@ export function ReleaseVersionField({
   );
 }
 
-/** A release to a Zerops production: one frame from reading to done (the module's note). */
+/** A release to a Zerops production, from reading to done (the module's note). */
 function ProductionReleaseView(props: ReleaseReviewViewProps) {
   const { rows, press, tag, outcome } = props;
   const offered = outcome.kind === "offered";
@@ -1399,6 +1403,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       consequence={note.words}
       consequenceTone={note.tone}
       dismiss={offered ? "Cancel" : outcome.kind === "released" ? "Done" : "Close"}
+      held={!offered}
       // What HQ refused with a fix a Mate can make: asked for beside the way out.
       ask={
         offered && fix !== undefined && props.fixer !== undefined
@@ -1460,7 +1465,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
           )}
           {props.changesPending === true ? (
             offered ? (
-              <ReleaseRowsSkeleton count={props.expected ?? 3} />
+              <ReleaseRowsSkeleton count={props.expected ?? 1} />
             ) : null
           ) : rows.length === 0 ? null : (
             <ReviewReleaseRows appId={props.appId} onOpen={props.onOpenChange} rows={shown} />
@@ -1483,17 +1488,19 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       {/* What HQ's plan would say is not known where it could not be read: the foot says why. */}
       {props.servicePlanFailure !== undefined || nothing ? null : (
         <ReviewSection title="What happens in production">
-          {reading ? (
-            <ReleasePlanSkeleton />
-          ) : (
-            <ReleasePlan
-              live={{ open, onAddDomain: props.onAddDomain }}
-              logOf={props.logOf}
-              // Stopped, the way out is the foot's button: the step does not say it twice.
-              onCreate={stopped ? undefined : onCreate}
-              steps={steps}
-            />
-          )}
+          <GrowsInPlace>
+            {reading ? (
+              <ReleasePlanSkeleton steps={deployed.length + 1} />
+            ) : (
+              <ReleasePlan
+                live={{ open, onAddDomain: props.onAddDomain }}
+                logOf={props.logOf}
+                // Stopped, the way out is the foot's button: the step does not say it twice.
+                onCreate={stopped ? undefined : onCreate}
+                steps={steps}
+              />
+            )}
+          </GrowsInPlace>
           {answerNote === undefined ? null : <p className="rv-note">{answerNote}</p>}
         </ReviewSection>
       )}
@@ -1506,14 +1513,15 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
           />
         </ReviewSection>
       ) : (
-        <p className="rv-version-row" data-zerops-surface="release-version">
+        // A section as its field is: the sheet's last, the one its buttons follow.
+        <section className="rv-version-row" data-zerops-surface="release-version">
           Version
           <span className="rv-code text-foreground">
             {checkedVersion?.tag ?? `v${version.value}`}
           </span>
           <span aria-hidden="true">·</span>
           <InlineButton onClick={() => setChanging(true)}>Change</InlineButton>
-        </p>
+        </section>
       )}
     </ZeropsReviewSurface>
   );

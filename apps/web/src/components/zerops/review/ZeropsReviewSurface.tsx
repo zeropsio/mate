@@ -12,9 +12,10 @@ import { isField } from "./ZeropsReview.logic";
  * One reading order, top to bottom: where it acts and whose it is; its title; one line of where
  * it stands in plain words — "#12 · Ready to merge · ✓ checks passed" — and, where that is not
  * all, why; what it does, how to try it, what it changes; what was said and its commits, folded.
- * The foot is pinned: its note at the start, and at its end the quiet way out, then the one
- * button, in the same places in every review. What is rare or takes something away stands behind
- * ⋯ in the top line.
+ * The buttons stand at the foot: the ask and the one button a pair at the row's end, the one
+ * button last, the quiet word at its start — under the pair where the row has no room, never
+ * above the one button — and under them one line of what happens next, or why the button is held.
+ * What is rare or takes something away stands behind ⋯ in the top line.
  */
 import type { ChangeDiffFile, ReviewVerdict } from "@t3tools/client-runtime/zerops";
 import { changeFileParts } from "@t3tools/client-runtime/zerops";
@@ -34,7 +35,15 @@ import {
   TriangleAlertIcon,
   XIcon,
 } from "lucide-react";
-import { Fragment, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
@@ -134,17 +143,17 @@ export interface ZeropsReviewSurfaceProps {
   readonly fix?: ReviewButton | undefined;
   /** The sections, in reading order. */
   readonly children?: ReactNode;
-  /** The foot's note, before the buttons: what happens next, or why the button is held. */
+  /** The foot's note, under the buttons: what happens next, or why the button is held. */
   readonly consequence: string;
   /** The note's tone where it says why the button is held, or what stopped. */
   readonly consequenceTone?: "attention" | "failed" | undefined;
   /** A press in the note: "Review again", "Roll back to v0.1.3…". */
   readonly noteAction?: ReviewButton | undefined;
-  /** The quiet way out, before the one button: "Cancel" before a press, "Close" or "Done" after. */
+  /** The quiet way out, at the row's start: "Cancel" before a press, "Close" or "Done" after. */
   readonly dismiss?: string | undefined;
   /** "Ask Sage to change it…": the soft button beside the one button. */
   readonly ask?: ReviewButton | undefined;
-  /** A quiet word in the way out's place that does not close the sheet: "Keep it open". */
+  /** A quiet word beside the way out that does not close the sheet: "Keep it open". */
   readonly secondary?: (ReviewButton & { readonly enabled: boolean }) | undefined;
   readonly primary?: ReviewPrimaryButton | undefined;
   /**
@@ -160,6 +169,11 @@ export interface ZeropsReviewSurfaceProps {
    * place of the top line.
    */
   readonly back?: ReviewButton | undefined;
+  /**
+   * Pressed: from here its buttons never rise under the pointer. A sheet as tall as what it says
+   * keeps at least the height that holds them where they stood, whatever it says next.
+   */
+  readonly held?: boolean | undefined;
   /** The sheet's way to the same review as a page, where it has one. */
   readonly onOpenPage?: (() => void) | undefined;
   readonly onClose: () => void;
@@ -195,10 +209,13 @@ export function ZeropsReviewSurface({
   answers,
   settled,
   back,
+  held = false,
   onOpenPage,
   onClose,
 }: ZeropsReviewSurfaceProps) {
   const Title = frame === "page" ? "h1" : "h2";
+  const buttonsRow = useRef<HTMLDivElement | null>(null);
+  const pressed = useHeldButtons(held, buttonsRow);
   const line: Array<{ readonly key: string; readonly node: ReactNode }> = [];
   if (meta !== undefined && meta !== null) line.push({ key: "meta", node: meta });
   if (elsewhere !== undefined && elsewhere !== null)
@@ -309,6 +326,80 @@ export function ZeropsReviewSurface({
       (dismiss === undefined || frame === "page") &&
       consequence === "" ? null : (
         <footer className="rv-foot">
+          <div className="rv-btns" ref={buttonsRow}>
+            {answers !== undefined ? (
+              answers
+            ) : (
+              <>
+                {(dismiss === undefined || frame === "page") && secondary === undefined ? null : (
+                  <div className="rv-btns-quiet">
+                    {dismiss === undefined || frame === "page" ? null : (
+                      <Button
+                        data-review-secondary={secondary === undefined ? "" : undefined}
+                        onClick={onClose}
+                        variant="ghost"
+                      >
+                        {dismiss}
+                      </Button>
+                    )}
+                    {secondary === undefined ? null : (
+                      <Button
+                        data-review-secondary=""
+                        disabled={!secondary.enabled}
+                        onClick={secondary.onPress}
+                        variant="ghost"
+                      >
+                        {secondary.label}
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {ask === undefined && settled === undefined && primary === undefined ? null : (
+                  <div className="rv-btns-main">
+                    {ask === undefined ? null : (
+                      <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
+                        {ask.label}
+                      </Button>
+                    )}
+                    {settled === undefined ? null : (
+                      <span className="rv-settled">
+                        <CheckIcon aria-hidden="true" />
+                        {settled}
+                      </span>
+                    )}
+                    {primary === undefined ? null : (
+                      <Button
+                        data-review-primary=""
+                        data-safe={
+                          primary.safe && primary.enabled && primary.busy !== true
+                            ? "true"
+                            : "false"
+                        }
+                        data-zerops-primary-action={primary.label}
+                        disabled={!primary.enabled || primary.busy === true}
+                        onClick={() => {
+                          pressed();
+                          primary.onPress();
+                        }}
+                      >
+                        {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
+                        {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
+                        {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
+                        {primary.busy === true
+                          ? `${primary.label}…`
+                          : (primary.text ?? primary.label)}
+                        {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
+                          <kbd aria-hidden="true" className="rv-keys">
+                            {PRESS_KEYS}
+                          </kbd>
+                        ) : null}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           {consequence === "" && noteAction === undefined ? null : (
             <p className="rv-conseq" data-tone={consequenceTone}>
               {consequence === "" ? null : <span>{consequence}</span>}
@@ -323,73 +414,6 @@ export function ZeropsReviewSurface({
               )}
             </p>
           )}
-          <div className="rv-btns">
-            {answers !== undefined ? (
-              answers
-            ) : (
-              <>
-                {ask === undefined ? null : (
-                  <Button data-review-ask="" onClick={ask.onPress} variant="secondary">
-                    {ask.label}
-                  </Button>
-                )}
-                {/* The way out and the one button stand together at the foot's end, in every
-                    review; an ask too wide to stand beside them takes the line above. */}
-                <div className="rv-btns-end">
-                  {secondary !== undefined ? (
-                    <Button
-                      data-review-secondary=""
-                      disabled={!secondary.enabled}
-                      onClick={secondary.onPress}
-                      variant="ghost"
-                    >
-                      {secondary.label}
-                    </Button>
-                  ) : dismiss === undefined || frame === "page" ? null : (
-                    // Beside the one button it is the quiet word; alone it is the button.
-                    <Button
-                      data-review-dismiss=""
-                      onClick={onClose}
-                      variant={
-                        primary === undefined && settled === undefined ? "secondary" : "ghost"
-                      }
-                    >
-                      {dismiss}
-                    </Button>
-                  )}
-                  {settled === undefined ? null : (
-                    <span className="rv-settled">
-                      <CheckIcon aria-hidden="true" />
-                      {settled}
-                    </span>
-                  )}
-                  {primary === undefined ? null : (
-                    <Button
-                      data-review-primary=""
-                      data-safe={
-                        primary.safe && primary.enabled && primary.busy !== true ? "true" : "false"
-                      }
-                      data-zerops-primary-action={primary.label}
-                      disabled={!primary.enabled || primary.busy === true}
-                      onClick={primary.onPress}
-                    >
-                      {primary.icon === "tag" ? <TagIcon aria-hidden="true" /> : null}
-                      {primary.icon === "rollback" ? <RotateCcwIcon aria-hidden="true" /> : null}
-                      {primary.icon === "globe" ? <GlobeIcon aria-hidden="true" /> : null}
-                      {primary.busy === true
-                        ? `${primary.label}…`
-                        : (primary.text ?? primary.label)}
-                      {(primary.safe || primary.shortcut === true) && primary.busy !== true ? (
-                        <kbd aria-hidden="true" className="rv-keys">
-                          {PRESS_KEYS}
-                        </kbd>
-                      ) : null}
-                    </Button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
         </footer>
       )}
     </>
@@ -420,6 +444,41 @@ export function ZeropsReviewSurface({
       {content}
     </div>
   );
+}
+
+/**
+ * The buttons' place, held from the press: the one button records where the row stands as it is
+ * pressed, and while the review is `held` its sheet takes whatever height keeps the row no higher
+ * than that — or than anywhere it has stood since. A sheet already the window's height has no
+ * more to take. A review opened on something already under way holds from where it first stood.
+ */
+function useHeldButtons(held: boolean, row: RefObject<HTMLDivElement | null>): () => void {
+  const floor = useRef<number | undefined>(undefined);
+  // Whether this review set the sheet's height: a review beside it in the sheet leaves it be.
+  const holding = useRef(false);
+  useLayoutEffect(() => {
+    const node = row.current;
+    const sheet = node?.closest<HTMLElement>(".rv-viewport > .rv");
+    if (node === null || sheet === null || sheet === undefined) return;
+    if (!held) {
+      floor.current = undefined;
+      if (holding.current) sheet.style.minHeight = "";
+      holding.current = false;
+      return;
+    }
+    const top = node.getBoundingClientRect().top;
+    if (floor.current === undefined || top >= floor.current) {
+      floor.current = top;
+      return;
+    }
+    const room = window.innerHeight - 24;
+    const taller = sheet.getBoundingClientRect().height + (floor.current - top);
+    sheet.style.minHeight = `${String(Math.min(taller, room))}px`;
+    holding.current = true;
+  });
+  return () => {
+    floor.current = row.current?.getBoundingClientRect().top;
+  };
 }
 
 /** The rare ways behind ⋯: a short menu at the top line's end. */

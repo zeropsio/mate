@@ -11620,10 +11620,10 @@ a.message-file:focus-visible {
 
 /* Review: the one door to merging, landing, releasing and rolling back (R1–R8, D12). One
    surface in two frames: a sheet over the page, and a change's own page. The sheet stands 12 in
-   from the window's top, right and bottom, 540 wide, in every state of every review: its head
-   fixed at the top, its body scrolling inside, its foot pinned to the bottom — its note at the
-   start, the way out and the one button at the end. Nothing it reads or does changes its size or
-   moves its buttons. Its type is the scale's, 20 · 13 · 12; its colour means one thing each. */
+   from the window's top and right, 540 wide: its title, one line of where it stands, then what it
+   says, and at its foot the buttons with one line of what happens next. A change's stands the
+   window's height; a release's is as tall as what it says. Its type is the scale's, 20 · 13 · 12;
+   its colour means one thing each. */
 .rv-backdrop {
   position: fixed;
   inset: 0;
@@ -11678,6 +11678,16 @@ a.message-file:focus-visible {
   bottom: 12px;
   width: min(540px, calc(100% - 24px));
   max-height: none;
+}
+/* A release is a few lines and its buttons (the owner, 2026-10-20: it "stood the window's full
+   height, its buttons 1 400 px under its last line"): its sheet hangs from the top as tall as what
+   it says, its buttons right under its last line, and takes the window's height — scrolling
+   inside, its foot in view — only when what it says is taller. It eases to a change's height when
+   one is stepped into (`ZeropsReleaseSteps`), and from the press its buttons never rise
+   (`useHeldButtons`). */
+.rv-viewport > .rv:has(.rv-steps) {
+  bottom: auto;
+  max-height: calc(100dvh - 24px);
 }
 /* Held while what it shows is read (`useReviewHold`): it slides in once, whole. */
 .rv[data-starting-style],
@@ -12768,54 +12778,51 @@ a.message-file:focus-visible {
   grid-column: 1 / -1;
 }
 
-/* The foot, pinned to the sheet's bottom: its note at the start, and at the end the ask, the quiet
-   way out and the one button, the one button last. The buttons stand on the foot's last line, at
-   its end, whatever the note says: a note too long to stand beside them takes the line above. */
+/* The foot: the quiet words at its start, the ask and the one button together at its end, the one
+   button last, then one line of what happens next — or why the button is held, in its tone. A
+   sheet too narrow for one row keeps the pair on the first line and drops the quiet words under it:
+   the one button never stands alone, and nothing stands above it (the owner, 2026-10-20: "these
+   buttons are bit unfortunately positioned"). */
 .rv-foot {
   display: flex;
   flex: none;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 10px 12px;
+  flex-direction: column;
+  gap: 10px;
   margin-top: auto;
-  padding: 21px 24px 22px;
+  padding: 16px 24px 20px;
   border-top: 1px solid var(--border);
   background: var(--card);
 }
 .rv-btns {
   display: flex;
-  flex: none;
-  flex-wrap: wrap;
+  flex-wrap: wrap-reverse;
   align-items: center;
-  justify-content: flex-end;
   gap: 8px;
-  max-width: 100%;
+}
+.rv-btns-quiet,
+.rv-btns-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The quiet words' text stands on the foot's edge, over the line of what happens next: a button's
+   padding and border (3 spacing units) sit outside it. */
+.rv-btns-quiet {
+  margin-inline-start: calc(var(--spacing) * -3);
+}
+.rv-btns-main {
   margin-inline-start: auto;
 }
-.rv-btns:empty,
-.rv-btns-end:empty {
+.rv-btns:empty {
   display: none;
 }
-.rv-btns-end {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-}
-/* The note is as tall as a button at least, its words centred: one line or two never move the
-   buttons. */
 .rv-conseq {
   display: flex;
-  flex: 1 1 180px;
   flex-wrap: wrap;
-  align-items: center;
-  align-content: center;
   gap: 0 8px;
-  min-width: 0;
-  min-height: 32px;
   margin: 0;
-  font-size: 12px;
-  line-height: 16px;
+  font-size: 13px;
+  line-height: 18px;
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
   text-wrap: pretty;
