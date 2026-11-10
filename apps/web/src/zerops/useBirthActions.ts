@@ -17,12 +17,19 @@ import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
 import { continuedBirthPlan, type PinnedBirthRecipe } from "./continueBirth.logic";
-import { pressPlatform, pressRegistration, runPress, type PressRegistration } from "./matePress";
+import {
+  beginPress,
+  pressPlatform,
+  pressRegistration,
+  runPress,
+  type PressRegistration,
+} from "./matePress";
 import { pressStreamOf } from "./pressStreams";
 import { useGitBrowseReads } from "./useGitBrowse";
 import { useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
-import { waitForBirthPlacement } from "./sharedBirths";
+import { birthPlacement, waitForBirthPlacement } from "./sharedBirths";
+import { pressPlanned } from "./useEnvironmentCreation";
 
 /** One account's birth actions; every decision is re-read from its shared projection at the write. */
 export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
@@ -181,6 +188,18 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
             hq,
             untilServicesSettled: async () => [],
           });
+          // Drawn as an Add's press is, from the moment its project stands: the Mate's own view
+          // follows each step instead of standing still until its Mate links.
+          const drawPress = (projectId: string) =>
+            beginPress({
+              projectId,
+              organizationId: orgId,
+              startedAt: Date.now(),
+              container: true,
+              ...pressPlanned(plan.steps),
+              placement: birthPlacement(latest),
+            });
+          if (from !== "create" && latest.projectId !== null) drawPress(latest.projectId);
           const outcome = await runPress({
             organizationId: orgId,
             steps: plan.steps,
@@ -201,6 +220,7 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
                 }),
             onProjectAccepted: async (projectId) => {
               if (!current()) return;
+              drawPress(projectId);
               invalidateZerops({ topic: "inventory", organization: organizationRef(orgId) });
               await operations.run(
                 { kind: "bind-birth", orgId, appId: latest.appId, birthId: latest.id, projectId },
