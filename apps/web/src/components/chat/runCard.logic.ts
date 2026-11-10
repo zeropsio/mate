@@ -209,6 +209,107 @@ export function stretchesBack(
   return back;
 }
 
+const NO_STRETCHES: ReadonlyArray<AsideStretch> = [];
+
+/**
+ * What the log draws of its lines: from which one on, and the lines set aside
+ * just over that one. Lines before those were never drawn (a run opened on
+ * its newest ones). It holds by construction that the stretches set aside
+ * are lines the log holds, standing right before the first one drawn: drawn
+ * from its first line, nothing is set aside.
+ */
+export interface LogWindow {
+  /** Where the first line drawn stands among the log's lines. */
+  readonly from: number;
+  /** That line's key while lines stand before it: what finds it again as lines join or leave before it. */
+  readonly firstKey: string | null;
+  /** The lines set aside right before it, newest last. */
+  readonly aside: ReadonlyArray<AsideStretch>;
+}
+
+/** The room the lines set aside took. */
+export function roomAside(aside: ReadonlyArray<AsideStretch>): number {
+  let room = 0;
+  for (const stretch of aside) room += stretch.height;
+  return room;
+}
+
+/**
+ * The log drawn from its line `from` with `aside` set aside before it: never
+ * from past its last line, and of the stretches only the newest that are
+ * lines standing before the first one drawn — an older one that is not is
+ * dropped, its lines among the ones never drawn.
+ */
+export function logWindow(
+  lines: ReadonlyArray<{ readonly key: string }>,
+  from: number,
+  aside: ReadonlyArray<AsideStretch>,
+): LogWindow {
+  const first = Math.max(0, Math.min(from, lines.length - 1));
+  let keeps = aside.length;
+  let held = 0;
+  while (keeps > 0 && held + aside[keeps - 1]!.lines <= first) {
+    keeps -= 1;
+    held += aside[keeps]!.lines;
+  }
+  return {
+    from: first,
+    firstKey: first > 0 ? lines[first]!.key : null,
+    aside: keeps === 0 ? aside : keeps === aside.length ? NO_STRETCHES : aside.slice(keeps),
+  };
+}
+
+/**
+ * The window over the log's lines as they are now: the same lines drawn
+ * though lines joined before them (a page of earlier ones read in) or left
+ * there. Its first drawn line gone from the log, nothing it set aside is
+ * known to be there either: it draws from where it would open, nothing aside.
+ */
+export function windowOver(
+  window: LogWindow,
+  lines: ReadonlyArray<{ readonly key: string }>,
+): LogWindow {
+  if (window.from === 0 || lines[window.from]?.key === window.firstKey) return window;
+  const at = lines.findIndex((line) => line.key === window.firstKey);
+  if (at === -1) {
+    return logWindow(lines, Math.min(window.from, chatOpensAt(lines.length)), NO_STRETCHES);
+  }
+  return logWindow(lines, at, window.aside);
+}
+
+/**
+ * The window with earlier lines drawn, the view's top `above` px under its
+ * first drawn row's: the lines set aside come back first (`stretchesBack`,
+ * the newest of them at least), then the chunk never drawn before them.
+ */
+export function windowEarlier(
+  window: LogWindow,
+  lines: ReadonlyArray<{ readonly key: string }>,
+  above: number,
+): LogWindow {
+  if (window.aside.length === 0) {
+    return logWindow(lines, earlierShown(window.from).next, NO_STRETCHES);
+  }
+  const back = Math.max(1, stretchesBack(window.aside, above).length);
+  const keeps = window.aside.length - back;
+  let returned = 0;
+  for (let index = keeps; index < window.aside.length; index += 1) {
+    returned += window.aside[index]!.lines;
+  }
+  return logWindow(lines, window.from - returned, window.aside.slice(0, keeps));
+}
+
+/** The window with `stretches` of its first drawn lines set aside. */
+export function windowAside(
+  window: LogWindow,
+  lines: ReadonlyArray<{ readonly key: string }>,
+  stretches: ReadonlyArray<AsideStretch>,
+): LogWindow {
+  let gone = 0;
+  for (const stretch of stretches) gone += stretch.lines;
+  return logWindow(lines, window.from + gone, [...window.aside, ...stretches]);
+}
+
 /** Where the run's scroll stands. */
 export interface RunScrollPosition {
   readonly scrollTop: number;
