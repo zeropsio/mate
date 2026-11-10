@@ -8086,6 +8086,7 @@ a.ov-chip-who:focus-visible {
    popover sits outside the page, so it carries the same surfaces. */
 .tm-team,
 .tm-page,
+.tm-cards,
 .ov-pick {
   --ov-lift: color-mix(in oklab, var(--foreground) 3.5%, var(--background));
   --ov-hover: color-mix(in oklab, var(--foreground) 4%, transparent);
@@ -8094,6 +8095,7 @@ a.ov-chip-who:focus-visible {
 
 .dark .tm-team,
 .dark .tm-page,
+.dark .tm-cards,
 .dark .ov-pick {
   --ov-lift: color-mix(in oklab, var(--foreground) 6%, var(--background));
   --ov-hover: color-mix(in oklab, var(--foreground) 5%, transparent);
@@ -8115,7 +8117,9 @@ a.ov-chip-who:focus-visible {
   gap: 14px;
 }
 
+/* A face card (`FaceCard`): a person on the team, a Mate on its project's page. */
 .tm-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -8140,10 +8144,54 @@ a.ov-chip-who:focus-visible {
   outline: none;
 }
 
+/* A body that opens something is the whole card's press: it reaches under the foot, whose own
+   presses stand over it. */
+:is(a, button).tm-card-body {
+  cursor: pointer;
+}
+
+:is(a, button).tm-card-body::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  content: "";
+}
+
 /* The resting card already carries a lift, so the pointer adds to it rather than replacing it. */
-.tm-card:has(> a.tm-card-body:hover) {
+.tm-card:has(> :is(a, button).tm-card-body:hover) {
   background: color-mix(in oklab, var(--foreground) 9%, var(--background));
   box-shadow: inset 0 0 0 1px var(--ov-rule);
+}
+
+/* A card its row made taller centres what it says, where its lines keep one height (a Mate's). */
+.tm-card[data-rest="middle"] > .tm-card-body {
+  align-content: center;
+}
+
+/* Where the card leads, in its top corner: said at rest, inked under the pointer and on focus. */
+.tm-card-corner {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+  transition: color var(--duration-quick) var(--ease-out-strong);
+}
+
+.tm-card-corner > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.tm-card:has(> .tm-card-body:hover) .tm-card-corner,
+.tm-card:has(> .tm-card-body:focus-visible) .tm-card-corner {
+  color: var(--foreground);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-card-corner {
+    transition: none;
+  }
 }
 
 .tm-card:has(> .tm-card-body:focus-visible) {
@@ -8162,6 +8210,18 @@ a.ov-chip-who:focus-visible {
   line-height: 18px;
 }
 
+.tm-card-foot > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* A foot that keeps its seat while it holds nothing, so a verb arriving moves nothing: the
+   tallest control's height (a ⋯, 32 px) over the foot's own padding. */
+.tm-card-foot[data-held] {
+  align-content: center;
+  min-height: 50px;
+}
+
 .tm-card-trouble {
   color: var(--destructive);
   text-wrap: pretty;
@@ -8172,6 +8232,8 @@ a.ov-chip-who:focus-visible {
 }
 
 .tm-card-face {
+  position: relative;
+  display: flex;
   margin-bottom: 12px;
 }
 
@@ -8223,6 +8285,29 @@ a.ov-chip-who:focus-visible {
   line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A line two lines tall whatever it holds, cut after them: a card's height never follows its
+   words. */
+.tm-card-mail[data-lines="2"] {
+  display: -webkit-box;
+  height: 36px;
+  white-space: normal;
+  text-wrap: pretty;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tm-card-mail[data-tone="ink"] {
+  color: var(--foreground);
+}
+
+.tm-card-mail[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.tm-card-mail[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
 }
 
 /* An address cut in its middle: the name before the @ gives way, the domain always shows. */
