@@ -8238,6 +8238,7 @@ function ConversationView(props: ChatViewProps) {
     return <NoActiveThreadState />;
   }
 
+  const rightPanelCoversHeader = shouldUseRightPanelSheet && isMobileViewport;
   const panelToggleControls = (
     <PanelLayoutControls
       terminalAvailable={activeProject !== null}
@@ -8592,7 +8593,9 @@ function ConversationView(props: ChatViewProps) {
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
           className="relative bg-background"
         >
-          {!rightPanelOpen ? panelLayoutControls : null}
+          {/* A phone's sheet covers the whole header, so the header stays as it is under it: its
+              toggle and its actions stand where they stood as the sheet comes and goes. */}
+          {!rightPanelOpen || rightPanelCoversHeader ? panelLayoutControls : null}
           <ChatHeader
             activeThreadEnvironmentId={activeThread.environmentId}
             activeThreadId={activeThread.id}
@@ -8611,7 +8614,7 @@ function ConversationView(props: ChatViewProps) {
             }
             keybindings={keybindings}
             availableEditors={availableEditors}
-            rightPanelOpen={rightPanelOpen}
+            rightPanelOpen={rightPanelOpen && !rightPanelCoversHeader}
             terminalOpen={terminalUiState.terminalOpen}
             onToggleTerminal={activeProject !== null ? toggleTerminalVisibility : undefined}
             gitCwd={gitCwd}
