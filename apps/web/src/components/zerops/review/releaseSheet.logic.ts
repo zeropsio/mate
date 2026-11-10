@@ -15,7 +15,11 @@ import {
   type ReleaseReplaces,
   type ReviewVerdict,
 } from "@t3tools/client-runtime/zerops";
-import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
+import {
+  deployKeyTrouble,
+  type DeployKeyTrouble,
+  type HqJob,
+} from "@t3tools/client-runtime/zerops/hq";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { namesWords } from "../../ask/ask.logic";
@@ -115,9 +119,19 @@ export interface ReleaseSheetStep {
   readonly aside: string | undefined;
   /** A creation's import, to show on request: what HQ's plan settles, and HQ's words for its cost. */
   readonly creates: CreateOperation | undefined;
-  /** A creation's own press: the early path, or its retry after Zerops failed it. */
-  readonly action: "create-now" | "create-again" | undefined;
+  /**
+   * The step's own press: a creation's early path, its retry after Zerops failed it, or the
+   * renewal of production's deploy key where that is what stopped it.
+   */
+  readonly action: "create-now" | "create-again" | "renew-key" | undefined;
+  /** What stopped it is production's deploy key, which HQ will not use (`deployKeyTrouble`). */
+  readonly deployKey?: DeployKeyTrouble | undefined;
 }
+
+/** The renewal of production's deploy key this sheet runs, as its operation says it stands. */
+export type KeyRenewal =
+  | { readonly kind: "none" | "working" | "renewed" }
+  | { readonly kind: "failed"; readonly words: string };
 
 export interface ReleaseSheetStepsInput {
   readonly tag: string;
@@ -144,8 +158,70 @@ export interface ReleaseSheetStepsInput {
   readonly progress: ReleaseProgress | undefined;
   /** The stalled or superseded release's own words (`releaseReview`), on the step it stopped at. */
   readonly stopped: string | undefined;
+  /** Production as HQ names it: its sentences lead with the name, and the sheet says Production. */
+  readonly environmentName?: string | undefined;
+  /** The key's renewal run from the sheet; none where it runs none. */
+  readonly renewal?: KeyRenewal | undefined;
+  /** False where the viewer has no admin access to production's project: the key is not theirs to renew. */
+  readonly mayRenew?: boolean | undefined;
   readonly nowMs: number;
 }
+
+/**
+ * HQ's words for the production under review, saying Production where HQ leads a sentence with its
+ * own name for the environment ("acme-production's deploy token…"): the person knows it as
+ * Production. Told by the environment's own name, at a sentence's start, never by its shape.
+ */
+export function inProductionWords(words: string, environmentName: string | undefined): string {
+  if (environmentName === undefined || environmentName === "") return words;
+  let said = "";
+  let from = 0;
+  for (;;) {
+    const at = words.indexOf(environmentName, from);
+    if (at === -1) return said + words.slice(from);
+    const after = words.slice(at + environmentName.length);
+    const leads =
+      at === 0 || words.slice(0, at).endsWith(": ") || words.slice(0, at).endsWith("; ");
+    const named = leads && (after.startsWith("'s ") || after.startsWith(" "));
+    said += words.slice(from, at) + (named ? "Production" : environmentName);
+    from = at + environmentName.length;
+  }
+}
+
+/** HQ's words for what stopped the release in production, as its jobs say them; none where none. */
+export function releaseStopReason(progress: ReleaseProgress | undefined): string | undefined {
+  if (progress === undefined) return undefined;
+  if (progress.creation?.state === "failed") return progress.creation.reason;
+  return progress.deploys.find((job) => job.state === "failed" || job.state === "refused")?.reason;
+}
+
+/**
+ * HQ's note on what it asked for at the press, as the sheet says it: where it repeats the reason
+ * already standing on the step that stopped ("HQ could not stop mail: <the same sentence>"), the
+ * sentence is said once, there, and the note says "for the same reason".
+ */
+export function releaseNoteSaid(input: {
+  readonly note: string | undefined;
+  /** HQ's reason on the step that stopped (`releaseStopReason`). */
+  readonly stopped: string | undefined;
+  readonly environmentName: string | undefined;
+}): string | undefined {
+  if (input.note === undefined) return undefined;
+  const same = input.stopped?.replace(/\.$/u, "").trim();
+  const once =
+    same === undefined || same === ""
+      ? input.note
+      : input.note.split(`: ${same}`).join(" for the same reason");
+  const left = once === same || once === `${same ?? ""}.` ? "" : once;
+  return left.trim() === "" ? undefined : inProductionWords(left, input.environmentName);
+}
+
+/** Why HQ will not use production's deploy key, in the person's words. */
+const KEY_WORDS: Record<DeployKeyTrouble, string> = {
+  missing: "It has none yet.",
+  dead: "It no longer answers.",
+  widened: "It reaches more than this project, so HQ won't use it.",
+};
 
 const elapsed = (from: string | undefined, to: number): string | undefined => {
   const since = from === undefined ? Number.NaN : Date.parse(from);
@@ -180,7 +256,43 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
   ];
   const plannedDeploys = planDeploys(input.plan);
   const deploys = plannedDeploys.length > 0 ? plannedDeploys : input.services;
-  const deploying = progress !== undefined && progress.deploys.length > 0;
+  // HQ deploys only once what the release creates stands, so a deploy it runs proves the creation
+  // where no row of it has come yet. One queued, refused or left because the service already runs
+  // the commit (live, with HQ's remark) proves nothing: the creation is still under way.
+  const proved =
+    progress !== undefined &&
+    progress.deploys.some(
+      (job) =>
+        job.state === "submitting" ||
+        job.state === "building" ||
+        (job.state === "live" && job.reason === undefined),
+    );
+  const said = (words: string) =>
+    inProductionWords(words, input.environmentName).replace(/\.$/u, "");
+  const renewal = input.renewal ?? NOT_RENEWING;
+  // Stopped on production's deploy key: Zerops was never asked, and asking again changes nothing.
+  const keyStep = (
+    base: Pick<ReleaseSheetStep, "key" | "kind" | "service">,
+    trouble: DeployKeyTrouble,
+  ): ReleaseSheetStep => ({
+    ...base,
+    mark: "failed",
+    title: ["HQ can't use production's deploy key"],
+    line: [
+      renewal.kind === "failed"
+        ? said(renewal.words)
+        : `${KEY_WORDS[trouble]} ${
+            input.mayRenew === false
+              ? "Someone with admin access to production's project in Zerops renews it."
+              : "Renewing makes a new one for this project only."
+          }`,
+    ],
+    tone: renewal.kind === "failed" ? "failed" : "quiet",
+    aside: undefined,
+    creates: undefined,
+    action: input.mayRenew === false ? undefined : "renew-key",
+    deployKey: trouble,
+  });
   const late =
     running && outcome.clock?.endsWith("taking longer than usual") === true
       ? " · taking longer than usual"
@@ -205,9 +317,10 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
       mark: "failed",
       title: ["Zerops could not create ", code(service)],
       line: [
-        [words ?? "Zerops gave no reason", ...(after === undefined ? [] : [`after ${after}`])].join(
-          " · ",
-        ),
+        [
+          words === undefined ? "Zerops gave no reason" : said(words),
+          ...(after === undefined ? [] : [`after ${after}`]),
+        ].join(" · "),
       ],
       tone: "failed",
       aside: undefined,
@@ -255,15 +368,21 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
       continue;
     }
     const creation = progress?.creation;
-    if (creation?.state === "failed") {
+    const trouble = creation?.state === "failed" ? deployKeyTrouble(creation.reason) : undefined;
+    if (trouble !== undefined) {
+      steps.push(keyStep(base, trouble));
+    } else if (creation?.state === "failed") {
       steps.push(failed(creation.reason, took(creation)));
-    } else if (creation?.state === "created" || (creation === undefined && deploying)) {
+    } else if (creation?.state === "created" || (creation === undefined && proved)) {
       steps.push(done(creation === undefined ? undefined : took(creation)));
     } else {
       steps.push(creating(creation === undefined ? undefined : elapsed(creation.at, input.nowMs)));
     }
   }
 
+  // While what the release creates does not stand, no deploy of it has started: a job HQ ended
+  // for that alone ("the creation did not resolve") is the creation's failure, said once, there.
+  const uncreated = !offered && steps.some((step) => step.mark !== "done");
   const untouched =
     input.untouched.length === 0
       ? ""
@@ -283,7 +402,17 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
       creates: undefined,
       action: undefined,
     };
-    const job = progress?.deploys.find((entry) => entry.service === service);
+    const job = uncreated
+      ? undefined
+      : progress?.deploys.find((entry) => entry.service === service);
+    const trouble =
+      job !== undefined && (job.state === "failed" || job.state === "refused")
+        ? deployKeyTrouble(job.reason)
+        : undefined;
+    if (trouble !== undefined) {
+      steps.push(keyStep(base, trouble));
+      return;
+    }
     if (released || job?.state === "live") {
       steps.push({
         ...base,
@@ -329,7 +458,7 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
               : ["HQ refused the deploy of ", code(service)],
           line: [
             [
-              job.reason?.replace(/\.$/u, "") ?? "The platform gave no reason",
+              job.reason === undefined ? "The platform gave no reason" : said(job.reason),
               ...(took(job) === undefined ? [] : [`after ${took(job)!}`]),
             ].join(" · "),
           ],
@@ -344,10 +473,11 @@ export function releaseSheetSteps(input: ReleaseSheetStepsInput): ReadonlyArray<
           mark: job.state === "unresolved" ? "attention" : "pending",
           title: ["Deploy ", code(service)],
           line: [
-            job.reason?.replace(/\.$/u, "") ??
-              (job.state === "unresolved"
+            job.reason === undefined
+              ? job.state === "unresolved"
                 ? "HQ couldn't confirm how the deploy ended"
-                : "Not started"),
+                : "Not started"
+              : said(job.reason),
           ],
           tone: job.state === "unresolved" ? "attention" : "quiet",
           aside: undefined,
@@ -402,8 +532,11 @@ function settle(
   const { outcome } = input;
   const failedAt = steps.findIndex((step) => step.mark === "failed");
   const openAt = steps.findIndex((step) => step.mark !== "done");
+  // A deploy after the stop that failed on its own keeps its own words: it did start.
+  const after = (step: ReleaseSheetStep) =>
+    step.mark === "done" || (step.kind === "deploy" && step.mark === "failed") ? step : idle(step);
   if (outcome.kind === "releasing") {
-    if (failedAt !== -1) return steps.map((step, index) => (index > failedAt ? idle(step) : step));
+    if (failedAt !== -1) return steps.map((step, index) => (index > failedAt ? after(step) : step));
     return steps.map((step, index) =>
       index === openAt && step.mark === "pending" ? underWay(step) : step,
     );
@@ -422,7 +555,7 @@ function settle(
   const at = failedAt !== -1 ? failedAt : named !== -1 ? named : openAt;
   return steps.map((step, index) => {
     if (index < at || at === -1) return step;
-    if (index > at) return step.mark === "done" ? step : idle(step);
+    if (index > at) return after(step);
     if (failedAt !== -1) return step;
     if (outcome.kind === "failed") {
       // The deploy HQ names failed in the platform's words; anything else stopped in HQ's own.
@@ -434,10 +567,9 @@ function settle(
         aside: undefined,
         title: deploy ? ["The deploy of ", code(step.service), " failed"] : step.title,
         line: [
-          (
-            outcome.error ??
-            (deploy ? undefined : outcome.detail) ??
-            "HQ recorded no reason"
+          inProductionWords(
+            outcome.error ?? (deploy ? undefined : outcome.detail) ?? "HQ recorded no reason",
+            input.environmentName,
           ).replace(/\.$/u, ""),
         ],
       };
@@ -448,19 +580,52 @@ function settle(
       tone: outcome.kind === "stalled" ? ("attention" as const) : ("quiet" as const),
       aside: undefined,
       line:
-        input.stopped === undefined ? step.line : wordsNaming(input.stopped.replace(/\.$/u, "")),
+        input.stopped === undefined
+          ? step.line
+          : wordsNaming(
+              inProductionWords(input.stopped, input.environmentName).replace(/\.$/u, ""),
+            ),
     };
   });
 }
 
+/** A step the release never reached: its plain title, and that it did not start. */
 const idle = (step: ReleaseSheetStep): ReleaseSheetStep => ({
   ...step,
   mark: "pending",
+  title:
+    step.service === undefined
+      ? step.title
+      : [step.kind === "create" ? "Create " : "Deploy ", code(step.service)],
   tone: "quiet",
   aside: undefined,
   line: NOT_STARTED,
   action: undefined,
+  deployKey: undefined,
 });
+
+const NOT_RENEWING: KeyRenewal = { kind: "none" };
+
+/**
+ * The steps once production's key is renewed from the sheet: the step it stopped at says so. The
+ * release itself stays stopped — HQ runs none of it again — and a new one uses the new key.
+ */
+export function keyRenewedSteps(
+  steps: ReadonlyArray<ReleaseSheetStep>,
+): ReadonlyArray<ReleaseSheetStep> {
+  return steps.map((step) =>
+    step.deployKey === undefined
+      ? step
+      : {
+          ...step,
+          mark: "done" as const,
+          title: ["Key renewed"],
+          line: ["HQ has a new one for this project only. A new release uses it."],
+          tone: "quiet" as const,
+          action: undefined,
+        },
+  );
+}
 
 /** The step under way that no job of its own says yet: its mark turns, its words wait. */
 const underWay = (step: ReleaseSheetStep): ReleaseSheetStep => ({

@@ -92,6 +92,9 @@ export interface ReleasePlanProps {
   readonly steps: ReadonlyArray<ReleaseSheetStep>;
   /** The early path: creates what production lacks now, with the person's own access. */
   readonly onCreate?: (() => void) | undefined;
+  /** Renews production's deploy key, on the step HQ stopped at for it; `renewing` while it runs. */
+  readonly onRenew?: (() => void) | undefined;
+  readonly renewing?: boolean | undefined;
   /** A service's deploy log, once its job has one. */
   readonly logOf?: ((service: string) => ReleaseStepLog | undefined) | undefined;
   /** Once live: the way in, and a domain of its own where production has none. */
@@ -103,7 +106,14 @@ export interface ReleasePlanProps {
     | undefined;
 }
 
-export function ReleasePlan({ steps, onCreate, logOf, live }: ReleasePlanProps) {
+export function ReleasePlan({
+  steps,
+  onCreate,
+  onRenew,
+  renewing = false,
+  logOf,
+  live,
+}: ReleasePlanProps) {
   const creations = steps.filter((step) => step.kind === "create").length;
   return (
     <ol className="rv-plan" data-zerops-surface="release-plan">
@@ -117,6 +127,8 @@ export function ReleasePlan({ steps, onCreate, logOf, live }: ReleasePlanProps) 
             step.kind === "deploy" && step.service !== undefined ? logOf?.(step.service) : undefined
           }
           onCreate={onCreate}
+          onRenew={onRenew}
+          renewing={renewing}
           step={step}
         />
       ))}
@@ -129,6 +141,8 @@ function PlanStep({
   index,
   createWords,
   onCreate,
+  onRenew,
+  renewing,
   log,
   live,
 }: {
@@ -136,6 +150,8 @@ function PlanStep({
   readonly index: number;
   readonly createWords: string;
   readonly onCreate: (() => void) | undefined;
+  readonly onRenew: (() => void) | undefined;
+  readonly renewing: boolean;
   readonly log: ReleaseStepLog | undefined;
   readonly live: ReleasePlanProps["live"];
 }) {
@@ -188,6 +204,15 @@ function PlanStep({
         <span className="rv-pstep-aside" data-clock="">
           {step.aside}
         </span>
+      ) : step.action === "renew-key" ? (
+        onRenew === undefined ? null : (
+          // Its words change while it runs; its place does not.
+          <span className="rv-pstep-aside">
+            <InlineButton data-release-renew="" disabled={renewing} onClick={onRenew}>
+              {renewing ? "Renewing…" : "Renew the key"}
+            </InlineButton>
+          </span>
+        )
       ) : step.action !== undefined && onCreate !== undefined ? (
         // The step's own press stands at its title's end; its line keeps the step's width.
         <span className="rv-pstep-aside">
