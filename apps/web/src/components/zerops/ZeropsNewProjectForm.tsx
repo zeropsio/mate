@@ -265,7 +265,8 @@ export function ZeropsNewProjectForm({
             }}
             value={locationId}
           >
-            <SelectTrigger aria-label="Location" className="w-auto">
+            {/* On a phone the footer stacks from its foot: the place leads it, over the line. */}
+            <SelectTrigger aria-label="Location" className="w-auto max-sm:order-2">
               <SelectValue placeholder="Location">
                 {locations.find((location) => location.id === locationId)?.name ?? "Location"}
               </SelectValue>
@@ -284,7 +285,7 @@ export function ZeropsNewProjectForm({
         <p
           aria-live="polite"
           className={cn(
-            "me-auto min-h-4 self-center text-line leading-4",
+            "me-auto min-h-4 self-center text-line leading-4 max-sm:order-1 max-sm:me-0",
             failed === undefined ? "text-muted-foreground" : "text-status-failed-text",
           )}
           id={LINE}

@@ -44,7 +44,9 @@ function Input({
   const inputClassName = cn(
     secret && "[-webkit-text-security:disc]",
     "h-8.5 w-full min-w-0 rounded-[inherit] px-[calc(--spacing(3)-1px)] leading-8.5 outline-none placeholder:text-placeholder sm:h-7.5 sm:leading-7.5 [transition:background-color_5000000s_ease-in-out_0s]",
-    size === "compact" && "h-7 px-[calc(--spacing(2.5)-1px)] text-xs leading-7 sm:h-7 sm:leading-7",
+    // Below 640 even the compact field types at 16 px: a smaller one makes iOS zoom the page.
+    size === "compact" &&
+      "h-7 px-[calc(--spacing(2.5)-1px)] text-base leading-7 sm:h-7 sm:text-xs sm:leading-7",
     size === "sm" && "h-7.5 px-[calc(--spacing(2.5)-1px)] leading-7.5 sm:h-6.5 sm:leading-6.5",
     size === "lg" && "h-9.5 leading-9.5 sm:h-8.5 sm:leading-8.5",
     props.type === "search" &&

@@ -16,7 +16,7 @@ export function NoticesOverComposer({
       <NoticeAnnouncer notices={notices} />
       {notices.length === 0 ? null : (
         <div
-          className="mx-auto w-full min-w-0 max-w-3xl px-4.25 pb-2"
+          className="mx-auto w-full min-w-0 max-w-3xl px-3.25 pb-2 sm:px-4.25"
           data-notices-over-composer=""
         >
           {notices.map((notice) => (

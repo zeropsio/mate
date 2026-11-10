@@ -39,14 +39,16 @@ export function ZeropsOrganizationScope({
 
   if (organizations.length === 0) {
     return (
-      <Card size="md" variant="flat">
-        <div>
-          <p className="text-sm text-foreground">No active Zerops organizations.</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Ask an organization owner to invite this account, then refresh the page.
-          </p>
-        </div>
-      </Card>
+      <div>
+        <Card size="md" variant="flat">
+          <div>
+            <p className="text-sm text-foreground">No active Zerops organizations.</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Ask an organization owner to invite this account, then refresh the page.
+            </p>
+          </div>
+        </Card>
+      </div>
     );
   }
 
@@ -57,8 +59,8 @@ export function ZeropsOrganizationScope({
           Choose an organization
         </h1>
         <p className="text-sm text-muted-foreground">
-          Environments and permissions come from the organization you pick. Switch any time from the
-          top bar.
+          Environments and permissions come from the organization you pick. Switch any time from
+          your account menu.
         </p>
       </div>
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

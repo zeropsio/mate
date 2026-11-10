@@ -7,21 +7,29 @@
  */
 import { useState } from "react";
 
+import { cn } from "~/lib/utils";
 import { rememberedOverviewCards } from "~/zerops/overviewCardCount";
 
 import { Loading } from "../../ui/loading";
 import { Skeleton } from "../../ui/skeleton";
 import { ZeropsHostedFrame } from "../landing/ZeropsHostedFrame";
+import { InPhoneBar, useInPhoneBar } from "../system/PhoneBar";
 
 /** The title row, as `ZeropsProjectsHeader` stands it: its height is its buttons'. */
 function TitleRow() {
+  const inBar = useInPhoneBar();
   return (
-    <div
-      className="-mt-1.5 flex min-h-7 items-center justify-between gap-3"
-      data-overview-stand-in-title=""
-    >
-      <h1 className="text-xl font-medium text-foreground">Overview</h1>
-    </div>
+    <InPhoneBar>
+      <div
+        className={cn(
+          "flex min-h-7 items-center justify-between gap-3",
+          inBar ? "min-w-0 flex-1" : "-mt-1.5",
+        )}
+        data-overview-stand-in-title=""
+      >
+        <h1 className="text-xl font-medium text-foreground">Overview</h1>
+      </div>
+    </InPhoneBar>
   );
 }
 

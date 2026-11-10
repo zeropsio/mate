@@ -565,7 +565,7 @@ function HeaderActions({ links }: { readonly links: HeadState["links"] }) {
     <>
       <span className="flex size-4 shrink-0 items-center justify-center" />
       <div
-        className="flex shrink-0 items-center justify-end gap-1 pr-18.25 sm:pr-14.25"
+        className="flex shrink-0 items-center justify-end gap-1 pr-9.25 sm:pr-14.25"
         data-chat-header-actions
       >
         <Button

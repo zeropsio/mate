@@ -169,6 +169,7 @@ export function SettingsRow({
       ref={targetRef}
       tabIndex={rowProps.id ? -1 : rowProps.tabIndex}
       className={cn("rounded-xl", children ? "pb-1" : undefined, className)}
+      data-settings-row=""
     >
       <Row
         control={
@@ -260,7 +261,8 @@ export function SettingsPageContainer({
         className="topbar-scroll-fade scrollbar-gutter-both flex-1 overflow-y-auto [--topbar-scroll-fade-height:1.5rem] sm:[--topbar-scroll-fade-height:1.5rem]"
         data-settings-page-scroll
       >
-        <WorkspacePageContainer width={width} className={cn("gap-12", className)}>
+        {/* On a phone the page's gutter is its rows' own inset: their words start 16 px in. */}
+        <WorkspacePageContainer width={width} className={cn("gap-12 max-sm:px-1", className)}>
           {children}
         </WorkspacePageContainer>
       </div>

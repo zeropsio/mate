@@ -15,10 +15,11 @@
  */
 
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import { APP_BASE_NAME } from "../../../branding";
 import { isElectron } from "../../../env";
+import { useIsMobile } from "~/hooks/useMediaQuery";
 import { cn } from "~/lib/utils";
 import { MateLockup } from "../../MateLockup";
 import { ScrollArea } from "../../ui/scroll-area";
@@ -29,6 +30,7 @@ import {
   type WorkspacePageWidth,
 } from "../../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../../WorkspacePageHeader";
+import { PhoneBarContext } from "../system/PhoneBar";
 
 export function ZeropsHostedFrame({
   breadcrumb,
@@ -58,6 +60,11 @@ export function ZeropsHostedFrame({
   readonly children: ReactNode;
 }) {
   const standalone = useOptionalSidebar() === null;
+  // On a phone the menu's button stands fixed in the corner: every page in the shell keeps one
+  // bar's line beside it, and the page scrolls beneath that, never under the button.
+  const phone = useIsMobile() && !standalone && !centered;
+  // A page without a bar of its own says its first line there (`InPhoneBar`).
+  const [phoneBar, setPhoneBar] = useState<HTMLElement | null>(null);
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground isolate">
@@ -73,7 +80,9 @@ export function ZeropsHostedFrame({
           >
             <div
               className={cn(
-                "mx-auto flex h-full w-full min-w-0 items-center gap-3 px-5 sm:px-6",
+                "mx-auto flex h-full w-full min-w-0 items-center gap-3",
+                // Beside the menu's button the header already steps in; the page's gutter ends it.
+                phone ? "pr-4" : "px-5 sm:px-6",
                 workspacePageWidthClass(width),
               )}
             >
@@ -92,6 +101,10 @@ export function ZeropsHostedFrame({
               )}
             </div>
           </WorkspacePageHeader>
+        ) : phone ? (
+          <WorkspacePageHeader className="pr-4" data-zerops-frame="phone" electron={isElectron}>
+            <div className="flex h-full min-w-0 flex-1 items-center gap-3" ref={setPhoneBar} />
+          </WorkspacePageHeader>
         ) : isElectron ? (
           <div
             aria-hidden="true"
@@ -109,9 +122,14 @@ export function ZeropsHostedFrame({
             )}
           </div>
         ) : (
-          <ScrollArea className="min-h-0 flex-1">
-            <WorkspacePageContainer width={width}>{children}</WorkspacePageContainer>
-          </ScrollArea>
+          <PhoneBarContext value={phone && !bar ? phoneBar : undefined}>
+            <ScrollArea className="min-h-0 flex-1">
+              {/* A phone's gutter is 16 px, and under the bar the page starts at once. */}
+              <WorkspacePageContainer className={cn("px-4", phone && "pt-2")} width={width}>
+                {children}
+              </WorkspacePageContainer>
+            </ScrollArea>
+          </PhoneBarContext>
         )}
       </div>
     </SidebarInset>

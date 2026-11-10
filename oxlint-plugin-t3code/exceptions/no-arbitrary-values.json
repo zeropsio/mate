@@ -144,14 +144,6 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
-    "kind": "Literal",
-    "fingerprint": "<> text-[14px] in \"min-w-0 flex-1 truncate bg-transparent p-0 text-left text-[14px] focus:outline-none\"",
-    "owner": "web-intake",
-    "reason": "arbitrary value that predates the token pass; upstream's own call site was rewritten differently or is gone here",
-    "expires": "F6"
-  },
-  {
     "path": "apps/web/src/components/chat/ComposerBannerStack.tsx",
     "kind": "Literal",
     "fingerprint": "<Alert> pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] in \"chat-composer-drawer-surface chat-composer-drawer-attached px-3 pt-2 pb-[calc(var(--chat-composer-attachment-overlap)_+_0.375rem)] text-xs sm:px-4\"",
