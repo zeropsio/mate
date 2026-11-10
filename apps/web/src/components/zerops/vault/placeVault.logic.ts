@@ -12,8 +12,13 @@ import { placeLabel, placeLines, type PlaceLine } from "../projects/projectCard.
 export interface PlaceVault {
   /** The place's Zerops project. */
   readonly projectId: string;
-  /** The place as its line names it (`Production`, `Stage`). */
+  /** The place as its line names it (`Production`, `Stage`), or a Mate's name on its card. */
   readonly name: string;
+  /**
+   * A Mate's workspace: its conversation's environment, where it has one. Its vault is then the
+   * Mate's own panel, which tells the Mate each write; a place has no Mate to tell.
+   */
+  readonly environmentId?: string | undefined;
 }
 
 /** A place line's vault, where it has one. */
