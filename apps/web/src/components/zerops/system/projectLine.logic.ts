@@ -615,7 +615,11 @@ export function projectLineFull(
           kind: station.kind,
           name: station.name,
           node: "solid",
-          lines: input.repos.length === 0 ? [] : [[{ text: input.repos.join(" · ") }]],
+          // A repository is named by its hostname: a real thing's name, in the mono face.
+          lines:
+            input.repos.length === 0
+              ? []
+              : [between(input.repos.map((text): LineWord => ({ text, mono: true })))],
         };
       case "stage":
       case "production":
@@ -705,7 +709,7 @@ export function projectLineFull(
       key: `copy:${copy.key}`,
       words: [
         { text: `${copy.host} ` },
-        { text: copy.name, strong: true },
+        { text: copy.name, strong: true, mono: true },
         SEP,
         { text: copy.line, tone: copy.tone },
       ],

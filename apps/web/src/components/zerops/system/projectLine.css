@@ -391,6 +391,12 @@ button.ln-name:hover {
   outline-offset: 2px;
 }
 
+/* A real thing's name (a version, a repository's hostname, a slug) in its own face, its x-height
+   the words' beside it: the mono face stands taller at one size. */
+.ln-words .font-mono {
+  font-size: 0.966em;
+}
+
 .ln-words [data-strong] {
   color: color-mix(in oklab, var(--foreground) 82%, var(--ln-ground));
   font-weight: 500;

@@ -764,7 +764,8 @@ function Brought({
   const more = brought.length - shown.length;
   return (
     <p className="pp-brought" data-zerops-surface="project-brought">
-      {version} brought: {shown.map((pull) => pull.title).join(" · ")}
+      <span className="real-name">{version}</span> brought:{" "}
+      {shown.map((pull) => pull.title).join(" · ")}
       {more > 0 ? (
         <>
           {" · "}
