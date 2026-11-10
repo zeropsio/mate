@@ -279,13 +279,21 @@ span.ln-bead {
   width: 48px;
 }
 
-/* The way to the line in full, in the card's corner: the same corner whichever of the two shows. */
+/* The way to the line in full, in the card's corner: the same corner whichever of the two shows.
+   Where it leads to the project's page (a panel's picture, which never grows) it stands in the
+   corner under production, which holds no word: a panel is too narrow to clear production's name. */
 .ln-corner {
   position: absolute;
   z-index: 1;
   top: 8px;
   right: 8px;
   display: flex;
+}
+
+.ln-corner[data-leads] {
+  top: auto;
+  right: 6px;
+  bottom: 6px;
 }
 
 /* The picture and, behind it, the line in full, in one card. The picture keeps its 104 px; the full
@@ -625,6 +633,11 @@ a.ln-name:focus-visible,
 
   .ln-short {
     display: block;
+  }
+
+  .ln-corner:not([data-leads]) {
+    top: 4px;
+    right: 4px;
   }
 
   /* The line in full, compact: station names only, the track 30 px higher. */

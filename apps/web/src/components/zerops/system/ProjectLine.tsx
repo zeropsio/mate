@@ -11,10 +11,11 @@
  * while the project's reads have not answered. Under 700 px of its own width it is compact: short
  * captions, the same beads (a container query; a Mate's Code page).
  *
- * Behind it stands the line in full (`ProjectLineFull`), by one control in the card's corner, which
- * stays in that corner in both states. `full.kind` says where: `here`, the card grows in place into
- * it and back (the project's page); `page`, the control is the way to the project's page, which
- * arrives with it open (a Mate's panel has no room for it).
+ * Behind it stands the line in full (`ProjectLineFull`), by one control in the card's corner.
+ * `full.kind` says where: `here`, the card grows in place into it and back (the project's page),
+ * the control in the top corner in both states; `page`, the control is the way to the project's
+ * page, which arrives with it open (a Mate's panel has no room for it), in the corner under
+ * production.
  *
  * Props: `view` (`projectLine(…)`; `undefined` while the project is unread: the card holds the
  * line's height, nothing drawn); `held`; `onOpenChange(pull, from)` (a bead: the change's review,
@@ -132,7 +133,7 @@ export function ProjectLine({
         </div>
       )}
       {full === undefined ? null : (
-        <span className="ln-corner">
+        <span className="ln-corner" data-leads={full.kind === "page" ? "" : undefined}>
           <Tooltip>
             <TooltipTrigger
               render={
