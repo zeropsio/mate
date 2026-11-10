@@ -356,6 +356,8 @@ function JumpFindView({
       aria-label="Jump to"
       autoHighlight="always"
       footerKeys={footerKeys}
+      // Writing to a Mate, every hint is a keyboard's key.
+      footerKeysOnTouch={!writing}
       footerTrailing={
         !writing && onCommands !== undefined ? (
           <KbdGroup>

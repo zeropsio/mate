@@ -10,6 +10,8 @@ type CommandPaletteContentProps = Omit<ComponentProps<typeof Command>, "children
   readonly escapeLabel?: ReactNode;
   /** The keys a mode answers in its own way, in place of the default ones. */
   readonly footerKeys?: ReactNode;
+  /** Whether `footerKeys` holds anything a finger can use; false, the bar leaves with them on touch. */
+  readonly footerKeysOnTouch?: boolean;
   readonly footerActionLabel?: ReactNode;
   readonly footerTrailing?: ReactNode;
   readonly inputAccessory?: ReactNode;
@@ -32,6 +34,7 @@ export function CommandPaletteContent({
   children,
   escapeLabel = "Close",
   footerKeys,
+  footerKeysOnTouch = true,
   footerActionLabel,
   footerTrailing,
   inputAccessory,
@@ -74,7 +77,7 @@ export function CommandPaletteContent({
             // left, and it fits one line.
             "max-sm:flex-col max-sm:items-start max-sm:pointer-coarse:flex-row max-sm:pointer-coarse:items-center",
             // Nothing but a keyboard's keys in it: no bar at all under a finger.
-            footerKeys === undefined &&
+            (footerKeys === undefined || !footerKeysOnTouch) &&
               (footerTrailing === undefined || footerTrailing === null) &&
               "pointer-coarse:hidden",
           )}

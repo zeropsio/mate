@@ -5429,6 +5429,23 @@ code {
   .menu-row-box:has(> .menu-row-verbs) .menu-line2:not(.menu-line2 .menu-line2) {
     padding-inline-end: 32px;
   }
+
+  /* While it works its ■ stands before the ···: the line stops short of both. */
+  .menu-row-box:has(> .menu-row-verbs > [data-zerops-surface="sidebar-mate-stop"])
+    .menu-line2:not(.menu-line2 .menu-line2) {
+    padding-inline-end: 60px;
+  }
+
+  /* Beside a places' tag the verbs come in before the tag on the name's line; on the line under
+     it there is no tag to clear, and they keep the row's end. */
+  [data-tags] > .menu-row-verbs {
+    inset-inline-end: 8px;
+  }
+  /* A row of one line has no line under its name: there the ··· stands where its time would, as
+     it did before a finger's rows kept their time. */
+  .menu-row-box:not(:has(.menu-line2)):has(> .menu-row-verbs) [data-menu-time-box] {
+    opacity: 0;
+  }
 }
 
 /* The environment tag: the row's tags' metrics (22 px, 12/16 · 500, radius 7), its dot before
@@ -6202,10 +6219,10 @@ code {
     flex: none;
   }
 
-  /* Where the room before the noun would hold two letters of the name (a phone's sheet), none of
-     it stands. */
+  /* In a phone's sheet, where the room before the noun would hold two letters of the name, none of
+     it stands. A desktop's narrow menu keeps what fits, as it did. */
   @container sidebar-header (max-width: 350px) {
-    .menu-chief-name-head {
+    [data-mobile="true"] .menu-chief-name-head {
       display: none;
     }
   }
@@ -9517,8 +9534,9 @@ button.ov-change {
   transition: color 150ms var(--ease-out-strong);
 }
 
-/* A phone's row is its title, read whole on two lines, and when it last moved. Its pull request is
-   one press away on the change itself: an 18 px link beside the row's own press is no finger's. */
+/* A phone's row is its title, read whole on two lines, and when it last moved. Where the row
+   opens the change, its pull request is one press away there: an 18 px link beside the row's own
+   press is no finger's. A row that opens nothing keeps the link, its only way to it. */
 @media (max-width: 39.999rem) {
   .ov-change-title {
     display: -webkit-box;
@@ -9527,7 +9545,7 @@ button.ov-change {
     -webkit-line-clamp: 2;
   }
 
-  .ov-change-pr {
+  .ov-change-row:not(:has(> .ov-change[data-plain])) .ov-change-pr {
     display: none;
   }
 }

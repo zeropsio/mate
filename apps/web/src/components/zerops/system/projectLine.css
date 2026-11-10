@@ -660,8 +660,8 @@ button.ln-name:hover {
 }
 
 /* A phone: every station's name reads, and a release's verb under its segment. The columns give
-   each name its room; a place's vault stays with its row above the picture, where the name needs
-   the column; the corner's control stands under production, which holds no word, clear of its name. */
+   each name its room; the corner's control stands under production, which holds no word, clear of
+   its name. */
 @media (max-width: 39.999rem) {
   .ln-grid,
   .lnx-grid {
@@ -672,14 +672,6 @@ button.ln-name:hover {
   .ln[data-stations="4"] .ln-grid,
   .ln[data-stations="4"] .lnx-grid {
     grid-template-columns: 84fr 44fr 94fr 74fr;
-  }
-
-  .lnx-namerow > :not(.ln-name) {
-    display: none;
-  }
-
-  .lnx-mates {
-    margin-inline: 16px;
   }
 
   .ln-corner:not([data-leads]) {

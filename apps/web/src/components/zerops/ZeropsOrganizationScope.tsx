@@ -16,16 +16,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 
-import { cn } from "~/lib/utils";
-
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
-
-/**
- * As a page on a phone, the picker starts under a top line of its own: the menu's button stands in
- * the window's corner there, and nothing is written under it. In a dialog it has no such line.
- */
-const PAGE_TOP_LINE_CLASS = "max-md:[[data-sidebar-state]_&]:pt-8";
 
 export function ZeropsOrganizationScope({
   organizations,
@@ -38,9 +30,7 @@ export function ZeropsOrganizationScope({
 }) {
   if (status === "loading") {
     return (
-      <div
-        className={cn("flex items-center gap-2 text-sm text-muted-foreground", PAGE_TOP_LINE_CLASS)}
-      >
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <Spinner size="md" />
         Restoring your Zerops organization…
       </div>
@@ -49,7 +39,7 @@ export function ZeropsOrganizationScope({
 
   if (organizations.length === 0) {
     return (
-      <div className={PAGE_TOP_LINE_CLASS}>
+      <div>
         <Card size="md" variant="flat">
           <div>
             <p className="text-sm text-foreground">No active Zerops organizations.</p>
@@ -63,10 +53,7 @@ export function ZeropsOrganizationScope({
   }
 
   return (
-    <section
-      className={cn("space-y-5", PAGE_TOP_LINE_CLASS)}
-      aria-labelledby="zerops-organization-heading"
-    >
+    <section className="space-y-5" aria-labelledby="zerops-organization-heading">
       <div className="space-y-1">
         <h1 id="zerops-organization-heading" className="text-xl font-medium text-foreground">
           Choose an organization

@@ -222,6 +222,11 @@ function useSheetSwipeClose(side: "left" | "right", onClose: () => void) {
     const toEdge = side === "left" ? -1 : 1;
     const touchOf = (touches: React.TouchList, id: number) =>
       Array.from(touches).find((touch) => touch.identifier === id);
+    // Back on the sheet's own transition and place.
+    const settle = (sheet: HTMLElement) => {
+      sheet.style.transition = "";
+      sheet.style.translate = "";
+    };
     const finish = (event: React.TouchEvent<HTMLElement>, cancelled: boolean) => {
       const current = drag.current;
       drag.current = null;
@@ -230,18 +235,25 @@ function useSheetSwipeClose(side: "left" | "right", onClose: () => void) {
       const touch = touchOf(event.changedTouches, current.id);
       const pushed = touch === undefined ? 0 : (touch.clientX - current.x) * toEdge;
       const speed = pushed / Math.max(1, event.timeStamp - current.at);
-      // Back on the sheet's own transition from here, wherever the finger left it.
-      sheet.style.transition = "";
       if (!cancelled && (pushed > sheet.offsetWidth / 3 || (pushed > 24 && speed > 0.5))) {
+        // On the sheet's own transition from where the finger left it, out past its edge.
+        sheet.style.transition = "";
         sheet.style.translate = `${toEdge * 100}% 0`;
         onClose();
         return;
       }
-      sheet.style.translate = "";
+      settle(sheet);
     };
     return {
       onTouchStart: (event: React.TouchEvent<HTMLElement>) => {
-        const touch = event.touches.length === 1 ? event.touches[0] : undefined;
+        const sheet = event.currentTarget;
+        // A second finger ends a push in hand where it began; so does a push whose end never
+        // arrived (its row was redrawn under the finger).
+        if (drag.current?.taken === true || event.touches.length !== 1) settle(sheet);
+        // React hands a portal's touches to the tree that rendered it: a slide inside a row's
+        // menu, the waiting list or a popover is theirs, never the sheet's.
+        const own = event.target instanceof Node && sheet.contains(event.target);
+        const touch = own && event.touches.length === 1 ? event.touches[0] : undefined;
         drag.current =
           touch === undefined
             ? null

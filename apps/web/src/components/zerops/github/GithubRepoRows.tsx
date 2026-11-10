@@ -279,7 +279,8 @@ function RepoRow({
           {state.destination === null ? null : (
             <a
               className={cn(
-                "real-name min-w-0 truncate hover:underline",
+                // In a phone's column it is as wide as its words unless held to the row.
+                "real-name min-w-0 truncate hover:underline max-sm:max-w-full",
                 state.tone === "busy" ? "text-muted-foreground" : "text-foreground",
               )}
               href={state.destination.href}
