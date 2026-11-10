@@ -5690,15 +5690,19 @@ function RunScroll({
       return;
     }
     const rows = list.children;
-    const first = rows[0]?.getBoundingClientRect().top;
-    if (first === undefined) return;
+    if (rows.length === 0) return;
+    // A row's room starts where its margin does: one that keeps more air over
+    // it, or draws into the row before it, takes that with it.
+    const startOf = (row: Element) =>
+      row.getBoundingClientRect().top - (Number.parseFloat(getComputedStyle(row).marginTop) || 0);
+    const first = startOf(rows[0]!);
     const focused = document.activeElement;
     const over: Array<{ readonly lines: number; readonly nextTop: number }> = [];
     // The last row always stays; read only as far as rows go.
     for (let index = 0; index < rows.length - 1 && index < shown.length - 1; index += 1) {
       if (focused !== null && rows[index]!.contains(focused)) break;
       const entry = shown[index]!;
-      const nextTop = rows[index + 1]!.getBoundingClientRect().top - first;
+      const nextTop = startOf(rows[index + 1]!) - first;
       over.push({ lines: "calls" in entry ? entry.calls.length : 1, nextTop });
       if (nextTop > above - KEPT_ABOVE_PX) break;
     }
