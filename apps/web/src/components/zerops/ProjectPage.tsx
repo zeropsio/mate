@@ -7,6 +7,7 @@ import {
   releaseFailureOf,
   type GroupFlow,
 } from "@t3tools/client-runtime/zerops";
+import { releaseNotCreated, releaseNotCreatedWords } from "@t3tools/client-runtime/zerops/flow";
 import { useAskMateToFix } from "~/zerops/fixRequest";
 import { useFixMates } from "~/zerops/fixMates";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -26,6 +27,8 @@ import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { useAddEnvironment, useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { useOpenPutLive } from "~/zerops/putLive";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
+import { useNowMs } from "~/zerops/useNowMs";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
 import { Loading } from "../ui/loading";
 import { Skeleton } from "../ui/skeleton";
@@ -39,7 +42,7 @@ import {
   type ProjectPageSetup,
 } from "./project/ProjectPageBody";
 import { SetupRow } from "./project/SetupCard";
-import { liveBrought, pageChanges } from "./project/projectPage.logic";
+import { lineCopies, liveBrought, pageChanges } from "./project/projectPage.logic";
 import type {
   ProjectPageSlot,
   ProjectsFlowGroup,
@@ -248,6 +251,35 @@ function useProjectPageFacts(
   const environments = flow?.environments ?? NO_ENVIRONMENTS;
   const release = useReleaseOffer(groupId, flow);
   const { withheldNotice } = useWithheldStops(environments);
+  const orgName = useZeropsSessionOptional()?.activeOrganization?.name;
+  const nowMs = useNowMs();
+  // Why the last release did not go live, as production's own page says it, where HQ names the
+  // services it could not create. Read from the flow alone: what Zerops lists there is the place
+  // page's own read.
+  const failure =
+    flow === undefined || !flow.releasesKnown
+      ? undefined
+      : releaseFailureOf({
+          releases: flow.releases,
+          environmentInputs: flow.environmentInputs,
+          stalled: flow.release.stalled,
+        });
+  const productionInput = flow?.environmentInputs.find(
+    (entry) => entry.tier === "production" && entry.target.kind === "zerops",
+  );
+  const notCreated =
+    flow === undefined ||
+    failure === undefined ||
+    productionInput?.target.kind !== "zerops" ||
+    withheldNotice(productionInput.target.projectId) !== null
+      ? undefined
+      : releaseNotCreated({
+          tier: "production",
+          releases: flow.releases,
+          services: productionInput.services,
+          creationFailures: productionInput.creationFailures,
+          missing: [],
+        });
   const firstDeployOf = useStageFirstDeploys(flow);
   const environmentFacts = useApplicationEnvironmentFacts();
   const addEnvironment = useAddEnvironment();
@@ -300,6 +332,8 @@ function useProjectPageFacts(
         ? (flow?.changesFailure ?? "Reading its changes…")
         : undefined,
     repos: flow?.repos,
+    copies: lineCopies(flow?.codeRepos ?? flow?.repos, { orgName, now: nowMs }),
+    releaseCause: notCreated === undefined ? undefined : releaseNotCreatedWords(notCreated),
     environments,
     slots,
     release,

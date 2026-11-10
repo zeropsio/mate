@@ -23,6 +23,7 @@ export { PageHeader } from "./PageHeader";
 export { PageRows } from "./pageRows";
 export { PlaceLine, type PlaceLineDensity } from "./PlaceLine";
 export { placeLineAddress, placeLineView, type PlaceLineView } from "./PlaceLine.logic";
+export type { ProjectLineFullActs } from "./ProjectLineFull";
 export {
   ProjectLine,
   SHOW_FULL_PICTURE,
@@ -36,9 +37,11 @@ export {
   projectLineFull,
   READY_FOR_REVIEW,
   type LineBead,
+  type LineCopy,
   type LineGroup,
   type LineSegment,
   type LineStation,
+  type LineStationFull,
   type LineWork,
   type ProjectLineFullInput,
   type ProjectLineFullView,

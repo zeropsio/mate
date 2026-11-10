@@ -1,6 +1,7 @@
 /**
  * What a project's page says, from the reads its overview card already takes: its recent changes,
- * what the live release brought, and every address it serves at. Pure: no React.
+ * what the live release brought, its code's copies elsewhere and every address it serves at. Pure:
+ * no React.
  */
 import {
   isPlatformSubdomain,
@@ -9,12 +10,14 @@ import {
   type GroupFlow,
   type GroupFlowAddress,
 } from "@t3tools/client-runtime/zerops";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 
+import { hostWords, repoState } from "../gitMirror.logic";
 import { applicationStage } from "../system/applicationPlaces.logic";
 import { mergedChangeWords } from "../system/ChangeRow.logic";
-import type { LineGroup } from "../system/projectLine.logic";
+import type { LineCopy, LineGroup } from "../system/projectLine.logic";
 import {
   broughtBy,
   cardChanges,
@@ -108,6 +111,39 @@ export function lineGroupOf(group: ChangeGroup): LineGroup | undefined {
     group.label === ON_MAIN_NOT_LIVE
     ? "ready"
     : undefined;
+}
+
+/**
+ * The project's code copies elsewhere, as its line in full hangs them under `main`: in sync,
+ * pushing, paused on diverged mains, stopped on a refused token or a GitHub app that left — in the
+ * words its Code row says (`repoState`; the organization's apps are not read for it, so an app's
+ * stop names no reason). Code kept in Mate alone draws nothing.
+ */
+export function lineCopies(
+  repos: ZeropsProjectFlow["repos"],
+  context: { readonly orgName: string | undefined; readonly now: number },
+): ReadonlyArray<LineCopy> {
+  return (repos ?? []).flatMap((repo): ReadonlyArray<LineCopy> => {
+    if (repo.name === RECIPE_REPO || repo.remote == null) return [];
+    const state = repoState(repo, { apps: null, ...context });
+    if (state.destination === null) return [];
+    return [
+      {
+        key: repo.name,
+        host: hostWords(repo.remote.url),
+        name: state.destination.label,
+        line: state.line,
+        tone:
+          state.tone === "bad"
+            ? "danger"
+            : state.tone === "busy"
+              ? "info"
+              : state.tone === "warn"
+                ? "warning"
+                : undefined,
+      },
+    ];
+  });
 }
 
 /** How many of what the live release brought are named before "+ N". */
