@@ -37,7 +37,7 @@ describe("A: sign-in against every HQ instance", () => {
       }),
     );
 
-    // witness: apps/web/src/components/ChatView.tsx | ownerName: admissionOwner.name, → ownerName: "nobody",
+    // witness: apps/web/src/components/ChatView.tsx | ownerName: admissionOwner.called, → ownerName: "nobody",
     it.effect(
       "a colleague reads along with another member's signed-in agent, whichever HQ instance answers",
       () =>
