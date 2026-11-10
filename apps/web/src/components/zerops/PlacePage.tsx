@@ -901,8 +901,11 @@ function useStopCarried(
   }, [compares, groupId, reads]);
 }
 
-/** How many releases a production lists before the rest wait behind a quiet verb. */
-const RELEASES_SHOWN = 5;
+/**
+ * How many releases a production lists before the rest wait behind a quiet verb: what a page
+ * 1000 px tall holds under its next release, so the column does not end well short of its aside.
+ */
+const RELEASES_SHOWN = 7;
 
 /**
  * One stop, drawn — every read already done and handed in.
@@ -1124,8 +1127,9 @@ export function ZeropsStopPane({
   const [allReleases, setAllReleases] = useState(false);
   const services = readServices ?? NO_SERVICE_ROWS;
   const production = stop.tier === "production";
-  const earlier = Math.max(0, releases.length - RELEASES_SHOWN);
-  const listed = allReleases ? releases : releases.slice(0, RELEASES_SHOWN);
+  // One more than the list holds is listed too: a verb to show one row is no shorter than the row.
+  const earlier = releases.length > RELEASES_SHOWN + 1 ? releases.length - RELEASES_SHOWN : 0;
+  const listed = allReleases || earlier === 0 ? releases : releases.slice(0, RELEASES_SHOWN);
   const verb = verdict.verb;
   // Where the key's renewal stands, while the verdict is still its key.
   const renewing = verb?.kind === "renew-key" ? renewKey?.run : undefined;
