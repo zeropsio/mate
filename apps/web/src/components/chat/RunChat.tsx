@@ -5619,9 +5619,18 @@ function RunScroll({
       },
     };
   }, [readingRef, motionRef]);
-  // Its node re-inserted puts it back at 0, silently: following, it stands at its foot again.
+  // Its node re-inserted puts it back at 0, silently: following, it stands at
+  // its foot again; read above the foot, where the person read.
+  const startRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
-  useRunScrollResettle({ scrollRef, endRef, followRef, positionOf, putAt: follow.putAt });
+  const resettle = useRunScrollResettle({
+    scrollRef,
+    startRef,
+    endRef,
+    followRef,
+    positionOf,
+    putAt: follow.putAt,
+  });
   useLayoutEffect(() => {
     if (keepRef === undefined) return;
     keepRef.current = follow.keep;
@@ -5829,6 +5838,9 @@ function RunScroll({
     if (element === null || list === null || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
       forgetPadding(element);
+      // Put back at its start by nobody as its box changed, a reader's place
+      // is theirs before anything reads where it stands as a move.
+      if (!followRef.current.follows) resettle();
       follow.keep();
       redraw();
       drawEarlierHere();
@@ -5837,7 +5849,7 @@ function RunScroll({
     observer.observe(list);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [follow, redraw]);
+  }, [follow, redraw, resettle]);
   // Where the browser never says a move ended (Safari before `scrollend`),
   // it ended once the scroll stood still a moment.
   const quietRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -5891,6 +5903,7 @@ function RunScroll({
             role="region"
             tabIndex={0}
           >
+            <div ref={startRef} aria-hidden="true" data-run-scroll-start="" />
             <ol
               ref={listRef}
               className="flex min-w-0 flex-col gap-4"
@@ -6326,7 +6339,8 @@ function paddingOf(scroll: HTMLElement): number {
  * row travelling into its place paints past it (`laidOutPosition`).
  */
 function positionOf(scroll: HTMLElement): RunScrollPosition {
-  const list = scroll.firstElementChild as HTMLElement | null | undefined;
+  // Its lines' list: after the mark at its start.
+  const list = scroll.firstElementChild?.nextElementSibling as HTMLElement | null | undefined;
   // Drawn outside a page (a test's renderer), it is as it says.
   if (list === null || list === undefined || typeof getComputedStyle !== "function") return scroll;
   const pad = paddingOf(scroll);

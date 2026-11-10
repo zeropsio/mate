@@ -50,7 +50,7 @@ describe("resettledTop", () => {
       follows: false,
       stood: 2_000,
       position: RESET,
-      top: null,
+      top: 2_000,
     },
   ])("$name", ({ follows, stood, position, top }) => {
     expect(resettledTop({ follows, stood, position })).toBe(top);
