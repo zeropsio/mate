@@ -9325,6 +9325,14 @@ button.ov-change {
   margin-inline-end: var(--ov-change-gap);
 }
 
+/* A face's seat is held down a list where some row fills it. A place's next release that lists
+   commits of no change fills none: the seat goes, and the subjects stand on the card's own edge. */
+[data-zerops-next-block]
+  .ov-changes:not(:has(.ov-change-face > *, .ov-change-icon))
+  .ov-change-face {
+  display: none;
+}
+
 /* A release in the changes: where it was cut, its tag, and production's mark on the one it runs. */
 .ov-change-release {
   display: flex;
