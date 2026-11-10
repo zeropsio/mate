@@ -125,6 +125,8 @@ it("a pending Mate's project card shows its shared birth phase and actions", asy
               projectId === "vale-dev"
                 ? {
                     line: "Project created · Quota reached.",
+                    stopped: true,
+                    onOpen: undefined,
                     menu: <button onClick={onContinue}>Continue</button>,
                   }
                 : undefined,

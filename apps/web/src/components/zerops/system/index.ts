@@ -10,7 +10,7 @@ export {
 export { Crumbs, usePageTrail, type Crumb } from "./Crumbs";
 export { pageTrail, type TrailStep, type TrailTarget } from "./Crumbs.logic";
 export { GrowsInPlace } from "./GrowsInPlace";
-export { MateRow, MateRowTime, type MateRowProps } from "./MateRow";
+export { ComingMateRow, MateRow, MateRowTime, type MateRowProps } from "./MateRow";
 export { NextBlock, NextRelease, type NextReleaseInput } from "./NextRelease";
 export {
   DIDNT_GO_LIVE,

@@ -114,6 +114,64 @@ export function MateRow({
 }
 
 /**
+ * A Mate still being created, on a card's or a page's row: its face asleep, its name, one statement
+ * of how far its setup has got — amber where it stopped — and its ⋯ at the row's end. The row opens
+ * the birth's own page, which says why and who can continue.
+ *
+ * Props: `name`; `face` (`ComingMateFace`); `line`; `stopped`; `onOpen` (its own page; `undefined`
+ * where it has none yet); `menu` (its ⋯). Renders `role="listitem"`: put it in a list.
+ */
+export function ComingMateRow({
+  name,
+  face,
+  line,
+  stopped = false,
+  onOpen,
+  menu,
+}: {
+  readonly name: string;
+  readonly face: ReactNode;
+  readonly line: string;
+  readonly stopped?: boolean;
+  readonly onOpen?: (() => void) | undefined;
+  readonly menu?: ReactNode;
+}) {
+  const page = use(PageRows);
+  return (
+    <div
+      // Under way it is busy; stopped, nothing is coming until someone continues it.
+      aria-busy={stopped ? undefined : true}
+      className="ov-mate"
+      data-page={page ? "" : undefined}
+      data-zerops-surface="mate-coming"
+      role="listitem"
+    >
+      <span className="ov-mate-face">{face}</span>
+      <span className="ov-mate-text">
+        <span className="ov-mate-l1">
+          {onOpen === undefined ? (
+            <span className="ov-mate-name">{name}</span>
+          ) : (
+            <button
+              aria-label={`Open ${name}`}
+              className="ov-mate-name ov-mate-open"
+              onClick={onOpen}
+              type="button"
+            >
+              {name}
+            </button>
+          )}
+        </span>
+        <span className="ov-mate-l2" data-tone={stopped ? "attention" : undefined}>
+          {line}
+        </span>
+      </span>
+      {drawn(menu) ? <span className="ov-mate-end">{menu}</span> : null}
+    </div>
+  );
+}
+
+/**
  * A part's chip on a Mate's row: a door to its preview, else to its dev, by that service's real
  * hostname; muted, with why in its title, where it has neither address.
  */

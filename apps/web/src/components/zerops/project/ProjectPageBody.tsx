@@ -40,6 +40,7 @@ import {
 import { comingMateLine } from "../projects/projectsView.logic";
 import type {
   CardWait,
+  ComingBirthRow,
   ProjectsFlowGroup,
   ZeropsProjectsFlowProps,
 } from "../projects/ZeropsProjectsFlow";
@@ -47,6 +48,7 @@ import {
   ChangeList,
   ChangeRow,
   changeRowLine,
+  ComingMateRow,
   lineChangeKey,
   NextRelease,
   nextReleaseView,
@@ -831,27 +833,23 @@ function ProjectMates<T>({
   );
 }
 
-/** A Mate being created: waking, named, how far its birth has got, nothing to press. */
+/** A Mate being created: waking, named, how far its birth has got; its row opens the birth's page. */
 function ComingMate<T>({
   mate,
   birth,
 }: {
   readonly mate: Extract<FlowMateEntry<T>, { kind: "coming" }>;
-  readonly birth: { readonly line: string; readonly menu: ReactNode } | undefined;
+  readonly birth: ComingBirthRow | undefined;
 }) {
   return (
-    <div aria-busy="true" className="ov-mate" data-zerops-surface="mate-coming" role="listitem">
-      <span className="ov-mate-face">
-        <ComingMateFace coming={mate.coming} size={24} />
-      </span>
-      <span className="ov-mate-text">
-        <span className="ov-mate-l1">
-          <span className="ov-mate-name">{mate.mate.name}</span>
-        </span>
-        <span className="ov-mate-l2">{birth?.line ?? comingMateLine(mate.coming)}</span>
-      </span>
-      {birth?.menu}
-    </div>
+    <ComingMateRow
+      face={<ComingMateFace coming={mate.coming} size={24} />}
+      line={birth?.line ?? comingMateLine(mate.coming)}
+      menu={birth?.menu}
+      name={mate.mate.name}
+      onOpen={birth?.onOpen}
+      stopped={birth?.stopped ?? false}
+    />
   );
 }
 

@@ -7562,6 +7562,10 @@ a.ov-card-site:hover {
   color: var(--zerops-status-failed-text);
 }
 
+.ov-mate-l2[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
+}
+
 .ov-mate-l2[data-wrap] {
   display: -webkit-box;
   white-space: normal;

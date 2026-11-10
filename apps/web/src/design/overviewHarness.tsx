@@ -1071,7 +1071,9 @@ function HarnessPage() {
                 projectId !== STUCK_BIRTH.id
                   ? undefined
                   : {
-                      line: sharedBirthPresentation(STUCK_BIRTH).line,
+                      line: sharedBirthPresentation(STUCK_BIRTH).row,
+                      stopped: sharedBirthPresentation(STUCK_BIRTH).attention,
+                      onOpen: () => acted.push("open-birth"),
                       menu: (
                         <ZeropsProjectMenu
                           actions={[
