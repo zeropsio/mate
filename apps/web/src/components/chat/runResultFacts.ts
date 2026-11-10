@@ -91,7 +91,10 @@ export function readRunResultFacts(input: {
       : flow?.changesKnown === true
         ? {
             groupId,
-            open: flow.pullRequests.map(resultChange),
+            // One `main` already holds all of waits for no review and is no draft: it has no row.
+            open: flow.pullRequests
+              .filter((pull) => pull.mergeability !== "empty")
+              .map(resultChange),
             merged: flow.merged.map(resultChange),
             known: true,
           }

@@ -1445,6 +1445,23 @@ describe("changeReview: a change closed without merging", () => {
     expect(review.verdict.why).toBe("Nova closed it; its branch is still there");
   });
 
+  // The owner, 2026-11-10: a Mate wrote into a change's title that another had already taken it
+  // to main, which nothing else said. HQ closes one another change's landing carried, and names it.
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (pull.landedWith !== undefined) return landedWithReview → if (pull.landedWith === undefined) return landedWithReview
+  it("says a change another change's landing carried was merged as part of it, never closed without merging", () => {
+    const review = changeReview(
+      change({ pull: pull({ state: "closed", merged: false, landedWith: 38 }) }),
+    );
+    expect(review.verdict).toMatchObject({
+      state: "closed",
+      tone: "done",
+      title: "Merged as part of #38",
+      why: "#38 was built on it and merged first",
+    });
+    expect(review.primary).toBeUndefined();
+    expect(review.consequence).toBe("All of it is on main; nothing more merges from here.");
+  });
+
   it.each([
     ["an open one", { state: "open" }, "ready"],
     ["a landed one", { state: "closed", merged: true, mergedAt: minutesAgo(5) }, "merged"],

@@ -244,6 +244,14 @@ export const HqChange = Schema.Struct({
    * other's. Absent where a person or HQ closed it, and from an older HQ.
    */
   closedByMate: Schema.optionalKey(Schema.Literal(true)),
+  /**
+   * On a closed change: another change of its repository was built on it and landed first, so
+   * that landing's squash carried every commit of this one onto `main`, and HQ closed it by
+   * itself. The number of that change. Nothing of it was given up: it has no squash of its own
+   * (`mergedSha` stays `null`) and its work is on `main`. Absent on every other change, and from an
+   * older HQ, which leaves such a change open.
+   */
+  landedWith: Schema.optionalKey(ChangeNumber),
   /** Its last push, edit of its words, or comment. */
   updatedAt: Instant,
   /**
@@ -636,6 +644,8 @@ export const MateChange = Schema.Struct({
    * which this Mate pushes from then on. Absent otherwise.
    */
   handed: Schema.optionalKey(Schema.Literal(true)),
+  /** On a closed change: the landing that carried it whole, as {@link HqChange} `landedWith`. */
+  landedWith: Schema.optionalKey(ChangeNumber),
   /** HQ's latest own push on its branch, as {@link HqChange} `corePush`. */
   corePush: Schema.optionalKey(HqCorePush),
   /** Why a described change is a draft again, as {@link HqChange} `draftReason`. */

@@ -448,12 +448,6 @@ describe("mateNextStep: every change the header counts, one that does not merge 
       yours: true,
       verdict: { title: "Checking" },
     },
-    {
-      case: "one main already holds: its Review, nothing to merge",
-      over: { mergeability: "empty" },
-      yours: true,
-      verdict: { title: "Nothing to merge" },
-    },
   ] as const)("$case", ({ over, yours, verdict }) => {
     const step = mateNextStep({
       pullRequests: [pull(over)],
@@ -466,5 +460,29 @@ describe("mateNextStep: every change the header counts, one that does not merge 
         ? { lines: step.lines.map(lineOf), more: step.more, waiting: step.waiting }
         : step.kind,
     ).toEqual({ lines: [{ number: 1, verdict }], more: 0, waiting: 0 });
+  });
+
+  // The owner, 2026-11-10: a strip of three changes waiting for a review, the third one saying
+  // `Nothing to merge` under a Review of its own.
+  // witness: packages/client-runtime/src/zerops/projectFlow.ts | pull.mergeability !== "empty" && !recipeProposalRedone(pull) → !recipeProposalRedone(pull)
+  it("neither lists nor counts a change main already holds all of: it waits for nobody", () => {
+    const held = pull({ repository: "api", number: 2, mergeability: "empty" });
+    const alone = mateNextStep({ pullRequests: [held], mateProjectId: "p-wren", mateName: "Wren" });
+    expect(alone.kind).toBe("none");
+    const beside = mateNextStep({
+      pullRequests: [pull(), held],
+      mateProjectId: "p-wren",
+      mateName: "Wren",
+    });
+    expect(
+      beside.kind === "review"
+        ? {
+            title: beside.title,
+            lead: beside.pull.number,
+            lines: beside.lines,
+            waiting: beside.waiting,
+          }
+        : null,
+    ).toEqual({ title: "Wren is waiting for your review", lead: 1, lines: [], waiting: 1 });
   });
 });
