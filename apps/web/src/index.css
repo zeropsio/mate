@@ -7038,6 +7038,24 @@ code {
   }
 }
 
+/* A phone shows one card a screen with the next one's edge in sight, and the row is swiped a card
+   at a time: no fade over the card in hand. */
+@media (max-width: 39.999rem) {
+  .ov-rail {
+    --ov-fade-left: 0px;
+    --ov-fade-right: 0px;
+    margin-inline: -16px;
+  }
+
+  .ov-row {
+    grid-auto-columns: min(380px, calc(100% - 28px));
+    column-gap: 12px;
+    padding-inline: 16px;
+    scroll-padding-inline: 16px;
+    scroll-snap-type: x mandatory;
+  }
+}
+
 .ov-row::-webkit-scrollbar {
   display: none;
 }
@@ -7079,6 +7097,13 @@ code {
 
 .ov-nav:active {
   scale: 0.94;
+}
+
+/* A finger swipes the row: the buttons would only stand on a card's own corner. */
+@media (pointer: coarse) {
+  .ov-nav {
+    display: none;
+  }
 }
 
 .ov-row > .ov-card {
@@ -9307,6 +9332,23 @@ button.ov-change {
   line-height: 18px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+/* A finger takes a filter: its pill keeps its size, its touch reaches 44 px. */
+@media (pointer: coarse) {
+  .ov-filters > * {
+    position: relative;
+  }
+
+  .ov-filters > *::after {
+    position: absolute;
+    inset: -8px 0;
+    content: "";
+  }
+
+  .ov-filter-count {
+    font-size: 12px;
+  }
 }
 
 [data-show="waiting"] > .ov-filter-count {
