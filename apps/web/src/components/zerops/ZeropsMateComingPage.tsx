@@ -968,7 +968,8 @@ function ExistingMateComingPage({
     linked: environmentId !== null,
     arriving: shown !== undefined,
     speaks:
-      page?.kind === "unreachable" || (linkVoice.surface !== "none" && stageSpeaks(linkVoice)),
+      page?.kind === "unreachable" ||
+      (linkVoice.surface !== "none" && linkVoice.surface !== "header" && stageSpeaks(linkVoice)),
     mate,
   });
 

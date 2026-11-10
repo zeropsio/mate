@@ -1020,12 +1020,12 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
-    describe("Decision: what the composer's drawer says stands fully clear of the composer card.", () => {
+    describe("Decision: a link that is only reconnecting says so beside the Mate's name; the conversation and the composer stay where they were.", () => {
       scenarioSuite((it) => {
         /**
-         * Ada's conversation, then her link gone: the reconnect notice in the composer's drawer once
-         * the reconnect is slow, with `lastWords` as her last reply. Where its box and its painted
-         * card end, against the composer card's top.
+         * Ada's conversation, then her link gone, with `lastWords` as her last reply: where the
+         * conversation's last row and the composer card stand before the link goes, and once her
+         * header says she is reconnecting.
          */
         const reconnecting = (lastWords: string, evidence: string) =>
           Effect.gen(function* () {
@@ -1066,72 +1066,68 @@ describe("owner-reported layout regressions", () => {
             yield* chat.when.open();
             yield* chat.then.text("The existing conversation is still here");
             yield* Effect.promise(() => ownerMenu(s.page));
-            unavailable = true;
-            yield* s.drivers.links.get("Ada")!.close;
-            wire.disconnect();
-            // Over a shown conversation a lost link says its one line only once it is slow.
-            yield* chat.then.text("Reconnecting to Ada");
             yield* Effect.promise(() => waitForStillFrames(s.page));
-            const geometry = yield* Effect.promise(() =>
+            const read = () =>
               s.page.evaluate(() => {
-                const alert = document.querySelector<HTMLElement>(
-                  '[data-composer-banner-drawer] [data-slot="alert"]',
-                )!;
-                const notice = alert.getBoundingClientRect();
-                // The card the person sees is the notice's backdrop, drawn by its ::before: its own
-                // box, short of its bottom inset and of the band its mask leaves transparent.
-                const card = getComputedStyle(alert, "::before");
-                const band = document.createElement("div");
-                band.style.height = "var(--chat-composer-attachment-overlap, 0px)";
-                alert.append(band);
-                const masked =
-                  card.maskImage !== "none" && card.maskImage !== ""
-                    ? band.getBoundingClientRect().height
-                    : 0;
-                band.remove();
-                const words = alert.querySelector('[data-slot="alert-description"]');
-                const lines =
-                  words === null
-                    ? 0
-                    : Math.round(
-                        words.getBoundingClientRect().height /
-                          parseFloat(getComputedStyle(words).lineHeight),
-                      );
+                const rows = [
+                  ...document.querySelectorAll(".timeline-legend-list [data-timeline-root]"),
+                ];
                 return {
-                  noticeTop: notice.top,
-                  noticeBottom: notice.bottom,
-                  paintedBottom: notice.bottom - (parseFloat(card.bottom) || 0) - masked,
-                  lines,
+                  lastRow: Math.max(...rows.map((row) => row.getBoundingClientRect().bottom)),
                   cardTop: document
                     .querySelector('[data-slot="composer-shell"]')!
                     .getBoundingClientRect().top,
+                  // What the composer's drawer says: a notice there is what moved the conversation.
+                  notices: document.querySelectorAll(
+                    '[data-composer-banner-drawer] [data-slot="alert"]',
+                  ).length,
                 };
-              }),
+              });
+            const before = yield* Effect.promise(read);
+            unavailable = true;
+            yield* s.drivers.links.get("Ada")!.close;
+            wire.disconnect();
+            // Past a blip her header says it; it does not wait for the link to be slow.
+            yield* Effect.promise(() =>
+              s.page.waitForSelector('[data-mate-link="reconnecting"]', { visible: true }),
             );
+            yield* Effect.promise(() => waitForStillFrames(s.page));
+            const after = yield* Effect.promise(read);
             yield* Effect.promise(async () => {
               if (process.env.MATE_LAYOUT_EVIDENCE)
                 await s.page.screenshot({
                   path: `${process.env.MATE_LAYOUT_EVIDENCE}/${evidence}.png`,
-                  clip: { x: 435, y: 600, width: 1786 - 435, height: 400 },
+                  clip: { x: 435, y: 0, width: 1786 - 435, height: 1000 },
                 });
             });
-            return { s, geometry };
+            return { s, before, after };
           });
 
-        // Milo restarted mid-run, 2026-10-10: the reconnect notice ("Milo is reconnecting since
-        // 10:23 AM. Last known …") stood with its bottom edge under the composer card.
-        it.effect("a Mate's reconnect notice stands fully clear of the composer card", () =>
-          Effect.gen(function* () {
-            const { s, geometry } = yield* reconnecting(
-              "The existing conversation is still here",
-              "reconnect",
-            );
-            expect(
-              geometry.noticeBottom,
-              `ASSERTION: no part of the notice stands under the composer card: ${quoted(geometry)}`,
-            ).toBeLessThanOrEqual(geometry.cardTop);
-            yield* s.then.noExternalNetwork;
-          }),
+        // The owner, 2026-11-10: back in a tab after a minute away, "Reconnecting to …" popped in
+        // over the composer, pushed the whole conversation up, went, and let it drop back.
+        // witness: apps/web/src/zerops/mateNoticeVoice.ts | surface: "header", → surface: "banner",
+        it.effect(
+          "a Mate's lost link is said in its header and moves neither the conversation's last row nor the composer",
+          () =>
+            Effect.gen(function* () {
+              const { s, before, after } = yield* reconnecting(
+                "The existing conversation is still here",
+                "reconnect",
+              );
+              expect(
+                after.notices,
+                `ASSERTION: the composer's drawer says nothing of a link that is reconnecting: ${quoted(after)}`,
+              ).toBe(0);
+              expect(
+                Math.abs(after.cardTop - before.cardTop),
+                `ASSERTION: the composer card stays where it was: ${quoted({ before, after })}`,
+              ).toBeLessThanOrEqual(0.5);
+              expect(
+                Math.abs(after.lastRow - before.lastRow),
+                `ASSERTION: the conversation's last row stays where it was: ${quoted({ before, after })}`,
+              ).toBeLessThanOrEqual(0.5);
+              yield* s.then.noExternalNetwork;
+            }),
         );
       });
     });
