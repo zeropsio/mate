@@ -1040,8 +1040,9 @@ async function finishLocked(
   // the one it holds is the Mate its record names.
   const service = await mateServiceOf(input);
   if (!service.ok) return finishStopped(input, steps[0]!, service.error);
-  // Its owner marked before its record (ZEROPS-075): a Mate is never made no one's where its adder
-  // could have owned it. Safe to ask again: a marker they hold already writes nothing.
+  // Its owner marked before its record where its adder may write it (`ownerAtAdd`): a Mate is never
+  // made no one's where its adder could have owned it. Safe to ask again: a marker they hold already
+  // writes nothing.
   if (input.owner !== undefined) {
     try {
       if (!input.isCurrent()) throw new Error("This account is no longer active.");

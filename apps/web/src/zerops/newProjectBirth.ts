@@ -49,7 +49,11 @@ import {
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
-import { type ProjectGrant, withProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
+import {
+  ownerAtAdd,
+  type ProjectGrant,
+  withProjectGrant,
+} from "@t3tools/client-runtime/zerops/projectAccess";
 
 import type {
   BirthLineProgress,
@@ -70,6 +74,8 @@ export interface NewProjectAsk {
   readonly organizationId: string;
   /** Who presses it: their membership (`clientUser`) id in the organization. */
   readonly creator: string;
+  /** Their organization role: whether they may be marked its first Mate's owner (`ownerAtAdd`). */
+  readonly creatorRole?: string | undefined;
   /** The creation's own id, made on the press: where its view is, and its group until HQ names one. */
   readonly birthId: string;
   /** The project's name. */
@@ -499,7 +505,12 @@ export async function runNewProjectBirth(
   );
   if (appId === null) return;
   const projectName = appProjectName(ask.name, ask.botName);
-  const userRoles = withProjectGrant(ask.userRoles ?? [], ask.creator, "OWNER");
+  const owner = ownerAtAdd({
+    userRoles: ask.userRoles,
+    adder: { membershipId: ask.creator, roleCode: ask.creatorRole },
+  });
+  const userRoles =
+    owner === null ? (ask.userRoles ?? []) : withProjectGrant(ask.userRoles ?? [], owner, "OWNER");
   const creationIntent: BirthIntent = {
     projectName,
     recipe: { kind: "none" },
@@ -538,8 +549,8 @@ export async function runNewProjectBirth(
             appId,
             ...(ask.locationId === null ? {} : { location: ask.locationId }),
             birth: intent,
-            // Every Mate carries its owner marker from birth, whatever its creator's organization
-            // role: their own `OWNER` override, which a hand-over later moves.
+            // Its owner marker from birth where its creator may write it (`ownerAtAdd`): their own
+            // `OWNER` override, which a hand-over later moves.
             userRoles,
           }),
         )

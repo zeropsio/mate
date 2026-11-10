@@ -45,6 +45,7 @@ import {
 const ASK: NewProjectAsk = {
   organizationId: "org-acme",
   creator: "cu-me",
+  creatorRole: "OWNER",
   birthId: "b-acme",
   name: "Acme CRM",
   botName: "Vera",
@@ -636,8 +637,8 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
     });
   });
 
-  // Decision: A birth from the web always writes the creator's OWNER override in the create body,
-  // whatever the creator's org role, so every Mate carries its owner marker from creation.
+  // Decision: A birth from the web writes an organization owner's own OWNER override in the create
+  // body, so their Mate carries its owner marker from creation; Zerops refuses it anyone else.
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk> }>([
     { case: "with no access chosen", ask: {} },
     {
@@ -659,6 +660,19 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       (ask.userRoles ?? []).filter((grant) => grant.clientUserId !== "cu-me"),
     );
   });
+
+  // witness: apps/web/src/zerops/newProjectBirth.ts | adder: { membershipId: ask.creator, roleCode: ask.creatorRole }, → adder: { membershipId: ask.creator, roleCode: "OWNER" },
+  it.each([{ creatorRole: "ADMIN" }, { creatorRole: "BASIC_USER" }, { creatorRole: undefined }])(
+    "writes no OWNER override for a creator Zerops refuses it, $creatorRole",
+    async ({ creatorRole }) => {
+      const { ports: made, read: now } = ports(
+        read({ appId: "app-acme", birthId: "b-1", steps: { app: DONE, birth: DONE } }),
+      );
+      const chosen = [{ clientUserId: "cu-ada", roleCode: "ADMIN" }];
+      await runNewProjectBirth(held({ creatorRole, userRoles: chosen }), now, made);
+      expect(vi.mocked(made.createProject).mock.calls[0]?.[1].userRoles).toEqual(chosen);
+    },
+  );
 
   it("registers the project in the organization's HQ, records its Mate's birth, then creates its Mate", async () => {
     const { order, ports: made, read: now } = ports();

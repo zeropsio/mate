@@ -119,6 +119,9 @@ describe("ownerAtAdd — who a Mate added to a project that exists is marked the
   const ADA_OWNS = { clientUserId: "cu-ada", roleCode: "OWNER" } as const;
   // Decision: What must NOT happen: no second role function; no write for READ_ONLY/BASIC_USER
   // adders (ZEROPS-063); no new stream field.
+  // Decision: An admin writes no OWNER grant: Zerops refuses it ("Cannot manage role 'OWNER' - your
+  // role 'ADMIN' has insufficient privileges.", a live Add, 2026-11-10), so their Mate stays no one's.
+  // witness: packages/client-runtime/src/zerops/projectAccess.ts | roleAtLeast(roleCode, "OWNER") → roleAtLeast(roleCode, "ADMIN")
   it.each<{
     readonly case: string;
     readonly roleCode: string | undefined;
@@ -126,10 +129,10 @@ describe("ownerAtAdd — who a Mate added to a project that exists is marked the
     readonly owner: string | null;
   }>([
     {
-      case: "an admin, on a project naming nobody",
+      case: "nobody, for an admin on a project naming nobody",
       roleCode: "ADMIN",
       userRoles: [],
-      owner: "cu-me",
+      owner: null,
     },
     {
       case: "an organization owner, on a project whose row carries no list",
@@ -138,8 +141,8 @@ describe("ownerAtAdd — who a Mate added to a project that exists is marked the
       owner: "cu-me",
     },
     {
-      case: "an admin, on a project naming them below its owner",
-      roleCode: "ADMIN",
+      case: "an organization owner, on a project naming them below its owner",
+      roleCode: "OWNER",
       userRoles: [{ clientUserId: "cu-me", roleCode: "READ_ONLY" }],
       owner: "cu-me",
     },
