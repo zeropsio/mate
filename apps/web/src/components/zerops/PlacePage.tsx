@@ -1546,122 +1546,39 @@ export function ZeropsStopPane({
           </div>
 
           <aside className="flex min-w-0 flex-col gap-8" aria-label={`${head.title} setup`}>
+            {/* Live state leads, only while something runs; then what is set up once, the most
+                used first: where it answers, who reaches it, what it runs on. */}
             <div className="min-w-0">
               <RunningNow lines={runningNow ?? NOTHING_RUNNING} />
-              <PlaceSection
-                label={
-                  <SectionLabel count={servicesWaiting ? undefined : table.length}>
-                    Services
-                  </SectionLabel>
-                }
-              >
-                {servicesWaiting ? (
-                  <PlaceServicesWaiting />
-                ) : projectId === undefined ? null : (
-                  <PlaceServiceTable
-                    answered={answered}
-                    deployAgain={deployAgain}
+              {projectId === undefined ? null : (
+                <PlaceSection
+                  label={
+                    <SectionLabel
+                      action={
+                        onManageAddresses === undefined ? undefined : (
+                          <Button onClick={onManageAddresses} size="sm" variant="link">
+                            Manage
+                          </Button>
+                        )
+                      }
+                    >
+                      Addresses
+                    </SectionLabel>
+                  }
+                >
+                  <PlaceAddressCard
+                    enablingServiceId={enablingServiceId ?? null}
+                    offers={offers}
+                    onEnableRoute={onEnableRoute}
                     projectId={projectId}
-                    rows={table}
-                    said={verdict.detail}
-                    usageRead={usageRead}
-                  >
-                    {notInZerops.map((hostname) => (
-                      <PlaceMissingService
-                        answer={answered.get(hostname)}
-                        byRelease={production}
-                        hostname={hostname}
-                        key={hostname}
-                        verb={
-                          // A production gets a service only by a release: HQ refuses the verb.
-                          addService === undefined || production ? null : (
-                            <Button
-                              disabled={addService.running(hostname)}
-                              onClick={() => addService.onAdd(hostname)}
-                              size="sm"
-                              variant="secondary"
-                            >
-                              {addService.running(hostname)
-                                ? flowVerbLabel("add-service", true)
-                                : `${flowVerbLabel("add-service", false)} ${hostname}`}
-                            </Button>
-                          )
-                        }
-                      />
-                    ))}
-                  </PlaceServiceTable>
-                )}
-                {servicesWaiting || table.length > 0 || notInZerops.length > 0 ? null : (
-                  // Its code services and the platform's both: a place with a database alone has one.
-                  <p
-                    className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
-                    data-zerops-surface="place-services-empty"
-                  >
-                    Nothing runs here yet. Its services appear as its first deploy lands.
-                  </p>
-                )}
-                {projectId === undefined || tierStops.length === 0 ? null : (
-                  <StopTierStops
-                    projectId={projectId}
-                    rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
-                    rows={tierStops}
+                    routes={routes}
                   />
-                )}
-                {stopsUnverified.length === 0 ? null : (
-                  // Never drawn as stopped: HQ has not confirmed it, and says so until it does.
-                  <div className="flex flex-col gap-2" data-zerops-surface="stop-unverified">
-                    <p className="text-sm text-muted-foreground">
-                      Stop not confirmed:{" "}
-                      {[
-                        ...new Set(
-                          stopsUnverified.flatMap(({ where }) =>
-                            where.service === undefined ? [] : [where.service],
-                          ),
-                        ),
-                      ].join(", ") || "a service"}
-                    </p>
-                    <HqProblems problems={stopsUnverified} />
-                  </div>
-                )}
-                {otherDeploys === undefined ? null : (
-                  <ZeropsDeployAnswer
-                    answer={otherDeploys}
-                    showEnvironment={otherDeploys.jobs.some(
-                      ({ environment }) => environment !== stop.name,
-                    )}
-                  />
-                )}
-              </PlaceSection>
+                  {routeTrouble === null || routeTrouble === undefined ? null : (
+                    <p className="text-sm text-status-failed-text">{routeTrouble}</p>
+                  )}
+                </PlaceSection>
+              )}
             </div>
-
-            {projectId === undefined ? null : (
-              <PlaceSection
-                label={
-                  <SectionLabel
-                    action={
-                      onManageAddresses === undefined ? undefined : (
-                        <Button onClick={onManageAddresses} size="sm" variant="link">
-                          Manage
-                        </Button>
-                      )
-                    }
-                  >
-                    Addresses
-                  </SectionLabel>
-                }
-              >
-                <PlaceAddressCard
-                  enablingServiceId={enablingServiceId ?? null}
-                  offers={offers}
-                  onEnableRoute={onEnableRoute}
-                  projectId={projectId}
-                  routes={routes}
-                />
-                {routeTrouble === null || routeTrouble === undefined ? null : (
-                  <p className="text-sm text-status-failed-text">{routeTrouble}</p>
-                )}
-              </PlaceSection>
-            )}
 
             {access === undefined || projectId === undefined ? null : (
               <PlaceSection
@@ -1692,6 +1609,91 @@ export function ZeropsStopPane({
                 <PlaceAccessCard line={access.line} summary={access.summary} />
               </PlaceSection>
             )}
+
+            <PlaceSection
+              label={
+                <SectionLabel count={servicesWaiting ? undefined : table.length}>
+                  Services
+                </SectionLabel>
+              }
+            >
+              {servicesWaiting ? (
+                <PlaceServicesWaiting />
+              ) : projectId === undefined ? null : (
+                <PlaceServiceTable
+                  answered={answered}
+                  deployAgain={deployAgain}
+                  projectId={projectId}
+                  rows={table}
+                  said={verdict.detail}
+                  usageRead={usageRead}
+                >
+                  {notInZerops.map((hostname) => (
+                    <PlaceMissingService
+                      answer={answered.get(hostname)}
+                      byRelease={production}
+                      hostname={hostname}
+                      key={hostname}
+                      verb={
+                        // A production gets a service only by a release: HQ refuses the verb.
+                        addService === undefined || production ? null : (
+                          <Button
+                            disabled={addService.running(hostname)}
+                            onClick={() => addService.onAdd(hostname)}
+                            size="sm"
+                            variant="secondary"
+                          >
+                            {addService.running(hostname)
+                              ? flowVerbLabel("add-service", true)
+                              : `${flowVerbLabel("add-service", false)} ${hostname}`}
+                          </Button>
+                        )
+                      }
+                    />
+                  ))}
+                </PlaceServiceTable>
+              )}
+              {servicesWaiting || table.length > 0 || notInZerops.length > 0 ? null : (
+                // Its code services and the platform's both: a place with a database alone has one.
+                <p
+                  className="rounded-xl border border-dashed border-border px-4 py-3.5 text-body text-muted-foreground"
+                  data-zerops-surface="place-services-empty"
+                >
+                  Nothing runs here yet. Its services appear as its first deploy lands.
+                </p>
+              )}
+              {projectId === undefined || tierStops.length === 0 ? null : (
+                <StopTierStops
+                  projectId={projectId}
+                  rowClassName="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-t border-border/60 py-2 first:border-t-0"
+                  rows={tierStops}
+                />
+              )}
+              {stopsUnverified.length === 0 ? null : (
+                // Never drawn as stopped: HQ has not confirmed it, and says so until it does.
+                <div className="flex flex-col gap-2" data-zerops-surface="stop-unverified">
+                  <p className="text-sm text-muted-foreground">
+                    Stop not confirmed:{" "}
+                    {[
+                      ...new Set(
+                        stopsUnverified.flatMap(({ where }) =>
+                          where.service === undefined ? [] : [where.service],
+                        ),
+                      ),
+                    ].join(", ") || "a service"}
+                  </p>
+                  <HqProblems problems={stopsUnverified} />
+                </div>
+              )}
+              {otherDeploys === undefined ? null : (
+                <ZeropsDeployAnswer
+                  answer={otherDeploys}
+                  showEnvironment={otherDeploys.jobs.some(
+                    ({ environment }) => environment !== stop.name,
+                  )}
+                />
+              )}
+            </PlaceSection>
           </aside>
         </div>
       </div>
