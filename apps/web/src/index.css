@@ -9846,15 +9846,19 @@ button.ov-change {
   scale: 0.7;
   transform-origin: right bottom;
 }
-/* Nothing standing in it: its words on the first line, as a call's. */
+/* Nothing standing in it: a row as a call's — its mark in the Mate's column,
+   its words on the items' text edge, a bubble's 12 px in. "Thinking" stands as
+   the thought that takes its place: 8 px over its first line, as a thought's. */
 .run-slot-filler {
   display: flex;
-  min-height: 34px;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
-  padding-block: 7px;
-  font-size: 14px;
-  line-height: 20px;
+}
+.run-slot-filler > .run-now-words {
+  padding: 7px 12px;
+}
+.run-slot-filler[data-slot-filler="thinking"] > .run-now-words {
+  padding-block: 8px;
 }
 /* What the slot says between things, muted: "Thinking", "Writing", a wait. */
 .run-slot-word {
@@ -9960,6 +9964,13 @@ button.ov-change {
 [data-run-chat][data-run-live] > .run-above > .run-scroll {
   min-height: 0;
   flex: 0 1 auto;
+}
+/* The card holding an older height while its bottom edge travels to a taller
+   one (`runRoom`): what it holds stands as laid out and is uncovered at that
+   edge, never squeezed into the older height — the history arriving with its
+   first line kept that line where it stood in the slot. */
+[data-run-chat][data-run-live][data-room-easing] > .run-above {
+  flex-shrink: 0;
 }
 [data-run-chat][data-run-live] > .run-slot {
   flex: none;

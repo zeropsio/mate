@@ -7008,6 +7008,17 @@ function ConversationView(props: ChatViewProps) {
         clearComposerDraftContent(composerDraftTarget);
         composerRef.current?.resetCursorState();
       }
+      // The person's own send pins the end here too, with no row of its own to bring: the
+      // message and its run's card are followed from the frame the engine writes them. Left
+      // out, a conversation opened where it was left mid-read never followed its own sends.
+      if (
+        nextTimelineFollow(
+          liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
+          { type: "sent", byPerson: sentBy === "person" },
+        )
+      ) {
+        scrollToEnd(false, sentBy === "person");
+      }
       const crewResult = await sendCrewCommand({ environmentId, input: crewMessage });
       if (crewResult._tag === "Success") {
         if (queuedMessage && activeThreadKey) settleQueuedSend(activeThreadKey, null);
