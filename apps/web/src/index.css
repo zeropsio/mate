@@ -10501,7 +10501,10 @@ button.run-bar:focus-visible {
 /* Its bar stands apart from the lines and from the card's edge: the app's
    6 px thumb in a 16 px gutter, 6 px from the lines, 4 px from the edge, and
    short of the top and bottom (the owner, 2026-10-05: "custom scrollbar too
-   close to the edge"). */
+   close to the edge"). The thumb is what is left of its box inside two
+   transparent borders of different widths, so one radius for the box gave its
+   two sides different curves and the thumb read as cut on one side (the owner,
+   2026-11-10): each side's radius is its border plus the thumb's own 3 px. */
 .run-scroll::-webkit-scrollbar {
   width: 16px;
 }
@@ -10511,7 +10514,7 @@ button.run-bar:focus-visible {
 .run-scroll::-webkit-scrollbar-thumb {
   border: solid transparent;
   border-width: 0 6px 0 4px;
-  border-radius: 10px;
+  border-radius: 7px 9px 9px 7px / 3px;
   background-clip: padding-box;
 }
 /* Its bar is the app's (`::-webkit-scrollbar`): a standard `scrollbar-width`
