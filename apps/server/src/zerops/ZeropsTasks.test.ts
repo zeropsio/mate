@@ -2339,8 +2339,11 @@ describe("an automated Mate's working copies hold the task it works", () => {
         lastEnded: doneRun("task-1", 1, 0, 1),
       });
       yield* link.receive(task("task-2", 43));
-      // Task 2's run is on: task 1's follow-up joins it where the working copies are.
-      yield* link.message("task-1", message("m-1", "Keep the green tea first."), CHANGE_1);
+      // Task 2's run is on: task 1's follow-up waits for it to end, the working copies untouched.
+      yield* Effect.forkChild(
+        link.message("task-1", message("m-1", "Keep the green tea first."), CHANGE_1),
+      );
+      yield* Effect.yieldNow;
       assert.deepStrictEqual(
         copies.map((each) => each.taskId),
         ["task-1", "task-2"],
