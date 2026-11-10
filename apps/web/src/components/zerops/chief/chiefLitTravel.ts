@@ -5,10 +5,13 @@
  * Chief carries it down to the Mate's. Transform and opacity only, so it runs while the page it
  * opens is drawn.
  */
+import { MOTION } from "@t3tools/shared/brand";
+
+import { shownBandBox } from "../selectedBandBox";
 
 /** As long as the band's own slide (`SidebarSelectedBand`), on the same strong ease-out. */
-const TRAVEL_MS = 240;
-const TRAVEL_EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
+const TRAVEL_MS = MOTION.duration.slow;
+const TRAVEL_EASE = MOTION.easing.out;
 
 const LIT = '[data-zerops-surface="sidebar-chief-row"] .menu-chief-lit';
 const LIT_ON =
@@ -53,7 +56,13 @@ export function carryBandToChief(): void {
   if (lit === null || band === null) return;
   const home = lit.parentElement?.getBoundingClientRect();
   if (home === undefined) return;
-  carry(lit, band.getBoundingClientRect(), home);
+  // From where the band shows, on its way to a Mate too.
+  const shown = shownBandBox(band);
+  carry(
+    lit,
+    new DOMRect(shown.left, shown.top, shown.right - shown.left, shown.bottom - shown.top),
+    home,
+  );
   band.dataset["away"] = "";
   setTimeout(() => {
     delete band.dataset["away"];
