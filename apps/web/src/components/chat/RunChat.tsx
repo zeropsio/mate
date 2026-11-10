@@ -3973,6 +3973,16 @@ function rowInView(
   return null;
 }
 
+/** Whether what the person has selected on the page touches `list`: begun in it, ended in it, or dragged across it. */
+function selectionTouches(list: HTMLElement): boolean {
+  const selection = typeof getSelection === "function" ? getSelection() : null;
+  if (selection === null || selection.isCollapsed) return false;
+  for (let index = 0; index < selection.rangeCount; index += 1) {
+    if (selection.getRangeAt(index).intersectsNode(list)) return true;
+  }
+  return false;
+}
+
 /** The row drawn for the chat's line `key` under `root`, if one is. */
 function rowByKey(root: HTMLElement | null, key: string): HTMLElement | null {
   if (typeof root?.querySelectorAll !== "function") return null;
@@ -5706,7 +5716,7 @@ function RunScroll({
   // scroll moves and as its lines or its box change size, answered at once
   // while they do not reach that far. Never while anything of the card moves
   // — a row's place is read — nor a row the person holds: the focus in it, a
-  // selection begun in the log.
+  // selection that touches the log.
   const setLinesAside = useEffectEvent(() => {
     const element = scrollRef.current;
     const list = listRef.current;
@@ -5717,15 +5727,7 @@ function RunScroll({
     if (element.clientHeight === 0) return;
     const above = element.scrollTop - spacer;
     if (!(above >= KEPT_ABOVE_PX + SET_ASIDE_PAST_PX) || follow.moving()) return;
-    const selection = typeof getSelection === "function" ? getSelection() : null;
-    if (
-      selection !== null &&
-      !selection.isCollapsed &&
-      selection.anchorNode !== null &&
-      list.contains(selection.anchorNode)
-    ) {
-      return;
-    }
+    if (selectionTouches(list)) return;
     const rows = list.children;
     if (rows.length === 0) return;
     // A row's room starts where its margin does: one that keeps more air over
