@@ -8,6 +8,7 @@ import {
   DIALOG_BACKDROP_CLASS,
   DIALOG_BACKDROP_MEDIA_CLASS,
   DIALOG_BACKDROP_PLAIN_CLASS,
+  DIALOG_MOBILE_FOOTER_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
   DIALOG_VIEWPORT_CLASS,
@@ -180,6 +181,7 @@ function DialogFooter({
         "flex flex-col-reverse gap-2 px-6 sm:flex-row sm:justify-end sm:rounded-b-[calc(var(--radius-2xl)-1px)]",
         variant === "default" && "border-t bg-muted/72 py-4",
         variant === "bare" && "py-4",
+        DIALOG_MOBILE_FOOTER_CLASS,
         className,
       )}
       data-slot="dialog-footer"

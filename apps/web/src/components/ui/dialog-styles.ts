@@ -19,13 +19,26 @@ const DIALOG_BACKDROP_MEDIA_CLASS =
 const DIALOG_POPUP_CLASS =
   "dialog-glass -translate-y-[calc(1.25rem*var(--nested-dialogs))] relative flex min-h-0 w-full min-w-0 scale-[calc(1-0.1*var(--nested-dialogs))] flex-col rounded-2xl border opacity-[calc(1-0.1*var(--nested-dialogs))] outline-none transition-[scale,opacity,translate] duration-200 ease-in-out will-change-transform data-nested:data-ending-style:translate-y-8 data-nested:data-starting-style:translate-y-8 data-nested-dialog-open:origin-top data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 [-webkit-app-region:no-drag]";
 
+/**
+ * Below 640 px a dialog is a sheet at the screen's foot. A sheet with no footer keeps its last line
+ * clear of the home indicator itself; one with a footer leaves that to the footer, whose ground
+ * runs to the screen's edge (`DIALOG_MOBILE_FOOTER_CLASS`).
+ */
 const DIALOG_MOBILE_SHEET_CLASS =
-  "max-sm:max-w-none max-sm:rounded-none max-sm:border-x-0 max-sm:border-t max-sm:border-b-0 max-sm:opacity-[calc(1-min(var(--nested-dialogs),1))] max-sm:data-ending-style:translate-y-4 max-sm:data-starting-style:translate-y-4";
+  "max-sm:max-w-none max-sm:rounded-none max-sm:border-x-0 max-sm:border-t max-sm:border-b-0 max-sm:opacity-[calc(1-min(var(--nested-dialogs),1))] max-sm:data-ending-style:translate-y-4 max-sm:data-starting-style:translate-y-4 max-sm:not-has-[[data-slot$=dialog-footer]]:pb-safe";
+
+/**
+ * A sheet's footer on a phone: its buttons stack as wide as the sheet, each 40 px tall so two
+ * neighbours never share a finger's 44 px, and the last one stands clear of the home indicator.
+ */
+const DIALOG_MOBILE_FOOTER_CLASS =
+  "max-sm:pb-[max(--spacing(4),env(safe-area-inset-bottom))] max-sm:[&>[data-slot=button]]:min-h-10";
 
 export {
   DIALOG_BACKDROP_CLASS,
   DIALOG_BACKDROP_MEDIA_CLASS,
   DIALOG_BACKDROP_PLAIN_CLASS,
+  DIALOG_MOBILE_FOOTER_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
   DIALOG_VIEWPORT_CLASS,
