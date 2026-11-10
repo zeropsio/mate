@@ -100,6 +100,7 @@ import { type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
+import { useProjectSitesOfGroup } from "~/zerops/projectPartsShown";
 import { Skeleton } from "../ui/skeleton";
 import { usePlaceAccessPeople } from "./projects/ProjectPeople";
 import type { columnPeople } from "./projects/accessTable.logic";
@@ -1217,6 +1218,13 @@ export function ZeropsStopPane({
       source: stop.source,
       routes,
     });
+  // The header's door to the place's addresses, where it answers at any; drawn once the menu
+  // has drawn the project's places (`PlaceDoors`).
+  const sitesDrawn = useProjectSitesOfGroup(groupId) !== undefined;
+  const sites =
+    projectId === undefined || routes.length === 0
+      ? undefined
+      : { groupId, kind: production ? ("production" as const) : ("stage" as const), projectId };
   const rollBackTo = production ? rollBackTarget(releases) : undefined;
   // The verdict speaks only where no section says it: a failure, or a place that runs nothing
   // and has more to say than the header's "Not released yet" — what deploys it, or its first
@@ -1301,11 +1309,7 @@ export function ZeropsStopPane({
           <PlaceDoors
             look="page"
             name={head.title}
-            sites={
-              projectId === undefined || routes.length === 0
-                ? undefined
-                : { groupId, kind: production ? "production" : "stage", projectId }
-            }
+            sites={sites}
             vault={
               vault === undefined || projectId === undefined
                 ? undefined
@@ -1333,7 +1337,13 @@ export function ZeropsStopPane({
           )}
         </>
       }
-      summary={<PlaceLine density="header" line={headerLine} />}
+      summary={
+        // An address is reached through Sites: beside that door the line prints none.
+        <PlaceLine
+          density="header"
+          line={sites === undefined || !sitesDrawn ? headerLine : { ...headerLine, addresses: [] }}
+        />
+      }
       title={head.title}
       titleTag={head.tag === undefined ? undefined : <ZeropsRoleTag label={ROLE_TAG[stop.tier]} />}
       trail={trail}
