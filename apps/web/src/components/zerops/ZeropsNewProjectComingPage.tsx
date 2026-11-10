@@ -19,7 +19,7 @@ import { useEffect, useMemo, useRef } from "react";
 
 import { hqCreditUrl } from "~/zerops/hqCredit";
 import { mateOpeningPhrase } from "~/zerops/mateComing";
-import { dismissCreation, startAddOver, tryCreationAgain, useCreation } from "~/zerops/creations";
+import { tryCreationAgain, useCreation, useCreationEnds } from "~/zerops/creations";
 import {
   creationEnds,
   creationManaged,
@@ -83,6 +83,7 @@ function LocalNewProjectComingPage({ birthId }: { readonly birthId: string }) {
   const navigate = useNavigate();
   const router = useRouter();
   const birth = useCreation(birthId);
+  const endActions = useCreationEnds();
 
   // The platform took its Mate's project: that Mate's view takes the route, in place of this one —
   // once it can paint, so the page never goes blank between the two.
@@ -183,10 +184,12 @@ function LocalNewProjectComingPage({ birthId }: { readonly birthId: string }) {
                         ? {}
                         : {
                             onStartOver: () => {
-                              if (birth !== undefined) startAddOver(birth);
+                              if (birth !== undefined) endActions.startOver(birth);
                             },
                           }),
-                      onDismiss: () => dismissCreation(birthId),
+                      onDismiss: () => {
+                        if (birth !== undefined) endActions.dismiss(birth);
+                      },
                     },
                   })}
               progress={progress}

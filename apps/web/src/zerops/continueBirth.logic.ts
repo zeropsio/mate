@@ -5,6 +5,7 @@ import {
   type EnvironmentRecipeChoice,
   type RecipeTier,
 } from "@t3tools/client-runtime/zerops";
+import { grantsWritableBy } from "@t3tools/client-runtime/zerops/projectAccess";
 import { CHIEF_TAG } from "./chief";
 
 export interface PinnedBirthRecipe {
@@ -13,11 +14,17 @@ export interface PinnedBirthRecipe {
   readonly yaml: string;
 }
 
-/** Reconstructs the recorded plan only from its immutable recipe revision. */
+/**
+ * Reconstructs the recorded plan only from its immutable recipe revision, its access as the
+ * presser may write it (`grantsWritableBy`): an owner marker recorded for its maker never stops
+ * an admin's Continue.
+ */
 export function continuedBirthPlan(
   birth: SharedBirth,
   orgId: string,
   recipe: PinnedBirthRecipe | undefined,
+  /** The organization role of the person pressing Continue. */
+  presserRole: string | undefined,
 ): EnvironmentCreationPlan {
   const intent = birth.intent;
   if (intent === undefined || intent.placement.role === "prod")
@@ -40,7 +47,7 @@ export function continuedBirthPlan(
     withAgent: true,
     agents: intent.agents,
     birth: birth.id,
-    userRoles: intent.userRoles,
+    userRoles: grantsWritableBy(intent.userRoles, presserRole),
     ...(intent.location === null ? {} : { location: intent.location }),
   });
   if (!plan.ok || !intent.placement.chief) return plan;

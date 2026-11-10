@@ -169,7 +169,7 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
             view.answer.content !== null
               ? { revision: entry.revision, tier: entry.tier, yaml: view.answer.content }
               : undefined;
-          const plan = continuedBirthPlan(latest, orgId, recipe);
+          const plan = continuedBirthPlan(latest, orgId, recipe, activeOrganization.roleCode);
           if (!plan.ok) throw new Error(plan.reason);
           if (from === "import" && (latest.projectId === null || latest.placement === "unknown"))
             throw new Error("The birth's registration is not current yet.");

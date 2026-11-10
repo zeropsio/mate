@@ -221,6 +221,7 @@ function NewMateDialog({
       ask: {
         organizationId,
         creator: activeOrganization.membershipId,
+        creatorRole: activeOrganization.roleCode,
         birthId: id,
         name: group.name,
         botName: name,

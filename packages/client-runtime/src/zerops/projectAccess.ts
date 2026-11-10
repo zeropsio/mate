@@ -105,11 +105,12 @@ export function planMemberProjectGrants(input: {
 }
 
 /**
- * Who a Mate added to a project that exists is marked the owner of it by (`OWNER`, the marker a
- * hand-over moves): its adder, where the project's row names no `OWNER` and the adder's
- * organization role is admin or owner, the roles Zerops lets give themselves that grant
- * (ZEROPS-075). Nobody otherwise: a project with its owner keeps them, and below admin Zerops
- * refuses the write (ZEROPS-063), so the Mate stays no one's until it is handed over.
+ * Who a Mate's project is marked the owner of by (`OWNER`, the marker a hand-over moves): its
+ * adder, where the project names no `OWNER` and the adder is an organization owner, the one role
+ * Zerops lets write that grant. An admin's is refused ("Cannot manage role 'OWNER' - your role
+ * 'ADMIN' has insufficient privileges.", a live Add's `POST /client/{id}/project`, 2026-11-10), and
+ * below admin too (ZEROPS-063). Nobody otherwise: a project with its owner keeps them, and an
+ * admin's Mate stays no one's until it is handed over; a developer's own project Zerops marks itself.
  */
 export function ownerAtAdd(input: {
   /** The project's `userRoles`, as its row carries them. */
@@ -117,9 +118,25 @@ export function ownerAtAdd(input: {
   /** The person adding it: their membership id and organization role. */
   readonly adder: { readonly membershipId: string; readonly roleCode?: string | undefined };
 }): string | null {
-  if (!roleAtLeast(input.adder.roleCode, "ADMIN")) return null;
+  if (!mayWriteOwnerMarker(input.adder.roleCode)) return null;
   if (input.userRoles?.some((entry) => asOrgRole(entry.roleCode) === "OWNER")) return null;
   return input.adder.membershipId;
+}
+
+/** Whether a person of this organization role may write an `OWNER` grant (`ownerAtAdd`). */
+const mayWriteOwnerMarker = (roleCode: string | undefined) => roleAtLeast(roleCode, "OWNER");
+
+/**
+ * A recorded project list as this presser may send it: an `OWNER` marker written for an earlier
+ * press is dropped for anyone but an organization owner, whom alone Zerops lets write it.
+ */
+export function grantsWritableBy(
+  list: ReadonlyArray<ProjectGrant>,
+  roleCode: string | undefined,
+): ReadonlyArray<ProjectGrant> {
+  return mayWriteOwnerMarker(roleCode)
+    ? list
+    : list.filter((entry) => asOrgRole(entry.roleCode) !== "OWNER");
 }
 
 /** A project's list with one person's grant set — or, `null`, dropped — everyone else kept. */
