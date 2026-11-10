@@ -151,6 +151,46 @@ function valueOf(row: typeof Row.Type): ServiceValue {
   return { ...fields, userData: kept };
 }
 
+const said = (value: string | null | undefined): string | undefined => {
+  const trimmed = value?.trim() ?? "";
+  return trimmed === "" ? undefined : trimmed;
+};
+
+/**
+ * The version a row says the service runs, with its name where the row names it: the version's
+ * own, else the row's `appVersionName` while `appVersionId` is that version (`runsOf`).
+ */
+function activeVersionOf(
+  value: ServiceValue,
+): { readonly id: string; readonly name: string | undefined } | undefined {
+  const id = said(value.activeAppVersion?.id);
+  if (id === undefined) return undefined;
+  const variable = (key: string) =>
+    said(value.userData?.find((entry) => entry.key === key)?.content);
+  return {
+    id,
+    name:
+      said(value.activeAppVersion?.name) ??
+      (variable("appVersionId") === id ? variable("appVersionName") : undefined),
+  };
+}
+
+/**
+ * A row's variables name the build the service last started, so a deploy under way — a release, or
+ * one HQ sends again — takes the name of the version it still runs out of the row: what production
+ * runs would read as untold until that deploy ends. A version's name never changes, and an
+ * earlier row of this service said it of this version: it stays on the active version while the
+ * row names the same one.
+ */
+function keepActiveName(held: ServiceValue | undefined, row: ServiceValue): ServiceValue {
+  if (held === undefined || row.activeAppVersion == null) return row;
+  const before = activeVersionOf(held);
+  const now = activeVersionOf(row);
+  if (before?.name === undefined || now === undefined || now.name !== undefined) return row;
+  if (now.id !== before.id) return row;
+  return { ...row, activeAppVersion: { ...row.activeAppVersion, name: before.name } };
+}
+
 const organization = (orgId: string) => [{ name: "clientId", operator: "eq", value: orgId }];
 
 const ClientRow = Schema.Struct({ clientId: Schema.optionalKey(Schema.NullOr(Schema.String)) });
@@ -173,6 +213,7 @@ export const serviceFamily: FamilySpec<"service"> = {
     { name: "serviceProject", keyOf: (value) => value.projectId },
   ],
   merge: (held, pushed) => ({ ...held, ...pushed }),
+  keepUnsaid: (held, row) => keepActiveName(held, row),
   // A row read by its id carries no `_version`: Zerops' own `lastUpdate` orders it.
   readIsNewer: (held, read) =>
     read.lastUpdate !== undefined &&
