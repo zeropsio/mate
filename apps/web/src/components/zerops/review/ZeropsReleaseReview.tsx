@@ -80,6 +80,7 @@ import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { releaseRequestOf, type HqAppDetailRead } from "@t3tools/client-runtime/data";
 import { NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
+import { releasePressKey, useReleasePresses } from "~/zerops/releasePresses";
 import { useRenewDeployKey } from "~/zerops/useRenewDeployKey";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
@@ -642,7 +643,12 @@ function ReleaseData({
         },
   );
 
-  const [pressedAt, setPressedAt] = useState<string>();
+  // The press's own time, and this tab's first sight of the release live (`releasePresses`).
+  const pressRecord = useReleasePresses((state) =>
+    follows.tag === undefined
+      ? undefined
+      : state.presses[releasePressKey(flow.groupId, follows.tag)],
+  );
   const release = async () => {
     if (chosen.tag === undefined || chosen.error !== undefined) return;
     if (plan.required && reviewedPlan === undefined) return;
@@ -650,7 +656,8 @@ function ReleaseData({
     setHeldPlan(reviewedPlan);
     setHeld({ ...facts, tag: chosen.tag });
     setMade(chosen.tag);
-    setPressedAt(new Date().toISOString());
+    const presses = useReleasePresses.getState();
+    presses.pressed(flow.groupId, chosen.tag, new Date().toISOString());
     setPress({ kind: "running" });
     const answer =
       reviewedPlan === undefined
@@ -664,7 +671,17 @@ function ReleaseData({
     );
     // The tag it made is the one the review follows from here.
     setMade(answer.ok ? (answer.tag ?? chosen.tag) : undefined);
+    if (!answer.ok) presses.refused(flow.groupId, chosen.tag);
+    else if (answer.tag !== undefined) presses.renamed(flow.groupId, chosen.tag, answer.tag);
   };
+  const sawLive =
+    outcome.kind === "released" && pressRecord !== undefined && pressRecord.liveAt === undefined
+      ? follows.tag
+      : undefined;
+  useEffect(() => {
+    if (sawLive !== undefined)
+      useReleasePresses.getState().live(flow.groupId, sawLive, new Date().toISOString());
+  }, [flow.groupId, sawLive]);
 
   // What HQ does in production for the followed release, as its jobs there stand: the steps'
   // marks, clocks and words (`releaseSheetSteps`).
@@ -759,9 +776,14 @@ function ReleaseData({
               },
       }}
       progress={progress}
-      // The clock the press started keeps counting from the press: HQ tags a moment later, and
-      // counting from its tag would take seconds back under the person's eyes.
-      started={{ at: pressedAt ?? follows.tagged?.taggedAt, by: startedBy }}
+      // The clock the press started keeps counting from the press: HQ tags when it gets to it,
+      // and counting from its tag would take time back under the person's eyes. "Took" is the
+      // press to this tab's sight of it live; a tab that did not press says HQ's own times.
+      started={{
+        at: pressRecord?.pressedAt ?? follows.tagged?.taggedAt,
+        by: startedBy,
+        liveAt: pressRecord?.liveAt,
+      }}
       logOf={(service) => {
         const job = jobs.find((entry) => entry.service === service)?.job;
         const target = job === undefined ? undefined : deployLogTarget(job);
@@ -784,7 +806,6 @@ function ReleaseData({
         setHeld(undefined);
         setHeldPlan(undefined);
         setTypedVersion(undefined);
-        setPressedAt(undefined);
         setReopened(null);
         renewKey.reset();
       }}
@@ -1023,7 +1044,12 @@ export interface ReleaseReviewViewProps {
   readonly progress?: ReleaseProgress | undefined;
   /** When the release on its way was made, and who asked for it: "you", or a person's name. */
   readonly started?:
-    | { readonly at: string | undefined; readonly by: string | undefined }
+    | {
+        readonly at: string | undefined;
+        readonly by: string | undefined;
+        /** When the tab that pressed saw it live; none for a tab that did not press. */
+        readonly liveAt?: string | undefined;
+      }
     | undefined;
   /** A service's deploy log, once its job has one. */
   readonly logOf?: ((service: string) => ReleaseStepLog | undefined) | undefined;
@@ -1326,7 +1352,9 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
       )
     : [];
   const liveAt =
-    newestEnd(props.progress) ?? (outcome.kind === "released" ? outcome.at : undefined);
+    props.started?.liveAt ??
+    newestEnd(props.progress) ??
+    (outcome.kind === "released" ? outcome.at : undefined);
   const subtitle = releaseSubtitle({
     state,
     said: state === "release-stalled" ? model.consequence : model.verdict.why,
