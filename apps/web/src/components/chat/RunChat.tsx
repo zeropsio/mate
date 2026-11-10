@@ -3903,6 +3903,14 @@ interface Landing {
    */
   readonly rows: ReadonlyMap<string, number>;
   /**
+   * Where the history's scroll stood as those were read. What it moved between
+   * that read and the landing's draw the person saw happen — their own wheel
+   * over a log that runs on — so it is no move of the landing's: read a few
+   * frames before a landing, lines wheeled past since went back four rows and
+   * glided down again (2026-11-10).
+   */
+  readonly scrollTop: number | null;
+  /**
    * The slot's rows, by where each stood in it (from the slot's top): one that
    * stays keeps its place in the slot as a row above it leaves.
    */
@@ -4441,19 +4449,26 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   const turnOverRef = useRef(turnOver);
   // How tall the card stood as last painted while its turn went on.
   const paintedHeightRef = useRef<number | null>(null);
+  // Where its history's scroll stood as last painted, while the run goes on: a landing's lines
+  // glide from where they stood then (`Landing.scrollTop`).
+  const paintedScrollRef = useRef<number | null>(null);
   // Read as painted before each commit that draws the card or its conversation again
   // (`AsPainted`): never in every frame, which ran the page's main thread sixty times a second
   // for as long as a run went on.
+  const live = row.live;
   useEffect(() => {
     const root = rootRef.current;
     // Drawn outside a page (a test's renderer), it has no head to find.
-    if (turnOver || root === null || typeof root.querySelector !== "function") return;
+    if (!live || root === null || typeof root.querySelector !== "function") return;
     return watchPainted(root, () => {
+      paintedScrollRef.current = scrollIn(aboveRef.current)?.scrollTop ?? null;
+      // Its turn over while what it started runs on, the card stands at the height it showed then.
+      if (turnOver) return;
       const head = root.querySelector<HTMLElement>(":scope > [data-run-head]");
       if (head !== null) headStood(head, head.getBoundingClientRect().top);
       paintedHeightRef.current = heightOf(root);
     });
-  }, [turnOver]);
+  }, [live, turnOver]);
   // Its turn over while what it started runs on, the card stands at the height it showed without
   // its slot: its history never grows into the room the slot gave back, which pushed the answer
   // landing under it a slot's height down (recheck on 0.15.44, +15:38: 305 px).
@@ -4593,6 +4608,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         from: stood,
         hosts: landingHosts(from, leaving, new Set(painted.slotRows.keys())),
         rows: slotted ? painted.rows : new Map(),
+        scrollTop: slotted ? painted.scrollTop : null,
         slot: slotted ? painted.slot : null,
         viewEnd: slotted ? painted.viewEnd : null,
         card: painted.card,
@@ -4604,9 +4620,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
   /** Where the history's lines, the slot and its rows stand on screen now. */
   const paintedNow = () => {
     const slotTop = boxOf(slotRef.current)?.top ?? null;
-    const historyTop = boxOf(scrollIn(aboveRef.current))?.top ?? null;
+    const scroll = scrollIn(aboveRef.current);
+    const historyTop = boxOf(scroll)?.top ?? null;
     return {
       rows: historyTop === null ? NO_TOPS : lineTops(aboveRef.current, historyTop),
+      scrollTop: scroll?.scrollTop ?? null,
       slot: slotTop,
       viewEnd: slotTop === null || historyTop === null ? null : slotTop - historyTop,
       slotRows: rowTops(slotRef.current, slotTop ?? 0),
@@ -4663,7 +4681,11 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
       // The room the history still gives the slot as it glides: its lines go
       // by both, and the travel is timed for what they come to.
       const gives = Math.max(0, -(historyRoomsRef.current?.pending() ?? 0));
-      glideLines(scroll, list, landing.rows, landed, landing.viewEnd, travel, gives);
+      // What its scroll moved from the read of its lines to this draw was seen as it happened.
+      const painted = paintedScrollRef.current;
+      const scrolled =
+        landing.scrollTop === null || painted === null ? 0 : painted - landing.scrollTop;
+      glideLines(scroll, list, landing.rows, scrolled, landed, landing.viewEnd, travel, gives);
     }
     const element = slotRef.current;
     if (landing.slot === null || landing.card === null || element === null) return;
@@ -4946,7 +4968,8 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
           <div key="below" ref={feedRef} className="run-later-feed">
             {above ? null : scroll}
           </div>
-          <AsPainted key="painted" of={row} />
+          {/* A landing is drawn in a commit of its own, its row the same: read before that one too. */}
+          <AsPainted key="painted" of={row} and={landing} />
         </div>
       </ResultPicturesContext>
     </CarriedOpenContext>
@@ -6037,6 +6060,8 @@ function glideLines(
   scroll: HTMLElement,
   list: HTMLElement,
   before: ReadonlyMap<string, number>,
+  /** How far the scroll moved since `before` was read, as painted: its lines stood that much higher. */
+  scrolled: number,
   landed: ReadonlySet<HTMLElement>,
   /** How far under the scroll's top its view ended before: a slot that grew took room a line stood in. */
   stoodEnd: number | null,
@@ -6065,7 +6090,7 @@ function glideLines(
         : before.get(line.dataset.runKey);
     if (stood !== undefined) {
       const box = line.getBoundingClientRect();
-      const moved = stood - (box.top - shown.top);
+      const moved = stood - scrolled - (box.top - shown.top);
       // Where it stood it was drawn: it comes from there whole, its foot under
       // the scroll's edge if the landing grew it (a call joining its card).
       const seen = box.bottom + moved >= view.top && box.top + moved <= view.bottom;

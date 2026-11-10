@@ -18,6 +18,8 @@ import { readPainted } from "./wordsLanding";
 export class AsPainted extends Component<{
   /** What the commit draws: read before each commit that brings another. */
   readonly of: unknown;
+  /** What else a commit may bring with the same `of`, and asks all the same (a card's landing). */
+  readonly and?: unknown;
 }> {
   override getSnapshotBeforeUpdate(): null {
     readPainted();
