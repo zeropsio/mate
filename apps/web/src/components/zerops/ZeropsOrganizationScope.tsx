@@ -72,8 +72,8 @@ export function ZeropsOrganizationScope({
           Choose an organization
         </h1>
         <p className="text-sm text-muted-foreground">
-          Environments and permissions come from the organization you pick. Switch any time from the
-          top bar.
+          Environments and permissions come from the organization you pick. Switch any time from
+          your account menu.
         </p>
       </div>
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
