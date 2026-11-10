@@ -14,6 +14,7 @@ import type {
   FlowReleaseRow,
   GroupFlow,
 } from "@t3tools/client-runtime/zerops";
+import { releaseNotCreatedWords } from "@t3tools/client-runtime/zerops/flow";
 import type { HqAppTask } from "@t3tools/shared/hqIntake";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
 import type { ReactNode } from "react";
@@ -50,7 +51,7 @@ import {
   ProjectPageBody,
   type ProjectPageFacts,
 } from "~/components/zerops/project/ProjectPageBody";
-import { CHANGES_HELD } from "~/components/zerops/project/projectPage.logic";
+import { CHANGES_HELD, lineCopies } from "~/components/zerops/project/projectPage.logic";
 import {
   lineChangeKey,
   nextReleaseView,
@@ -350,7 +351,9 @@ interface LineInput {
   readonly releases: ReadonlyArray<ReturnType<typeof shipped>>;
   /** What the stage `main` feeds runs and is taking. */
   readonly stage?: CardStage;
-  readonly repos: ReadonlyArray<ReturnType<typeof lineRepo>>;
+  readonly repos: ReadonlyArray<ReturnType<typeof lineRepo> | (typeof KEPT_REPOS)[number]>;
+  /** Why its last release did not go live, as production's page says it. */
+  readonly cause?: string;
 }
 
 const HEAD = sha("head");
@@ -394,6 +397,7 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
       onMain(24, "Everyone gets the bot, which guides their sign-in", "pia-r", 8 * DAY + 60),
     ],
     repos: [lineRepo("bot", "acme/relay-bot", IN_SYNC)],
+    cause: releaseNotCreatedWords({ tag: "v0.1.5", missing: ["db"] }),
   },
   "line-busy": {
     releases: [
@@ -418,9 +422,10 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
       onMain(31, "Sold-out labels on tea cards", "wren-b", 4 * DAY),
     ],
     stage: stageRuns(sha("c48"), [HEAD]),
+    // One copy on GitHub, behind and pushing; the other repository is kept in Mate alone.
     repos: [
       lineRepo("shop", "acme/tea-house", { syncedAt: null, divergedSince: null }),
-      lineRepo("api", "acme/tea-house-api", IN_SYNC),
+      { name: "api", mainHead: null, updatedAt: ago(4), remote: null },
     ],
   },
   // Three Mates, a release waiting: four merged since the live release, one on its way to the stage.
@@ -837,6 +842,8 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
     // `?reading`: its changes are not read yet; the line holds their room.
     changesUnknown: PAGE_PARAMS.has("reading") ? "Reading its changes…" : undefined,
     repos: line?.repos ?? (released ? REPOS : []),
+    copies: lineCopies(line?.repos, { orgName: "Acme", now: NOW }),
+    releaseCause: line?.cause,
     environments,
     slots,
     release:

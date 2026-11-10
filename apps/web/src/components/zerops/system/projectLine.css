@@ -338,8 +338,10 @@ span.ln-bead {
   }
 }
 
-/* The line in full: the picture's stations on the picture's columns, each with what it is under
-   its name (60 px), the track, the count; then a row under `main` for each further place. */
+/* The line in full, as its board drew it: the picture's stations on the picture's columns, each
+   with what it is under its name (60 px), the track, then its count and its one verb; then a row
+   under `main` for each copy of the code and each further place. 176 px, and 14 px plus 22 px a
+   row where rows hang under `main`; a release that didn't go live may say why on two lines. */
 .lnx {
   min-width: 0;
 }
@@ -350,8 +352,8 @@ span.ln-bead {
   min-width: 0;
   grid-auto-rows: auto;
   grid-template-columns: 302fr 310fr 158fr;
-  grid-template-rows: 104px;
-  padding: 16px 24px 14px 28px;
+  grid-template-rows: minmax(154px, auto);
+  padding: 20px 24px 2px 28px;
 }
 
 .ln[data-stations="4"] .lnx-grid {
@@ -362,7 +364,8 @@ span.ln-bead {
   position: relative;
   display: grid;
   min-width: 0;
-  grid-template-rows: 60px 16px minmax(0, 1fr);
+  align-content: start;
+  grid-template-rows: 60px 16px auto;
 }
 
 .lnx-head {
@@ -372,19 +375,45 @@ span.ln-bead {
   padding-right: 18px;
 }
 
-.lnx-head > .ln-name {
+/* A station's name, and what stands at its end (a place's vault): the row is the name's height. */
+.lnx-namerow {
+  display: flex;
+  min-width: 0;
+  height: 20px;
+  align-items: center;
+  gap: 2px;
+}
+
+.lnx-namerow > .ln-name {
+  min-width: 0;
   max-width: 100%;
 }
 
-a.ln-name:hover {
+button.ln-name {
+  cursor: pointer;
+}
+
+a.ln-name:hover,
+button.ln-name:hover {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
-a.ln-name:focus-visible,
+.ln-name:focus-visible,
+.lnx .ln-words a:focus-visible,
 .lnx-side a:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* A place's address, opened beside the page. */
+.lnx .ln-words a {
+  color: var(--info-foreground);
+}
+
+.lnx .ln-words a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .ln-words [data-strong] {
@@ -438,19 +467,35 @@ a.ln-name:focus-visible,
   background: var(--ln-ground);
 }
 
+/* Under the track: a segment's count and its one verb; production's address. */
 .lnx-foot {
   display: grid;
   min-width: 0;
   align-content: start;
   justify-items: start;
-  padding-top: 12px;
-  padding-right: 18px;
+  gap: 8px;
+  padding: 12px 18px 14px 0;
 }
 
-/* Rows hung under `main` on a dotted spine: each further place. The count under `main` steps in to
-   the rows' text edge. */
+.lnx-foot > .ln-words {
+  max-width: 100%;
+}
+
+/* Rows hung under `main` on a dotted spine: each copy of the code, each further place. The count
+   and verb under `main` step in to the rows' text edge. */
 .lnx[data-sides] .lnx-col[data-kind="main"] > .lnx-foot {
   padding-left: 28px;
+}
+
+/* The spine: from under `main`'s dot to its column's end, then beside the rows to the last one. */
+.lnx[data-sides] .lnx-col[data-kind="main"]::after {
+  position: absolute;
+  top: 78px;
+  bottom: 0;
+  left: 5px;
+  width: 2px;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, var(--ln-faint) 3px 7px);
+  content: "";
 }
 
 .lnx-sides {
@@ -458,17 +503,16 @@ a.ln-name:focus-visible,
   min-width: 0;
   grid-column: 2 / -1;
   margin: 0;
-  padding: 4px 0 0;
+  padding: 0 0 14px;
   list-style: none;
 }
 
 .lnx-sides::before {
   position: absolute;
-  top: -26px;
-  bottom: 10px;
+  top: 0;
+  bottom: 24px;
   left: 5px;
   width: 2px;
-  border-radius: 999px;
   background: repeating-linear-gradient(180deg, var(--ln-faint) 0 4px, transparent 4px 7px);
   content: "";
 }
@@ -500,6 +544,35 @@ a.ln-name:focus-visible,
 .lnx-side a:hover [data-strong] {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* A release that did not go live says why in one sentence, on two lines where one cuts it. On a
+   line with a stage it takes production's room under the track too; production's address then
+   stands in the page's Addresses. */
+.lnx-col[data-seg="release"][data-track="failed"] > .lnx-foot > .ln-words.ln-full {
+  display: -webkit-box;
+  height: auto;
+  max-height: 32px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+
+.ln[data-stations="4"] .lnx-col[data-seg="release"][data-track="failed"] > .lnx-foot {
+  overflow: visible;
+  padding-right: 0;
+}
+
+.ln[data-stations="4"]
+  .lnx-col[data-seg="release"][data-track="failed"]
+  > .lnx-foot
+  > .ln-words.ln-full {
+  width: max-content;
+  max-width: calc((100cqw - 52px) * 0.4519);
+}
+
+.ln[data-stations="4"] .lnx[data-release="failed"] .lnx-col[data-kind="production"] > .lnx-foot {
+  visibility: hidden;
 }
 
 /* Under the line, a row for each Mate on the line's own columns: its changes under the segment
@@ -591,6 +664,32 @@ a.ln-name:focus-visible,
   display: flex;
 }
 
+/* What a bead's marks mean, at the card's foot. */
+.lnx-legend {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 20px;
+  margin: 0 24px 0 28px;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--ov-rule, var(--border));
+  list-style: none;
+}
+
+.lnx-legend > li {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.lnx-legend .ln-bead {
+  flex: none;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* The rows past the first six, folded: they open under the rows that stand. */
 .lnx-more {
   display: grid;
@@ -640,10 +739,11 @@ a.ln-name:focus-visible,
     right: 4px;
   }
 
-  /* The line in full, compact: station names only, the track 30 px higher. */
+  /* The line in full, compact: station names only, no verbs but a release's as a link, the track
+     30 px higher. */
   .lnx-grid {
     grid-template-columns: 170fr 182fr 100fr;
-    grid-template-rows: 74px;
+    grid-template-rows: minmax(90px, auto);
     padding-inline: 20px;
   }
 
@@ -652,12 +752,24 @@ a.ln-name:focus-visible,
   }
 
   .lnx-col {
-    grid-template-rows: 30px 16px minmax(0, 1fr);
+    grid-template-rows: 30px 16px auto;
   }
 
   .lnx-head,
   .lnx-foot {
     padding-right: 8px;
+  }
+
+  .lnx[data-sides] .lnx-col[data-kind="main"]::after {
+    top: 48px;
+  }
+
+  .ln[data-stations="4"] .lnx[data-release="failed"] .lnx-col[data-kind="production"] > .lnx-foot {
+    visibility: visible;
+  }
+
+  .lnx-col[data-seg="release"][data-track="failed"] > .lnx-foot > .ln-words.ln-full {
+    display: none;
   }
 
   .lnx-head > .ln-words {

@@ -3,7 +3,7 @@
  * count, a line of toned words; and each segment's width as laid out.
  */
 import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { InlineButton } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -74,15 +74,20 @@ export function Words({ words }: { readonly words: ReadonlyArray<LineWord> }) {
 
 export const textOf = (words: ReadonlyArray<LineWord>) => words.map((word) => word.text).join("");
 
-/** A segment's beads as its width has room for them: past that, a count. */
+/**
+ * A segment's beads as its width has room for them: past that, a count. `tip`: where a bead's name
+ * stands over it (`Bead`).
+ */
 export function SegmentBeads({
   segment,
   width,
   onOpenChange,
+  tip,
 }: {
   readonly segment: LineSegment;
   readonly width: number;
   readonly onOpenChange: OpenLineChange;
+  readonly tip?: "center" | "end";
 }) {
   const fit = fitBeads(segment.beads, segment.more, width);
   return (
@@ -100,7 +105,7 @@ export function SegmentBeads({
       )}
       {fit.beads.map((bead) => (
         <li key={bead.key}>
-          <Bead bead={bead} onOpenChange={onOpenChange} />
+          <Bead bead={bead} onOpenChange={onOpenChange} tip={tip} />
         </li>
       ))}
     </ul>
@@ -109,14 +114,16 @@ export function SegmentBeads({
 
 /**
  * Under a segment: its count. Where it counts a group of the Changes list, the count leads there;
- * compact, its short form.
+ * compact, its short form — or `compact`, what the line in full says in its place (a verb).
  */
 export function Caption({
   segment,
   onShowGroup,
+  compact,
 }: {
   readonly segment: LineSegment;
   readonly onShowGroup: ShowLineGroup;
+  readonly compact?: ReactNode;
 }) {
   const { group } = segment;
   const leads = (words: ReadonlyArray<LineWord>) =>
@@ -144,7 +151,9 @@ export function Caption({
       ) : segment.held ? (
         <span aria-hidden="true" className="ln-held ln-full" />
       ) : null}
-      {segment.short.length > 0 ? (
+      {compact !== undefined ? (
+        <span className="ln-words ln-short">{compact}</span>
+      ) : segment.short.length > 0 ? (
         <span className="ln-words ln-short">{leads(segment.short)}</span>
       ) : segment.held ? (
         <span aria-hidden="true" className="ln-held ln-short" />
@@ -155,14 +164,17 @@ export function Caption({
 
 /**
  * One change on the track: its title and "Mate · state" on hover and focus; pressed, its review.
- * Work that is not a change yet opens nothing.
+ * Work that is not a change yet opens nothing. `tip`: `end` ends its name at the bead, over its own
+ * segment, where the next station has words above the track (the line in full); default centred.
  */
 export function Bead({
   bead,
   onOpenChange,
+  tip = "center",
 }: {
   readonly bead: LineBead;
   readonly onOpenChange: OpenLineChange;
+  readonly tip?: "center" | "end" | undefined;
 }) {
   const pull = bead.pull;
   const label = `${bead.title}, ${bead.line}`;
@@ -193,7 +205,7 @@ export function Bead({
           )
         }
       />
-      <TooltipPopup side="top">
+      <TooltipPopup align={tip} side="top">
         <span className="grid gap-0.5 py-0.5 text-left">
           <span className="font-medium text-foreground">{bead.title}</span>
           <span className="text-muted-foreground">{bead.line}</span>
