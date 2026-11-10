@@ -11,34 +11,61 @@
  * while the project's reads have not answered. Under 700 px of its own width it is compact: short
  * captions, the same beads (a container query; a Mate's Code page).
  *
+ * Behind it stands the line in full (`ProjectLineFull`), by one control in the card's corner.
+ * `full.kind` says where: `here`, the card grows in place into it and back (the project's page),
+ * the control in the top corner in both states; `page`, the control is the way to the project's
+ * page, which arrives with it open (a Mate's panel has no room for it), in the corner under
+ * production.
+ *
  * Props: `view` (`projectLine(…)`; `undefined` while the project is unread: the card holds the
  * line's height, nothing drawn); `held`; `onOpenChange(pull, from)` (a bead: the change's review,
  * as its row in the Changes list opens it); `onShowGroup(group)` (a count: the group it counts —
- * without it a count is plain words); `surface` (`panel`: a Mate's panel's own card).
+ * without it a count is plain words); `surface` (`panel`: a Mate's panel's own card); `full`.
  */
-import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
-import { useLayoutEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { Maximize2Icon, Minimize2Icon } from "lucide-react";
+import { useState } from "react";
 
-import { InlineButton } from "~/components/ui/button";
+import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
-import { CutText } from "./ChangeRow";
+import { ProjectLineFull } from "./ProjectLineFull";
 import {
-  fitBeads,
-  moreChipWidth,
-  type LineBead,
-  type LineGroup,
-  type LineSegment,
-  type LineWord,
-  type ProjectLineView,
-} from "./projectLine.logic";
+  Caption,
+  SegmentBeads,
+  useTrackWidths,
+  type OpenLineChange,
+  type ShowLineGroup,
+} from "./ProjectLineParts";
+import type { ProjectLineFullView, ProjectLineView } from "./projectLine.logic";
+
+/** The control's words, closed and open. */
+export const SHOW_FULL_PICTURE = "Show the full picture";
+const SHOW_LESS = "Show less";
+
+export type ProjectLineFullDoor =
+  | {
+      readonly kind: "here";
+      /** The line in full (`projectLineFull(…)`), read whether or not it is open. */
+      readonly view: ProjectLineFullView | undefined;
+      readonly groupId: string;
+      readonly open: boolean;
+      readonly onOpen: (open: boolean) => void;
+    }
+  | {
+      readonly kind: "page";
+      readonly groupId: string;
+      /** Pressed, before the project's page opens: the page is to arrive with it open. */
+      readonly onOpen: () => void;
+    };
 
 export interface ProjectLineProps {
   readonly view: ProjectLineView | undefined;
   /** The project's reads have not answered: the line's shape alone. */
   readonly held?: boolean | undefined;
-  readonly onOpenChange: (pull: FlowPullRequest, from: HTMLElement) => void;
-  readonly onShowGroup?: ((group: LineGroup) => void) | undefined;
+  readonly onOpenChange: OpenLineChange;
+  readonly onShowGroup?: ShowLineGroup;
   readonly surface?: "page" | "panel" | undefined;
+  readonly full?: ProjectLineFullDoor | undefined;
 }
 
 const UNREAD: ProjectLineView = { stations: [], segments: [] };
@@ -49,9 +76,16 @@ export function ProjectLine({
   onOpenChange,
   onShowGroup,
   surface = "page",
+  full,
 }: ProjectLineProps) {
-  const { stations, segments } = view ?? UNREAD;
-  const [widths, track] = useTrackWidths(segments.length);
+  const here = full?.kind === "here" ? full : undefined;
+  const open = here?.open === true;
+  // Pressed since it was drawn: only then does a state travel to the next; the first frame is the
+  // remembered state as it stands.
+  const [moved, setMoved] = useState(false);
+  const picture = (
+    <LinePicture held={held} onOpenChange={onOpenChange} onShowGroup={onShowGroup} view={view} />
+  );
   return (
     <div
       aria-busy={held || view === undefined ? true : undefined}
@@ -59,223 +93,149 @@ export function ProjectLine({
       className={
         surface === "panel" ? "ln rounded-xl border border-border/70 bg-card" : "pp-card ln"
       }
-      data-stations={String(stations.length)}
+      data-stations={String((view ?? UNREAD).stations.length)}
+      data-zerops-line={here === undefined ? undefined : open ? "full" : "picture"}
       data-zerops-surface="project-line"
       role="group"
     >
-      <div className="ln-grid">
-        {stations.map((station, at) => {
-          const segment = segments[at];
-          const fit =
-            segment === undefined || held
-              ? undefined
-              : fitBeads(segment.beads, segment.more, widths[at] ?? 0);
-          return (
+      {here === undefined ? (
+        picture
+      ) : (
+        <div
+          className="ln-fold"
+          data-moved={moved ? "" : undefined}
+          data-open={open ? "" : undefined}
+        >
+          <div
+            className="ln-pane"
+            data-hidden={open ? "" : undefined}
+            data-pane="picture"
+            inert={open}
+          >
+            {picture}
+          </div>
+          {open || moved ? (
             <div
-              className="ln-col"
-              data-kind={station.kind}
-              data-seg={segment?.key}
-              key={station.kind}
+              className="ln-pane"
+              data-hidden={open ? undefined : ""}
+              data-pane="full"
+              inert={!open}
             >
-              <span className={station.kind === "main" ? "ln-name font-mono" : "ln-name"}>
-                {station.name}
-              </span>
-              <div
-                className="ln-track"
-                ref={(element) => {
-                  track(at, element);
-                }}
-              >
-                {segment === undefined ? null : (
-                  <span
-                    aria-hidden="true"
-                    className="ln-rail"
-                    data-track={held ? "solid" : segment.track}
-                  />
-                )}
-                <span
-                  aria-hidden="true"
-                  className="ln-node"
-                  data-node={held ? "solid" : station.node}
-                />
-                {segment === undefined || fit === undefined ? null : (
-                  <ul aria-label={segment.label} className="ln-beads">
-                    {fit.more === 0 ? null : (
-                      <li>
-                        <span
-                          aria-label={`${String(fit.more)} more`}
-                          className="ln-more"
-                          data-wide={moreChipWidth(fit.more) > 28 ? "" : undefined}
-                        >
-                          +{fit.more}
-                        </span>
-                      </li>
-                    )}
-                    {fit.beads.map((bead) => (
-                      <li key={bead.key}>
-                        <Bead bead={bead} onOpenChange={onOpenChange} />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <div className="ln-foot">
-                {held || segment === undefined ? null : (
-                  <Caption onShowGroup={onShowGroup} segment={segment} />
-                )}
-              </div>
+              <ProjectLineFull
+                groupId={here.groupId}
+                held={held}
+                onOpenChange={onOpenChange}
+                onShowGroup={onShowGroup}
+                view={here.view}
+              />
             </div>
-          );
-        })}
-      </div>
+          ) : null}
+        </div>
+      )}
+      {full === undefined ? null : (
+        <span className="ln-corner" data-leads={full.kind === "page" ? "" : undefined}>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                full.kind === "here" ? (
+                  <Button
+                    aria-expanded={open}
+                    aria-label={open ? SHOW_LESS : SHOW_FULL_PICTURE}
+                    onClick={() => {
+                      setMoved(true);
+                      full.onOpen(!open);
+                    }}
+                    size="icon-sm"
+                    variant="ghost"
+                  />
+                ) : (
+                  <Button
+                    aria-label={SHOW_FULL_PICTURE}
+                    render={
+                      <Link
+                        onClick={full.onOpen}
+                        params={{ groupId: full.groupId }}
+                        to="/group/$groupId/flow"
+                      />
+                    }
+                    size="icon-sm"
+                    variant="ghost"
+                  />
+                )
+              }
+            >
+              {open ? <Minimize2Icon aria-hidden="true" /> : <Maximize2Icon aria-hidden="true" />}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{open ? SHOW_LESS : SHOW_FULL_PICTURE}</TooltipPopup>
+          </Tooltip>
+        </span>
+      )}
     </div>
   );
 }
 
-/**
- * Each segment's width as laid out, which says how many beads it has room for: read before the
- * first paint, then whenever the line is resized.
- */
-function useTrackWidths(
-  segments: number,
-): readonly [ReadonlyArray<number>, (at: number, element: HTMLElement | null) => void] {
-  const elements = useRef<Array<HTMLElement | null>>([]);
-  const [widths, setWidths] = useState<ReadonlyArray<number>>([]);
-  useLayoutEffect(() => {
-    const read = () => {
-      const next = Array.from({ length: segments }, (_, at) =>
-        Math.floor(elements.current[at]?.getBoundingClientRect().width ?? 0),
-      );
-      setWidths((now) =>
-        now.length === next.length && now.every((width, at) => width === next[at]) ? now : next,
-      );
-    };
-    read();
-    const observer = new ResizeObserver(read);
-    for (const element of elements.current.slice(0, segments))
-      if (element !== null && element !== undefined) observer.observe(element);
-    return () => {
-      observer.disconnect();
-    };
-  }, [segments]);
-  return [
-    widths,
-    (at, element) => {
-      elements.current[at] = element;
-    },
-  ];
-}
-
-function Words({ words }: { readonly words: ReadonlyArray<LineWord> }) {
-  return (
-    <>
-      {words.map((word, index) => (
-        <span
-          data-tone={word.tone}
-          // Words keep their order: a caption is said whole, never reordered.
-          key={`${String(index)}:${word.text}`}
-        >
-          {word.text}
-        </span>
-      ))}
-    </>
-  );
-}
-
-const textOf = (words: ReadonlyArray<LineWord>) => words.map((word) => word.text).join("");
-
-/**
- * Under a segment: its count. Where it counts a group of the Changes list, the count leads there;
- * compact, its short form.
- */
-function Caption({
-  segment,
+/** The picture itself: the stations, the track, the beads, a count under each segment. */
+function LinePicture({
+  view,
+  held,
+  onOpenChange,
   onShowGroup,
 }: {
-  readonly segment: LineSegment;
-  readonly onShowGroup: ProjectLineProps["onShowGroup"];
+  readonly view: ProjectLineView | undefined;
+  readonly held: boolean;
+  readonly onOpenChange: OpenLineChange;
+  readonly onShowGroup: ShowLineGroup;
 }) {
-  const { group } = segment;
-  const leads = (words: ReadonlyArray<LineWord>) =>
-    group === undefined || onShowGroup === undefined ? (
-      <Words words={words} />
-    ) : (
-      <InlineButton
-        onClick={() => {
-          onShowGroup(group);
-        }}
-        tone="muted"
-      >
-        {/* One box, so the words keep the spaces between them. */}
-        <span>
-          <Words words={words} />
-        </span>
-      </InlineButton>
-    );
+  const { stations, segments } = view ?? UNREAD;
+  const [widths, track] = useTrackWidths(segments.length);
   return (
-    <>
-      {segment.caption.length > 0 ? (
-        <CutText className="ln-words ln-full" text={textOf(segment.caption)}>
-          {leads(segment.caption)}
-        </CutText>
-      ) : segment.held ? (
-        <span aria-hidden="true" className="ln-held ln-full" />
-      ) : null}
-      {segment.short.length > 0 ? (
-        <span className="ln-words ln-short">{leads(segment.short)}</span>
-      ) : segment.held ? (
-        <span aria-hidden="true" className="ln-held ln-short" />
-      ) : null}
-    </>
-  );
-}
-
-/**
- * One change on the track: its title and "Mate · state" on hover and focus; pressed, its review.
- * Work that is not a change yet opens nothing.
- */
-function Bead({
-  bead,
-  onOpenChange,
-}: {
-  readonly bead: LineBead;
-  readonly onOpenChange: ProjectLineProps["onOpenChange"];
-}) {
-  const pull = bead.pull;
-  const label = `${bead.title}, ${bead.line}`;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          pull === undefined ? (
-            <span
-              aria-label={label}
-              className="ln-bead"
-              data-mark={bead.mark}
-              data-tint={bead.tint}
-              role="img"
-              tabIndex={0}
-            />
-          ) : (
-            <button
-              aria-label={label}
-              className="ln-bead"
-              data-mark={bead.mark}
-              data-tint={bead.tint}
-              onClick={(event) => {
-                onOpenChange(pull, event.currentTarget);
+    <div className="ln-grid">
+      {stations.map((station, at) => {
+        const segment = segments[at];
+        return (
+          <div
+            className="ln-col"
+            data-kind={station.kind}
+            data-seg={segment?.key}
+            key={station.kind}
+          >
+            <span className={station.kind === "main" ? "ln-name font-mono" : "ln-name"}>
+              {station.name}
+            </span>
+            <div
+              className="ln-track"
+              ref={(element) => {
+                track(at, element);
               }}
-              type="button"
-            />
-          )
-        }
-      />
-      <TooltipPopup side="top">
-        <span className="grid gap-0.5 py-0.5 text-left">
-          <span className="font-medium text-foreground">{bead.title}</span>
-          <span className="text-muted-foreground">{bead.line}</span>
-        </span>
-      </TooltipPopup>
-    </Tooltip>
+            >
+              {segment === undefined ? null : (
+                <span
+                  aria-hidden="true"
+                  className="ln-rail"
+                  data-track={held ? "solid" : segment.track}
+                />
+              )}
+              <span
+                aria-hidden="true"
+                className="ln-node"
+                data-node={held ? "solid" : station.node}
+              />
+              {segment === undefined || held ? null : (
+                <SegmentBeads
+                  onOpenChange={onOpenChange}
+                  segment={segment}
+                  width={widths[at] ?? 0}
+                />
+              )}
+            </div>
+            <div className="ln-foot">
+              {held || segment === undefined ? null : (
+                <Caption onShowGroup={onShowGroup} segment={segment} />
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }

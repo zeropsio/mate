@@ -50,6 +50,7 @@ import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { useComposerDraftStore, type DraftId } from "../../composerDraftStore";
 import { useThreadShell } from "../../state/entities";
+import { useUiStateStore } from "../../uiStateStore";
 import { useThreadLeases } from "../../zerops/useThreadLeases";
 import { useThreadPoolPairs } from "../../zerops/useThreadPoolPairs";
 
@@ -513,6 +514,11 @@ function KnownGitTab({
             line={lineView}
             onOpenChange={props.onOpenChange}
             onOpenPull={props.onOpenPull}
+            // The project's page remembers the line in full per project: it arrives open.
+            onShowFullPicture={() => {
+              if (props.project !== undefined)
+                useUiStateStore.getState().setProjectLineFull(props.project.groupId, true);
+            }}
             project={props.project}
             renderBlockAction={renderBlockVerbs}
           />

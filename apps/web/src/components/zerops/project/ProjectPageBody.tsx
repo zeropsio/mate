@@ -20,6 +20,7 @@ import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useOpenReview } from "~/zerops/review";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
+import { useUiStateStore } from "~/uiStateStore";
 
 import { Button } from "../../ui/button";
 import { Skeleton } from "../../ui/skeleton";
@@ -27,10 +28,12 @@ import { EmptyState } from "../../ui/empty";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
 import { ENVIRONMENT_NOT_ADDED, REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops";
+import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { ComingMateFace, drawn, matesOf, type FlowMateEntry } from "../projects/flowSteps";
 import {
   cardReady,
   mateChangeForReview,
+  placeLabel,
   placeLines,
   projectWaitWords,
   type CardChange,
@@ -54,6 +57,7 @@ import {
   PlaceLine,
   ProjectLine,
   projectLine,
+  projectLineFull,
   READY_FOR_REVIEW,
   SectionAction,
   SectionLabel,
@@ -883,7 +887,9 @@ const GROUP_LIT_MS = 1400;
 /**
  * The project's recent changes. First their picture (`ProjectLine`): where each change is between
  * the Mates' work, `main`, the stage and production, a bead each, a count under each segment that
- * leads to its group below. Then the list, less the changes Waiting on you lists: open ones each
+ * leads to its group below; the control in its corner grows it in place into the line in full
+ * (`projectLineFull`: what each station is, each further place), which this device remembers per
+ * project. Then the list, less the changes Waiting on you lists: open ones each
  * with what stops it, merged ones grouped by where they went — the group's label says it once, in
  * the picture's words ("On stage, ready for production · 12"), and with one group the section's
  * label is it ("On main, not live yet · 5") — setup files last, quiet. The group a release would
@@ -932,10 +938,11 @@ function ProjectChanges<T>({
   // carries the release's verb beside the section's own.
   const only =
     open.length === 0 && groups.length === 1 && groups[0] !== carried ? groups[0] : undefined;
-  const picture = projectLine({
+  const groupId = entry.group.groupId;
+  const pictureInput = {
     flow: entry.flow,
     places: lines,
-    tintOf: (projectId) => {
+    tintOf: (projectId: string) => {
       const item = entry.mates.get(projectId);
       return item === undefined ? undefined : props.mateTint?.(item);
     },
@@ -943,7 +950,37 @@ function ProjectChanges<T>({
     changesKnown: facts.changesUnknown === undefined && !entry.changesAwaiting,
     waiting,
     release: door,
-  });
+  };
+  const picture = projectLine(pictureInput);
+  // The line in full, behind the picture: remembered per project on this device, so the page
+  // opens as it was left.
+  const fullOpen = useUiStateStore((state) => state.projectLineFullById[groupId] === true);
+  const setFullOpen = useUiStateStore((state) => state.setProjectLineFull);
+  const full = projectLineFull(
+    {
+      ...pictureInput,
+      // A place the grant withholds says so in place of its state.
+      places: lines.map((line) => {
+        const notice =
+          line.projectId === undefined ? null : (facts.withheldNotice?.(line.projectId) ?? null);
+        return notice === null
+          ? line
+          : { ...line, dot: "unknown", words: [notice], trouble: false, addresses: [] };
+      }),
+      // Opened by its environment, as a bookmark names it: the same through a rename.
+      placeId: (line) =>
+        facts.environments.find(
+          (row) => row.target.kind === "zerops" && row.target.projectId === line.projectId,
+        )?.id ?? line.projectId,
+      repos: (facts.repos ?? []).map((repo) => repo.name).filter((name) => name !== RECIPE_REPO),
+      coming: facts.slots.flatMap((slot) =>
+        slot.kind === "devstage" || (slot.kind === "creating" && slot.tier === "stage")
+          ? [{ key: slot.id, name: placeLabel({ kind: "stage", name: "stage" }), line: slot.line }]
+          : [],
+      ),
+    },
+    picture,
+  );
   // A count of the picture leads to the group it counts: the list shows it, and it is lit a moment.
   const list = useRef<HTMLDivElement>(null);
   const [shown, setShown] = useState<{ readonly group: LineGroup } | null>(null);
@@ -1015,6 +1052,15 @@ function ProjectChanges<T>({
       </SectionLabel>
       <div className="pp-picture">
         <ProjectLine
+          full={{
+            kind: "here",
+            view: full,
+            groupId,
+            open: fullOpen,
+            onOpen: (open) => {
+              setFullOpen(groupId, open);
+            },
+          }}
           held={entry.awaiting}
           onOpenChange={(pull, from) => {
             openChange(entry.group.groupId, pull, from);

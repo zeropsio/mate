@@ -8,6 +8,13 @@
  * project's Places and the place's own page (the owner, 2026-11-10: "the visualisation shouldn't
  * replace prod/stages setup/navigation/state").
  *
+ * Behind the picture stands the line in full (`projectLineFull`): the same stations, segments and
+ * beads, with what each station is under its name (its Mates, its repositories, a place's state and
+ * the way to its page), a row under `main` for each further place, and a row for each Mate with its
+ * own changes under the segment each is on. It reads the picture it stands behind, so what the
+ * picture counts the full line counts. It stays legible however much is on its way: a Mate's row
+ * holds its newest `ROW_BEADS` changes and counts the rest, and the rows past `ROWS_SHOWN` fold.
+ *
  * Read from what the project's page already reads: its flow (`GroupFlow`), its places
  * (`placeLines`), its changes (`pageChanges`), what waits on the viewer (`useViewerWaits`) and its
  * next release (`nextReleaseView`). Pure: no React, no clock.
@@ -23,11 +30,14 @@ import {
 } from "../projects/projectCard.logic";
 import { changeRowLine } from "./ChangeRow.logic";
 import { DIDNT_GO_LIVE, type NextReleaseView } from "./NextRelease.logic";
+import { placeLineView } from "./PlaceLine.logic";
 
-/** A word of a caption: muted unless toned. */
+/** A word of the line: muted unless toned; in full, a version in mono and a name in ink. */
 export interface LineWord {
   readonly text: string;
   readonly tone?: "danger" | "info" | "warning" | "dim" | undefined;
+  readonly mono?: true | undefined;
+  readonly strong?: true | undefined;
 }
 
 /**
@@ -164,6 +174,16 @@ function stationStage(stages: GroupFlow["stages"]) {
   );
 }
 
+/** The stage that stands on the line, and its line among the project's places. */
+function lineStage(input: Pick<ProjectLineInput, "flow" | "places">) {
+  const stop = stationStage(input.flow.stages);
+  const line =
+    stop === undefined
+      ? undefined
+      : input.places.find((each) => each.kind === "stage" && each.projectId === stop.projectId);
+  return { stop, line };
+}
+
 /** The line of one project, from its setup and what is on its way. */
 export function projectLine(input: ProjectLineInput): ProjectLineView {
   const { flow, mine } = input;
@@ -187,13 +207,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
     n === 0 ? [] : [{ text: `+${String(n)} from others`, tone: "dim" }];
 
   // Stations: the project's setup, and nothing else.
-  const stageStop = stationStage(flow.stages);
-  const stageLine =
-    stageStop === undefined
-      ? undefined
-      : input.places.find(
-          (line) => line.kind === "stage" && line.projectId === stageStop.projectId,
-        );
+  const { stop: stageStop, line: stageLine } = lineStage(input);
   const absent = flow.production.kind === "absent";
   const stageName = stageLine === undefined ? undefined : placeLabel(stageLine);
   const stations: ReadonlyArray<LineStation> = [
@@ -420,6 +434,272 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
     stations,
     segments: [workSegment, ...(stageSegment === undefined ? [] : [stageSegment]), releaseSegment],
   };
+}
+
+/** A station of the line in full: what it is under its name, and the page it leads to. */
+export interface LineStationFull {
+  readonly kind: LineStation["kind"];
+  readonly name: string;
+  /** `live`: a place that runs something; `absent`: not live yet, a dashed ring. */
+  readonly node: "solid" | "live" | "absent";
+  readonly tone: "neutral" | "success" | "danger" | "info";
+  /** Mates' work: its Mates' tints, five at most, each by its Mate. */
+  readonly tints: ReadonlyArray<{ readonly key: string; readonly tint: MateTintId | undefined }>;
+  /** Under its name, one line each: its Mates, its repositories, a place's state. */
+  readonly lines: ReadonlyArray<ReadonlyArray<LineWord>>;
+  /** A place's page (`/group/$groupId/$projectId`); none for Mates' work and `main`. */
+  readonly projectId: string | undefined;
+  /** What production runs, said under the track where the line is compact. */
+  readonly version: string | undefined;
+}
+
+/** A further place, hung under `main`: one line. */
+export interface LineSide {
+  readonly key: string;
+  readonly words: ReadonlyArray<LineWord>;
+  /** The place's page, where it is one. */
+  readonly projectId: string | undefined;
+}
+
+/** A Mate's row holds this many of its changes, the newest; the rest are a count. */
+export const ROW_BEADS = 8;
+
+/** The Mates' rows that stand before the rest fold. */
+export const ROWS_SHOWN = 6;
+
+/** One Mate's changes on the line: under each segment, the ones that are on it. */
+export interface LineMateRow {
+  /** The Mate's project. */
+  readonly key: string;
+  readonly name: string;
+  readonly tint: MateTintId | undefined;
+  /** One for each segment, in the line's order; a segment's beads as the track orders them. */
+  readonly cells: ReadonlyArray<{
+    readonly key: LineSegment["key"];
+    /** "Wren: 3 open". */
+    readonly label: string;
+    readonly beads: ReadonlyArray<LineBead>;
+  }>;
+  /** Its changes on the line past its newest `ROW_BEADS`. */
+  readonly earlier: number;
+}
+
+export interface ProjectLineFullView {
+  readonly stations: ReadonlyArray<LineStationFull>;
+  /** The picture's segments: its beads, its counts. */
+  readonly segments: ReadonlyArray<LineSegment>;
+  readonly sides: ReadonlyArray<LineSide>;
+  /**
+   * A row for each Mate, the ones the viewer is waited on by first, then the stuck, then by how
+   * much each has on its way. None where the project has one Mate: its row would be the line.
+   */
+  readonly mates: ReadonlyArray<LineMateRow>;
+}
+
+/** What the line in full reads beyond its picture. Never one Mate's (`mine`). */
+export interface ProjectLineFullInput extends Omit<ProjectLineInput, "mine" | "work"> {
+  /** What a place's page is opened by (its environment); its line's project where not given. */
+  readonly placeId?: ((line: PlaceLine) => string | undefined) | undefined;
+  /** Its code repositories, by name. */
+  readonly repos: ReadonlyArray<string>;
+  /** Places being set up that no line holds yet: each a side row. */
+  readonly coming?: ReadonlyArray<{
+    readonly key: string;
+    readonly name: string;
+    readonly line: string;
+  }>;
+}
+
+/** A place's state under its name: its not-calm word in its tone, else what it runs and since when. */
+function placeWords(line: PlaceLine): ReadonlyArray<ReadonlyArray<LineWord>> {
+  const view = placeLineView(line);
+  const facts = view.facts.map((text): LineWord => ({ text }));
+  if (view.pill !== undefined)
+    return [
+      [{ text: view.pill.word, tone: view.pill.tone === "danger" ? "danger" : "info" }],
+      ...(facts.length === 0 ? [] : [between(facts)]),
+    ];
+  const runs: ReadonlyArray<LineWord> =
+    view.version === undefined
+      ? view.state === undefined
+        ? []
+        : [{ text: view.state }]
+      : [{ text: view.version, mono: true }];
+  const said = between([...runs, ...facts]);
+  return said.length === 0 ? [] : [said];
+}
+
+/**
+ * The line in full, behind its picture (`picture`, `projectLine` of the same input): the picture's
+ * stations with what each is, its segments as it counts them, and the project's further places.
+ */
+export function projectLineFull(
+  input: ProjectLineFullInput,
+  picture: ProjectLineView = projectLine(input),
+): ProjectLineFullView {
+  const { flow } = input;
+  const placeId = (line: PlaceLine) =>
+    input.placeId === undefined ? line.projectId : input.placeId(line);
+  const { line: stageLine } = lineStage(input);
+  const productionLine = input.places.find((line) => line.kind === "production");
+  const absent = flow.production.kind === "absent";
+  const plain = { tone: "neutral", tints: [], projectId: undefined, version: undefined } as const;
+  const stations = picture.stations.map((station): LineStationFull => {
+    const place =
+      station.kind === "stage"
+        ? stageLine
+        : station.kind === "production" && !absent
+          ? productionLine
+          : undefined;
+    if (place !== undefined) {
+      const view = placeLineView(place);
+      return {
+        kind: station.kind,
+        name: station.name,
+        node: station.kind === "production" ? "live" : "solid",
+        tone: view.tone,
+        tints: [],
+        lines: placeWords(place),
+        projectId: placeId(place),
+        version: view.version,
+      };
+    }
+    switch (station.kind) {
+      case "mates":
+        return {
+          ...plain,
+          kind: station.kind,
+          name: station.name,
+          node: "solid",
+          tints: flow.mates
+            .slice(0, 5)
+            .map((mate) => ({ key: mate.projectId, tint: input.tintOf(mate.projectId) })),
+          lines: [
+            [
+              {
+                text:
+                  flow.mates.length === 0
+                    ? "No Mates yet"
+                    : flow.mates.length <= 2
+                      ? flow.mates.map((mate) => mate.name).join(", ")
+                      : `${String(flow.mates.length)} Mates`,
+              },
+            ],
+          ],
+        };
+      case "main":
+        return {
+          ...plain,
+          kind: station.kind,
+          name: station.name,
+          node: "solid",
+          lines: input.repos.length === 0 ? [] : [[{ text: input.repos.join(" · ") }]],
+        };
+      case "stage":
+      case "production":
+        return {
+          ...plain,
+          kind: station.kind,
+          name: station.name,
+          node: station.node,
+          lines: absent && station.kind === "production" ? [[{ text: "Not live yet" }]] : [],
+        };
+    }
+  });
+
+  // What failed is its place's own word, said once on its station: before it the track is red, and
+  // its count keeps what it counts.
+  const segments = picture.segments.map((segment, at) => {
+    const next = stations[at + 1];
+    if (segment.track !== "failed" || next === undefined || next.tone !== "danger") return segment;
+    const calm = segment.caption.filter((word) => word.tone !== "danger");
+    return { ...segment, caption: calm.at(-1) === SEP ? calm.slice(0, -1) : calm };
+  });
+
+  // Hung under `main`: each further place.
+  const sides: ReadonlyArray<LineSide> = [
+    ...input.places
+      .filter((line) => line.kind === "stage" && line !== stageLine)
+      // A place delivered to a branch says nothing while it follows.
+      .filter((line) => line.git === undefined || line.dot !== "none")
+      .map((line, index): LineSide => {
+        const [first, ...rest] = line.words;
+        const tone: LineWord["tone"] = line.trouble
+          ? "danger"
+          : line.dot === "releasing"
+            ? "info"
+            : undefined;
+        return {
+          key: `place:${line.projectId ?? `${line.name}:${String(index)}`}`,
+          words: [
+            { text: placeLabel(line), strong: true },
+            ...(first === undefined ? [] : [SEP, { text: first, tone }]),
+            ...rest.flatMap((text) => [SEP, { text }]),
+          ],
+          projectId: placeId(line),
+        };
+      }),
+    ...(input.coming ?? []).map((place): LineSide => ({
+      key: `coming:${place.key}`,
+      words: [{ text: place.name, strong: true }, SEP, { text: place.line }],
+      projectId: undefined,
+    })),
+  ];
+
+  // Each Mate's own changes, under the segment each is on.
+  const movedAt = new Map(
+    input.changes.map((change) => [lineChangeKey(change.pull), change.at ?? ""]),
+  );
+  const stageName = stations.find((station) => station.kind === "stage")?.name;
+  const cellWords = (key: LineSegment["key"]) =>
+    key === "work"
+      ? "open"
+      : key === "stage"
+        ? `on the way to ${stageName ?? "the stage"}`
+        : absent
+          ? "on main"
+          : "ready for production";
+  const rows = flow.mates.map((mate, order) => {
+    const own = segments.map((segment) =>
+      segment.beads.filter((bead) => bead.pull?.mateProjectId === mate.projectId),
+    );
+    const all = own.flat();
+    // The newest by when each last moved; told no time, the ones nearest their next station.
+    const kept = new Set(
+      all
+        .map((bead, at) => ({ key: bead.key, moved: movedAt.get(bead.key) ?? "", at }))
+        .toSorted((left, right) => right.moved.localeCompare(left.moved) || right.at - left.at)
+        .slice(0, ROW_BEADS)
+        .map((bead) => bead.key),
+    );
+    const marked = (mark: LineBead["mark"]) => all.filter((bead) => bead.mark === mark).length;
+    const row: LineMateRow = {
+      key: mate.projectId,
+      name: mate.name,
+      tint: input.tintOf(mate.projectId),
+      cells: segments.map((segment, at) => ({
+        key: segment.key,
+        label: `${mate.name}: ${String(own[at]?.length ?? 0)} ${cellWords(segment.key)}`,
+        beads: (own[at] ?? []).filter((bead) => kept.has(bead.key)),
+      })),
+      earlier: all.length - kept.size,
+    };
+    return { row, order, waits: marked("waits"), stuck: marked("stuck"), count: all.length };
+  });
+  const mates =
+    rows.length < 2
+      ? []
+      : rows
+          .toSorted(
+            (left, right) =>
+              right.waits - left.waits ||
+              right.stuck - left.stuck ||
+              right.count - left.count ||
+              left.order - right.order,
+          )
+          .map((each) => each.row);
+
+  return { stations, segments, sides, mates };
 }
 
 /** A bead's side and the gap to the next, as the track lays them. */
