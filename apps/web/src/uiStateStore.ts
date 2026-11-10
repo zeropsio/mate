@@ -32,11 +32,15 @@ export interface PersistedUiState {
   sidebarProjectScopeKey?: string | null;
   threadChangedFilesExpansionVersion?: typeof THREAD_CHANGED_FILES_EXPANSION_VERSION;
   threadChangedFilesExpandedById?: Record<string, Record<string, boolean>>;
+  projectLineFullById?: Record<string, boolean>;
 }
 
 export interface UiProjectState {
   projectExpandedById: Record<string, boolean>;
   projectOrder: string[];
+  // Projects (by their group) whose page shows the line of their changes in
+  // full instead of its picture. Only the open ones are held.
+  projectLineFullById: Record<string, boolean>;
   // Logical project key the sidebar list is scoped to, or null for "all
   // projects". Lives here so routes that unmount the sidebar (Settings)
   // cannot reset the filter.
@@ -53,6 +57,7 @@ export interface UiState extends UiProjectState, UiThreadState {}
 const initialState: UiState = {
   projectExpandedById: {},
   projectOrder: [],
+  projectLineFullById: {},
   sidebarProjectScopeKey: null,
   threadLastVisitedAtById: {},
   threadChangedFilesExpandedById: {},
@@ -134,6 +139,9 @@ export function parsePersistedState(parsed: PersistedUiState): UiState {
   return {
     projectExpandedById,
     projectOrder,
+    projectLineFullById: Object.fromEntries(
+      Object.entries(sanitizeBooleanRecord(parsed.projectLineFullById)).filter(([, open]) => open),
+    ),
     threadLastVisitedAtById: sanitizeTimestampRecord(parsed.threadLastVisitedAtById),
     threadChangedFilesExpandedById:
       parsed.threadChangedFilesExpansionVersion === THREAD_CHANGED_FILES_EXPANSION_VERSION
@@ -212,6 +220,10 @@ export function persistState(state: UiState): void {
         sidebarProjectScopeKey: state.sidebarProjectScopeKey,
         threadChangedFilesExpansionVersion: THREAD_CHANGED_FILES_EXPANSION_VERSION,
         threadChangedFilesExpandedById: state.threadChangedFilesExpandedById,
+        // Left out while no project's line is open in full.
+        ...(Object.keys(state.projectLineFullById).length === 0
+          ? {}
+          : { projectLineFullById: state.projectLineFullById }),
       } satisfies PersistedUiState),
     );
     if (!legacyKeysCleanedUp) {
@@ -283,6 +295,20 @@ export function setSidebarProjectScopeKey(state: UiState, projectKey: string | n
   return {
     ...state,
     sidebarProjectScopeKey: nextKey,
+  };
+}
+
+/** A project's line of changes shown in full, or back as its picture. */
+export function setProjectLineFull(state: UiState, groupId: string, full: boolean): UiState {
+  if ((state.projectLineFullById[groupId] === true) === full) {
+    return state;
+  }
+  const rest = Object.fromEntries(
+    Object.entries(state.projectLineFullById).filter(([key]) => key !== groupId),
+  );
+  return {
+    ...state,
+    projectLineFullById: full ? { ...rest, [groupId]: true } : rest,
   };
 }
 
@@ -391,6 +417,7 @@ interface UiStateStore extends UiState {
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
   setSidebarProjectScopeKey: (projectKey: string | null) => void;
+  setProjectLineFull: (groupId: string, full: boolean) => void;
   setProjectExpanded: (projectIds: string | readonly string[], expanded: boolean) => void;
   reorderProjects: (
     currentProjectOrder: readonly string[],
@@ -409,6 +436,7 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
     set((state) => setThreadChangedFilesExpanded(state, threadId, turnId, expanded)),
   setSidebarProjectScopeKey: (projectKey) =>
     set((state) => setSidebarProjectScopeKey(state, projectKey)),
+  setProjectLineFull: (groupId, full) => set((state) => setProjectLineFull(state, groupId, full)),
   setProjectExpanded: (projectIds, expanded) =>
     set((state) => setProjectExpanded(state, projectIds, expanded)),
   reorderProjects: (currentProjectOrder, draggedProjectIds, targetProjectIds) =>
