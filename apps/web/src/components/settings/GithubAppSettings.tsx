@@ -355,19 +355,31 @@ function AppRow({
       className="grid gap-2 rounded-lg border border-border px-3 py-2.5"
       data-zerops-surface="settings-github-app"
     >
-      <div className="flex items-start gap-3">
-        <div className="grid min-w-0 flex-1 gap-0.5">
-          <p className="text-sm font-medium text-foreground">{app.name}</p>
-          <p className="text-xs text-muted-foreground">
+      {/* On a phone the words keep the card's width: the name with Manage at its line's end, the
+          pill under it, then each sentence whole. Beside the pill and the press they were left a
+          column two words wide. */}
+      <div className="flex items-start gap-3 max-sm:flex-wrap max-sm:items-center max-sm:gap-y-1">
+        <div className="grid min-w-0 flex-1 gap-0.5 max-sm:contents">
+          <p className="text-sm font-medium text-foreground max-sm:min-w-0 max-sm:flex-1">
+            {app.name}
+          </p>
+          <p className="text-xs text-muted-foreground max-sm:order-3 max-sm:w-full">
             Owned by <span className="font-mono text-foreground">{app.owner}</span>
             {app.personal ? ", a personal account" : null}
             {setUp === null ? null : ` · ${setUp}`}
           </p>
-          <p className="text-xs text-muted-foreground">{appReachLine(app)}</p>
+          <p className="text-xs text-muted-foreground max-sm:order-3 max-sm:w-full">
+            {appReachLine(app)}
+          </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {app.personal ? <Badge tone="warning">Owned by a person</Badge> : null}
+        <div className="flex shrink-0 items-center gap-2 max-sm:contents">
+          {app.personal ? (
+            <span className="flex max-sm:order-2 max-sm:w-full">
+              <Badge tone="warning">Owned by a person</Badge>
+            </span>
+          ) : null}
           <Button
+            className="max-sm:order-1"
             render={<a href={app.appUrl} rel="noreferrer" target="_blank" />}
             size="sm"
             variant="secondary"
@@ -384,7 +396,10 @@ function AppRow({
       {app.installations.length === 0 ? null : (
         <ul className="grid gap-1" data-zerops-surface="settings-github-installations">
           {app.installations.map((installation) => (
-            <li className="flex items-center gap-1.5 text-xs" key={installation.id}>
+            <li
+              className="flex items-center gap-1.5 text-xs max-sm:flex-wrap"
+              key={installation.id}
+            >
               <span className="text-foreground">{installation.line}</span>
               {installation.manageUrl === null ? null : (
                 <>
