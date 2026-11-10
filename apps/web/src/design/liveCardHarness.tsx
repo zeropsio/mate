@@ -794,6 +794,9 @@ const STANDING: Run = {
 };
 
 /** What a stand-up's call reads of its services while it runs (`StandupReadings`). */
+/** No stand-up reads anything: the same map, so what reads it is not drawn again for nothing. */
+const NO_READINGS: ReadonlyMap<string, StandupReading> = new Map();
+
 function standupReadingsAt(t: number): ReadonlyMap<string, StandupReading> {
   const readings = new Map<string, StandupReading>();
   for (const item of RUN.items) {
@@ -808,7 +811,7 @@ function standupReadingsAt(t: number): ReadonlyMap<string, StandupReading> {
       ),
     );
   }
-  return readings;
+  return readings.size === 0 ? NO_READINGS : readings;
 }
 
 /**
