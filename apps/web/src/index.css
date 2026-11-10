@@ -9949,6 +9949,20 @@ button.ov-change {
 .run-now-fact:first-of-type {
   margin-left: 12px;
 }
+/* On a phone the facts rarely fit beside the time, and wrapped one by one each stood on a line of
+   its own, hung 8 px in by its margin. There the line wraps as a row of things 8 px apart: the
+   facts take the second line together, on the words' own edge. */
+@media (max-width: 39.999rem) {
+  .run-now[data-run-now="worked"] .run-now-words {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 8px;
+  }
+  .run-now[data-run-now="worked"] .run-now-fact {
+    margin-left: 0;
+  }
+}
 .run-now-clock {
   font-size: 13px;
   line-height: 20px;
