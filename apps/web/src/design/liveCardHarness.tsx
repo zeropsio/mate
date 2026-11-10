@@ -59,6 +59,11 @@ import type { LegendListRef } from "@legendapp/list/react";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import {
+  standupReadingOf,
+  type StandupReading,
+} from "@t3tools/client-runtime/zerops/activity/standupReading";
+import { StandupReadings } from "~/zerops/activity/useStandupReading";
 
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
@@ -745,6 +750,54 @@ const READS: Run = {
   answer: "The status page uses the shop's own card and dot now.",
 };
 
+/** A stand-up whose call runs for as long as its services build: its row is its progress. */
+const STANDING: Run = {
+  ask: "Stand the stage up.",
+  items: [
+    {
+      id: "t1",
+      kind: "thought",
+      start: 0.3,
+      end: 1.2,
+      text: "The stage has two services to build and one to wait for.",
+    },
+    {
+      id: "u1",
+      kind: "standup",
+      start: 1.4,
+      returns: 16,
+      end: 16,
+      subject: "stage",
+      stages: [
+        ["apistage", 2, 9],
+        ["webstage", 2.5, 14],
+        ["workerstage", 9, 15.5],
+      ],
+    },
+  ],
+  write: 16.5,
+  end: 18,
+  answer: "The stage is up: all three services run.",
+};
+
+/** What a stand-up's call reads of its services while it runs (`StandupReadings`). */
+function standupReadingsAt(t: number): ReadonlyMap<string, StandupReading> {
+  const readings = new Map<string, StandupReading>();
+  for (const item of RUN.items) {
+    if (item.kind !== "standup" || t < item.start + 0.6 || t >= item.returns) continue;
+    readings.set(
+      `op:${item.id}`,
+      standupReadingOf(
+        item.stages.map(([hostname, from, to]) => ({
+          hostname,
+          state: t >= to ? "up" : t >= from ? "building" : "waits",
+        })),
+      ),
+    );
+  }
+  return readings;
+}
+
 const RUN: Run =
   {
     main: MAIN,
@@ -753,6 +806,7 @@ const RUN: Run =
     burst: BURST,
     stale: STALE,
     band: BAND,
+    standing: STANDING,
     long: LONG,
     edits: EDITS,
     cards: CARDS,
@@ -1344,6 +1398,7 @@ function Pane() {
   // Written into: the first turn is over, the next one runs.
   const second = RUN.interrupt !== undefined && step >= RUN.interrupt.at + 0.5;
   const entries = useMemo(() => entriesAt(step), [step]);
+  const standing = useMemo(() => standupReadingsAt(step), [step]);
   const latestTurn = useMemo(
     () =>
       second
@@ -1382,67 +1437,69 @@ function Pane() {
     [entries, ended, runningTurnId],
   );
   return (
-    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        <KeptTimelines
-          open={routeThreadKey}
-          alive={keptForever}
-          Reader={readsNothing}
-          crewTimeline={null}
-          timeline={{
-            isWorking: !ended,
-            activeTurnStartedAt: ended
-              ? null
-              : second
-                ? iso(RUN.interrupt!.at + 0.5)
-                : iso(beforeWorks ? 0 : (RUN.sendAt ?? 0)),
-            listRef,
-            timelineEntries: entries,
-            latestTurn,
-            runningTurnId,
-            working: dock,
-            routeThreadKey,
-            // Its calls name no response: Codex's timing rule reads its
-            // batches, unless `?provider=claudeAgent` (nothing goes stale).
-            provider: PROVIDER,
-            onImageExpand: () => undefined,
-            activeThreadEnvironmentId: ENVIRONMENT,
-            markdownCwd: undefined,
-            resolvedTheme: appearance,
-            timestampFormat: "locale",
-            workspaceRoot: undefined,
-            anchorMessageId: null,
-            onAnchorReady: () => undefined,
-            contentInsetEndAdjustment: composerHeight,
-            liveFollowEnabled: follows,
-            cancelPositionRestoreRef,
-            onIsAtEndChange,
-            onPersonInput,
-            onManualNavigation,
-            hideEmptyPlaceholder: false,
-            loading: false,
-            syncing,
-            topFadeEnabled: true,
-          }}
-        />
-      </div>
-      <div
-        className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-5 pt-2"
-        style={{ height: composerHeight }}
-        data-harness-composer=""
-      >
+    <StandupReadings value={standing}>
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          <KeptTimelines
+            open={routeThreadKey}
+            alive={keptForever}
+            Reader={readsNothing}
+            crewTimeline={null}
+            timeline={{
+              isWorking: !ended,
+              activeTurnStartedAt: ended
+                ? null
+                : second
+                  ? iso(RUN.interrupt!.at + 0.5)
+                  : iso(beforeWorks ? 0 : (RUN.sendAt ?? 0)),
+              listRef,
+              timelineEntries: entries,
+              latestTurn,
+              runningTurnId,
+              working: dock,
+              routeThreadKey,
+              // Its calls name no response: Codex's timing rule reads its
+              // batches, unless `?provider=claudeAgent` (nothing goes stale).
+              provider: PROVIDER,
+              onImageExpand: () => undefined,
+              activeThreadEnvironmentId: ENVIRONMENT,
+              markdownCwd: undefined,
+              resolvedTheme: appearance,
+              timestampFormat: "locale",
+              workspaceRoot: undefined,
+              anchorMessageId: null,
+              onAnchorReady: () => undefined,
+              contentInsetEndAdjustment: composerHeight,
+              liveFollowEnabled: follows,
+              cancelPositionRestoreRef,
+              onIsAtEndChange,
+              onPersonInput,
+              onManualNavigation,
+              hideEmptyPlaceholder: false,
+              loading: false,
+              syncing,
+              topFadeEnabled: true,
+            }}
+          />
+        </div>
         <div
-          className="mx-auto max-w-3xl rounded-3xl border border-border bg-card shadow-sm"
-          style={{ height: composerHeight - 20 }}
-        />
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-20 px-5 pt-2"
+          style={{ height: composerHeight }}
+          data-harness-composer=""
+        >
+          <div
+            className="mx-auto max-w-3xl rounded-3xl border border-border bg-card shadow-sm"
+            style={{ height: composerHeight - 20 }}
+          />
+        </div>
+        <p
+          className="absolute top-2 right-4 z-30 font-mono text-muted-foreground text-xs tabular-nums"
+          data-live-harness-clock
+        >
+          {SCRIPT} · {seconds.toFixed(1)} s
+        </p>
       </div>
-      <p
-        className="absolute top-2 right-4 z-30 font-mono text-muted-foreground text-xs tabular-nums"
-        data-live-harness-clock
-      >
-        {SCRIPT} · {seconds.toFixed(1)} s
-      </p>
-    </div>
+    </StandupReadings>
   );
 }
 
