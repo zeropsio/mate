@@ -119,7 +119,13 @@ const factText = (fact: ZeropsServiceFact): string =>
 function ServiceName({ row, className }: { row: ZeropsServiceRow; className?: string }) {
   return (
     <span className={cn("flex min-w-0 max-w-full items-baseline gap-1", className)}>
-      <span className="min-w-0 max-w-full break-all font-semibold tracking-tight">{row.title}</span>
+      <span className="min-w-0 max-w-full break-all font-medium tracking-tight">
+        {row.title === row.service.hostname ? (
+          <span className="real-name">{row.title}</span>
+        ) : (
+          row.title
+        )}
+      </span>
       {row.portLabel === undefined ? null : (
         <span className="shrink-0 font-normal text-muted-foreground">{row.portLabel}</span>
       )}
@@ -204,8 +210,10 @@ function ServiceHeader({
           where the card is narrower, and the hover pop names it whole. */}
       <div className="flex min-w-0 flex-1 items-center gap-2">
         <ServiceStatus label={statusLabel} needsWord={false} service={service} tone={tone} />
-        <span className="min-w-0 truncate text-sm leading-snug font-semibold tracking-tight">
-          {title}
+        {/* A service named by its hostname, a real thing's own name, wears the mono face
+            (`.real-name`), as the card over it does; a title that is the app's words does not. */}
+        <span className="min-w-0 truncate text-sm leading-snug font-medium tracking-tight">
+          {title === service.hostname ? <span className="real-name">{title}</span> : title}
         </span>
         {portLabel === undefined && aside === undefined ? null : (
           <span

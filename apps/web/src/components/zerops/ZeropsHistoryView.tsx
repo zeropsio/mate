@@ -6,7 +6,8 @@
  * review; one none did — a person's, a recipe's — is a line. Every commit's id opens its page in
  * the Git browser.
  *
- * Mounted by the group's page, the stop's own, and a release row that says what it carried.
+ * Mounted by the group's page and the stop's own; an opened release lists what it carried in its
+ * own rows (`ZeropsReleaseCarried`).
  *
  * Same language as the left menu: one spine, a node per commit, and the stops that are running a
  * commit wear their name on it. The rows sit flush and the rail is opaque for the same reason they

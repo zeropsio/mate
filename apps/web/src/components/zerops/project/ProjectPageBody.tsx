@@ -8,7 +8,7 @@
  */
 import { useRouterState } from "@tanstack/react-router";
 import { FileIcon, GlobeIcon } from "lucide-react";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-runtime/zerops";
 import type {
@@ -35,6 +35,7 @@ import {
   placeLabel,
   placeLines,
   projectWaitWords,
+  sinceWords,
   type CardChange,
   type PlaceLine as PlaceLineData,
   type ProjectWait,
@@ -69,20 +70,20 @@ import {
 import { AddMateCard, ComingMateCard, MateCards } from "../system/MateCard";
 import type { ReleaseOffer } from "../ZeropsReleaseVerb";
 import { placeVaultOf } from "../vault/placeVault.logic";
-import { PlaceDoors } from "../place/PlaceDoors";
-import { placeSitesOf } from "../place/placeDoors.logic";
+import { PlaceDoors, ProjectSitesDoor, usePlaceSitesDrawn } from "../place/PlaceDoors";
+import { placeSitesOf, projectAnswers } from "../place/placeDoors.logic";
 import { StopLine } from "../ZeropsGroupDetail";
 import {
   BROUGHT_SHOWN,
   changeGroups,
   lineGroupOf,
   PAGE_CHANGES,
-  pageAddresses,
   linesProductionFirst,
   productionFirst,
   waitingChanges,
+  type ChangeGroup,
 } from "./projectPage.logic";
-import { SetupCard, SetupRow } from "./SetupCard";
+import { SetupCard } from "./SetupCard";
 
 /** What the page reads beyond the overview's group: the project's environments and its release. */
 export interface ProjectPageFacts {
@@ -134,7 +135,7 @@ export interface PlaceFix {
   readonly onAsk: () => void;
 }
 
-/** The side column's rows past Addresses, and the sections their *Manage* opens. */
+/** The side column's rows, and the sections their *Manage* opens. */
 export interface ProjectPageSetup {
   /** Code, Automation, Who has access and Spend, in that order; each given its *Manage*. */
   readonly rows: (open: {
@@ -175,7 +176,16 @@ export function ProjectPageBody<T>({
       <PageHeader
         actions={
           // *Add a Mate* is the Mates grid's last card: one door on the page.
-          props.renderGroupMenu(entry, { page: true })
+          <>
+            {/* Every address of the project, by where it runs: an address is reached through a
+                Sites door, the project's own here. */}
+            <ProjectSitesDoor
+              answers={projectAnswers(lines, flow.mates)}
+              groupId={group.groupId}
+              name={group.name}
+            />
+            {props.renderGroupMenu(entry, { page: true })}
+          </>
         }
         placeholder={entry.placeholder}
         tag={
@@ -231,7 +241,6 @@ export function ProjectPageBody<T>({
         </div>
         <div className="pp-side">
           <SetupCard>
-            <AddressesRow lines={lines} />
             {setup.rows({
               access: () => {
                 setOpen((now) => ({ ...now, access: true }));
@@ -450,6 +459,8 @@ function ProjectPlaces<T>({
       </Button>
     );
   };
+  // A line whose Sites door is drawn prints no address: the door opens every one of them.
+  const sitesDrawn = usePlaceSitesDrawn(groupId);
   /** A place line's end: its fix where it is not well, then its doors, Sites and Vault. */
   const placeEnd = (line: PlaceLineData) => {
     const fix = fixVerb(line);
@@ -587,6 +598,7 @@ function ProjectPlaces<T>({
             density="row"
             groupId={groupId}
             line={{ ...line, projectId: environment.id }}
+            sites={sitesDrawn && placeSitesOf(line, groupId) !== undefined}
             trailing={placeEnd(line)}
           />
         )}
@@ -632,6 +644,7 @@ function ProjectPlaces<T>({
                     density="row"
                     groupId={groupId}
                     line={line}
+                    sites={sitesDrawn && placeSitesOf(line, groupId) !== undefined}
                     trailing={placeEnd(line)}
                   />
                   {line.kind === "production" ? productionTail(line, undefined) : null}
@@ -753,7 +766,8 @@ function Brought({
   const more = brought.length - shown.length;
   return (
     <p className="pp-brought" data-zerops-surface="project-brought">
-      {version} brought: {shown.map((pull) => pull.title).join(" · ")}
+      <span className="real-name">{version}</span> brought:{" "}
+      {shown.map((pull) => pull.title).join(" · ")}
       {more > 0 ? (
         <>
           {" · "}
@@ -888,14 +902,22 @@ const GROUP_LIT_MS = 1400;
  * leads to its group below; the control in its corner grows it in place into the line in full
  * (`projectLineFull`: what each station is and opens, each segment's one verb, each copy of the
  * code and further place under `main`), which this device remembers per project. Open, the line
- * repeats what Places says of a place and its release, verbs included. Then the list, less the
- * changes Waiting on you lists: open ones each
- * with what stops it, merged ones grouped by where they went — the group's label says it once, in
- * the picture's words ("On stage, ready for production · 12"), and with one group the section's
- * label is it ("On main, not live yet · 5") — setup files last, quiet. The group a release would
- * carry names no verb: *Review release* is production's, the page's one. *All history* opens its
- * releases in place, each with the changes it put live; with no history, *All changes* lists past
- * the first few.
+ * says a place's state and its release's verb beside Places; a place's doors and addresses are
+ * Places' alone.
+ *
+ * Then the list, less the changes Waiting on you lists, in two zones told apart by ground, ink and
+ * room. What is not live yet is the card, the part that moves: open ones each with what stops it,
+ * merged ones grouped by where they stand — the group's label says it once, in the picture's words
+ * ("On stage, ready for production · 12"), and with one group and nothing live the section's label
+ * is it ("On main, not live yet · 5"). What is live is the record under it, on the page's own
+ * ground: a group for each release with when it was made, rows between hairlines, titles in the
+ * muted ink. With nothing on its way the card says so in one line; with nothing live there is no
+ * record. Setup files stand last, quiet. The group a release would carry names no verb: *Review
+ * release* is production's, the page's one. *All history* opens its releases in place, each with
+ * the changes it put live; with no history, *All changes* lists past the first few.
+ *
+ * The picture and the list name a change alike (`data-zerops-change`): the row pointed at or
+ * focused marks its bead, the bead its row (`useMarksItsChange`).
  */
 function ProjectChanges<T>({
   entry,
@@ -917,10 +939,11 @@ function ProjectChanges<T>({
   const door = releaseDoor(entry, props, facts);
   const listed = facts.changes.filter((change) => !waiting.has(changeKey(change.pull)));
   const changes = all ? listed : listed.slice(0, PAGE_CHANGES);
-  const { open, groups, setup } = changeGroups(changes);
+  const { open, groups, live, setup } = changeGroups(changes);
   // A group counts every change that went there, the rows past the first few too.
-  const every = changeGroups(listed).groups;
-  const countOf = (group: (typeof groups)[number]) =>
+  const whole = changeGroups(listed);
+  const every = [...whole.groups, ...whole.live];
+  const countOf = (group: ChangeGroup) =>
     every.find((each) => each.label === group.label)?.changes.length ?? group.changes.length;
   const mateName = (projectId: string) =>
     entry.flow.mates.find((mate) => mate.projectId === projectId)?.name;
@@ -929,8 +952,13 @@ function ProjectChanges<T>({
     return item === undefined ? undefined : props.renderMateFace(item, 20);
   };
   const historyShown = history && facts.repo !== undefined;
-  // One group alone, and nothing open beside it: its place is the section's label.
-  const only = open.length === 0 && groups.length === 1 ? groups[0] : undefined;
+  // One group alone, nothing open beside it and no record under it: its place is the section's label.
+  const only =
+    open.length === 0 && groups.length === 1 && live.length === 0 ? groups[0] : undefined;
+  // The record stands under the card; setup files last, in the record where there is one.
+  const record = !historyShown && live.length > 0;
+  const section = useRef<HTMLElement>(null);
+  useMarksItsChange(section);
   const groupId = entry.group.groupId;
   const pictureInput = {
     flow: entry.flow,
@@ -961,36 +989,6 @@ function ProjectChanges<T>({
     : undefined;
   const productionNote = facts.slots.find(
     (slot) => slot.kind === "environment" && slot.tier === "production",
-  );
-  // A place's vault, at the end of its station's name: shown while the station is pointed at or
-  // holds focus, always where nothing hovers.
-  const openVault = props.openPlaceVault;
-  const stationEnds = new Map(
-    openVault === undefined
-      ? []
-      : lines.flatMap((line): ReadonlyArray<readonly [string, ReactNode]> => {
-          const id = placeId(line);
-          const vault = withheld(line) === null ? placeVaultOf(line) : undefined;
-          return id === undefined || vault === undefined
-            ? []
-            : [
-                [
-                  id,
-                  // The same two doors a place wears on its line under Places, as icons: a
-                  // station's head has no room for their words.
-                  <PlaceDoors
-                    key={id}
-                    name={placeLabel(line)}
-                    sites={placeSitesOf(line, groupId)}
-                    vault={{
-                      onOpen: () => {
-                        openVault(vault);
-                      },
-                    }}
-                  />,
-                ],
-              ];
-        }),
   );
   const full = projectLineFull(
     {
@@ -1060,6 +1058,12 @@ function ProjectChanges<T>({
       tone={change.tone}
     />
   );
+  const setupRows =
+    setup.length === 0 ? null : (
+      <ChangeList label="Setup files" page>
+        {setup.map((change) => row(change, change.words))}
+      </ChangeList>
+    );
   const action =
     facts.repo !== undefined ? (
       <SectionAction
@@ -1083,6 +1087,7 @@ function ProjectChanges<T>({
       aria-labelledby="pp-changes"
       className="pp-group"
       data-zerops-surface="project-changes"
+      ref={section}
     >
       <SectionLabel
         action={action}
@@ -1111,7 +1116,6 @@ function ProjectChanges<T>({
               facts.onAdd("production");
             },
             onReviewRelease: facts.release.onReview,
-            stationEnds,
           }}
           held={entry.awaiting}
           onOpenChange={(pull, from) => {
@@ -1141,6 +1145,13 @@ function ProjectChanges<T>({
           )
         ) : (
           <>
+            {open.length > 0 || groups.length > 0 || !record ? null : (
+              <p className="pp-empty">
+                {facts.changes.some((change) => change.open)
+                  ? "Nothing else is on its way to production."
+                  : "Nothing is waiting to go live."}
+              </p>
+            )}
             {open.length === 0 ? null : (
               <ChangeList page group="open" label="Open changes">
                 {open.map((change) =>
@@ -1156,7 +1167,7 @@ function ProjectChanges<T>({
                   key={group.label}
                 >
                   <SectionLabel count={countOf(group)} level={3}>
-                    {group.label}
+                    <GroupWords group={group} />
                   </SectionLabel>
                   <ChangeList page>
                     {group.changes.map((change) => row(change, undefined))}
@@ -1168,42 +1179,98 @@ function ProjectChanges<T>({
                 {only.changes.map((change) => row(change, undefined))}
               </ChangeList>
             )}
-            {setup.length === 0 ? null : (
-              <ChangeList label="Setup files" page>
-                {setup.map((change) => row(change, change.words))}
-              </ChangeList>
-            )}
+            {record ? null : setupRows}
           </>
         )}
       </div>
+      {record ? (
+        <div className="pp-record" data-zerops-changes-record="">
+          {live.map((group) => (
+            <div className="pp-change-group" key={group.label}>
+              <SectionLabel count={countOf(group)} level={3}>
+                <GroupWords group={group} />
+                <LiveSince at={group.release?.at} />
+              </SectionLabel>
+              <ChangeList page>{group.changes.map((change) => row(change, undefined))}</ChangeList>
+            </div>
+          ))}
+          {setupRows}
+        </div>
+      ) : null}
     </section>
   );
 }
 
-/**
- * Every public address the project serves at, production's first, each opened beside the page.
- * Where more than one place serves, each says whose it is: a stage's subdomain beside production's
- * domain otherwise reads as production's.
- */
-function AddressesRow({ lines }: { readonly lines: ReadonlyArray<PlaceLineData> }) {
-  const addresses = pageAddresses(lines);
-  if (addresses.length === 0) return null;
-  const places = new Set(addresses.map((address) => address.place)).size;
+/** A group's words: where its changes stand, a release's version in the face of a real name. */
+function GroupWords({ group }: { readonly group: ChangeGroup }) {
+  const tag = group.release?.tag;
+  if (tag === undefined || !group.label.endsWith(tag)) return group.label;
   return (
-    <SetupRow label="Addresses" surface="project-addresses">
-      <ul className="pp-addresses">
-        {addresses.map((address) => (
-          <li key={address.url}>
-            <a className="pp-site" href={address.url} rel="noreferrer" target="_blank">
-              <span className="truncate">{address.host}</span>
-              <span aria-hidden="true">↗</span>
-            </a>
-            {places > 1 ? <span className="pp-site-place">{address.place}</span> : null}
-          </li>
-        ))}
-      </ul>
-    </SetupRow>
+    <>
+      {group.label.slice(0, -tag.length)}
+      <span className="real-name">{tag}</span>
+    </>
   );
+}
+
+/** When a release was made, after its name: "since Tue", as a place says since when it runs. */
+function LiveSince({ at }: { readonly at: string | undefined }) {
+  const words = sinceWords(at, useNowMs());
+  return words === undefined ? null : ` ${words}`;
+}
+
+/**
+ * Within `root`, a change pointed at or focused marks its other drawing (`data-marked`): its row
+ * in the list marks its bead on the line, its bead its row. Both name the change alike
+ * (`data-zerops-change`). The pointer's outranks focus'; nothing is re-rendered for it.
+ */
+function useMarksItsChange(root: RefObject<HTMLElement | null>) {
+  useEffect(() => {
+    const element = root.current;
+    if (element === null) return;
+    let pointed: Element | null = null;
+    let focused: Element | null = null;
+    const mark = () => {
+      const from = pointed ?? focused;
+      const key = from?.getAttribute("data-zerops-change");
+      for (const each of element.querySelectorAll("[data-zerops-change]"))
+        each.toggleAttribute(
+          "data-marked",
+          key != null && each !== from && each.getAttribute("data-zerops-change") === key,
+        );
+    };
+    const changeAt = (event: Event) =>
+      event.target instanceof Element ? event.target.closest("[data-zerops-change]") : null;
+    const point = (event: Event) => {
+      const next = changeAt(event);
+      if (next === pointed) return;
+      pointed = next;
+      mark();
+    };
+    const unpoint = () => {
+      if (pointed === null) return;
+      pointed = null;
+      mark();
+    };
+    const focus = (event: Event) => {
+      focused = changeAt(event);
+      mark();
+    };
+    const blur = () => {
+      focused = null;
+      mark();
+    };
+    element.addEventListener("pointerover", point);
+    element.addEventListener("pointerleave", unpoint);
+    element.addEventListener("focusin", focus);
+    element.addEventListener("focusout", blur);
+    return () => {
+      element.removeEventListener("pointerover", point);
+      element.removeEventListener("pointerleave", unpoint);
+      element.removeEventListener("focusin", focus);
+      element.removeEventListener("focusout", blur);
+    };
+  }, [root]);
 }
 
 /** A section opened at the main column's foot from a side row: brought into view, closed by its own word. */

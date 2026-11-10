@@ -61,3 +61,40 @@ export function bandMove(
   if (previous === undefined || previous.placement === null || reducedMotion) return "place";
   return previous.key === key ? "place" : "slide";
 }
+
+/** Whether any of `box` shows through `view`, the box its list scrolls in; with none, it does. */
+export function bandShows(box: BandBox, view: BandBox | null): boolean {
+  if (view === null) return true;
+  return (
+    box.bottom > view.top && box.top < view.bottom && box.right > view.left && box.left < view.right
+  );
+}
+
+/** The room the band's layers take for a travel: the larger of its two boxes, each way. */
+export function bandRoom(
+  from: BandPlacement,
+  to: BandPlacement,
+): { readonly width: number; readonly height: number } {
+  return { width: Math.max(from.width, to.width), height: Math.max(from.height, to.height) };
+}
+
+/**
+ * The band drawn as `box` by four nested layers of one size (`room`, no smaller than the box),
+ * each clipping to the row's corners and holding one corner of the box: top left, top right,
+ * bottom right, bottom left. What all four leave is the box, its corners true at any size, with
+ * nothing but a shift on each — so a travel from one box to another, four edges together, is
+ * four shifts the compositor runs. Each shift is from its parent layer; the first, from where
+ * the band is `settled`.
+ */
+export function bandLayers(
+  box: BandPlacement,
+  settled: BandPlacement,
+  room: { readonly width: number; readonly height: number },
+): ReadonlyArray<{ readonly x: number; readonly y: number }> {
+  return [
+    { x: box.left - settled.left, y: box.top - settled.top },
+    { x: box.width - room.width, y: 0 },
+    { x: 0, y: box.height - room.height },
+    { x: room.width - box.width, y: 0 },
+  ];
+}

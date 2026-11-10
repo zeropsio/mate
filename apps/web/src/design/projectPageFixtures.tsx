@@ -65,6 +65,7 @@ import type {
   ProjectsFlowGroup,
 } from "~/components/zerops/projects/ZeropsProjectsFlow";
 import { RepoRowsView } from "~/components/zerops/github/GithubRepoRows";
+import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -351,10 +352,43 @@ interface LineInput {
   readonly releases: ReadonlyArray<ReturnType<typeof shipped>>;
   /** What the stage `main` feeds runs and is taking. */
   readonly stage?: CardStage;
-  readonly repos: ReadonlyArray<ReturnType<typeof lineRepo> | (typeof KEPT_REPOS)[number]>;
+  readonly repos: ReadonlyArray<RepoListEntry>;
   /** Why its last release did not go live, as production's page says it. */
   readonly cause?: string;
 }
+
+/** A code repository HQ keeps, with nothing of it on GitHub. */
+const codeRepo = (name: string, over: Partial<RepoListEntry> = {}): RepoListEntry => ({
+  name,
+  mainHead: null,
+  updatedAt: ago(25 * DAY),
+  remote: null,
+  ...over,
+});
+
+/** The Code card as the owner met it: two rows not on GitHub, one with a menu and one without. */
+const CODE_ROWS: ReadonlyArray<RepoListEntry> = [
+  codeRepo("api"),
+  codeRepo("site", { canDelete: { allow: true } }),
+  lineRepo("post", "acme/kite-post", IN_SYNC),
+];
+
+/** Every state a Code row reaches (`&code=states`); `mail` is being connected (`CODE_PRESS`). */
+const CODE_STATES: ReadonlyArray<RepoListEntry> = [
+  codeRepo("api"),
+  lineRepo("post", "acme/kite-post", IN_SYNC),
+  lineRepo("docs", "acme/kite-post-docs", { syncedAt: null, divergedSince: null }),
+  lineRepo("web", "acme/kite-post-web", { syncedAt: ago(3 * DAY), divergedSince: ago(2 * DAY) }),
+  {
+    ...lineRepo("jobs", "acme/kite-post-jobs", IN_SYNC),
+    remote: {
+      ...lineRepo("jobs", "acme/kite-post-jobs", IN_SYNC).remote,
+      invalidSince: ago(4 * DAY),
+    },
+  },
+  codeRepo("mail"),
+];
+const CODE_PRESS = (repo: string) => (repo === "mail" ? ("connecting" as const) : null);
 
 const HEAD = sha("head");
 const stageRuns = (runs: string, deploying: ReadonlyArray<string> = []): CardStage => ({
@@ -486,6 +520,27 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
     ],
     stage: stageRuns(HEAD),
     repos: [lineRepo("post", "acme/kite-post", IN_SYNC)],
+  },
+  // Changes all along the line, and a Code card whose rows are in different states: one not on
+  // GitHub that nobody may delete (no menu), one that may be (a menu), one in sync.
+  "once-full": {
+    releases: [
+      shipped("v0.1.7", 3 * DAY, { standing: "live", by: "dana" }),
+      shipped("v0.1.6", 5 * DAY),
+    ],
+    merged: [
+      onMain(50, "Kites sorted by wind, lightest first", "juno-o", 50),
+      onMain(49, "Postcards keep their stamp when they are forwarded", "wren-o", 5 * 60),
+      onMain(47, "A hidden browser for web work", "juno-o", 3 * DAY + 30),
+      onMain(46, "Sign in with a postcode", "raya-o", 5 * DAY + 20),
+    ],
+    stage: stageRuns(sha("c49"), [HEAD]),
+    repos: PAGE_PARAMS.get("code") === "states" ? CODE_STATES : CODE_ROWS,
+  },
+  "once-bare": {
+    releases: [shipped("v0.0.3", 9 * DAY, { standing: "live", by: "dana" })],
+    merged: [onMain(3, "A kite you fold from one sheet", "ines-o", 9 * DAY + 60)],
+    repos: [codeRepo("kites")],
   },
   "line-notlive": {
     releases: [],
@@ -1033,7 +1088,11 @@ export function harnessProjectPage(
               {repos !== undefined ? (
                 <SetupRow label="Code" rows>
                   <RepoRowsView
-                    actions={{}}
+                    actions={
+                      groupId.startsWith("once-")
+                        ? { deleteRepository: () => Promise.resolve() }
+                        : {}
+                    }
                     admin
                     apps={null}
                     authority={null}
@@ -1044,6 +1103,7 @@ export function harnessProjectPage(
                     orgId="org-acme"
                     orgName="Acme"
                     project={groupId}
+                    pressOf={CODE_PRESS}
                     projectName={groupId}
                     repos={repos}
                   />

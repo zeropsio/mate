@@ -47,6 +47,7 @@ import { ownerMark } from "~/components/zerops/SidebarMateRow.logic";
 import { GitPullRequestIcon } from "lucide-react";
 import { CardMateLiftActions } from "~/components/zerops/projects/ProjectCards";
 import { MateCard } from "~/components/zerops/system/MateCard";
+import { PlaceDoors } from "~/components/zerops/place/PlaceDoors";
 import { MateRow, MateRowTime } from "~/components/zerops/system/MateRow";
 import { PageHeader } from "~/components/zerops/system/PageHeader";
 import { PlaceLine } from "~/components/zerops/system/PlaceLine";
@@ -576,6 +577,8 @@ const PROJECTS: ReadonlyArray<Project> = [
   }),
   // The line's states stand on their own pages (`?page=line-calm`), never among the cards.
   ...(params.get("page")?.startsWith("line-") === true ? lineProjects() : []),
+  // What the page says once (`?page=once-full`, `once-bare`).
+  ...(params.get("page")?.startsWith("once-") === true ? onceProjects() : []),
   // The Mates section's states stand on their own pages too (`?page=mates-seven`).
   ...(params.get("page")?.startsWith("mates-") === true ? matesProjects() : []),
 ];
@@ -592,6 +595,66 @@ function conflicting(number: number, title: string, mateProjectId: string) {
     mergeability: "conflicting",
   };
   return { ...inReview(number, title, mateProjectId), pull };
+}
+
+/**
+ * A project that answers at every kind of address — production at two domains of its own and two
+ * Zerops subdomains, a stage, three Mates with previews — with changes all along its line (full);
+ * and one that answers nowhere (bare).
+ */
+function onceProjects(): ReadonlyArray<Project> {
+  return [
+    project({
+      id: "once-full",
+      name: "Kite Post",
+      mates: [
+        {
+          ...working("juno-o", "Juno", "sky", "Postcards arrive in the order they were sent", "2m"),
+          flow: partsOf(["app"], "juno"),
+        },
+        mate("wren-o", "Wren", "amber", { time: "40m", flow: partsOf(["app", "api"], "wren") }),
+        mate("raya-o", "Raya", "olive", { time: "3d", flow: partsOf(["app"], "raya") }),
+      ],
+      pullRequests: [
+        inReview(52, "A stamp picker on the postcard form", "wren-o"),
+        conflicting(51, "Kites by the wind they need", "raya-o"),
+      ],
+      notLive: 2,
+      production: {
+        kind: "ready-to-release",
+        stop: stop("oncefull-prod", "production", {
+          version: version("v0.1.7"),
+          addresses: [
+            { service: "app", url: "https://app-kitepost-4d1a.prg1.zerops.app" },
+            { service: "app", url: "https://kitepost.example" },
+            { service: "api", url: "https://api-kitepost-4d1a.prg1.zerops.app" },
+            { service: "api", url: "https://api.kitepost.example" },
+          ],
+        }),
+        line: "",
+        candidate: { tag: "v0.1.8", waiting: 2 },
+      },
+      stages: [
+        stop("oncefull-stage", "stage", {
+          addresses: [{ service: "app", url: "https://app-kitepost-9b3c.prg1.zerops.app" }],
+        }),
+      ],
+      chip: { label: "prod", state: "ok", version: "v0.1.7" },
+      since: ago(60 * 24 * 3),
+    }),
+    project({
+      id: "once-bare",
+      name: "Paper Kites",
+      mates: [mate("ines-o", "Ines", "olive", { time: "1d" })],
+      production: {
+        kind: "live",
+        stop: stop("oncebare-prod", "production", { version: version("v0.0.3") }),
+        line: "",
+      },
+      chip: { label: "prod", state: "ok", version: "v0.0.3" },
+      since: ago(60 * 24 * 9),
+    }),
+  ];
 }
 
 /** A colleague's Mate nobody has signed in yet: it waits for its person. */
@@ -1030,26 +1093,55 @@ const byId = new Map(PROJECTS.map((entry) => [entry.entry.group.groupId, entry])
 // Each project's places as the menu would have drawn them: a place's Sites opens from them.
 for (const { entry } of PROJECTS) {
   const { production, stages } = entry.flow;
-  showHarnessPlaces(entry.group.groupId, entry.group.name, [
-    ...("stop" in production
-      ? [
+  // Each Mate's parts as its Sites list reads them: a pool and its stage per part.
+  const sitesMates = entry.flow.mates.flatMap((each) => {
+    const parts = each.parts ?? [];
+    const tint = entry.mates.get(each.projectId)?.tint;
+    return parts.length === 0 || tint === undefined
+      ? []
+      : [
           {
-            kind: "production" as const,
-            projectId: production.stop.projectId,
-            name: production.stop.name,
-            version: production.stop.version?.label,
-            addresses: production.stop.addresses,
+            projectId: each.projectId,
+            name: each.name,
+            tint,
+            hostnames: parts.flatMap((part) => [
+              part.devService,
+              ...(part.preview === undefined ? [] : [part.preview.service]),
+            ]),
+            pools: parts.filter((part) => part.pooled).map((part) => part.devService),
+            routes: parts.flatMap((part) =>
+              part.preview?.url === undefined
+                ? []
+                : [{ service: part.preview.service, url: part.preview.url }],
+            ),
           },
-        ]
-      : []),
-    ...stages.map((stage) => ({
-      kind: "stage" as const,
-      projectId: stage.projectId,
-      name: stage.name,
-      version: stage.version?.label,
-      addresses: stage.addresses,
-    })),
-  ]);
+        ];
+  });
+  showHarnessPlaces(
+    entry.group.groupId,
+    entry.group.name,
+    [
+      ...("stop" in production
+        ? [
+            {
+              kind: "production" as const,
+              projectId: production.stop.projectId,
+              name: production.stop.name,
+              version: production.stop.version?.label,
+              addresses: production.stop.addresses,
+            },
+          ]
+        : []),
+      ...stages.map((stage) => ({
+        kind: "stage" as const,
+        projectId: stage.projectId,
+        name: stage.name,
+        version: stage.version?.label,
+        addresses: stage.addresses,
+      })),
+    ],
+    sitesMates,
+  );
 }
 const mineOf = (entry: Mate) => entry.owner === NOVA;
 
@@ -1346,58 +1438,105 @@ function HarnessPage() {
                       Review
                     </button>
                   );
-                // On its project's page a Mate is a card, from the same reading (`MateCard`).
+                const lifted =
+                  reading.lift === undefined ? null : (
+                    <CardMateLiftActions
+                      lift={reading.lift}
+                      name={entry.name}
+                      onApprove={() => acted.push(`approve:${entry.id}`)}
+                      onFix={() => acted.push(`fix:${entry.id}`)}
+                      onReply={(text) => acted.push(`reply:${entry.id}:${text}`)}
+                      onReview={() => acted.push(`review:${entry.id}`)}
+                      choices={(entry.choices ?? []).map((choice) => ({
+                        label: choice,
+                        primary: false,
+                        onPick: () => acted.push(`pick:${entry.id}:${choice}`),
+                      }))}
+                    />
+                  );
                 const card = options.layout === "page-card";
-                const Drawn = card ? MateCard : MateRow;
-                return (
-                  <Drawn
-                    actions={
-                      reading.lift === undefined ? (
-                        card ? (
-                          review
-                        ) : null
-                      ) : (
-                        <CardMateLiftActions
-                          lift={reading.lift}
+                const face = (
+                  <>
+                    <MateFace size={card ? 64 : 32} state={entry.face} tint={entry.tint} />
+                    {mineOf(entry) ? null : (
+                      <MateOwnerMark
+                        className={card ? "mc-owner" : "ov-mate-owner"}
+                        seat={{
+                          kind: "person",
+                          mark: ownerMark({
+                            name: entry.owner.name,
+                            initials: entry.owner.initials,
+                            avatarUrl: null,
+                          }),
+                        }}
+                      />
+                    )}
+                  </>
+                );
+                const mark = entry.automated === true ? <MateAutomatedMark /> : undefined;
+                const time = <MateRowTime dot={entry.view.dot}>{entry.time}</MateRowTime>;
+                // On its project's page a Mate is a card, from the same reading (`MateCard`): its
+                // previews behind its Sites door, its vault beside it, and a change that waits
+                // said as a line. Its own change is its line; a colleague's Mate says its own
+                // words and, under them, that a change of its waits (`OverviewCardMate`).
+                if (card) {
+                  const waits = review !== null;
+                  const own = waits && !mineOf(entry);
+                  const said = own
+                    ? cardMateReading({
+                        view: entry.view,
+                        status: entry.status,
+                        mine: false,
+                        review: undefined,
+                      })
+                    : reading;
+                  return (
+                    <MateCard
+                      actions={reading.lift?.kind === "review" ? null : lifted}
+                      changes={own ? { count: 1, mine: true } : undefined}
+                      doors={
+                        <PlaceDoors
+                          look="card"
                           name={entry.name}
-                          onApprove={() => acted.push(`approve:${entry.id}`)}
-                          onFix={() => acted.push(`fix:${entry.id}`)}
-                          onReply={(text) => acted.push(`reply:${entry.id}:${text}`)}
-                          onReview={() => acted.push(`review:${entry.id}`)}
-                          choices={(entry.choices ?? []).map((choice) => ({
-                            label: choice,
-                            primary: false,
-                            onPick: () => acted.push(`pick:${entry.id}:${choice}`),
-                          }))}
+                          sites={
+                            options.parts.length === 0
+                              ? undefined
+                              : { groupId: PAGE ?? "", mateProjectId: entry.id }
+                          }
+                          vault={{
+                            onOpen: () =>
+                              placeVault.open?.({ projectId: entry.id, name: entry.name }),
+                          }}
                         />
-                      )
-                    }
-                    face={
-                      <>
-                        <MateFace size={card ? 64 : 32} state={entry.face} tint={entry.tint} />
-                        {mineOf(entry) ? null : (
-                          <MateOwnerMark
-                            className={card ? "mc-owner" : "ov-mate-owner"}
-                            seat={{
-                              kind: "person",
-                              mark: ownerMark({
-                                name: entry.owner.name,
-                                initials: entry.owner.initials,
-                                avatarUrl: null,
-                              }),
-                            }}
-                          />
-                        )}
-                      </>
-                    }
+                      }
+                      face={face}
+                      key={entry.id}
+                      line={
+                        waits && !own ? (
+                          <span className="mc-change" data-zerops-surface="card-mate-change">
+                            <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
+                            {reading.text}
+                          </span>
+                        ) : undefined
+                      }
+                      mark={mark}
+                      name={entry.name}
+                      onOpen={() => acted.push(`open:${entry.id}`)}
+                      reading={{
+                        ...said,
+                        lift: reading.lift?.kind === "review" ? undefined : reading.lift,
+                      }}
+                      time={time}
+                    />
+                  );
+                }
+                return (
+                  <MateRow
+                    actions={lifted}
+                    face={face}
                     key={entry.id}
                     line={
-                      review === null ? undefined : card ? (
-                        <span className="mc-change" data-zerops-surface="card-mate-change">
-                          <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
-                          {reading.text}
-                        </span>
-                      ) : (
+                      review === null ? undefined : (
                         <span className="ov-mate-change" data-zerops-surface="card-mate-change">
                           <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />
                           <span className="ov-mate-change-title">{reading.text}</span>
@@ -1405,12 +1544,12 @@ function HarnessPage() {
                         </span>
                       )
                     }
-                    mark={entry.automated === true ? <MateAutomatedMark /> : undefined}
+                    mark={mark}
                     name={entry.name}
                     onOpen={() => acted.push(`open:${entry.id}`)}
                     parts={options.parts}
                     reading={reading}
-                    time={<MateRowTime dot={entry.view.dot}>{entry.time}</MateRowTime>}
+                    time={time}
                   />
                 );
               }}

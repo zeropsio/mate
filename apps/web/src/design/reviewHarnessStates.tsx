@@ -18,6 +18,7 @@ import {
   type ReviewClose,
   type ReviewPress,
 } from "@t3tools/client-runtime/zerops";
+import { NO_ANSWER_IN_TIME } from "@t3tools/client-runtime/data";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { HqJob } from "@t3tools/client-runtime/zerops/hq";
 import type { CrewTask } from "@t3tools/contracts";
@@ -51,6 +52,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "~/components/WorkspaceBreadcrumb";
 import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
+import { useReleasePlanWait } from "~/zerops/useReleaseServicePlan";
 import type { ZeropsChangeOffers } from "~/zerops/useChangeOffers";
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 import type { ReviewDiffState } from "~/components/zerops/review/ZeropsReviewSurface";
@@ -706,6 +708,29 @@ const APP_ALONE = {
   ],
 } satisfies Partial<ReleaseProps>;
 const NO_CREATION = { run: { kind: "none" }, created: [], onCreate: noop } as const;
+/** A release of three services, and HQ's plan of it: one deploy each. */
+const THREE = {
+  services: ["app", "api", "worker"],
+  listed: ["app", "api", "worker"],
+  where: [
+    { service: "app", line: "gets v0.1.57" },
+    { service: "api", line: "gets v0.1.57" },
+    { service: "worker", line: "gets v0.1.57" },
+  ],
+  production: {
+    at: undefined,
+    addresses: [{ service: "app", url: "https://beviro.app" }],
+    parts: [
+      { hostname: "app", version: "v0.1.56" },
+      { hostname: "api", version: "v0.1.56" },
+      { hostname: "worker", version: "v0.1.56" },
+    ],
+  },
+} satisfies Partial<ReleaseProps>;
+const THREE_PLAN: ReleasePlan = {
+  hash: "d".repeat(64),
+  operations: THREE.services.map((service) => ({ kind: "deploy", service, sha: SEVEN_E })),
+};
 
 /**
  * A release whose production's setup gained a cache: HQ creates it, then deploys both parts. HQ
@@ -744,7 +769,7 @@ const KEY_RELEASE = {
     ],
   },
   environmentName: KEY_ENVIRONMENT,
-  entries: 2,
+  listed: ["api", "shop"],
   creation: NO_CREATION,
   onReviewNew: noop,
 } satisfies Partial<ReleaseProps>;
@@ -1143,6 +1168,29 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
     id: "release-create-reading",
     label: "Release · the plan is still read, the changes are listed",
     props: { over: { servicePlanPending: true } },
+  },
+  {
+    id: "release-reading-working",
+    label: "Release · the plan read for 4 s: what HQ's review reads",
+    props: { over: { servicePlanPending: true, servicePlanWait: "working" } },
+  },
+  {
+    id: "release-reading-late",
+    label: "Release · the plan read for 20 s: later than usual, with Try again",
+    props: {
+      over: { servicePlanPending: true, servicePlanWait: "late", onRetryServicePlan: noop },
+    },
+  },
+  {
+    id: "release-reading-unanswered",
+    label: "Release · no plan after 45 s: the wait is over, with Try again",
+    props: {
+      over: {
+        gate: { allowed: false, reason: NO_ANSWER_IN_TIME },
+        servicePlanFailure: NO_ANSWER_IN_TIME,
+        onRetryServicePlan: noop,
+      },
+    },
   },
   {
     id: "release-create-refused",
@@ -2404,6 +2452,85 @@ function useReleaseJourney(kind: "creates" | "fails" | "plain"): ReleaseSheet["p
   };
 }
 
+const PLAY = new URLSearchParams(location.search);
+/** `&at=<seconds>`: the wait held at that moment, for a still look. */
+const PLAY_AT = { "0": "started", "4": "working", "20": "late", "45": "expired" } as const;
+
+/**
+ * The wait for HQ's plan, lived through time (`?release=reading-play`): its words at once, after
+ * 4 s and after 20 s, and the wait over at 45 s, on the review's own clock. `&services=1` is a
+ * release of one service (three otherwise); `&lands=<seconds>` has the plan answer then,
+ * `&creates` with a service to create first; `&fails=<seconds>` has HQ answer that it could not.
+ * Try again starts the wait, and the answer's time, anew. `&at=0|4|20|45|landed` holds one moment.
+ */
+function useReadingPlay(on: boolean): ReleaseSheet["props"] {
+  const one = PLAY.get("services") === "1";
+  const lands = PLAY.get("lands");
+  const fails = PLAY.get("fails");
+  const at = PLAY.get("at");
+  const [round, setRound] = useState(0);
+  const [answer, setAnswer] = useState<{
+    readonly of: number;
+    readonly kind: "plan" | "failure";
+  }>();
+  const answered = answer?.of === round ? answer.kind : undefined;
+  useEffect(() => {
+    if (!on || at !== null) return;
+    const timers = [
+      ...(lands === null
+        ? []
+        : [setTimeout(() => setAnswer({ of: round, kind: "plan" }), Number(lands) * 1000)]),
+      ...(fails === null
+        ? []
+        : [setTimeout(() => setAnswer({ of: round, kind: "failure" }), Number(fails) * 1000)]),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, [at, fails, lands, on, round]);
+  const wait = useReleasePlanWait(on && at === null && answered === undefined);
+  const again = () => {
+    setRound((before) => before + 1);
+    wait.restart();
+  };
+  const stage =
+    at === "landed" || answered === "plan"
+      ? "landed"
+      : at !== null && at in PLAY_AT
+        ? PLAY_AT[at as keyof typeof PLAY_AT]
+        : wait.stage;
+  const base = one ? { ...APP_ALONE, listed: ["app"] } : THREE;
+  if (stage === "landed") {
+    const plan = one ? DEPLOY_PLAN : THREE_PLAN;
+    return {
+      over: {
+        ...base,
+        servicePlan: PLAY.has("creates")
+          ? { ...plan, operations: [CREATE_DB, ...plan.operations] }
+          : plan,
+        creation: NO_CREATION,
+      },
+    };
+  }
+  const failure =
+    answered === "failure" ? UNREAD.reason : stage === "expired" ? NO_ANSWER_IN_TIME : undefined;
+  return failure === undefined && stage !== "expired"
+    ? {
+        over: {
+          ...base,
+          servicePlanPending: true,
+          servicePlanWait: stage,
+          onRetryServicePlan: again,
+        },
+      }
+    : {
+        over: {
+          ...base,
+          gate: { allowed: false, reason: failure ?? NO_ANSWER_IN_TIME },
+          servicePlanFailure: failure ?? NO_ANSWER_IN_TIME,
+          onRetryServicePlan: again,
+        },
+      };
+}
+
 /** The harness's release and the change a row steps into. */
 function ReleaseTrySteps({
   onClose,
@@ -2420,9 +2547,16 @@ function ReleaseTrySteps({
     state === "journey-fails" ? "fails" : state === "journey-plain" ? "plain" : "creates",
   );
   const onJourney = state.startsWith("journey");
+  const play = useReadingPlay(state === "reading-play");
   const found = RELEASE_SHEETS.find((entry) => entry.id === state);
   const { onRelease, ...lived } = journey;
-  const sheet: ReleaseSheet["props"] = onJourney ? lived : found === undefined ? {} : found.props;
+  const sheet: ReleaseSheet["props"] = onJourney
+    ? lived
+    : state === "reading-play"
+      ? play
+      : found === undefined
+        ? {}
+        : found.props;
   const titleId = onChange ? undefined : "release-try-title";
   return (
     <ZeropsReleaseSteps
@@ -2483,7 +2617,8 @@ function ReleaseTrySteps({
  * and back — the slide, the focus and Esc twice — and to stand in any state of it.
  * `?release=<id>` opens it in that state as the page loads (`RELEASE_SHEETS`; `open` is the plain
  * one), `?release=journey` runs one from reading to live, `journey-fails` to a failed creation,
- * `journey-plain` one that creates nothing.
+ * `journey-plain` one that creates nothing, `reading-play` the wait for HQ's plan through time
+ * (`useReadingPlay`).
  */
 export function ReleaseDialogTry({
   openAtStart,
