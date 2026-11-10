@@ -1,10 +1,12 @@
 /* The line: a picture of where a project's changes are. One horizontal track through its stations,
    by name; the changes between them as beads; a count under each segment. 104 px in every state.
-   Under 700 px of its own width it is compact: short captions, the same beads. */
+   Under 700 px of its own width it is compact: short captions, the same beads. Behind the control
+   in its corner the card grows in place into the line in full (`.lnx`). */
 .ln {
   --ln-ground: var(--ov-ground, var(--card));
   --ln-track: color-mix(in oklab, var(--foreground) 30%, var(--ln-ground));
   --ln-faint: color-mix(in oklab, var(--foreground) 20%, var(--ln-ground));
+  position: relative;
   min-width: 0;
   container: line / inline-size;
 }
@@ -277,6 +279,221 @@ span.ln-bead {
   width: 48px;
 }
 
+/* The way to the line in full, in the card's corner: the same corner whichever of the two shows. */
+.ln-corner {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  right: 8px;
+  display: flex;
+}
+
+/* The picture and, behind it, the line in full, in one card. The picture keeps its 104 px; the full
+   line takes them and the room it needs under them, and the card's height travels between the two
+   while one fades into the other. */
+.ln-fold {
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 104px 0fr;
+  transition: grid-template-rows 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.ln-fold[data-open] {
+  grid-template-rows: 104px 1fr;
+}
+
+.ln-pane {
+  min-width: 0;
+  grid-column: 1;
+  grid-row: 1;
+  transition:
+    opacity 200ms cubic-bezier(0.23, 1, 0.32, 1),
+    visibility 200ms;
+}
+
+.ln-pane[data-pane="full"] {
+  min-height: 0;
+  overflow: hidden;
+  grid-row: 1 / 3;
+}
+
+.ln-pane[data-hidden] {
+  visibility: hidden;
+  opacity: 0;
+}
+
+/* The full line is drawn when it is first asked for: it fades in from nothing then, and stands
+   whole where the page opens with it. */
+@starting-style {
+  .ln-fold[data-moved] > .ln-pane[data-pane="full"] {
+    opacity: 0;
+  }
+}
+
+/* The line in full: the picture's stations on the picture's columns, each with what it is under
+   its name (60 px), the track, the count; then a row under `main` for each further place. */
+.lnx {
+  min-width: 0;
+}
+
+.lnx-grid {
+  display: grid;
+  box-sizing: border-box;
+  min-width: 0;
+  grid-auto-rows: auto;
+  grid-template-columns: 302fr 310fr 158fr;
+  grid-template-rows: 104px;
+  padding: 16px 24px 14px 28px;
+}
+
+.ln[data-stations="4"] .lnx-grid {
+  grid-template-columns: 262fr 160fr 190fr 158fr;
+}
+
+.lnx-col {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  grid-template-rows: 60px 16px minmax(0, 1fr);
+}
+
+.lnx-head {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  padding-right: 18px;
+}
+
+.lnx-head > .ln-name {
+  max-width: 100%;
+}
+
+a.ln-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+a.ln-name:focus-visible,
+.lnx-side a:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.ln-words [data-strong] {
+  color: color-mix(in oklab, var(--foreground) 82%, var(--ln-ground));
+  font-weight: 500;
+}
+
+/* A Mate's tint as a face-shaped square, before the Mates' names. */
+.ln-face {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 3px;
+  border-radius: 36%;
+  background: var(--ln-tint, var(--ln-track));
+  vertical-align: -3px;
+}
+
+.ln-face:last-of-type {
+  margin-right: 6px;
+}
+
+/* A place's dot in its state's tone; one that runs something, ringed. */
+.lnx .ln-node {
+  --ln-node: var(--ln-track);
+  background: var(--ln-node);
+}
+
+.lnx .ln-node[data-tone="success"] {
+  --ln-node: var(--success);
+}
+
+.lnx .ln-node[data-tone="danger"] {
+  --ln-node: var(--destructive);
+}
+
+.lnx .ln-node[data-tone="info"] {
+  --ln-node: var(--info);
+}
+
+.lnx .ln-node[data-node="live"] {
+  top: 0;
+  left: -2px;
+  width: 16px;
+  height: 16px;
+  border: 3px solid var(--ln-ground);
+  box-shadow: 0 0 0 1px var(--ln-node);
+}
+
+.lnx .ln-node[data-node="absent"] {
+  background: var(--ln-ground);
+}
+
+.lnx-foot {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  justify-items: start;
+  padding-top: 12px;
+  padding-right: 18px;
+}
+
+/* Rows hung under `main` on a dotted spine: each further place. The count under `main` steps in to
+   the rows' text edge. */
+.lnx[data-sides] .lnx-col[data-kind="main"] > .lnx-foot {
+  padding-left: 28px;
+}
+
+.lnx-sides {
+  position: relative;
+  min-width: 0;
+  grid-column: 2 / -1;
+  margin: 0;
+  padding: 4px 0 0;
+  list-style: none;
+}
+
+.lnx-sides::before {
+  position: absolute;
+  top: -26px;
+  bottom: 10px;
+  left: 5px;
+  width: 2px;
+  border-radius: 999px;
+  background: repeating-linear-gradient(180deg, var(--ln-faint) 0 4px, transparent 4px 7px);
+  content: "";
+}
+
+.lnx-side {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  height: 22px;
+  align-items: center;
+  padding-left: 28px;
+}
+
+.lnx-side::before {
+  position: absolute;
+  top: 10px;
+  left: 6px;
+  width: 14px;
+  height: 2px;
+  border-radius: 999px;
+  background: repeating-linear-gradient(90deg, var(--ln-faint) 0 4px, transparent 4px 7px);
+  content: "";
+}
+
+.lnx-side a {
+  color: inherit;
+}
+
+.lnx-side a:hover [data-strong] {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Compact: the same picture in a panel's width, its counts in their short form. */
 @container line (max-width: 699px) {
   .ln-grid {
@@ -303,10 +520,36 @@ span.ln-bead {
   .ln-short {
     display: block;
   }
+
+  /* The line in full, compact: station names only, the track 30 px higher. */
+  .lnx-grid {
+    grid-template-columns: 170fr 182fr 100fr;
+    grid-template-rows: 74px;
+    padding-inline: 20px;
+  }
+
+  .ln[data-stations="4"] .lnx-grid {
+    grid-template-columns: 116fr 108fr 128fr 100fr;
+  }
+
+  .lnx-col {
+    grid-template-rows: 30px 16px minmax(0, 1fr);
+  }
+
+  .lnx-head,
+  .lnx-foot {
+    padding-right: 8px;
+  }
+
+  .lnx-head > .ln-words {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ln-bead {
+  .ln-bead,
+  .ln-fold,
+  .ln-pane {
     transition: none;
   }
 }

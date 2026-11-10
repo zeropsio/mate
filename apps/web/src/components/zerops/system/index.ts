@@ -21,17 +21,25 @@ export {
 export { PageHeader } from "./PageHeader";
 export { PlaceLine, type PlaceLineDensity } from "./PlaceLine";
 export { placeLineAddress, placeLineView, type PlaceLineView } from "./PlaceLine.logic";
-export { ProjectLine, type ProjectLineProps } from "./ProjectLine";
+export {
+  ProjectLine,
+  SHOW_FULL_PICTURE,
+  type ProjectLineFullDoor,
+  type ProjectLineProps,
+} from "./ProjectLine";
 export {
   fitBeads,
   lineChangeKey,
   projectLine,
+  projectLineFull,
   READY_FOR_REVIEW,
   type LineBead,
   type LineGroup,
   type LineSegment,
   type LineStation,
   type LineWork,
+  type ProjectLineFullInput,
+  type ProjectLineFullView,
   type ProjectLineInput,
   type ProjectLineView,
 } from "./projectLine.logic";
