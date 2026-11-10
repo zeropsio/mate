@@ -177,13 +177,14 @@ function HistoryRow({
               }}
               type="button"
             >
-              {/* What opens says so at rest. Hover was the only sign this row
-                  had more in it, and a touch screen has no hover at all. */}
+              <span className="min-w-0 truncate">{entry.subject}</span>
+              {/* What opens says so at rest: hover was the only sign this row had more in it,
+                  and a touch screen has no hover at all. At its end, as on everything that goes
+                  somewhere; a chevron at a row's start opens it in place. */}
               <ChevronRightIcon
                 aria-hidden="true"
                 className="size-3.5 shrink-0 self-center text-muted-foreground/60"
               />
-              <span className="min-w-0 truncate">{entry.subject}</span>
             </button>
           )}
           {/* The name it went live under, where a release carried it: on a
