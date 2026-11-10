@@ -85,12 +85,20 @@ export function PlaceLine({
           {view.version}
         </span>
       )}
-      {facts.map((fact, index) => (
-        <Fragment key={`${String(index)}:${fact}`}>
-          {index === 0 && view.version === undefined ? null : <Sep />}
-          <span className="min-w-0 shrink-2 truncate text-muted-foreground">{fact}</span>
-        </Fragment>
-      ))}
+      {facts.map((fact, index) => {
+        // A phone's row has no room for since-when beside the address — both were cut to a
+        // sliver — so there it is left to the place's own page, as a card leaves it.
+        const narrow =
+          density === "row" && fact.startsWith(`${SINCE_WORD} `) ? "max-sm:hidden" : undefined;
+        return (
+          <Fragment key={`${String(index)}:${fact}`}>
+            {index === 0 && view.version === undefined ? null : <Sep className={narrow} />}
+            <span className={cn("min-w-0 shrink-2 truncate text-muted-foreground", narrow)}>
+              {fact}
+            </span>
+          </Fragment>
+        );
+      })}
       {line.clock === undefined ? null : <PlaceClock since={line.clock.since} />}
       {address === undefined ? null : (
         <>
@@ -160,9 +168,9 @@ export function PlaceLine({
   );
 }
 
-function Sep() {
+function Sep({ className }: { readonly className?: string | undefined }) {
   return (
-    <span aria-hidden="true" className="shrink-0 text-muted-foreground/60">
+    <span aria-hidden="true" className={cn("shrink-0 text-muted-foreground/60", className)}>
       ·
     </span>
   );

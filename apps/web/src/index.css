@@ -9289,6 +9289,21 @@ button.ov-change {
   transition: color 150ms var(--ease-out-strong);
 }
 
+/* A phone's row is its title, read whole on two lines, and when it last moved. Its pull request is
+   one press away on the change itself: an 18 px link beside the row's own press is no finger's. */
+@media (max-width: 39.999rem) {
+  .ov-change-title {
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .ov-change-pr {
+    display: none;
+  }
+}
+
 .ov-change-pr:hover {
   color: var(--foreground);
 }
