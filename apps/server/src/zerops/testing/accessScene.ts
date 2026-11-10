@@ -17,9 +17,9 @@ import { make, ZeropsMateAccessList } from "../ZeropsMateAccessList.ts";
 export type SceneRoles = Readonly<Record<string, string>>;
 
 /** The read Zerops answers for `roles`: every person active, no project override. */
-export const sceneRead = (roles: SceneRoles): AccessRead => ({
+export const sceneRead = (roles: SceneRoles, tagList: ReadonlyArray<string> = []): AccessRead => ({
   kind: "read",
-  project: { clientId: "org", overrides: {}, tagList: [] },
+  project: { clientId: "org", overrides: {}, tagList: [...tagList] },
   members: Object.entries(roles).map(([userId, orgRole]) => ({
     clientUserId: `cu-${userId}`,
     userId,

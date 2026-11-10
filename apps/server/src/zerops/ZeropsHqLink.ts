@@ -20,9 +20,9 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
  *   every session on a moved Chief mark (`chief`), and to `ZeropsMateOwner`, whom it names the
  *   Mate's owner (`ownerUserId`), and to `ZeropsChangesFile`, which keeps the
- *   Mate's changes from every state where zcp reads them, and to `ZeropsConnections` for the known
- *   Chief opener restriction; tickets (`ticket`), each answered `ticket-ack`, or `ticket_refused`
- *   when the native list or known Chief opener does not admit its person; the
+ *   Mate's changes from every state where zcp reads them, and to `ZeropsChiefOpener`, whom it lets
+ *   open a Chief (`chiefOpenerUserId`); tickets (`ticket`), each answered `ticket-ack`, or
+ *   `ticket_refused` when the access list does not admit its person; the
  *   Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
  *   to `ZeropsAutomation`, never logged; and the tasks HQ hands an automated Mate (`task`), the
@@ -101,6 +101,7 @@ import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
+import { ZeropsChiefOpener } from "./ZeropsChiefOpener.ts";
 import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
@@ -250,6 +251,7 @@ export interface ZeropsHqLinkOptions {
    */
   readonly ticket?: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
   readonly closeSession?: (sessionId: string) => Effect.Effect<void>;
+  /** Hands on whom each state lets open a Chief, if it names one (`ZeropsChiefOpener.named`). */
   readonly chiefOpener?: (userId: string | null | undefined) => Effect.Effect<void>;
   /** Hands on whom each state names the Mate's owner, `null` for none (`ZeropsMateOwner.named`). */
   readonly owner?: (userId: string | null) => Effect.Effect<void>;
@@ -960,6 +962,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const observeCredential = yield* ZeropsObserveCredentialFile;
       const signIns = yield* ZeropsSignIns;
       const owner = yield* ZeropsMateOwner;
+      const chiefOpener = yield* ZeropsChiefOpener;
       // The engine's conversations are the chats: V1's projections (a thread left running at the
       // flip among them) are never read.
       const attention = yield* ZeropsMateAttention;
@@ -1001,7 +1004,9 @@ export const layer = (crew: OverviewSources["crew"]) =>
         connect: connectLinkSocket,
         ticket: connections.ticket,
         closeSession: connections.closeSession,
-        chiefOpener: connections.chiefOpener,
+        // HQ's state is where the Mate learns who may open its Chief: the one source behind the
+        // access list's Chief filter, which the tickets and connections follow.
+        chiefOpener: chiefOpener.named,
         // HQ's state is where the Mate learns whose it is: the one source behind `ZeropsMateOwner`.
         owner: owner.named,
         gitCredential: credential.write,

@@ -38,7 +38,8 @@ import * as TestClock from "effect/testing/TestClock";
 import * as Access from "./ZeropsMateAccessList.ts";
 import * as Tickets from "./ZeropsTicketDoor.ts";
 import * as Connections from "./ZeropsConnections.ts";
-import { makeAccessScene } from "./testing/accessScene.ts";
+import { makeAccessScene, sceneRead } from "./testing/accessScene.ts";
+import * as ChiefOpener from "./ZeropsChiefOpener.ts";
 import { makeChangesFile } from "./ZeropsChangesFile.ts";
 import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
 import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
@@ -342,14 +343,19 @@ describe("ZeropsHqLink", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const scene = yield* makeAccessScene({ jan: "OWNER", eva: "BASIC_USER" });
+          const opener = yield* ChiefOpener.make;
+          const list = yield* Access.make({
+            projectId: "P_MATE",
+            read: Effect.succeed(sceneRead({ jan: "OWNER", eva: "BASIC_USER" }, ["chief"])),
+            opener,
+          });
           const tickets = yield* Tickets.make;
           const connections = yield* Connections.make.pipe(
-            Effect.provideService(Access.ZeropsMateAccessList, scene.list),
+            Effect.provideService(Access.ZeropsMateAccessList, list),
             Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
             Effect.provide(NodeCrypto.layer),
           );
-          const { sockets } = yield* rig({ chiefOpener: connections.chiefOpener });
+          const { sockets } = yield* rig({ chiefOpener: opener.named });
           const first = yield* linked(sockets, 0);
           admit(first, { ...STATE, chiefOpenerUserId: "eva" });
           yield* TestClock.adjust(Duration.zero);
