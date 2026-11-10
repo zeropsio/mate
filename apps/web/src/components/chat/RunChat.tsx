@@ -1467,20 +1467,29 @@ function QuestionBubble({ questions }: { readonly questions: ReadonlyArray<strin
  */
 function NoteBubble({ message: recorded }: { readonly message: ChatMessage }) {
   const message = useEngineLiveMessage(recorded);
-  // Words still being written say so at their foot, in the bubble's own padding: nothing beside
-  // them says the run goes on, and the bubble lands at the height it stood.
-  const writing = use(InSlotContext) && Boolean(message.streaming);
-  return (
-    <Bubble className={cn(SPEECH_PAD, writing && "relative")} kind="note" tone="speech">
+  const inSlot = use(InSlotContext);
+  const bubble = (
+    <Bubble className={SPEECH_PAD} kind="note" tone="speech">
       <OpensWhole follows={Boolean(message.streaming)} stood={message.id} what="message" words>
         <NoteWords message={message} />
       </OpensWhole>
-      {writing ? (
-        <span className="run-note-writing" data-note-writing>
-          <TypingDots />
-        </span>
-      ) : null}
     </Bubble>
+  );
+  if (!inSlot) return bubble;
+  // Words still being written say so beside their last line, outside the bubble: the dots follow
+  // the words as they do after "Writing", on no text and no edge. Their seat is held while the
+  // words stand in the working row, written or not, so the bubble is as wide when they end.
+  return (
+    <>
+      {bubble}
+      <span
+        aria-hidden="true"
+        className="run-note-writing"
+        data-note-writing={message.streaming ? "" : undefined}
+      >
+        {message.streaming ? <TypingDots /> : null}
+      </span>
+    </>
   );
 }
 
