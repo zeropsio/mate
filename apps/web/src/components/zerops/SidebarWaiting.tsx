@@ -48,8 +48,12 @@ export interface WaitingVerbs {
   readonly onAskToFix: (projectId: string, problem: FixProblem) => void;
 }
 
-/** Where the list stands: beside the menu, its title on the trigger's title line. */
+/**
+ * Where the list stands: beside the menu, its title on the trigger's title line. In a phone's sheet
+ * there is no beside: it hangs under the menu's head, across the screen.
+ */
 interface Placement {
+  readonly side: "right" | "bottom";
   readonly sideOffset: number;
   readonly alignOffset: number;
 }
@@ -63,7 +67,16 @@ function placementOf(trigger: HTMLElement): Placement {
   const box = trigger.getBoundingClientRect();
   const menu = trigger.closest('[data-sidebar="sidebar"]')?.getBoundingClientRect();
   const line = trigger.querySelector("[data-waiting-line]")?.getBoundingClientRect() ?? box;
+  if (trigger.closest('[data-sidebar="sidebar"][data-mobile="true"]') !== null) {
+    const head = trigger.closest('[data-slot="sidebar-header"]')?.getBoundingClientRect();
+    return {
+      side: "bottom",
+      sideOffset: Math.round((head?.bottom ?? box.bottom) - box.bottom + BESIDE_PX),
+      alignOffset: 0,
+    };
+  }
   return {
+    side: "right",
     sideOffset: Math.round((menu?.right ?? box.right) - box.right + BESIDE_PX),
     alignOffset: Math.round(line.top + line.height / 2 - box.top - TITLE_CENTRE_PX),
   };
@@ -89,7 +102,11 @@ export function SidebarWaitingPopover({
   readonly tooltip?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [placement, setPlacement] = useState<Placement>({ sideOffset: 16, alignOffset: -5 });
+  const [placement, setPlacement] = useState<Placement>({
+    side: "right",
+    sideOffset: 16,
+    alignOffset: -5,
+  });
   const anchor = useRef<HTMLElement | null>(null);
   // Nothing waits any more: the list has nothing to hold.
   const shown = open && items.length > 0;
@@ -117,10 +134,11 @@ export function SidebarWaitingPopover({
       )}
       <WaitingPortal>
         <PopoverPrimitive.Positioner
-          align="start"
+          align={placement.side === "bottom" ? "center" : "start"}
           alignOffset={placement.alignOffset}
           className="z-130"
-          side="right"
+          {...(placement.side === "bottom" ? { collisionPadding: 8 } : {})}
+          side={placement.side}
           sideOffset={placement.sideOffset}
         >
           <PopoverPrimitive.Popup

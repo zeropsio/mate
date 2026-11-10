@@ -6331,6 +6331,13 @@ code {
     color: var(--muted-foreground);
   }
 
+  /* A key's hint means nothing under a finger. */
+  @media (pointer: coarse) {
+    .menu-wait-key {
+      display: none;
+    }
+  }
+
   .menu-wait-items {
     margin-bottom: -12px;
   }
