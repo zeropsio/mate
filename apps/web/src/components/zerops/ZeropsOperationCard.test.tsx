@@ -223,10 +223,8 @@ describe("ZeropsOperationCard — a deploy reads its pipeline step by step", () 
   // One mark per state across every step list of the card: a ring, what is
   // inside it saying the state; the running one the busy blue, stepping.
   it.each([
-    {
-      state: "finished",
-      shows: ['data-step-glyph="done"', "lucide-circle-check", "text-status-ok"],
-    },
+    // A finished step's mark is the list's quiet one: its shape says it, no state's colour.
+    { state: "finished", shows: ['data-step-glyph="done"', "lucide-circle-check"] },
     {
       state: "running",
       shows: [

@@ -1012,7 +1012,8 @@ describe("RunChat", () => {
         },
       ]),
     );
-    expect(html).toContain(">Deploy appdev<");
+    // The service it names stands in the mono face, a real thing's own name.
+    expect(html).toContain('>Deploy <span class="real-name">appdev</span><');
     expect(html).not.toContain("Deploying appdev");
     expect(html).not.toContain(">Running<");
     if (time === null) expect(html).not.toContain("No result");
