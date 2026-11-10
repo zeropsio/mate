@@ -22,7 +22,11 @@
  *   for how long the card stands on its head alone; `?short` for a
  *   conversation that begins with that run, shorter than the page until the
  *   new card outgrows it; `?watched` for that run played to its end here
- *   first, its answer landing three seconds before the send);
+ *   first, its answer landing three seconds before the send; `?left` for a
+ *   conversation left mid-read before, which opens not following its end —
+ *   at a row since gone, or at `?leftrow=<row id>`; `?crew` for a crew
+ *   thread's send, whose message and card the engine writes a moment after
+ *   it; `?long=<n>` for that many turns above, the list long and virtual);
  * - `?speed=<x>` plays faster or slower, `?at=<s>` starts that far in;
  * - `?theme=dark`; `?provider=claudeAgent` reads no call stale by timing.
  *
@@ -40,10 +44,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { LegendListRef } from "@legendapp/list/react";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
@@ -54,6 +60,10 @@ import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRunt
 import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
 import { deriveDock } from "~/components/chat/conversationDock.logic";
 import { KeptTimelines } from "~/components/chat/KeptTimelines";
+import {
+  readTimelinePosition,
+  rememberTimelinePosition,
+} from "~/components/chat/timelineScrollAnchoring";
 import type { MessagesTimeline } from "~/components/chat/MessagesTimeline";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import type { TimelineEntry, WorkLogEntry } from "~/session-logic";
@@ -79,6 +89,15 @@ const WATCHED = params.has("watched");
 const SEND_AT = WATCHED ? 6 : 1;
 /** When the watched run before the send ends. */
 const BEFORE_END = 3;
+/** The conversation was left mid-read before: it opens not following its end. */
+const LEFT = params.has("left");
+/**
+ * `?crew`: the send is a crew thread's — it makes no row of its own; its
+ * message and its run's card come from the engine a moment later.
+ */
+const CREW = params.has("crew");
+/** `?long=N`: N turns stand above the one before the send, so the list is long and virtualized. */
+const TURNS_ABOVE = Number(params.get("long") ?? 0);
 const ENVIRONMENT = EnvironmentId.make("environment-harness");
 const TURN = TurnId.make("live-turn");
 const COMPOSER_HEIGHT = 132;
@@ -748,6 +767,23 @@ const TURN_BEFORE = TurnId.make("turn-before");
 
 const BEFORE_ANSWER = "Added `/status`: it says how long the app has been up since its last start.";
 
+/** `?long`: the turns long before it, each an ask and its answer. */
+function turnsBefore(): ReadonlyArray<TimelineEntry> {
+  return Array.from({ length: TURNS_ABOVE }, (_, index) => {
+    const at = -3600 + index * 60;
+    const turn = TurnId.make(`turn-long-ago-${index}`);
+    return [
+      message(
+        `long-ago-ask-${index}`,
+        "user",
+        at,
+        `What does step ${index + 1} of the plan change?`,
+      ),
+      message(`long-ago-answer-${index}`, "assistant", at + 20, BEFORE_ANSWER, false, turn),
+    ];
+  }).flat();
+}
+
 /**
  * The run before the send at `t`: two calls and its answer. It finished a few
  * minutes before the page opened, its card settled — or, `?watched`, it plays
@@ -800,7 +836,7 @@ function runBefore(t: number): ReadonlyArray<TimelineEntry> {
 /** The run's timeline at `t` seconds in. */
 function entriesAt(t: number): TimelineEntry[] {
   const entries: TimelineEntry[] = SHORT ? [] : [...EARLIER];
-  if (RUN.sendAt !== undefined) entries.push(...runBefore(t));
+  if (RUN.sendAt !== undefined) entries.push(...turnsBefore(), ...runBefore(t));
   if (t >= (RUN.sendAt ?? 0)) entries.push(message("ask", "user", RUN.sendAt ?? 0, RUN.ask));
   for (const item of RUN.items) {
     if (t < item.start) continue;
@@ -878,13 +914,26 @@ function entriesAt(t: number): TimelineEntry[] {
 }
 
 /** The harness's clock: seconds into the run, at `SPEED`. */
-function useRunClock(): readonly [number, () => void, (to: number) => void] {
+/** When the person presses send: as its message becomes a row, or a moment before (`?crew`). */
+const SENT_AT = RUN.sendAt === undefined ? undefined : RUN.sendAt - (CREW ? 0.4 : 0);
+
+function useRunClock(
+  /** The person's send, told in the update that makes its message a row: one commit, as ChatView's. */
+  onSend: () => void,
+): readonly [number, () => void, (to: number) => void] {
   const [origin, setOrigin] = useState(() => performance.now() - (START_AT * 1000) / SPEED);
   const [seconds, setSeconds] = useState(START_AT);
+  const onSendRef = useRef(onSend);
+  useLayoutEffect(() => {
+    onSendRef.current = onSend;
+  }, [onSend]);
   useEffect(() => {
     let frame = 0;
+    let before = ((performance.now() - origin) * SPEED) / 1000;
     const tick = () => {
       const next = Math.min(RUN.end + 2, ((performance.now() - origin) * SPEED) / 1000);
+      if (SENT_AT !== undefined && before < SENT_AT && next >= SENT_AT) onSendRef.current();
+      before = next;
       // A tenth of a second at a time: the run's facts change no faster.
       setSeconds((current) =>
         Math.floor(next * 20) === Math.floor(current * 20) ? current : next,
@@ -919,86 +968,169 @@ interface FollowChange {
 }
 
 /**
- * Whether the conversation follows its end, as ChatView judges it
- * (`nextTimelineFollow`): the list's scrolls and the person's inputs turn it
- * off and on, and the person's own send turns it on.
+ * Whether the conversation follows its end, as ChatView judges it — the same
+ * refs and the same order, so what turns following off there turns it off
+ * here: the conversation opens following unless it was left mid-read
+ * (`readTimelinePosition`), the list's scrolls and the person's inputs turn it
+ * off and on (`nextTimelineFollow`), and the person's own send turns it on
+ * (ChatView's `scrollToEnd(false, true)`).
  */
-function useFollow(listRef: { readonly current: LegendListRef | null }) {
-  const [follow, setFollow] = useState({ enabled: true, atEnd: true });
-  const followRef = useRef(follow);
+function useFollow(listRef: { readonly current: LegendListRef | null }, routeThreadKey: string) {
+  const [enabled, setEnabled] = useState(true);
   const logRef = useRef<FollowChange[]>([]);
-  const judge = useCallback((by: string, next: (current: typeof follow) => typeof follow) => {
-    const current = followRef.current;
-    const judged = next(current);
-    if (judged.enabled !== current.enabled) {
-      logRef.current.push({ at: performance.now(), by, follows: judged.enabled });
-    }
-    followRef.current = judged;
-    setFollow(judged);
+  const state = useRef({ following: true, atEnd: true, mode: "following-end" });
+  const cancelPositionRestoreRef = useRef<(() => void) | null>(null);
+  const say = useCallback((by: string, follows: boolean) => {
+    const last = logRef.current.at(-1);
+    if (last?.follows !== follows) logRef.current.push({ at: performance.now(), by, follows });
+    setEnabled(follows);
   }, []);
-  const onIsAtEndChange = useCallback<TimelineProps["onIsAtEndChange"]>(
-    (isAtEnd, scroll) =>
-      judge(`position ${JSON.stringify({ isAtEnd, ...scroll })}`, (current) => ({
-        atEnd: isAtEnd,
-        enabled: nextTimelineFollow(current.enabled, {
-          type: "position",
-          atEnd: isAtEnd,
-          ...scroll,
-        }),
-      })),
-    [judge],
+  // The conversation opens: at its end, or where the person left it.
+  useEffect(() => {
+    const followEnd = nextTimelineFollow(state.current.following, {
+      type: "opened",
+      atEnd: readTimelinePosition(routeThreadKey)?.atEnd !== false,
+    });
+    state.current = {
+      following: followEnd,
+      atEnd: followEnd,
+      mode: followEnd ? "following-end" : "free-scrolling",
+    };
+    logRef.current = [];
+    say("opened", followEnd);
+  }, [routeThreadKey, say]);
+  const onManualNavigation = useCallback(() => {
+    cancelPositionRestoreRef.current?.();
+    state.current = { ...state.current, following: false, mode: "free-scrolling" };
+    say("navigation", false);
+  }, [say]);
+  const resume = useCallback(
+    (by: string) => {
+      state.current = { following: true, atEnd: true, mode: "following-end" };
+      say(by, true);
+    },
+    [say],
   );
-  const onManualNavigation = useCallback(
-    () => judge("navigation", (current) => ({ ...current, enabled: false })),
-    [judge],
-  );
+  const atEndNow = useCallback(() => {
+    const node = listRef.current?.getScrollableNode() as HTMLElement | undefined;
+    return node === undefined ? true : node.scrollHeight - node.scrollTop - node.clientHeight <= 40;
+  }, [listRef]);
   const onPersonInput = useCallback<TimelineProps["onPersonInput"]>(
     (input) => {
-      if (input.kind !== "wheel" && input.kind !== "key") return;
-      if (input.direction === "up") {
-        judge(`${input.kind} up`, (current) => ({
-          ...current,
-          enabled: nextTimelineFollow(current.enabled, { type: "left-end" }),
-        }));
+      const leave = (by: string) => {
+        if (state.current.following) flushSync(onManualNavigation);
+        else onManualNavigation();
+        logRef.current.push({ at: performance.now(), by, follows: false });
+      };
+      switch (input.kind) {
+        case "wheel":
+        case "key":
+          if (input.direction === "up") leave(`${input.kind} up`);
+          else if (
+            !state.current.following &&
+            nextTimelineFollow(false, { type: "toward-end-input", inEndBand: atEndNow() })
+          )
+            resume(`${input.kind} down`);
+          return;
+        case "scrollbar":
+          leave("scrollbar");
+          return;
+        case "touch-move":
+        case "content-pointer":
+          if (!atEndNow()) leave(input.kind);
+          return;
+      }
+    },
+    [atEndNow, onManualNavigation, resume],
+  );
+  const onIsAtEndChange = useCallback<TimelineProps["onIsAtEndChange"]>(
+    (isAtEnd, scroll) => {
+      const { following } = state.current;
+      const followsNext = nextTimelineFollow(following, {
+        type: "position",
+        atEnd: isAtEnd,
+        ...scroll,
+      });
+      if (following && !followsNext) {
+        flushSync(onManualNavigation);
+        state.current = { ...state.current, atEnd: false };
+        logRef.current.push({
+          at: performance.now(),
+          by: `position ${JSON.stringify({ isAtEnd, ...scroll })}`,
+          follows: false,
+        });
         return;
       }
-      judge(`${input.kind} down`, (current) => ({
-        ...current,
-        enabled: nextTimelineFollow(current.enabled, {
-          type: "toward-end-input",
-          inEndBand: current.atEnd,
-        }),
-      }));
+      if (following) return;
+      const wasAtEnd = state.current.atEnd;
+      state.current = { ...state.current, atEnd: isAtEnd };
+      if (followsNext) resume(`position ${JSON.stringify({ isAtEnd, ...scroll })}`);
+      else if (wasAtEnd !== isAtEnd && !isAtEnd) {
+        state.current = { ...state.current, mode: "free-scrolling", following: false };
+      }
     },
-    [judge],
+    [onManualNavigation, resume],
   );
-  // The person's own send, as ChatView's `scrollToEnd(false, true)`: already
-  // following at the end, the list's own follower takes it there.
+  // The person's own send, as ChatView's: judged in the update that makes its
+  // message a row, or — a crew thread's — before the engine has written it.
   const sent = useCallback(() => {
-    const current = followRef.current;
-    const following = current.enabled && current.atEnd;
-    judge("sent", () => ({
-      atEnd: true,
-      enabled: nextTimelineFollow(current.enabled, { type: "sent", byPerson: true }),
-    }));
+    if (!nextTimelineFollow(state.current.following, { type: "sent", byPerson: true })) return;
+    cancelPositionRestoreRef.current?.();
+    const following = state.current.atEnd && state.current.mode === "following-end";
+    state.current = { following: true, atEnd: true, mode: "following-end" };
+    say("sent", true);
     if (following) return;
     requestAnimationFrame(() => void listRef.current?.scrollToEnd({ animated: false }));
-  }, [judge, listRef]);
-  return { follow, logRef, onIsAtEndChange, onManualNavigation, onPersonInput, sent };
+  }, [listRef, say]);
+  return {
+    enabled,
+    logRef,
+    cancelPositionRestoreRef,
+    onIsAtEndChange,
+    onManualNavigation,
+    onPersonInput,
+    sent,
+  };
+}
+
+/**
+ * `?left`: the conversation was left mid-read, a row since gone at its reading
+ * line — it opens where that leaves it, at its end, and does not follow; or
+ * `?leftrow`, a row it still has.
+ */
+function rememberLeftMidRead(routeThreadKey: string) {
+  if (!LEFT) return;
+  rememberTimelinePosition(routeThreadKey, {
+    rowId: params.get("leftrow") ?? "row-since-gone",
+    offsetWithinRow: 0,
+    rowHeight: 0,
+    cardTopId: null,
+    previousRowId: null,
+    atEnd: false,
+  });
 }
 
 function Pane() {
-  const [seconds, restart, jump] = useRunClock();
   const [epoch, setEpoch] = useState(0);
   // A resync: the thread catches up while `syncing`, then settles.
   const [syncing, setSyncing] = useState(false);
   const listRef = useRef<LegendListRef | null>(null);
-  const { follow, logRef, onIsAtEndChange, onManualNavigation, onPersonInput, sent } =
-    useFollow(listRef);
+  const routeThreadKey = `${ENVIRONMENT}:live-${epoch}`;
+  const {
+    enabled: follows,
+    logRef,
+    cancelPositionRestoreRef,
+    onIsAtEndChange,
+    onManualNavigation,
+    onPersonInput,
+    sent,
+  } = useFollow(listRef, routeThreadKey);
+  const [seconds, restart, jump] = useRunClock(sent);
   useEffect(() => {
     (window as unknown as { __liveHarness: unknown }).__liveHarness = {
       restart: () => {
-        setEpoch((current) => current + 1);
+        rememberLeftMidRead(`${ENVIRONMENT}:live-${epoch + 1}`);
+        setEpoch(epoch + 1);
         restart();
       },
       seconds: () => seconds,
@@ -1007,20 +1139,17 @@ function Pane() {
         jump(to);
         setTimeout(() => setSyncing(false), 300);
       },
-      follows: () => follow.enabled,
+      follows: () => follows,
       followLog: () => logRef.current,
     };
-  }, [follow.enabled, jump, logRef, restart, seconds]);
+  }, [epoch, follows, jump, logRef, restart, seconds]);
   const step = Math.floor(seconds * 20) / 20;
   // The person's send: until then the conversation rests under a finished run.
   const asked = RUN.sendAt === undefined || step >= RUN.sendAt;
-  const askedRef = useRef(asked);
-  useEffect(() => {
-    if (asked && !askedRef.current) sent();
-    askedRef.current = asked;
-  }, [asked, sent]);
-  // The draft the person sends stands in the composer until it goes.
-  const composerHeight = COMPOSER_HEIGHT + (asked ? 0 : DRAFT);
+  // The draft the person sends: typed half-way to the send, it stands in the
+  // composer until it goes.
+  const composerHeight =
+    COMPOSER_HEIGHT + (SENT_AT !== undefined && step >= SENT_AT / 2 && step < SENT_AT ? DRAFT : 0);
   // The run before the send, watched: it works until its answer has landed.
   const beforeWorks = !asked && WATCHED && step < BEFORE_END;
   const ended = !beforeWorks && (!asked || (step >= RUN.end && RUN.interrupt === undefined));
@@ -1064,7 +1193,6 @@ function Pane() {
       }),
     [entries, ended, runningTurnId],
   );
-  const routeThreadKey = `${ENVIRONMENT}:live-${epoch}`;
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -1098,7 +1226,8 @@ function Pane() {
             anchorMessageId: null,
             onAnchorReady: () => undefined,
             contentInsetEndAdjustment: composerHeight,
-            liveFollowEnabled: follow.enabled,
+            liveFollowEnabled: follows,
+            cancelPositionRestoreRef,
             onIsAtEndChange,
             onPersonInput,
             onManualNavigation,
@@ -1183,6 +1312,8 @@ function Standins({ children }: { readonly children: ReactNode }) {
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 document.documentElement.classList.toggle("dark", appearance === "dark");
 applyThemePalette(ZEROPS_THEME_ID, appearance);
+
+rememberLeftMidRead(`${ENVIRONMENT}:live-0`);
 
 const host = document.getElementById("design");
 if (host) {
