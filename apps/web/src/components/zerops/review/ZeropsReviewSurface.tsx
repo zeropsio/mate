@@ -145,6 +145,8 @@ export interface ZeropsReviewSurfaceProps {
   readonly children?: ReactNode;
   /** The foot's note, under the buttons: what happens next, or why the button is held. */
   readonly consequence: string;
+  /** The note that will stand once what is loading has loaded: the foot keeps its room. */
+  readonly consequenceRoom?: string | undefined;
   /** The note's tone where it says why the button is held, or what stopped. */
   readonly consequenceTone?: "attention" | "failed" | undefined;
   /** A press in the note: "Review again", "Roll back to v0.1.3…". */
@@ -200,6 +202,7 @@ export function ZeropsReviewSurface({
   fix,
   children,
   consequence,
+  consequenceRoom,
   consequenceTone,
   noteAction,
   dismiss,
@@ -401,8 +404,17 @@ export function ZeropsReviewSurface({
             )}
           </div>
           {consequence === "" && noteAction === undefined ? null : (
-            <p className="rv-conseq" data-tone={consequenceTone}>
+            <p
+              className="rv-conseq"
+              data-room={consequenceRoom === undefined ? undefined : ""}
+              data-tone={consequenceTone}
+            >
               {consequence === "" ? null : <span>{consequence}</span>}
+              {consequenceRoom === undefined ? null : (
+                <span aria-hidden="true" className="rv-conseq-room">
+                  {consequenceRoom}
+                </span>
+              )}
               {noteAction === undefined ? null : (
                 <InlineButton
                   data-review-note-action=""

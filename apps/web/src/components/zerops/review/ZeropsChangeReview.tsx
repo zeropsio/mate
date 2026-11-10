@@ -885,6 +885,18 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                 recipe: pull.kind === "recipe",
               })
       }
+      consequenceRoom={
+        question !== undefined || model.consequenceRoom === undefined
+          ? undefined
+          : mergeFoot({
+              state: model.verdict.state,
+              consequence: model.consequenceRoom,
+              stages: props.stages ?? NO_STAGES,
+              live: props.live,
+              warning: receipt?.warning,
+              recipe: pull.kind === "recipe",
+            })
+      }
       // Beside the one button the quiet way out stands where a release's Cancel does, and leaves
       // the change open; with nothing to press, × closes the sheet.
       dismiss={

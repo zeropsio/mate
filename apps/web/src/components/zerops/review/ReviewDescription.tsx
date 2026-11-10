@@ -76,7 +76,31 @@ export function ReviewDescription({
   readonly onOpenRun: (() => void) | undefined;
 }) {
   const shown = reviewDescription({ description, reading });
-  if (shown.kind === "none") return null;
+  // A description that was read for and turned out not to exist folds shut: what stood under its
+  // lines glides up into their place, never jumps.
+  const [was, setWas] = useState(shown.kind);
+  const [leaving, setLeaving] = useState(false);
+  if (was !== shown.kind) {
+    setWas(shown.kind);
+    setLeaving(was === "reading" && shown.kind === "none");
+  }
+  if (shown.kind === "none") {
+    return leaving ? (
+      <div
+        aria-hidden="true"
+        className="rv-what-leaves"
+        onAnimationEnd={() => {
+          setLeaving(false);
+        }}
+      >
+        <ReviewSection title={WHAT_IT_DOES}>
+          <div className="rv-what">
+            <ReviewSkeleton lines={2} />
+          </div>
+        </ReviewSection>
+      </div>
+    ) : null;
+  }
   return (
     <ReviewSection
       aside={

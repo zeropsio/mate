@@ -9182,6 +9182,39 @@ label.tm-advanced-row:not([data-disabled]) {
   line-height: 20px;
   background: color-mix(in oklab, var(--foreground) 4%, transparent);
 }
+/* A description read for that does not exist: its lines fold shut and take the gap under them
+   along, so the sections below glide up. The fold's height is its two lines and their label. */
+.rv-what-leaves {
+  overflow: hidden;
+  animation: rv-what-leaves 200ms var(--ease-out-strong) forwards;
+}
+/* A grid's gap cannot close with its row: the section after it takes the gap back instead. */
+.rv-what-leaves + * {
+  animation: rv-what-gap 200ms var(--ease-out-strong) forwards;
+}
+@keyframes rv-what-leaves {
+  from {
+    height: 90px;
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+@keyframes rv-what-gap {
+  to {
+    margin-top: -24px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rv-what-leaves {
+    animation-duration: 1ms;
+  }
+  .rv-what-leaves + * {
+    animation-duration: 1ms;
+  }
+}
 /* Try it: the Mate's preview, a soft pill that opens a tab. */
 .rv-try {
   display: inline-flex;
@@ -12826,6 +12859,17 @@ a.message-file:focus-visible {
   color: var(--muted-foreground);
   font-variant-numeric: tabular-nums;
   text-wrap: pretty;
+}
+/* A note still to come keeps the room of the one that will stand, under the words that say it is
+   loading: the buttons over it never move when it arrives. */
+.rv-conseq[data-room] {
+  display: grid;
+}
+.rv-conseq[data-room] > * {
+  grid-area: 1 / 1;
+}
+.rv-conseq-room {
+  visibility: hidden;
 }
 .rv-conseq[data-tone="attention"] {
   color: var(--zerops-status-attention-text);
