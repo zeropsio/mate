@@ -9,7 +9,6 @@ import {
   glideStep,
   keepsFoot,
   movesAsPerson,
-  spendStep,
   glidesTo,
 } from "./runMotion.logic";
 
@@ -192,7 +191,6 @@ describe("movesAsPerson", () => {
 describe("keepsFoot", () => {
   const at = {
     follows: true,
-    heldAbove: false,
     grew: false,
     below: true,
     eases: true,
@@ -201,7 +199,6 @@ describe("keepsFoot", () => {
   };
   it.each([
     { what: "scrolled up by the person", given: { follows: false }, keeps: "stays" },
-    { what: "the card around it easing taller", given: { heldAbove: true }, keeps: "waits" },
     {
       what: "a line landing whose room eases in",
       given: { grew: true, roomEases: true },
@@ -233,70 +230,6 @@ describe("keepsFoot", () => {
   ] as const)("$what: it $keeps", ({ given, keeps }) => {
     expect(keepsFoot({ ...at, ...given })).toBe(keeps);
   });
-});
-
-// Two eases in one card — a landed line's room and the slot squeezing the
-// history — each took their own 32 px a frame, and moved the history up to
-// 53 px in one (the p43 review): eases the same way share one speed a frame.
-// A landing's two halves — the history growing by what the slot gives —
-// move on one curve each, so the card's height stays (the p43 verification:
-// one budget for both grew the card 50 px and shrank it back).
-describe("spendStep", () => {
-  it.each([
-    { what: "one ease alone", steps: [[1000, 20]], taken: [20] },
-    { what: "one ease past the frame's speed", steps: [[1000, 45]], taken: [32] },
-    {
-      what: "two eases growing in one frame",
-      steps: [
-        [1000, 30],
-        [1000, 30],
-      ],
-      taken: [30, 2],
-    },
-    {
-      what: "two eases shrinking in one frame",
-      steps: [
-        [1000, -30],
-        [1000, -30],
-      ],
-      taken: [-30, -2],
-    },
-    {
-      what: "a landing: one grows by what the other gives",
-      steps: [
-        [1000, 30],
-        [1000, -30],
-      ],
-      taken: [30, -30],
-    },
-    {
-      what: "a new frame has its speed again",
-      steps: [
-        [1000, 30],
-        [1020, 30],
-      ],
-      taken: [30, 30],
-    },
-  ])("$what", ({ steps, taken }) => {
-    const budget = { at: -1, grow: 0, shrink: 0 };
-    expect(steps.map(([now, step]) => spendStep(budget, now!, 20, step!))).toEqual(taken);
-  });
-
-  it("lets a frame long gone stand at its target", () => {
-    const budget = { at: -1, grow: 0, shrink: 0 };
-    expect(spendStep(budget, 1000, 250, 400, true)).toBe(400);
-  });
-
-  it.each([250, 500, 2000])(
-    "eases share the speed cap in a visible frame delayed by %s ms",
-    (dt) => {
-      const budget = { at: -1, grow: 0, shrink: 0 };
-      expect(
-        [spendStep(budget, 1000, dt, 400), spendStep(budget, 1000, dt, 200)],
-        "ASSERTION: visible late eases spend one frame's speed",
-      ).toEqual([32, 0]);
-    },
-  );
 });
 
 // A glide to the foot chased a foot the history's ease kept moving, and hid

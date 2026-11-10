@@ -2,10 +2,18 @@
  * Boxes in a run's card whose height eases to what they hold (pass 39): the
  * history's scroll as lines join it, the live slot as its rows come and go, a
  * bubble or a card of calls as what it holds grows. What a box holds is laid
- * out at once; a shrinking box shows its previous height and eases from
- * there on `approach`'s curve when shrinking, retargeted as its content box
- * changes. Growth takes its natural height immediately: an older held height
- * would clip pixels already laid out while streaming or decoding.
+ * out at once; the box shows the height it showed before and travels from
+ * there to its own (`runTravel`), shrinking or growing alike — one mechanism
+ * for both: growing at once while only a shrink eased took the card's bottom
+ * edge 112 px down and 45 back (2026-11-10). A change of its target mid-way
+ * sets off again from where it stands. Inside the box nothing moves: what grew
+ * is uncovered at its foot, and what stands under the box rides its edge,
+ * because the layout carries it.
+ *
+ * Only a change the page's code made grows a box by a travel, and only a box
+ * its rooms say `grows`: what grows with no code of the page's — a picture's
+ * bytes decoding, a font, the window — takes its height at once, so pixels
+ * already laid out are never clipped by an older height.
  *
  * A change is heard as the page's code makes it, before the browser lays the
  * page out (a MutationObserver), so the box takes its old height before any
@@ -19,13 +27,8 @@
  */
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
-import {
-  type EaseBudget,
-  PERSON_INPUT_MS,
-  ROOM_TAU_MS,
-  approach,
-  spendStep,
-} from "./runMotion.logic";
+import { PERSON_INPUT_MS, SETTLED_PX } from "./runMotion.logic";
+import { type Travel, type Travels, createTravels } from "./runTravel";
 
 export interface Rooms {
   /**
@@ -55,6 +58,19 @@ export interface Rooms {
 
 /** Said on a box while it holds a height of its own: what it holds is read without it. */
 const EASING = "data-room-easing";
+
+/**
+ * The boxes holding a height this moment, of every set of rooms: a box's own
+ * height is read with the ones around it let go (`natural`), found here and
+ * never by walking a card a long run fills with thousands of rows.
+ */
+const holding = new Set<HTMLElement>();
+
+/**
+ * The root of every set of rooms, as its box: a box of another set easing
+ * inside it or beside it moves it between two of its own readings (`follows`).
+ */
+const roots = new Set<Box>();
 
 /**
  * Where each run's scroll last stood, as its own code put it or read it
@@ -170,8 +186,13 @@ interface Box {
   readonly element: HTMLElement;
   readonly clips: boolean;
   readonly content: Set<Element>;
+  /** Whether a change the page's code made grows it by a travel, as one shrinks it. */
+  readonly grows: boolean;
   /** The height it shows while it eases; null: its own. */
   shown: number | null;
+  /** Where the ease in flight set off from, and the travel it goes by. */
+  from: number;
+  travel: Travel | null;
   target: number;
   /** Its height as last laid out at rest: where an ease starts. */
   rested: number;
@@ -188,7 +209,9 @@ export function easeRooms({
   eases,
   rootClips = false,
   attributes = [],
-  budget = null,
+  grows = () => false,
+  travels = createTravels(),
+  afterStep,
 }: {
   /** A box itself, and what holds the others. */
   readonly root: HTMLElement;
@@ -199,8 +222,19 @@ export function easeRooms({
   readonly rootClips?: boolean;
   /** Attributes of what it holds that change its height, besides a class, `hidden` and `open`. */
   readonly attributes?: ReadonlyArray<string>;
-  /** The speed a frame gives the eases of its card together (`spendStep`). */
-  readonly budget?: EaseBudget | null;
+  /**
+   * The boxes that grow by a travel as they shrink by one: where what grew is
+   * to be uncovered at the box's foot. Elsewhere growth takes its room at once.
+   */
+  readonly grows?: (element: HTMLElement) => boolean;
+  /** The travels of its card (`runTravel`): the boxes of every set a draw changes go by one. */
+  readonly travels?: Travels;
+  /**
+   * Called in each frame once its boxes show their heights, before anything
+   * else reads the page: a scroll keeps to its foot in the frame its room
+   * changed, never the next.
+   */
+  readonly afterStep?: () => void;
 }): Rooms {
   if (
     typeof ResizeObserver === "undefined" ||
@@ -214,33 +248,37 @@ export function easeRooms({
   const boxes = new Map<Node, Box>();
   const contentBoxes = new Map<Element, Set<Box>>();
   let frame = 0;
-  let last = 0;
   const heightOf = (element: HTMLElement) => element.getBoundingClientRect().height;
   const show = (box: Box, height: number | null) => {
     box.shown = height;
     box.element.style.height = height === null ? "" : `${height}px`;
     if (box.clips) box.element.style.clipPath = height === null ? "" : CLIP_BELOW;
     box.element.toggleAttribute(EASING, height !== null);
+    if (height === null) {
+      holding.delete(box.element);
+      box.travel = null;
+    } else holding.add(box.element);
   };
   /**
    * The box's height as laid out with what it holds, the boxes inside it as
-   * they show — and the boxes holding it, of any set, let go for the reading,
-   * so a height they hold for a moment never squeezes it.
+   * they show — and every other box of its card that holds a height, of any
+   * set, let go for the reading: the ones holding it never squeeze it, and
+   * the ones beside it stand as they will once they have eased, so the
+   * history reads the room the slot is giving it before either has moved.
    */
   const natural = (box: Box) => {
+    const card = cardOf(box.element);
     // Read before any height is let go: the reading lays the card out
     // without them for a moment, and the browser clamps its scrolls to that.
-    const tops = scrollsIn(cardOf(box.element)).map(
-      (scroll) => [scroll, scroll.scrollTop] as const,
-    );
+    const tops = scrollsIn(card).map((scroll) => [scroll, scroll.scrollTop] as const);
     const held: Array<readonly [HTMLElement, string]> = [];
-    for (
-      let holder = box.element.parentElement?.closest<HTMLElement>(`[${EASING}]`) ?? null;
-      holder !== null;
-      holder = holder.parentElement?.closest<HTMLElement>(`[${EASING}]`) ?? null
-    ) {
-      held.push([holder, holder.style.height]);
-      holder.style.height = "";
+    for (const holder of holding) {
+      if (holder === box.element || box.element.contains(holder)) continue;
+      if (!holder.isConnected) holding.delete(holder);
+      else if (card.contains(holder)) {
+        held.push([holder, holder.style.height]);
+        holder.style.height = "";
+      }
     }
     const own = box.element.style.height;
     box.element.style.height = "";
@@ -253,7 +291,6 @@ export function easeRooms({
     // history stopped following). Not while the person moves it — a write
     // cuts a smooth scroll of theirs short (PageUp, a wheel's tick), and the
     // clamp is then read with their move.
-    const card = cardOf(box.element);
     for (const [scroll, top] of tops) {
       if (scroll.scrollTop !== top && !personActedWithin(PERSON_INPUT_MS, card)) {
         scroll.scrollTop = top;
@@ -280,32 +317,23 @@ export function easeRooms({
     frame = 0;
     if (away()) {
       for (const box of boxes.values()) if (box.shown !== null) letGo(box);
-      last = 0;
       return;
     }
-    const dt = last === 0 ? 1000 / 60 : now - last;
-    last = now;
     let easing = false;
+    const stepped: Box[] = [];
     for (const box of boxes.values()) {
-      if (box.shown === null) continue;
+      if (box.shown === null || box.travel === null) continue;
+      stepped.push(box);
       if (!eases() || prefersReducedMotion()) {
         release(box);
         continue;
       }
       // What it holds may have moved on since (a box inside it easing, a
-      // height animated in it): it eases to that.
+      // height animated in it): it travels to that, by the same share.
       box.target = natural(box);
-      // Growth takes its natural size now; holding an older height clips already laid-out content.
-      if (box.target >= box.shown) {
-        release(box);
-        continue;
-      }
-      const eased = approach(box.shown, box.target, dt, ROOM_TAU_MS);
-      // What is left of the frame's speed, shared with the card's other eases.
-      const taken =
-        budget === null ? eased - box.shown : spendStep(budget, now, dt, eased - box.shown);
-      const next = taken === box.target - box.shown ? box.target : box.shown + taken;
-      if (next === box.target) {
+      const share = box.travel.progress(now);
+      const next = box.from + (box.target - box.from) * share;
+      if (share >= 1 || Math.abs(box.target - next) < SETTLED_PX) {
         release(box);
       } else {
         show(box, next);
@@ -313,10 +341,39 @@ export function easeRooms({
       }
     }
     if (easing) frame = requestAnimationFrame(step);
-    else last = 0;
+    if (stepped.length > 0) follows(stepped);
+    afterStep?.();
   };
-  /** What `box` holds changed: it eases from what it showed to its new height. */
-  const heard = (box: Box) => {
+  /**
+   * The boxes at rest that the ones just shown moved — the ones holding them,
+   * and the roots of the card's other sets, squeezed or carried beside them —
+   * stand as laid out now: a change heard before the frame is over (a draw
+   * made in it) is told against this, never read as theirs. A card growing
+   * by its history's travel held the height of the frame before, and its
+   * slot stood 19 px past its edge.
+   */
+  const follows = (stepped: ReadonlyArray<Box>) => {
+    for (const box of stepped) {
+      for (let node = box.element.parentNode; node !== null; node = node.parentNode) {
+        const holder = boxes.get(node);
+        if (holder !== undefined && holder.shown === null) {
+          holder.rested = heightOf(holder.element);
+        }
+        if (node === root) break;
+      }
+    }
+    const card = cardOf(root);
+    for (const other of roots) {
+      if (other.shown === null && other.element !== root && card.contains(other.element)) {
+        other.rested = heightOf(other.element);
+      }
+    }
+  };
+  /**
+   * What `box` holds changed — by the page's code (`coded`), or with none of
+   * it, its size alone: it travels from what it showed to its new height.
+   */
+  const heard = (box: Box, coded: boolean) => {
     if (box.stale) {
       // What it showed while nobody saw it is not known: it is simply there.
       box.stale = false;
@@ -325,19 +382,44 @@ export function easeRooms({
       return;
     }
     const height = natural(box);
-    if (height >= (box.shown ?? box.rested) || !eases() || prefersReducedMotion() || outOfSight()) {
+    if (box.shown !== null && !coded) {
+      // Easing shut, and what it holds outgrew the height it shows with no
+      // code of the page's (a picture decoding): it takes its room now.
+      if (height > box.shown && box.target < box.from) release(box);
+      // Else what it holds moving on (a box inside it easing, a height
+      // animated in it) is read in its next frame, and it goes on by the
+      // travel it set off with.
+      return;
+    }
+    const from = box.shown ?? box.rested;
+    // Growth nothing of the page's code made, or of a box that is not to be
+    // uncovered, takes its room now: holding an older height clips what is
+    // already laid out.
+    const atOnce = height > from && !(coded && box.grows && !animatesInside(box.element));
+    if (atOnce || !eases() || prefersReducedMotion() || outOfSight()) {
       if (box.shown !== null) release(box);
       else box.rested = height;
       return;
     }
-    const from = box.shown ?? box.rested;
-    if (Math.abs(height - from) < 1) {
-      if (box.shown === null) box.rested = height;
+    if (box.shown !== null) {
+      // The same way it is going already.
+      if (Math.abs(height - box.target) < SETTLED_PX) return;
+      // Its new height is the one it stands at: it is there.
+      if (Math.abs(height - from) < 1) {
+        release(box);
+        return;
+      }
+    } else if (Math.abs(height - from) < 1) {
+      box.rested = height;
       return;
     }
+    box.from = from;
     box.target = height;
-    // A shrink starts from the height it showed before the content changed.
-    if (box.shown === null) show(box, from);
+    const travel = travels.current();
+    travel.reach(height - from);
+    // It sets off from the height it showed before what it holds changed.
+    show(box, from);
+    box.travel = travel;
     if (frame === 0) frame = requestAnimationFrame(step);
   };
   // Observe what each box holds, whose natural size still changes while the box holds a height.
@@ -353,7 +435,7 @@ export function easeRooms({
       return;
     }
     for (const box of [...touched].sort((a, b) => depthOf(b.element) - depthOf(a.element)))
-      heard(box);
+      heard(box, false);
   });
   const watchContent = (box: Box) => {
     for (const content of box.content) {
@@ -381,7 +463,10 @@ export function easeRooms({
       element,
       clips,
       content: new Set(),
+      grows: grows(element),
       shown: null,
+      from: 0,
+      travel: null,
       target: 0,
       rested: heightOf(element),
       stale: false,
@@ -437,7 +522,7 @@ export function easeRooms({
     // and what the boxes clamp taking it back while another set's do not yet
     // hold theirs (the history's lines held before the slot's room).
     const stood = order.length > 0 ? markClamps(cardOf(root)) : [];
-    for (const box of order) heard(box);
+    for (const box of order) heard(box, true);
     clampedSince(stood);
     // Once every set has heard it (the observers' turn ends first).
     if (order.length > 0) queueMicrotask(() => unclamp(root));
@@ -452,6 +537,7 @@ export function easeRooms({
   });
   root.setAttribute(ROOM_ROOT, "");
   const rootBox = boxes.get(root)!;
+  roots.add(rootBox);
   return {
     pending: () => {
       let pending = rootBox.shown === null ? 0 : rootBox.target - rootBox.shown;
@@ -472,7 +558,7 @@ export function easeRooms({
       const box = boxes.get(element)!;
       if (box.shown !== null) return;
       box.rested = height;
-      heard(box);
+      heard(box, true);
     },
     easing: () => frame !== 0,
     flush: () => {
@@ -484,14 +570,33 @@ export function easeRooms({
     },
     stop: () => {
       root.removeAttribute(ROOM_ROOT);
+      roots.delete(rootBox);
       changes.disconnect();
       sizes.disconnect();
       cancelAnimationFrame(frame);
+      frame = 0;
       for (const box of boxes.values()) if (box.shown !== null) show(box, null);
       boxes.clear();
       contentBoxes.clear();
     },
   };
+}
+
+/**
+ * Whether a height the page animates inside `element` plays this moment (a
+ * burst of words gliding their box open): the box follows it as laid out,
+ * frame by frame — a travel of its own on top would hide the newest words
+ * under an older height until it caught up.
+ */
+function animatesInside(element: HTMLElement): boolean {
+  if (typeof element.getAnimations !== "function") return false;
+  return element.getAnimations({ subtree: true }).some((animation) => {
+    const effect = animation.effect;
+    if (animation.playState !== "running" || !(effect instanceof KeyframeEffect)) return false;
+    return (
+      effect.target !== element && effect.getKeyframes().some((keyframe) => "height" in keyframe)
+    );
+  });
 }
 
 function depthOf(element: Element): number {

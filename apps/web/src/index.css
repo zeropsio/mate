@@ -9784,6 +9784,13 @@ label.tm-advanced-row:not([data-disabled]) {
   min-height: 0;
   flex: 0 1 auto;
 }
+/* The card holding an older height while its bottom edge travels to a taller
+   one (`runRoom`): what it holds stands as laid out and is uncovered at that
+   edge, never squeezed into the older height — the history arriving with its
+   first line kept that line where it stood in the slot. */
+[data-run-chat][data-run-live][data-room-easing] > .run-above {
+  flex-shrink: 0;
+}
 [data-run-chat][data-run-live] > .run-slot {
   flex: none;
 }
