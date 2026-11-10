@@ -10,7 +10,14 @@ import { randomUUID } from "~/lib/utils";
  * one piece of state this layer needs that isn't derivable from props), and
  * attaches the `ZeropsBuildLog` node when there is a build to show one for.
  */
-import { createElement, useContext, useEffect, useState, type ReactElement } from "react";
+import {
+  createContext,
+  createElement,
+  useContext,
+  useEffect,
+  useState,
+  type ReactElement,
+} from "react";
 
 import type { ObservedKind } from "@t3tools/client-runtime/zerops/activity/attribution";
 import { type BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
@@ -519,6 +526,26 @@ export function useOperationCard(
   logDialog?: LogDialogState,
   readsLog = true,
   threadId: string | null = null,
+): OperationCardRegions {
+  const handed = useContext(HandedOperationCardContext);
+  const read = useReadOperationCard(operation, environmentId, logDialog, readsLog, threadId);
+  return handed?.(operation) ?? read;
+}
+
+/**
+ * What a card read of the platform, handed in where nothing can be read: a design harness draws
+ * a deploy's steps, the way to its log and its address from made-up data. Null in the app.
+ */
+export const HandedOperationCardContext = createContext<
+  ((operation: ZeropsOperation) => OperationCardRegions | undefined) | null
+>(null);
+
+function useReadOperationCard(
+  operation: ZeropsOperation,
+  environmentId: EnvironmentId | null,
+  logDialog: LogDialogState | undefined,
+  readsLog: boolean,
+  threadId: string | null,
 ): OperationCardRegions {
   const operations = useContext(AccountOperationsContext);
   const account = useAccountDataOptional();

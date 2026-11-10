@@ -63,11 +63,20 @@ import type { LegendListRef } from "@legendapp/list/react";
 import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import type {
+  PipelineReadout,
+  PipelineStepId,
+} from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import {
   standupReadingOf,
   type StandupReading,
 } from "@t3tools/client-runtime/zerops/activity/standupReading";
 import { StandupReadings } from "~/zerops/activity/useStandupReading";
+import {
+  HandedOperationCardContext,
+  type OperationCardRegions,
+} from "~/zerops/activity/useOperationCard";
+import { ZeropsBuildLog } from "~/components/zerops/ZeropsBuildLog";
 
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
@@ -178,6 +187,10 @@ type Item =
       readonly end: number;
       readonly subject: string;
       readonly stages: ReadonlyArray<readonly [string, number, number]>;
+      /** A deploy's pipeline as its card reads it of the platform: each step, from when to when. */
+      readonly pipeline?: ReadonlyArray<readonly [PipelineStepId, number, number]>;
+      /** Where what it deployed answers, once it is out. */
+      readonly address?: string;
     }
   | {
       readonly id: string;
@@ -391,6 +404,47 @@ const LONG: Run = {
   write: 28,
   end: 30,
   answer: "Tidied thirty routes.",
+};
+
+/**
+ * A deploy at the platform's own pace, then a command: `at=120` stands on its build in the working
+ * row, `at=300` on its line in the log, which opens onto its steps, the way to its log and where
+ * it answers.
+ */
+const DEPLOY: Run = {
+  ask: "Put the fix on stage and check it.",
+  items: [
+    { id: "n1", kind: "note", start: 1, text: "Deploying the fix to shopstage now." },
+    {
+      id: "d1",
+      kind: "deploy",
+      start: 2,
+      returns: 289,
+      end: 289,
+      subject: "shopstage",
+      stages: [
+        ["Building", 2, 232],
+        ["Deploying", 232, 289],
+      ],
+      pipeline: [
+        ["INIT_BUILD_CONTAINER", 8, 22],
+        ["RUN_BUILD_COMMANDS", 22, 238],
+        ["DEPLOY", 238, 289],
+      ],
+      address: "shopstage-39ae-3000.example.app",
+    },
+    {
+      id: "c1",
+      kind: "command",
+      start: 291,
+      end: 900,
+      words: "Run the smoke tests on shopstage",
+      code: 'ssh shopstage "cd /var/www && npm run smoke"',
+    },
+  ],
+  write: 905,
+  end: 910,
+  answer: "The fix is on stage and the smoke tests pass.",
 };
 
 /** Two edits in a row, then a command: the second folds into the first once it lands. */
@@ -1047,6 +1101,7 @@ const RUN: Run =
     standing: STANDING,
     long: LONG,
     edits: EDITS,
+    deploy: DEPLOY,
     cards: CARDS,
     interrupt: INTERRUPT,
     smooth: SMOOTH,
@@ -1130,10 +1185,87 @@ function callEntry(
   });
 }
 
+/** The run's second the operations were last drawn at: what a deploy's handed pipeline stands at. */
+let drawnAt = START_AT;
+
+const PIPELINE_LABEL = {
+  INIT_BUILD_CONTAINER: "Build container",
+  RUN_BUILD_COMMANDS: "Build",
+  INIT_PREPARE_CONTAINER: "Prepare container",
+  RUN_PREPARE_COMMANDS: "Prepare runtime",
+  DEPLOY: "Deploy",
+} as const;
+
+const BUILD_LOG = [
+  "npm ci",
+  "added 412 packages in 38s",
+  "npm run build",
+  "vite v7.1.4 building for production...",
+  "✓ 1284 modules transformed.",
+  "✓ built in 2m 41s",
+].map((text, index) => ({ id: `log-${index}`, at: iso(30 + index * 30), text, severity: 6 }));
+
+/** The way to a handed deploy's build log: its dialog's state is its own. */
+function HandedBuildLog({
+  running,
+  subject,
+}: {
+  readonly running: boolean;
+  readonly subject: string;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <ZeropsBuildLog
+      lines={BUILD_LOG}
+      onToggle={() => setOpen(!open)}
+      open={open}
+      stands={!running}
+      status={running ? "live" : "ended"}
+      subject={subject}
+    />
+  );
+}
+
+/** What a deploy's card read of the platform, made up: its pipeline at the run's second, its log. */
+function handedOperationCard(operation: ZeropsOperation): OperationCardRegions | undefined {
+  const item = RUN.items.find((candidate) => `op:${candidate.id}` === operation.key);
+  if (item === undefined || item.kind !== "deploy" || item.pipeline === undefined) return undefined;
+  const t = drawnAt;
+  const steps = item.pipeline.map(([id, from, to]) => {
+    const state = t >= to ? "finished" : t >= from ? "running" : "waiting";
+    return {
+      id,
+      label: PIPELINE_LABEL[id],
+      state,
+      sentence: PIPELINE_LABEL[id],
+      ...(state === "waiting"
+        ? {}
+        : { durationMs: (Math.min(t, to) - from) * 1000, startedAt: iso(from) }),
+    } as const;
+  });
+  const running = t < item.end;
+  const pipeline: PipelineReadout = {
+    status: running ? { tone: "running", word: "Running" } : { tone: "finished", word: "Finished" },
+    calculating: false,
+    steps,
+  };
+  const built = steps.some((step) => step.id === "RUN_BUILD_COMMANDS" && step.state !== "waiting");
+  return {
+    observed: {
+      steps: [],
+      chips: [],
+      provenance: "",
+      pipeline,
+      ...(built ? { log: <HandedBuildLog running={running} subject={item.subject} /> } : {}),
+    },
+  };
+}
+
 function operationEntry(
   item: Extract<Item, { kind: "deploy" | "standup" | "browser" }>,
   t: number,
 ) {
+  drawnAt = t;
   const settled = t >= item.end;
   const returned = item.kind === "browser" ? settled : t >= item.returns;
   const steps =
@@ -1174,7 +1306,10 @@ function operationEntry(
           : "Checked"
       : "Working",
     steps,
-    links: [],
+    links:
+      item.kind === "deploy" && settled && item.address !== undefined
+        ? [{ label: item.address, url: `https://${item.address}` }]
+        : [],
     callIds: [`call-${item.id}`],
     target: { hostname: item.kind === "browser" ? "appdev" : subject },
     hasResult: returned,
@@ -1825,7 +1960,9 @@ if (host) {
   createRoot(host).render(
     <StrictMode>
       <Standins>
-        <Harness />
+        <HandedOperationCardContext value={handedOperationCard}>
+          <Harness />
+        </HandedOperationCardContext>
       </Standins>
     </StrictMode>,
   );
