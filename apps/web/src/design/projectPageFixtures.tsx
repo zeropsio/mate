@@ -99,8 +99,55 @@ function environment(
   } as EnvironmentRow;
 }
 
+/** The crowded line's Mates (`?page=line-crowd`): twelve, their tints repeating. */
+export const CROWD_MATES: ReadonlyArray<{
+  readonly id: string;
+  readonly name: string;
+  readonly tint: MateTintId;
+}> = [
+  { id: "wren-x", name: "Wren", tint: "amber" },
+  { id: "odo-x", name: "Odo", tint: "slate" },
+  { id: "raya-x", name: "Raya", tint: "olive" },
+  { id: "tess-x", name: "Tess", tint: "rose" },
+  { id: "vale-x", name: "Vale", tint: "sky" },
+  { id: "juno-x", name: "Juno", tint: "violet" },
+  { id: "fen-x", name: "Fen", tint: "coral" },
+  { id: "ines-x", name: "Ines", tint: "sand" },
+  { id: "mira-x", name: "Mira", tint: "olive" },
+  { id: "kai-x", name: "Kai", tint: "sky" },
+  { id: "pia-x", name: "Pia", tint: "rose" },
+  { id: "toby-x", name: "Toby", tint: "amber" },
+];
+
+const CROWD_TOPICS = [
+  "Search",
+  "Checkout",
+  "The wishlist",
+  "A gift card",
+  "Each tea card",
+  "Delivery",
+  "A review",
+  "Stock",
+  "A subscription",
+  "An account",
+  "Every price",
+  "Each image",
+];
+const CROWD_WORK = [
+  "loads faster on a slow connection",
+  "remembers the last choice",
+  "reads well on a phone",
+  "says why it failed",
+  "keeps its place on reload",
+];
+
+/** The crowded line's sixty changes, by number: #1–#34 merged, #35–#60 open. */
+export const crowdTitle = (number: number) =>
+  `${CROWD_TOPICS[number % CROWD_TOPICS.length] ?? ""} ${CROWD_WORK[number % CROWD_WORK.length] ?? ""}`;
+
 /** Every Mate a page's History names, as the harness's cards draw them. */
 const MATES: Readonly<Record<string, { readonly name: string; readonly tint: MateTintId }>> = {
+  ...Object.fromEntries(CROWD_MATES.map((mate) => [mate.id, mate])),
   "raya-t": { name: "Raya", tint: "olive" },
   "wren-t": { name: "Wren", tint: "amber" },
   odo: { name: "Odo", tint: "slate" },
@@ -310,7 +357,7 @@ const stageRuns = (runs: string, deploying: ReadonlyArray<string> = []): CardSta
 
 /**
  * The line's states: calm with a stage; stuck on a release that did not go live; ten times the
- * activity; not live yet; live without a stage.
+ * activity; sixty changes from twelve Mates; not live yet; live without a stage.
  */
 const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
   "line-calm": {
@@ -369,6 +416,25 @@ const LINE_INPUTS: Readonly<Record<string, LineInput>> = {
       lineRepo("shop", "acme/tea-house", { syncedAt: null, divergedSince: null }),
       lineRepo("api", "acme/tea-house-api", IN_SYNC),
     ],
+  },
+  // Sixty changes from twelve Mates: thirty-four merged since the live release, two on their way
+  // to the stage. The page holds the newest forty, open first.
+  "line-crowd": {
+    releases: [
+      shipped("v3.1.0", 4 * DAY, { standing: "live", by: "dana" }),
+      shipped("v3.0.2", 11 * DAY),
+    ],
+    merged: Array.from({ length: 34 }, (_, at) => {
+      const number = 34 - at;
+      return onMain(
+        number,
+        crowdTitle(number),
+        CROWD_MATES[number % CROWD_MATES.length]?.id ?? "",
+        (35 - number) * 50,
+      );
+    }),
+    stage: stageRuns(sha("c32"), [HEAD]),
+    repos: [lineRepo("shop", "acme/tea-house", IN_SYNC)],
   },
   "line-notlive": {
     releases: [],

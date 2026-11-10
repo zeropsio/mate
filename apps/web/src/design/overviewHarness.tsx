@@ -50,6 +50,7 @@ import { usePageTrail } from "~/components/zerops/system/Crumbs";
 import { placeLines } from "~/components/zerops/projects/projectCard.logic";
 import { Skeleton } from "~/components/ui/skeleton";
 import { pagesViewTransition } from "~/pageTransitions";
+import { useUiStateStore } from "~/uiStateStore";
 import {
   cardMateReading,
   cardReady,
@@ -64,7 +65,12 @@ import {
 } from "~/components/zerops/projects/ZeropsProjectsFlow";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
-import { HarnessLineMine, harnessProjectPage } from "./projectPageFixtures";
+import {
+  CROWD_MATES,
+  crowdTitle,
+  HarnessLineMine,
+  harnessProjectPage,
+} from "./projectPageFixtures";
 import { ZeropsProjectMenu } from "~/components/zerops/ZeropsProjectMenu";
 import { placeVaults, type PlaceVault } from "~/components/zerops/vault/placeVault.logic";
 import { usePlaceVaultDrawer } from "~/components/zerops/vault/StopVault";
@@ -562,7 +568,8 @@ function conflicting(number: number, title: string, mateProjectId: string) {
 /**
  * The line's states: (calm) a stage and a production, one change ready; (stuck) a release that did
  * not go live; (busy) ten times the activity and three more places; (notlive) no production yet;
- * (nostage) live without a stage. `line-mine` draws the busy one compact, for one Mate.
+ * (nostage) live without a stage; (crowd) sixty changes from twelve Mates, for the line in full
+ * (`&picture=full`). `line-mine` draws the busy one compact, for one Mate.
  */
 function lineProjects(): ReadonlyArray<Project> {
   const busy = project({
@@ -616,7 +623,46 @@ function lineProjects(): ReadonlyArray<Project> {
     chip: { label: "prod", state: "ok", version: "v2.4.0" },
     since: ago(60 * 24 * 3),
   });
+  // Twenty-six open changes, #35–#60, most of them a few Mates': the first has ten.
+  const crowdOpen = [10, 5, 4, 3, 2, 1, 1].flatMap((count, at) =>
+    Array.from({ length: count }, () => CROWD_MATES[at]?.id ?? ""),
+  );
+  const crowd = project({
+    id: "line-crowd",
+    name: "Tea House",
+    mates: CROWD_MATES.map((each) => mate(each.id, each.name, each.tint)),
+    pullRequests: crowdOpen.map((mateProjectId, at) => {
+      const number = 60 - at;
+      const title = crowdTitle(number);
+      const made =
+        at % 6 === 0
+          ? toReview(number, title, mateProjectId)
+          : at % 9 === 4
+            ? conflicting(number, title, mateProjectId)
+            : inReview(number, title, mateProjectId);
+      return { ...made, pull: { ...made.pull, updatedAt: ago(20 + at * 35) } };
+    }),
+    notLive: 34,
+    production: {
+      kind: "ready-to-release",
+      stop: stop("crowd-prod", "production", {
+        version: version("v3.1.0"),
+        addresses: [{ service: "app", url: "https://teahouse.example" }],
+      }),
+      line: "",
+      candidate: { tag: "v3.2.0", waiting: 34 },
+    },
+    stages: [
+      stop("crowd-stage", "stage", {
+        state: "deploying",
+        addresses: [{ service: "app", url: "https://app-teahouse-stage.prg1.zerops.app" }],
+      }),
+    ],
+    chip: { label: "prod", state: "ok", version: "v3.1.0" },
+    since: ago(60 * 24 * 4),
+  });
   return [
+    crowd,
     project({
       id: "line-calm",
       name: "Pear Studio",
@@ -773,6 +819,9 @@ const ALL_WAITS: ReadonlyArray<WaitingItem> = [
 
 /** `?page=tea` (or another project's id) opens on that project's own page instead. */
 const FIRST_PAGE = params.get("page");
+// `&picture=full`: the page arrives with the line of its changes in full, as this device left it.
+if (FIRST_PAGE !== null && params.get("picture") === "full")
+  useUiStateStore.setState({ projectLineFullById: { [FIRST_PAGE]: true } });
 
 /**
  * Which of the three pages the harness's router is on: the page its matches hold, which the
