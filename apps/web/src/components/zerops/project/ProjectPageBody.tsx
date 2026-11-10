@@ -993,11 +993,16 @@ function ProjectChanges<T>({
             : [
                 [
                   id,
-                  <PlaceVaultButton
+                  // The same two doors a place wears on its line under Places, as icons: a
+                  // station's head has no room for their words.
+                  <PlaceDoors
                     key={id}
-                    name={vault.name}
-                    onOpen={() => {
-                      openVault(vault);
+                    name={placeLabel(line)}
+                    sites={placeSitesOf(line, groupId)}
+                    vault={{
+                      onOpen: () => {
+                        openVault(vault);
+                      },
                     }}
                   />,
                 ],
