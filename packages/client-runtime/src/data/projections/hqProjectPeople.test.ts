@@ -120,7 +120,7 @@ const removed = apply(read, [
     scopes: generations,
     reset: false,
     rows: [],
-    removals: [{ family: "placement", id: "bob", reason: "no-access" }],
+    removals: [{ family: "placement", id: "bob" }],
   },
 ]);
 

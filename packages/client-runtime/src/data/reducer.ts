@@ -101,6 +101,8 @@ export type AccountInput =
       readonly family: Family;
       readonly id: string;
       readonly access: Access;
+      /** A denial its source named this record for, not a refusal of its whole scope. */
+      readonly removed?: true;
     }
   | {
       readonly kind: "membership";
@@ -160,11 +162,10 @@ export interface DeliveryScope {
   readonly generation: number;
 }
 
-/** A record its source removed explicitly, and why: the one way a delivered record leaves. */
+/** A record its source removed explicitly: the one way a delivered record leaves. */
 export interface RemovalInput {
   readonly family: Family;
   readonly id: string;
-  readonly reason: "deleted" | "no-access";
 }
 
 export type RuntimeDirective =
@@ -595,7 +596,12 @@ function reduceEvidence(
     input.kind === "proven-deletion"
       ? { ...current, content: { kind: "deleted", evidence: input.evidence } }
       : input.access === "denied"
-        ? { ...current, content: { kind: "purged" }, access: "denied" }
+        ? {
+            ...current,
+            content:
+              input.removed === true ? { kind: "purged", removed: true } : { kind: "purged" },
+            access: "denied",
+          }
         : { ...current, access: input.access };
   changed.add(key);
   const unlisted = input.kind === "proven-deletion" || input.access === "denied";
@@ -746,23 +752,11 @@ function reduceDelivery(
       next = withMembership(next, scope, { ...membership, coverage: "partial" });
     }
   for (const removal of input.removals)
-    next =
-      removal.reason === "deleted"
-        ? reduceEvidence(
-            next,
-            {
-              kind: "proven-deletion",
-              family: removal.family,
-              id: removal.id,
-              evidence: `${input.via === "hq-stream" ? "HQ" : "Its source"} removed it as deleted`,
-            },
-            changed,
-          )
-        : reduceEvidence(
-            next,
-            { kind: "access", family: removal.family, id: removal.id, access: "denied" },
-            changed,
-          );
+    next = reduceEvidence(
+      next,
+      { kind: "access", family: removal.family, id: removal.id, access: "denied", removed: true },
+      changed,
+    );
   return next;
 }
 

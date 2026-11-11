@@ -253,8 +253,8 @@ const removed = apply(read, [
     reset: false,
     rows: [],
     removals: [
-      { family: "placement", id: "lone", reason: "deleted" },
-      { family: "placement", id: "stage", reason: "no-access" },
+      { family: "placement", id: "lone" },
+      { family: "placement", id: "stage" },
     ],
   },
 ]);

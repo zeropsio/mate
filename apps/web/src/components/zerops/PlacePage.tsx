@@ -12,7 +12,7 @@ import {
 import { Atom } from "effect/reactivity";
 import * as Schema from "effect/Schema";
 import * as Option from "effect/Option";
-import { useAccountDataOptional, useProjection } from "~/zerops/accountData";
+import { useProjection } from "~/zerops/accountData";
 import { useReleaseOffer, type ReleaseOffer } from "./ZeropsReleaseVerb";
 import { usePublicAccess } from "~/zerops/usePublicAccess";
 import { StopVaultDrawer } from "./vault/StopVault";
@@ -129,7 +129,7 @@ import {
 } from "~/zerops/inventoryContext";
 import { useStopServices } from "~/zerops/accountForge";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
-import { unreadFlowWords } from "~/zerops/hqRead.logic";
+import { unreadFlowWords, type UnreadFlowWords } from "~/zerops/hqRead.logic";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 import {
   PlaceAddressCard,
@@ -187,6 +187,7 @@ import {
   StopVerdictStandIn,
   UNREAD_DEPLOYMENT,
   UnreadDetail,
+  UnreadNote,
   ZeropsRuntimeStops,
   runtimeStopsOf,
   useGroupName,
@@ -235,12 +236,10 @@ export function ZeropsStopDetailPage({
   const inventory = useZeropsInventory();
   const navigation = useProjection(canonicalHqNavigation, orgId, NO_ROUTE_NAVIGATION);
   const status = useFlowNavigation(orgId);
-  const orgRole = useAccountDataOptional()?.viewer?.roleCode;
   const unread = unreadFlowWords({
     failure: status.readFailure,
     groupsRead: status.groupsRead,
     groupKnown: status.knownGroups.has(groupId),
-    orgRole,
   });
   const trail = usePageTrail({
     project: { groupId, name: navigation?.structure?.apps.find((app) => app.id === groupId)?.name },
@@ -303,7 +302,7 @@ export function ZeropsStopDetailPage({
         appId={groupId}
         environment={{ ...environment, target: environment.target }}
       />
-      {note !== null ? <Note>{note}</Note> : null}
+      {note !== null ? <UnreadNote words={note} /> : null}
     </DetailShell>
   );
 }
@@ -318,7 +317,7 @@ function ZeropsUnresolvedStopDetailPage({
   readonly groupId: string;
   readonly environmentId: string;
   readonly groupName: string | undefined;
-  readonly note: string | null;
+  readonly note: UnreadFlowWords | null;
 }) {
   const inventory = useZeropsInventory();
   const held = useContext(HeldInventoryContext);
@@ -329,7 +328,7 @@ function ZeropsUnresolvedStopDetailPage({
   const trail = usePageTrail({ project: { groupId, name: groupName }, here: stops[0]?.name });
   return (
     <DetailShell title={stops[0]?.name} trail={trail}>
-      {note !== null ? <Note>{note}</Note> : <StopVerdictStandIn />}
+      {note !== null ? <UnreadNote words={note} /> : <StopVerdictStandIn />}
       <ZeropsRuntimeStops stops={stops} deployments={deployments} />
     </DetailShell>
   );

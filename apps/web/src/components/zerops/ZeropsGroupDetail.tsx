@@ -4,7 +4,6 @@ import {
   type CanonicalAppEnvironmentsRead,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
-import { useAccountDataOptional } from "~/zerops/accountData";
 import { RuntimeStopPublicAccess } from "./StopPublicAccess";
 /**
  * A project group's page, and one stop's, in place of the thread.
@@ -61,7 +60,7 @@ import { STATUS_BADGE_TONE, VerdictPanelWaiting } from "./primitives";
 import { ZeropsChangeReview } from "./review/ZeropsChangeReview";
 import { HeldInventoryContext, withheldProjectNotice } from "~/zerops/inventoryContext";
 import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
-import { unreadFlowWords } from "~/zerops/hqRead.logic";
+import { unreadFlowWords, type UnreadFlowWords } from "~/zerops/hqRead.logic";
 import { Loading } from "../ui/loading";
 import { Badge } from "~/components/ui/badge";
 import { environmentTitle, stopRowSays } from "./place/place.logic";
@@ -494,14 +493,12 @@ export function UnreadDetail({
   readonly standIn: React.ReactNode;
 }) {
   const flows = useProjectFlows(useMemo(() => [groupId], [groupId]));
-  const orgRole = useAccountDataOptional()?.viewer?.roleCode;
   const words = unreadFlowWords({
     failure: flows.readFailure,
     groupsRead: flows.groupsRead,
     groupKnown: flows.knownGroups.has(groupId),
-    orgRole,
   });
-  if (words !== null) return <Note>{words}</Note>;
+  if (words !== null) return <UnreadNote words={words} />;
   return standIn;
 }
 
@@ -566,6 +563,17 @@ function Section({
 
 export function Note({ children }: { readonly children: React.ReactNode }) {
   return <p className="text-sm text-muted-foreground">{children}</p>;
+}
+
+/** What a page says in place of a project it cannot read (`unreadFlowWords`). */
+export function UnreadNote({ words }: { readonly words: UnreadFlowWords }) {
+  if (typeof words === "string") return <Note>{words}</Note>;
+  return (
+    <div className="flex flex-col gap-0.5">
+      <p className="text-sm font-medium text-foreground">{words.title}</p>
+      <Note>{words.why}</Note>
+    </div>
+  );
 }
 
 export function ProjectReadFailures({

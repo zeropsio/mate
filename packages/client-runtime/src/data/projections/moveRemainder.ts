@@ -38,7 +38,7 @@ export const moveRemainder: Projection<
     const project = read.fact("project", intent.projectId);
     const placement = read.fact("placement", intent.projectId);
     if (project.kind === "withheld" || placement.kind === "withheld") return { kind: "withheld" };
-    if (project.kind === "deleted" || placement.kind === "deleted") return { kind: "superseded" };
+    if (project.kind === "deleted") return { kind: "superseded" };
     const progress = operationProgress.derive(read, key.requestId);
     if (progress.stage !== "done" || progress.outcome !== "succeeded")
       return { kind: "waiting", progress };

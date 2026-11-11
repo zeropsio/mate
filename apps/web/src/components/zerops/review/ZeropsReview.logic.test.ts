@@ -569,7 +569,7 @@ describe("changeReadVerdict: a change the flow does not hold, until it is read",
       "HQ knows no such project",
       { read: { kind: "idle" }, projectKnown: false },
       "attention",
-      "This change's project isn't known here",
+      "No access",
     ],
   ] as const)("%s", (_case, over, tone, title) => {
     const verdict = changeReadVerdict({ ...base, ...over });

@@ -552,11 +552,7 @@ describe("an account's HQ", () => {
         scopes,
         reset: false,
         rows: [],
-        removals: removed.map((id) => ({
-          family: "hqPress" as const,
-          id,
-          reason: "deleted" as const,
-        })),
+        removals: removed.map((id) => ({ family: "hqPress" as const, id })),
       });
       store.dispatch({ kind: "hq-ready", scopes });
     };

@@ -56,7 +56,7 @@ describe("stable attention readers", () => {
       scopes: [{ scope: placementsScope("org"), generation: 1 }],
       reset: false,
       rows: [],
-      removals: [{ family: "placement", id: "a", reason: "no-access" }],
+      removals: [{ family: "placement", id: "a" }],
     });
     expect(registry.get(enumeration)).toEqual({});
     registry.dispose();

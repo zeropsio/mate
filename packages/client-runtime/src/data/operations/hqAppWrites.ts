@@ -1,5 +1,6 @@
 /** HQ owns application names and deletion; its answer or its explicit facts decide the end. */
 import type { KeptGitAnswer } from "@t3tools/contracts";
+import { removedForViewer } from "../model.ts";
 import type { OperationKind } from "./kind.ts";
 import { shownInFacts } from "./shownInFacts.ts";
 
@@ -40,7 +41,7 @@ export const deleteApp: OperationKind<"delete-app"> = {
   executor: "hq",
   ...shownInFacts(
     (intent) => intent.appId,
-    (read, intent) => read.fact("hqApp", intent.appId).kind === "deleted",
+    (read, intent) => removedForViewer(read.fact("hqApp", intent.appId)),
   ),
 };
 
@@ -49,10 +50,5 @@ export const answerKeptGit: OperationKind<"answer-kept-git"> = {
   executor: "hq",
   // Closing the question also happens when an application gains a project. Its removal
   // reflects an accepted answer, but cannot recover which answer a lost receipt accepted.
-  reflected: (read, intent) => {
-    const question = read.fact("hqKeptGit", intent.appId);
-    return (
-      question.kind === "deleted" || (question.kind === "withheld" && question.reason === "denied")
-    );
-  },
+  reflected: (read, intent) => removedForViewer(read.fact("hqKeptGit", intent.appId)),
 };
