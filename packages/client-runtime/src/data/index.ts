@@ -157,6 +157,11 @@ export {
 } from "./families/pipeline.ts";
 export { pipelineRead, type PipelineRead } from "./projections/pipeline.ts";
 export {
+  pipelineConfigScope,
+  readPipelineConfig,
+  type PipelineConfigValue,
+} from "./families/pipelineConfig.ts";
+export {
   dayIn,
   projectSpendScope,
   SPEND_DAYS,
@@ -296,6 +301,7 @@ export {
   creditReadGenerationAtom,
   balanceReadGenerationAtom,
   pipelineReadAtom,
+  pipelineConfigAtom,
   projectsServicesAtom,
   projectUsageAtom,
   NOT_READ_VAULT,

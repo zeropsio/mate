@@ -8,6 +8,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   listedProjectAtom,
   NOT_READ_SERVICES,
+  pipelineConfigAtom,
   pipelineReadAtom,
   projectServicesAtom,
   type PipelineRead,
@@ -37,6 +38,11 @@ export interface PipelineView {
   readonly read: PipelineRead;
   /** The record, once known and of the organization the account observes. */
   readonly pipeline: PipelineValue | null;
+  /** The name the deploy was given, where Zerops says it. */
+  readonly name: string | null;
+  /** The zerops.yaml it ran and its setup, once the organization's search answered. */
+  readonly config: string | null;
+  readonly setup: string | null;
   readonly projectName: string | null;
   readonly serviceName: string | null;
   /** Its process, where the project's recent processes still hold it. */
@@ -56,6 +62,9 @@ export function usePipeline(versionId: string, orgId: string | null): PipelineVi
   const retryDetail = useAccountDataOptional()?.retryDetail;
   const read = useAtomValue(pipelineReadAtom(versionId));
   const pipeline = read.kind === "known" && read.value.organizationId === orgId ? read.value : null;
+  // Its name and zerops.yaml: searched within its own organization, once it is the one observed.
+  useDetailDemand("pipelineConfig", undefined, pipeline === null ? null : versionId);
+  const ran = useAtomValue(pipelineConfigAtom(versionId));
   const projectId = pipeline?.projectId ?? null;
   const activity = useProjectActivity(projectId);
   const project = useAtomValue(projectId === null ? NO_PROJECT : listedProjectAtom(projectId));
@@ -90,6 +99,9 @@ export function usePipeline(versionId: string, orgId: string | null): PipelineVi
   return {
     read,
     pipeline,
+    name: ran?.name ?? process?.appVersion?.name ?? null,
+    config: ran?.config ?? null,
+    setup: ran?.setup ?? null,
     projectName: project?.name ?? null,
     serviceName,
     process,

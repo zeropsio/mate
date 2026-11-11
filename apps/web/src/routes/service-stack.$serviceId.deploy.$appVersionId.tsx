@@ -12,5 +12,6 @@ export const Route = createFileRoute("/service-stack/$serviceId/deploy/$appVersi
 
 function PipelineLanding() {
   const { appVersionId } = Route.useParams();
-  return <Navigate replace search={{ pipeline: appVersionId }} to="/" />;
+  // The projects page itself: home forwards there and would drop the search on the way.
+  return <Navigate replace search={{ pipeline: appVersionId }} to="/zerops" />;
 }

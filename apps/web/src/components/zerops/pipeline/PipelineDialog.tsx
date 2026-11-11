@@ -83,7 +83,7 @@ function PipelineDialog({ versionId }: { readonly versionId: string }): JSX.Elem
   return (
     <DialogPopup className="max-w-3xl" data-zerops-pipeline={versionId}>
       {view.pipeline === null ? (
-        <PipelineWait elsewhere={elsewhere} view={view} />
+        <PipelineWait elsewhere={elsewhere} unchosen={orgId === null} view={view} />
       ) : (
         <PipelineBody pipeline={view.pipeline} view={view} />
       )}
@@ -95,13 +95,17 @@ function PipelineDialog({ versionId }: { readonly versionId: string }): JSX.Elem
 function PipelineWait({
   view,
   elsewhere,
+  unchosen,
 }: {
   readonly view: PipelineView;
   readonly elsewhere: { readonly name: string } | null | undefined;
+  /** No organization is chosen yet: the data reads wait on one. */
+  readonly unchosen: boolean;
 }): JSX.Element {
   const read = view.read;
-  const words =
-    elsewhere === null
+  const words = unchosen
+    ? "Choose an organization first. The pipeline opens after, in its own organization."
+    : elsewhere === null
       ? "This pipeline belongs to an organization this account isn't a member of."
       : elsewhere !== undefined
         ? `Opening ${elsewhere.name}…`
@@ -149,7 +153,7 @@ function PipelineBody({
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const readout = view.readout;
   const service = view.serviceName ?? "Service";
-  const title = pipeline.name === null ? service : `${service} · ${pipeline.name}`;
+  const title = view.name === null ? service : `${service} · ${view.name}`;
   const overall = readout?.overall;
   const took = overall === undefined ? undefined : formatDuration(overall.durationMs);
   const facts = [
@@ -196,9 +200,7 @@ function PipelineBody({
               )}
             </section>
           ) : null}
-          {pipeline.config === null ? null : (
-            <PipelineConfig config={pipeline.config} setup={pipeline.setup} />
-          )}
+          {view.config === null ? null : <PipelineConfig config={view.config} setup={view.setup} />}
         </div>
       </DialogPanel>
       <DialogFooter>
@@ -249,7 +251,9 @@ function PipelineFailure({
   const failedStep = readout.steps.find((step) => step.state === "failed");
   const command = process?.error?.command;
   const exit = process?.error?.exit;
-  const words = process === undefined ? undefined : processFailureWords(process);
+  const said = process === undefined ? undefined : processFailureWords(process);
+  // The platform's generic words ("build command failed") add nothing to the command's own end.
+  const words = command !== undefined && said === process?.error?.message ? undefined : said;
   return (
     <Alert variant="error">
       <AlertTitle>

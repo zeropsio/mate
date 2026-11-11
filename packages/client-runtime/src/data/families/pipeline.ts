@@ -1,8 +1,8 @@
 /**
  * One pipeline as Zerops keeps it: its app version read by id (`GET /app-version/{id}`), whatever
- * its status and whichever organization holds it. What started the pipeline (its name, source,
- * repository, who started it and the zerops.yaml it ran) never changes after it begins; its steps'
- * timestamps are as this read found them, and a running pipeline's progress comes from its
+ * its status and whichever organization holds it. What started the pipeline (its source,
+ * repository and who started it) never changes after it begins; its name and zerops.yaml come from
+ * `pipelineConfig`, as this read leaves them out. Its steps' timestamps are as this read found them, and a running pipeline's progress comes from its
  * process instead. Read once while the pipeline dialog holds it, and again when the version's
  * pushed status moves past the one held. The platform
  * answers a version it does not have, or one the account cannot open, with a refusal
@@ -34,8 +34,6 @@ export interface PipelineValue {
   readonly organizationId: string;
   readonly projectId: string;
   readonly serviceId: string;
-  /** The name the deploy was given, e.g. a zcli version name or a Mate's `<repo> <sha>`. */
-  readonly name: string | null;
   /** One of the platform's `AppVersionStatusEnum` values as this read found it. */
   readonly status: string;
   readonly created: string | null;
@@ -43,10 +41,6 @@ export interface PipelineValue {
   readonly source: string | null;
   readonly startedBy: PipelineStarter | null;
   readonly git: PipelineGit | null;
-  /** The zerops.yaml the pipeline ran, as Zerops kept it. */
-  readonly config: string | null;
-  /** The zerops.yaml setup it ran. */
-  readonly setup: string | null;
   /** Its steps' timestamps as this read found them. */
   readonly appVersion: ActivityAppVersion;
 }
@@ -121,14 +115,11 @@ export function readPipelineRow(raw: unknown): PipelineValue | null {
     organizationId,
     projectId,
     serviceId,
-    name: text(raw.name),
     status,
     created: text(raw.created),
     source: text(raw.source),
     startedBy: readStarter(raw.createdByUser),
     git: readGit(raw),
-    config: text(raw.configContent),
-    setup: text(raw.zeropsYamlSetup),
     appVersion,
   };
 }
