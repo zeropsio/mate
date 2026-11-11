@@ -16,7 +16,11 @@
  * reads again, for what the socket missed. After every read, and every frame that changed a row,
  * whom the list names is told to the Mate's own sign-out of removed people (`reports`,
  * `ZeropsOffboarding`), whole every time. It names nobody the Mate's owner: that is HQ's word
- * alone. It is the only list and stays in the Mate: HQ is told nothing of it and sends none.
+ * alone. It is the only list and stays in the Mate, and HQ sends none. HQ hears only a hint: each
+ * read after the first, and each frame, that moved a known person's raw rows (their org role,
+ * their membership's status or presence, or this project's override of them) names that person to
+ * whoever listens then (`personChanged`, the link's `person-changed`), never a role or a verdict.
+ * A hint nobody hears is lost and never told again; HQ confirms with Zerops itself.
  *
  * The same socket carries the project's process frames (ZEROPS-078): the list hands them on,
  * with each `connected`, to whoever waits on a process (`processes`), and reads none itself.
@@ -191,6 +195,36 @@ export function applyAccessFrame(rows: OwnRows, frame: AccessFrame): OwnRows {
 }
 
 /**
+ * The known people whose raw rows differ from `before` to `after`: their org role, their
+ * membership's status or presence, or this project's override of them, by `clientUserId` on both
+ * sides. Each user ID once; a row whose user changed names both, a removed row the user it had.
+ * A `clientUserId` no row maps to a user names nobody.
+ */
+const changedPeople = (before: OwnRows, after: OwnRows): ReadonlyArray<string> => {
+  const clientUserIds = new Set([
+    ...before.members.map((member) => member.clientUserId),
+    ...after.members.map((member) => member.clientUserId),
+    ...Object.keys(before.project.overrides),
+    ...Object.keys(after.project.overrides),
+  ]);
+  const changed = new Set<string>();
+  for (const clientUserId of clientUserIds) {
+    const was = before.members.find((member) => member.clientUserId === clientUserId);
+    const is = after.members.find((member) => member.clientUserId === clientUserId);
+    const same =
+      was?.userId === is?.userId &&
+      was?.orgRole === is?.orgRole &&
+      was?.status === is?.status &&
+      before.project.overrides[clientUserId] === after.project.overrides[clientUserId];
+    if (same) continue;
+    for (const userId of [was?.userId, is?.userId]) {
+      if (userId !== undefined && userId.length > 0) changed.add(userId);
+    }
+  }
+  return [...changed];
+};
+
+/**
  * What a new ticket for `userId` gets from `list` at `nowMs`: admitted, or why not. With no list,
  * or one past its hold, Zerops has not confirmed whom it names, so the answer is that it cannot
  * say (`list_unconfirmed`), never that the person is absent.
@@ -257,6 +291,11 @@ export class ZeropsMateAccessList extends Context.Service<
      */
     readonly changes: Stream.Stream<void>;
     /**
+     * The user ID of each known person a read after the first, or a frame, moved in the raw rows
+     * ({@link changedPeople}), as it applies, to whoever runs it then: none is kept or told again.
+     */
+    readonly personChanged: Stream.Stream<string>;
+    /**
      * The Mate's own project — its name and organisation — as the last own read and frames left
      * it: the one copy of that document in the Mate. While no read has landed it joins the read
      * in flight (or starts one); none where the list reads nothing of its own or no read landed.
@@ -291,6 +330,7 @@ export const make = (own?: {
   Effect.gen(function* () {
     const held = yield* Ref.make<Held>({ rows: undefined, own: undefined });
     const moved = yield* PubSub.unbounded<void>();
+    const personChanged = yield* PubSub.unbounded<string>();
     const processes = yield* PubSub.unbounded<ProcessLiveEvent>();
     const reports = yield* SubscriptionRef.make(Option.none<AccessReport>());
     const scope = yield* Effect.scope;
@@ -309,6 +349,12 @@ export const make = (own?: {
         if (reachOf(before.own) !== reachOf(after.own)) yield* PubSub.publish(moved, undefined);
         return [before, after] as const;
       });
+
+    /** Names whom the raw rows moved from `before` to `after`; nobody at the first read. */
+    const hint = (before: Held, after: Held) =>
+      before.rows === undefined || after.rows === undefined
+        ? Effect.void
+        : Effect.asVoid(PubSub.publishAll(personChanged, changedPeople(before.rows, after.rows)));
 
     /** Reports the own list `after` holds, as of `nowMs`. */
     const report = (after: Held, nowMs: number) => {
@@ -339,10 +385,11 @@ export const make = (own?: {
         );
         if (read.kind !== "read") return;
         const opener = yield* openerNow;
-        const [, after] = yield* update((_, nowMs) => ({
+        const [before, after] = yield* update((_, nowMs) => ({
           rows: read,
           own: ownAccessList(from.projectId, read, nowMs, opener),
         }));
+        yield* hint(before, after);
         if (after.own === undefined) return;
         yield* report(after, after.own.readAtMs);
         yield* Deferred.succeed(organisation, read.project.clientId);
@@ -363,7 +410,9 @@ export const make = (own?: {
             ? current
             : { rows, own: ownAccessList(from.projectId, rows, current.own.readAtMs, opener) };
         });
-        if (after !== before) yield* report(after, now);
+        if (after === before) return;
+        yield* hint(before, after);
+        yield* report(after, now);
       }).pipe(serial.withPermits(1));
 
     /**
@@ -470,6 +519,7 @@ export const make = (own?: {
         Stream.map((report) => report.value),
       ),
       changes: Stream.fromPubSub(moved),
+      personChanged: Stream.fromPubSub(personChanged),
       ownProject: Effect.gen(function* () {
         if ((yield* Ref.get(held)).rows === undefined) yield* recompute;
         return Option.fromUndefinedOr((yield* Ref.get(held)).rows?.project);

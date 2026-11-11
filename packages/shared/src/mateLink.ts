@@ -488,8 +488,9 @@ export type MateLinkDown = typeof MateLinkDown.Type;
  * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"): the Mate dials
  * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
  * its state. The Mate admits tickets through its own Zerops access list, further restricted by
- * HQ's known Chief opener (`ticket_refused` otherwise); it tells HQ nothing of that list, and
- * HQ sends none, and an older HQ's `access` frame is no frame of this union. Today's frames of tasks, usage and
+ * HQ's known Chief opener (`ticket_refused` otherwise); it tells HQ nothing of that list but
+ * whose raw membership or role may have changed (`person-changed`), and HQ sends none, and an
+ * older HQ's `access` frame is no frame of this union. Today's frames of tasks, usage and
  * the update policy ride on it unchanged.
  * Today's `MateLinkUp`, `MateLinkDown` and `MateState` above stay for the HQ and clients that
  * still read them.
@@ -604,6 +605,15 @@ export const KeyLinkUp = Schema.Union([
     type: Schema.Literal("ticket_refused"),
     ticket: Ticket,
     reason: Schema.Literals(["not_in_list", "read_only", "list_unconfirmed"]),
+  }),
+  /**
+   * A hint that the org membership or own-project role of the person `userId` may have changed,
+   * as the Mate's own list saw its raw rows move; never a role or a verdict, which HQ reads from
+   * Zerops itself. Sent once HQ admitted the link, and lost if the link is down: never told again.
+   */
+  Schema.Struct({
+    type: Schema.Literal("person-changed"),
+    userId: Schema.String.check(Schema.isMinLength(1)),
   }),
 ]);
 export type KeyLinkUp = typeof KeyLinkUp.Type;
