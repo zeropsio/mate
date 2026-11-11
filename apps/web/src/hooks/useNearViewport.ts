@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
+import { watchIntersections, type RestingIntersections } from "../lib/restingIntersections";
+
 const waiting = new Map<Element, () => void>();
-let observer: IntersectionObserver | undefined;
+let observer: RestingIntersections | undefined;
 
 /** Defer image processing and blob reads until their reserved box is near the viewport. */
 export function useNearViewport<T extends HTMLElement>() {
@@ -10,7 +12,7 @@ export function useNearViewport<T extends HTMLElement>() {
   useEffect(() => {
     const element = ref.current;
     if (near || element === null) return;
-    observer ??= new IntersectionObserver(
+    observer ??= watchIntersections(
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) waiting.get(entry.target)?.();
@@ -33,7 +35,7 @@ export function useNearViewport<T extends HTMLElement>() {
     if (hiddenTimeline !== null && getComputedStyle(element).visibility === "hidden") {
       visibility?.observe(hiddenTimeline, { attributes: true, attributeFilter: ["class"] });
     } else {
-      observer.observe(element);
+      observer?.observe(element);
     }
     return () => {
       visibility?.disconnect();

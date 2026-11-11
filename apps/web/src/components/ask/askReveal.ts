@@ -8,6 +8,8 @@
 import { type ReactNode, useCallback, useEffect } from "react";
 import { create } from "zustand";
 
+import { watchIntersections } from "~/lib/restingIntersections";
+
 export interface AskRevealTarget {
   readonly askId: string;
   /** Whether a conversation row holds the ask's card; the last row that does is the one shown. */
@@ -112,14 +114,14 @@ export function useReportAskOnScreen(askId: string) {
     (node: HTMLElement | null) => {
       if (node === null) return;
       setOnScreen(askId, true);
-      if (typeof IntersectionObserver === "undefined") return () => setOnScreen(askId, null);
-      const observer = new IntersectionObserver(
+      const observer = watchIntersections(
         (entries) => {
           const entry = entries.at(-1);
           if (entry !== undefined) setOnScreen(askId, entry.intersectionRatio >= 0.5);
         },
         { threshold: [0, 0.5, 1] },
       );
+      if (observer === undefined) return () => setOnScreen(askId, null);
       observer.observe(node);
       return () => {
         observer.disconnect();

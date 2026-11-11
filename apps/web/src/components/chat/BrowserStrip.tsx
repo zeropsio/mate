@@ -138,13 +138,16 @@ export function TakeThumbnail({ src, aspect }: { readonly src: string; readonly 
     <LocalTakeThumbnail src={src} aspect={aspect} />
   );
 }
+// The takes' pictures load eagerly: each waits for its place itself (`useNearViewport`) or is a
+// frame already in hand, and a picture left waiting by `loading="lazy"` is an observer of the
+// browser's that costs every animation on the page a main-thread frame per tick.
 function LocalTakeThumbnail({ src, aspect }: { readonly src: string; readonly aspect: number }) {
   const { ref, near } = useNearViewport<HTMLImageElement>();
   const thumbnail = useTakeThumbnail(near ? src : undefined, aspect);
   return (
     <img
       ref={ref}
-      loading="lazy"
+      loading="eager"
       decoding="async"
       alt=""
       className="block size-full object-cover object-top"
@@ -303,7 +306,7 @@ export function BrowserStrip({
           />
         ) : stageSrc && onStage === latest && running ? (
           <img
-            loading="lazy"
+            loading="eager"
             decoding="async"
             alt=""
             className="block size-full object-cover object-top"
@@ -634,7 +637,7 @@ function LiveTake({
     >
       {frame === null ? null : (
         <img
-          loading="lazy"
+          loading="eager"
           decoding="async"
           alt=""
           className="block size-full object-cover object-top"
