@@ -1913,11 +1913,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         order,
         folds: false,
         render: () => (
-          <RowMarks.Provider
-            value={{
-              review,
-              mates: only === undefined ? NO_MATES : new Set([only.projectId]),
-            }}
+          <RowMarksScope
+            mates={only === undefined ? NO_ROW_MATES : [only.projectId]}
+            review={review}
           >
             {demand}
             {only === undefined
@@ -1925,7 +1923,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                 ? null
                 : comingRow(coming[0], "solo")
               : mateRow(only.item, "solo")}
-          </RowMarks.Provider>
+          </RowMarksScope>
         ),
       };
     }
@@ -1935,7 +1933,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         order,
         folds: false,
         render: () => (
-          <RowMarks.Provider value={{ review, mates: NO_MATES }}>
+          <RowMarksScope mates={NO_ROW_MATES} review={review}>
             {demand}
             <ProjectBareRow
               groupId={id}
@@ -1949,7 +1947,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               review={review}
               sites={sites}
             />
-          </RowMarks.Provider>
+          </RowMarksScope>
         ),
       };
     }
@@ -2136,16 +2134,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       folds: true,
       render: () =>
         !kidsDrawn ? (
-          <RowMarks.Provider value={{ review, mates: NO_MATES }}>
+          <RowMarksScope mates={NO_ROW_MATES} review={review}>
             {demand}
             {row}
-          </RowMarks.Provider>
+          </RowMarksScope>
         ) : (
-          <RowMarks.Provider
-            value={{
-              review,
-              mates: open ? new Set(ordered.map((entry) => entry.projectId)) : NO_MATES,
-            }}
+          <RowMarksScope
+            mates={open ? ordered.map((entry) => entry.projectId) : NO_ROW_MATES}
+            review={review}
           >
             {demand}
             {row}
@@ -2159,7 +2155,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             >
               {kids.map((row) => row.draw())}
             </SidebarProjectFold>
-          </RowMarks.Provider>
+          </RowMarksScope>
         ),
     };
   };
@@ -4416,7 +4412,30 @@ interface RowMarksValue {
 }
 
 const NO_MATES: ReadonlySet<string> = new Set();
+const NO_ROW_MATES: ReadonlyArray<string> = [];
 const RowMarks = createContext<RowMarksValue>({ review: undefined, mates: NO_MATES });
+
+/**
+ * A project's marks for the rows under it: one value while its review and its Mates stand, so the
+ * marks after each name are drawn again for their own news and not with every draw of the menu.
+ */
+function RowMarksScope({
+  review,
+  mates,
+  children,
+}: {
+  readonly review: ProjectReviewData | undefined;
+  /** The Mates whose own rows mark their changes, by project id. */
+  readonly mates: ReadonlyArray<string>;
+  readonly children: ReactNode;
+}) {
+  const ids = mates.join(" ");
+  const value = useMemo(
+    () => ({ review, mates: ids === "" ? NO_MATES : new Set(ids.split(" ")) }),
+    [review, ids],
+  );
+  return <RowMarks.Provider value={value}>{children}</RowMarks.Provider>;
+}
 
 /**
  * After a project's name: the tasks waiting for its automated Mates, what waits for production,

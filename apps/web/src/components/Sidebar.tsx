@@ -92,6 +92,7 @@ import { isCommandPaletteOpen, openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
+import { useStableHandlers } from "../hooks/useStableHandlers";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import {
   useAllEnvironmentProjectSnapshotsReady,
@@ -2014,6 +2015,13 @@ export default function Sidebar() {
     },
     [isMobile, openMate, setOpenMobile],
   );
+  // What every row of the list is handed to call: the same functions for the menu's life, so
+  // opening another Mate redraws the two rows whose state changed, not each row for a new handler.
+  const zeropsRowVerbs = useStableHandlers({
+    select: onZeropsSelect,
+    openCrew: onZeropsOpenCrew,
+    askToFix: onZeropsAskToFix,
+  });
   // What waits on the viewer (`useViewerWaits`), the overview's tab and cards read the same: the
   // Waiting on you row, the header's count and the rail; ⌥↓ goes to the next.
   const zeropsWaiting = useViewerWaits();
@@ -3093,7 +3101,7 @@ export default function Sidebar() {
               getComing={zeropsComing}
               onOpenComing={openComingMate}
               onBrowseProjects={navigateToZeropsProjects}
-              onAskToFix={onZeropsAskToFix}
+              onAskToFix={zeropsRowVerbs.askToFix}
               getFlow={zeropsSidebarFlowWithPages}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}
@@ -3104,8 +3112,8 @@ export default function Sidebar() {
               getActivity={zeropsRowActivity}
               keyedReadings
               getConversationsRead={zeropsConversationsRead}
-              onSelect={onZeropsSelect}
-              onOpenCrew={onZeropsOpenCrew}
+              onSelect={zeropsRowVerbs.select}
+              onOpenCrew={zeropsRowVerbs.openCrew}
             />
           ) : null}
           {/* The dialogs a Mate's own menu opens: rename, hand over, move. */}

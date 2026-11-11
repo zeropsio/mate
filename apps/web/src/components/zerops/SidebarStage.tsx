@@ -8,7 +8,7 @@
  * - Opened — from the rail or ⌘B — the menu grows out of the rail's edge and docks, and only the
  *   page slides, its edge travelling with the menu's (`Sidebar`'s `layered`). Closing reverses it.
  */
-import type { ReactNode } from "react";
+import { memo, type ReactNode } from "react";
 
 import { useSidebar } from "../ui/sidebar";
 
@@ -30,7 +30,7 @@ export function SidebarStage({
       data-zerops-surface="sidebar-stage"
     >
       <div className="menu-stage-rail" inert={open}>
-        {rail}
+        <RailUnderMenu covered={open}>{rail}</RailUnderMenu>
       </div>
       <div className="menu-stage-menu" data-zerops-surface="sidebar-menu" inert={!open}>
         <div className="menu-stage-body">{children}</div>
@@ -38,6 +38,23 @@ export function SidebarStage({
     </div>
   );
 }
+
+/**
+ * The rail while the open menu covers it — unseen and inert — keeps its last drawing: its tiles,
+ * their faces and tips are not drawn again for every Mate opened or word streamed. It is drawn
+ * anew in the render that closes the menu, before it shows.
+ */
+const RailUnderMenu = memo(
+  function RailUnderMenu({
+    children,
+  }: {
+    readonly covered: boolean;
+    readonly children: ReactNode;
+  }) {
+    return children;
+  },
+  (previous, next) => previous.covered && next.covered,
+);
 
 /** Whether the open menu is out rather than waiting under the rail. */
 export function sidebarMenuShown(): boolean {
