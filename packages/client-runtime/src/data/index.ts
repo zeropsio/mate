@@ -149,6 +149,14 @@ export { creditForecast } from "./projections/creditForecast.ts";
 export { creditScope } from "./families/organizationCredit.ts";
 export { balanceScope } from "./families/organizationBalance.ts";
 export {
+  pipelineScope,
+  readPipelineRow,
+  type PipelineGit,
+  type PipelineStarter,
+  type PipelineValue,
+} from "./families/pipeline.ts";
+export { pipelineRead, type PipelineRead } from "./projections/pipeline.ts";
+export {
   dayIn,
   projectSpendScope,
   SPEND_DAYS,
@@ -287,6 +295,7 @@ export {
   creditForecastAtom,
   creditReadGenerationAtom,
   balanceReadGenerationAtom,
+  pipelineReadAtom,
   projectsServicesAtom,
   projectUsageAtom,
   NOT_READ_VAULT,

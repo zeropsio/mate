@@ -137,7 +137,17 @@ export interface ActivityProcess {
    * `detail`, what it said of the item that failed (`meta[].error`) where that says more than
    * `message` — one line, credentials masked.
    */
-  readonly error?: { readonly code: string; readonly message: string; readonly detail?: string };
+  readonly error?: {
+    readonly code: string;
+    readonly message: string;
+    readonly detail?: string;
+    /**
+     * The command that failed, as the platform names it (`meta[].metadata.command`), and what it
+     * said of its end (`meta[].metadata.message`, e.g. `exit status 1`) — credentials masked.
+     */
+    readonly command?: string;
+    readonly exit?: string;
+  };
 }
 
 /** How much of the platform's per-item words a row keeps. */
@@ -160,13 +170,38 @@ function readErrorDetail(error: Record<string, unknown> | undefined, message: st
     : detail;
 }
 
+/** The first string of a metadata entry, which the platform sends as a one-item list. */
+function readFirstWords(value: unknown): string | undefined {
+  const first = Array.isArray(value) ? value.find((item) => typeof item === "string") : value;
+  const words = readString(first)?.trim();
+  return words === undefined || words.length === 0 ? undefined : maskSecrets(words);
+}
+
+/** The first failed item's command and end, where the platform names one. */
+function readFailedCommand(error: Record<string, unknown> | undefined) {
+  for (const item of readRecordArray(error?.meta)) {
+    const metadata = readRecord(item.metadata);
+    const command = readFirstWords(metadata?.command);
+    if (command !== undefined) {
+      const exit = readFirstWords(metadata?.message);
+      return { command, ...(exit === undefined ? {} : { exit }) };
+    }
+  }
+  return {};
+}
+
 function readError(entry: Record<string, unknown>): ActivityProcess["error"] {
   const error = readRecord(entry.error);
   const code = readString(error?.code) ?? "";
   const message = readString(error?.message) ?? "";
   const detail = readErrorDetail(error, message);
   if (code === "" && message === "" && detail === undefined) return undefined;
-  return { code, message, ...(detail === undefined ? {} : { detail }) };
+  return {
+    code,
+    message,
+    ...(detail === undefined ? {} : { detail }),
+    ...readFailedCommand(error),
+  };
 }
 
 /**
