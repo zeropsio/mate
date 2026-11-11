@@ -1195,15 +1195,21 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   function flush(): void {
     scheduled = false;
     if (disposed) return;
-    do {
-      while (queue.length > 0) queue.shift()!();
-      join();
-      allocate();
-      join();
-    } while (queue.length > 0);
-    scheduleProbes();
-    persistIntents();
-    write();
+    // One publication of the turn: every project's stream events and its written rows together.
+    const settle = store.gather();
+    try {
+      do {
+        while (queue.length > 0) queue.shift()!();
+        join();
+        allocate();
+        join();
+      } while (queue.length > 0);
+      scheduleProbes();
+      persistIntents();
+      write();
+    } finally {
+      settle();
+    }
     followLinks();
     if (publish()) for (const listener of listeners) listener();
   }
