@@ -1,45 +1,69 @@
 diff --git a/dist/rpc/RpcClient.d.ts b/dist/rpc/RpcClient.d.ts
-index a5de6d1cdd52dbaa9eb323142d5d687857123245..00f03a17b0df482de6359c01561e69931fcaa3b3 100644
+index a5de6d1cdd52dbaa9eb323142d5d687857123245..dcceb827bbec4fec2001d2ae4f03b405749d7b1a 100644
 --- a/dist/rpc/RpcClient.d.ts
 +++ b/dist/rpc/RpcClient.d.ts
-@@ -309,6 +309,12 @@ export declare const makeProtocolSocket: (options?: {
+@@ -309,6 +309,13 @@ export declare const makeProtocolSocket: (options?: {
       * @since 4.0.3
       */
      readonly onPingTimeout?: Effect.Effect<void> | undefined;
 +    /**
-+     * True while the client's own scheduling may hold frames back (a throttled
-+     * hidden browser tab); silence during a paused tick does not count toward
-+     * `pingTimeout`.
++     * Asked on every ping tick, with the milliseconds since the previous tick.
++     * True means the client's own scheduling may have held frames back (a
++     * throttled hidden browser tab, a suspended machine): that tick restarts
++     * the silence window `pingTimeout` measures instead of judging it.
 +     */
-+    readonly pingTimeoutPaused?: (() => boolean) | undefined;
++    readonly pingTimeoutPaused?: ((sinceLastTickMillis: number) => boolean) | undefined;
  }) => Effect.Effect<Protocol["Service"], never, Scope.Scope | RpcSerialization.RpcSerialization | Socket.Socket>;
  /**
   * Provides a client `Protocol` backed by the current `Socket` and
-@@ -345,6 +351,12 @@ export declare const layerProtocolSocket: (options?: {
+@@ -345,6 +352,13 @@ export declare const layerProtocolSocket: (options?: {
       * @since 4.0.3
       */
      readonly onPingTimeout?: Effect.Effect<void> | undefined;
 +    /**
-+     * True while the client's own scheduling may hold frames back (a throttled
-+     * hidden browser tab); silence during a paused tick does not count toward
-+     * `pingTimeout`.
++     * Asked on every ping tick, with the milliseconds since the previous tick.
++     * True means the client's own scheduling may have held frames back (a
++     * throttled hidden browser tab, a suspended machine): that tick restarts
++     * the silence window `pingTimeout` measures instead of judging it.
 +     */
-+    readonly pingTimeoutPaused?: (() => boolean) | undefined;
++    readonly pingTimeoutPaused?: ((sinceLastTickMillis: number) => boolean) | undefined;
  }) => Layer.Layer<Protocol, never, Socket.Socket | RpcSerialization.RpcSerialization>;
  /**
   * Creates a client `Protocol` backed by a pool of workers, routing RPC requests
 diff --git a/dist/rpc/RpcClient.js b/dist/rpc/RpcClient.js
-index a7b9ae4473d9913a5045d7c37ca4638f4eeec276..1c07de46608e89021213f818fe5b084640fd56a1 100644
+index a7b9ae4473d9913a5045d7c37ca4638f4eeec276..a344eb2b7ca38505d5c3b3604369335aae5f3e48 100644
 --- a/dist/rpc/RpcClient.js
 +++ b/dist/rpc/RpcClient.js
-@@ -931,7 +931,9 @@ const makePinger = /*#__PURE__*/Effect.fnUntraced(function* (writePing, options)
+@@ -854,6 +854,9 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
+       } = yield* socket.reader;
+       currentError = undefined;
+       connected = true;
++      // The socket opening is the server's first sign of life: silence is measured
++      // from here, not from the start of an attempt that may wait long to open.
++      pinger.onFrame();
+       if (Option.isSome(hooks)) {
+         yield* hooks.value.onConnect;
+       }
+@@ -918,6 +921,7 @@ const makePinger = /*#__PURE__*/Effect.fnUntraced(function* (writePing, options)
+   const interval = options?.pingInterval ?? "5 seconds";
+   const timeoutMillis = Duration.toMillis(options?.pingTimeout ?? interval);
+   let lastSeen = clock.currentTimeMillisUnsafe();
++  let lastTick = lastSeen;
+   let awaitingResponse = false;
+   const latch = Latch.makeUnsafe();
+   const onFrame = () => {
+@@ -931,7 +935,13 @@ const makePinger = /*#__PURE__*/Effect.fnUntraced(function* (writePing, options)
    yield* Effect.suspend(() => {
      // A late tick must send a ping before it can declare the connection silent.
      // Keep the timeout measured from the last frame, including for custom timeouts.
 -    if (awaitingResponse && clock.currentTimeMillisUnsafe() - lastSeen > timeoutMillis) return latch.open;
-+    // A paused client (a throttled hidden tab) may itself be what held the frame back,
-+    // so a tick while paused restarts the silence window instead of judging it.
-+    if (options?.pingTimeoutPaused?.()) lastSeen = clock.currentTimeMillisUnsafe();else if (awaitingResponse && clock.currentTimeMillisUnsafe() - lastSeen > timeoutMillis) return latch.open;
++    // A client whose own scheduling stood still (a throttled hidden tab, a suspended
++    // machine) may itself be what held the frame back, so a tick the client calls
++    // paused restarts the silence window instead of judging it.
++    const now = clock.currentTimeMillisUnsafe();
++    const sinceLastTick = now - lastTick;
++    lastTick = now;
++    if (options?.pingTimeoutPaused?.(sinceLastTick)) lastSeen = now;else if (awaitingResponse && now - lastSeen > timeoutMillis) return latch.open;
      awaitingResponse = true;
      return writePing;
    }).pipe(Effect.delay(interval), Effect.ignore, Effect.forever, Effect.interruptible, Effect.forkScoped);
