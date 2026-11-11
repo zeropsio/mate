@@ -3,6 +3,8 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -353,7 +355,7 @@ describe("buildInitialGrokProviderSnapshot", () => {
   );
 });
 
-it.layer(NodeServices.layer)("checkGrokProviderStatus", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("checkGrokProviderStatus", (it) => {
   it.effect("reports the binary as missing when the binary path does not resolve", () =>
     Effect.gen(function* () {
       const snapshot = yield* checkGrokProviderStatus(
@@ -584,7 +586,7 @@ describe("Grok usage limits", () => {
   });
 });
 
-it.layer(NodeServices.layer)("readGrokAccount", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("readGrokAccount", (it) => {
   it.effect("reads the configured Grok home and prefers the current login scope to legacy", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
@@ -787,7 +789,7 @@ it.layer(NodeServices.layer)("readGrokAccount", (it) => {
   );
 });
 
-it.layer(NodeServices.layer)("readGrokAccount email", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("readGrokAccount email", (it) => {
   it.effect("names the account whose limits were read, and nothing for other auth", () =>
     Effect.gen(function* () {
       const current = '"https://auth.x.ai::b1a00492-073a-47ea-816f-4c329264a828"';

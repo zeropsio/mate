@@ -1,7 +1,7 @@
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -328,10 +328,10 @@ export const make = (
 ): Effect.Effect<
   AcpSessionRuntime["Service"],
   EffectAcpErrors.AcpError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom | Scope.Scope
 > =>
   Effect.gen(function* () {
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const runtimeScope = yield* Scope.Scope;
     const eventQueue = yield* Queue.unbounded<AcpSessionRuntimeEvent>();
@@ -340,7 +340,7 @@ export const make = (
     // Recently shown tool calls. A late update to a finished call is not a new
     // boundary in the answer, although its progress state is gone.
     const shownToolCallIds = new Set<string>();
-    const assistantItemRuntimeId = yield* crypto.randomUUIDv4.pipe(
+    const assistantItemRuntimeId = yield* crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
           new EffectAcpErrors.AcpTransportError({
@@ -1157,7 +1157,7 @@ export const layer = (
 ): Layer.Layer<
   AcpSessionRuntime,
   EffectAcpErrors.AcpError,
-  ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto
+  ChildProcessSpawner.ChildProcessSpawner | SecureRandom.SecureRandom
 > => Layer.effect(AcpSessionRuntime, make(options));
 
 function sessionConfigOptionsFromSetup(

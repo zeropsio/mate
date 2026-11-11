@@ -17,7 +17,7 @@ import {
   type TurnCompletedPayload,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -333,7 +333,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
   settings: AntigravitySettings,
   options: AntigravityAdapterOptions,
 ) {
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig;
@@ -345,7 +345,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
   const locks = yield* SynchronizedRef.make(new Map<ThreadId, Semaphore.Semaphore>());
   const events = yield* PubSub.unbounded<ProviderRuntimeEvent>();
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-  const randomId = crypto.randomUUIDv4.pipe(
+  const randomId = crypto.uuidV4().pipe(
     Effect.mapError(
       (cause) =>
         new ProviderAdapterRequestError({

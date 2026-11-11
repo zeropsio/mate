@@ -268,11 +268,21 @@ const HttpServerLive = Layer.unwrap(
 const PlatformServicesLive = Layer.unwrap(
   Effect.gen(function* () {
     if (typeof Bun !== "undefined") {
-      const { layer } = yield* Effect.promise(() => import("@effect/platform-bun/BunServices"));
-      return layer;
+      const [services, crypto] = yield* Effect.promise(() =>
+        Promise.all([
+          import("@effect/platform-bun/BunServices"),
+          import("@effect/platform-bun/BunCrypto"),
+        ]),
+      );
+      return Layer.mergeAll(services.layer, crypto.layer);
     } else {
-      const { layer } = yield* Effect.promise(() => import("@effect/platform-node/NodeServices"));
-      return layer;
+      const [services, crypto] = yield* Effect.promise(() =>
+        Promise.all([
+          import("@effect/platform-node/NodeServices"),
+          import("@effect/platform-node/NodeCrypto"),
+        ]),
+      );
+      return Layer.mergeAll(services.layer, crypto.layer);
     }
   }),
 );

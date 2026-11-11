@@ -16,6 +16,7 @@
  * @module codexAdapterHarness
  */
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { CodexSettings, type ProviderRuntimeEvent } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -96,7 +97,11 @@ export const makeCodexAdapterHarness = Effect.fn("makeCodexAdapterHarness")(func
       if (!ChildProcess.isStandardCommand(command)) {
         return yield* Effect.die(new Error("the harness spawns only codex app-server"));
       }
-      spawns.push({ command: command.command, args: command.args, cwd: command.options.cwd });
+      spawns.push({
+        command: command.command,
+        args: command.args.map(String),
+        cwd: command.options.cwd,
+      });
       const stdout = yield* Queue.unbounded<Uint8Array>();
       const encoder = new TextEncoder();
       const decoder = new TextDecoder();
@@ -242,4 +247,4 @@ export const makeCodexAdapterHarness = Effect.fn("makeCodexAdapterHarness")(func
 export const codexAdapterHarnessLayer = Layer.mergeAll(
   ServerConfig.layerTest("/tmp/codex-adapter-harness", "/tmp"),
   ServerSettingsService.layerTest(),
-).pipe(Layer.provideMerge(NodeServices.layer));
+).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));

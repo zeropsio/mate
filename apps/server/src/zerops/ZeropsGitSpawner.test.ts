@@ -5,6 +5,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
 import * as Ref from "effect/Ref";
+import * as Redacted from "effect/Redacted";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
 import * as ChildProcess from "effect/process/ChildProcess";
@@ -276,11 +277,22 @@ const makeInnerSpawner = (options?: {
         }
         yield* Ref.update(calls, (previous) => [
           ...previous,
-          { command: command.command, args: command.args },
+          { command: command.command, args: command.args.map(String) },
         ]);
         yield* Ref.update(envs, (previous) => [
           ...previous,
-          { env: command.options.env, extendEnv: command.options.extendEnv },
+          {
+            env:
+              command.options.env === undefined
+                ? undefined
+                : Object.fromEntries(
+                    Object.entries(command.options.env).map(([key, value]) => [
+                      key,
+                      Redacted.isRedacted(value) ? Redacted.value(value) : value,
+                    ]),
+                  ),
+            extendEnv: command.options.extendEnv,
+          },
         ]);
         const current = yield* Ref.updateAndGet(inFlight, (n) => n + 1);
         yield* Ref.update(peak, (n) => Math.max(n, current));

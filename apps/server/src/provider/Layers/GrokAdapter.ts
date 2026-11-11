@@ -16,7 +16,7 @@ import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hos
 import { getModelSelectionStringOptionValue } from "@t3tools/shared/model";
 import { stableStringify } from "@t3tools/shared/relaySigning";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -371,7 +371,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
     const serverConfig = yield* Effect.service(ServerConfig);
     const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
     const threadPolicies = yield* readAcpThreadPolicies;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const nativeEventLogger =
       options?.nativeEventLogger ??
       (options?.nativeEventLogPath !== undefined
@@ -407,7 +407,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
       BigInt(activeToolInactivityTimeoutMs) * NANOS_PER_MILLI;
 
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-    const randomUUIDv4 = crypto.randomUUIDv4.pipe(
+    const randomUUIDv4 = crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
           new ProviderAdapterRequestError({
@@ -1060,7 +1060,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
             clientInfo: { name: "t3-code", version: "0.0.0" },
             ...acpNativeLoggers,
           }).pipe(
-            Effect.provideService(Crypto.Crypto, crypto),
+            Effect.provideService(SecureRandom.SecureRandom, crypto),
             Effect.provideService(Scope.Scope, sessionScope),
             Effect.mapError(
               (cause) =>

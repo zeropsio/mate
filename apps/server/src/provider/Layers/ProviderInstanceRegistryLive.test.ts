@@ -25,6 +25,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
   type ClaudeSettings,
   type CodexSettings,
@@ -200,13 +201,13 @@ const makeTildeProviderFixtures = Effect.fn(
 describe("ProviderInstanceRegistryLive — multi-instance codex slice", () => {
   // `ServerConfig.layerTest` needs `FileSystem` to materialize its scratch
   // directory. `Layer.merge` just unions requirements, so we have to push
-  // `NodeServices.layer` through `Layer.provideMerge` to satisfy that
+  // `Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)` through `Layer.provideMerge` to satisfy that
   // dependency while still surfacing NodeServices to the test body (the
   // codex driver's `create` yields `ChildProcessSpawner` directly).
   const testLayer = ServerConfig.layerTest(process.cwd(), {
     prefix: "provider-instance-registry-test",
   }).pipe(
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
     Layer.provideMerge(ServerSettingsService.layerTest()),
     Layer.provideMerge(TestHttpClientLive),
@@ -548,13 +549,15 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
   // `OpenCodeRuntimeLive` bundles its own `NetService.layer` via
   // `Layer.provide`, so the only external requirement it still exposes is
   // `ChildProcessSpawner` — resolved here by piping it through
-  // `provideMerge(NodeServices.layer)`.
+  // `provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))`.
   //
-  // The nested `provideMerge`s read bottom-up: `NodeServices.layer`
+  // The nested `provideMerge`s read bottom-up: `Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)`
   // provides `OpenCodeRuntimeLive`'s deps while keeping its own outputs
   // surfaced; that merged layer then provides `ServerConfig.layerTest`'s
   // `FileSystem` dep while keeping everything else surfaced to the test.
-  const infraLayer = OpenCodeRuntimeLive.pipe(Layer.provideMerge(NodeServices.layer));
+  const infraLayer = OpenCodeRuntimeLive.pipe(
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+  );
   const testLayer = AntigravityInstallation.layer.pipe(
     Layer.provideMerge(
       ServerConfig.layerTest(process.cwd(), {

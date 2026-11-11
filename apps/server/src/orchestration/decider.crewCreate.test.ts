@@ -7,6 +7,7 @@ import {
   type OrchestrationReadModel,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -55,7 +56,7 @@ const decide = (command: OrchestrationCommand, model = readModel) =>
     Effect.map((decided) => (Array.isArray(decided) ? decided : [decided])),
   );
 
-it.layer(NodeServices.layer)("crew thread creation", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("crew thread creation", (it) => {
   it.effect.each([
     {
       name: "a crew thread carries its crew origin",
@@ -119,7 +120,7 @@ it.layer(NodeServices.layer)("crew thread creation", (it) => {
 
 /** A Zerops Mate: worktrees are not a person's to make (ZeropsPolicy). */
 const onZerops = Layer.merge(
-  NodeServices.layer,
+  Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
   ServerConfig.layer({
     cwd: "/var/www",
     zerops: resolveZeropsEnvironment({

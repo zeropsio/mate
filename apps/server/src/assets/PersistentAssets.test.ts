@@ -1,5 +1,6 @@
 import { layerLoopbackTest } from "../testing/loopbackHttpServer.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -29,7 +30,10 @@ const serverLayer = (baseDir: string, workspace: string) => {
       Layer.provide(T3ProjectFileLoader.layer),
     ),
     AssetSigningKey.layer.pipe(Layer.provide(ServerSecretStore.layer)),
-  ).pipe(Layer.provideMerge(config), Layer.provideMerge(NodeServices.layer));
+  ).pipe(
+    Layer.provideMerge(config),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+  );
 };
 
 describe("persistent conversation assets", () => {
@@ -81,7 +85,7 @@ describe("persistent conversation assets", () => {
           Effect.provide(Layer.mergeAll(serverLayer(baseDir, baseDir), layerLoopbackTest())),
           Effect.scoped,
         );
-      }).pipe(Effect.provide(NodeServices.layer)),
+      }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect.each([
@@ -146,7 +150,7 @@ describe("persistent conversation assets", () => {
           Effect.provide(Layer.mergeAll(serverLayer(baseDir, workspace), layerLoopbackTest())),
           Effect.scoped,
         );
-      }).pipe(Effect.provide(NodeServices.layer)),
+      }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("retains a workspace image symlink using its canonical media filename", () =>
@@ -181,7 +185,7 @@ describe("persistent conversation assets", () => {
         Effect.provide(Layer.mergeAll(serverLayer(workspace, workspace), layerLoopbackTest())),
         Effect.scoped,
       );
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("surviving references minted before retention still work after restart", () =>
@@ -207,7 +211,7 @@ describe("persistent conversation assets", () => {
         Effect.provide(Layer.mergeAll(serverLayer(baseDir, baseDir), layerLoopbackTest())),
         Effect.scoped,
       );
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect(
@@ -270,6 +274,6 @@ describe("persistent conversation assets", () => {
           Effect.provide(Layer.mergeAll(serverLayer(baseDir, baseDir), layerLoopbackTest())),
           Effect.scoped,
         );
-      }).pipe(Effect.provide(NodeServices.layer)),
+      }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });

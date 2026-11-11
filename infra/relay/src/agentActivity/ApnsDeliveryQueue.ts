@@ -1,4 +1,4 @@
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -77,7 +77,7 @@ export class ApnsDeliveryQueue extends Context.Service<
 
 export const make = Effect.gen(function* () {
   const sender = yield* ApnsDeliveryQueueSender;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const config = yield* RelayConfiguration.RelayConfiguration;
 
   return ApnsDeliveryQueue.of({
@@ -88,7 +88,7 @@ export const make = Effect.gen(function* () {
           "relay.delivery.kind": input.kind,
         });
         const now = yield* DateTime.now;
-        const jobId = yield* crypto.randomUUIDv4.pipe(
+        const jobId = yield* crypto.uuidV4().pipe(
           Effect.mapError(
             (cause) =>
               new ApnsDeliveryQueueSendError({
@@ -147,7 +147,7 @@ export const make = Effect.gen(function* () {
           "relay.thread_id": input.notification.threadId,
         });
         const now = yield* DateTime.now;
-        const jobId = yield* crypto.randomUUIDv4.pipe(
+        const jobId = yield* crypto.uuidV4().pipe(
           Effect.mapError(
             (cause) =>
               new ApnsDeliveryQueueSendError({

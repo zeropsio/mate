@@ -9,6 +9,8 @@
  * the error.
  */
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
@@ -37,7 +39,7 @@ describe.runIf(process.env.T3_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", () =
       const runtime = yield* makeProbeRuntime;
       const started = yield* runtime.start();
       expect(started.initializeResult).toBeDefined();
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("session/new advertises typed SessionModelState with at least one model", () =>
@@ -55,7 +57,7 @@ describe.runIf(process.env.T3_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", () =
       expect(models).toBeDefined();
       expect(typeof models?.currentModelId).toBe("string");
       expect(models?.availableModels.length ?? 0).toBeGreaterThan(0);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("session/set_model accepts a no-op switch to the current model", () =>
@@ -69,7 +71,7 @@ describe.runIf(process.env.T3_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", () =
       // No-op switch — selecting the model the session already runs on must
       // succeed against every Grok build that implements `session/set_model`.
       yield* runtime.setSessionModel(currentModelId);
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("session/set_model accepts advertised reasoning effort metadata", () =>
@@ -89,7 +91,7 @@ describe.runIf(process.env.T3_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", () =
       if (typeof reasoningEffort !== "string") return;
 
       yield* runtime.setSessionModel(currentModelId, { reasoningEffort });
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect.skipIf(process.env.T3_GROK_LIVE_TURN !== "1")(
@@ -125,6 +127,6 @@ describe.runIf(process.env.T3_GROK_ACP_PROBE === "1")("Grok ACP CLI probe", () =
         expect(result.stopReason).toBe("end_turn");
         expect(chunks.join("")).toContain("GROK_T3_OK");
         yield* Fiber.interrupt(events);
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });

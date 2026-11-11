@@ -7,7 +7,7 @@ import {
   AttachmentUploadSigningKeyError,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -172,8 +172,8 @@ export const storeAttachmentUpload = Effect.fn("AttachmentUpload.store")(functio
     attachmentsDir: config.attachmentsDir,
     relativePath,
   });
-  const crypto = yield* Crypto.Crypto;
-  const partId = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+  const crypto = yield* SecureRandom.SecureRandom;
+  const partId = yield* crypto.uuidV4().pipe(Effect.orDie);
   const partPath = resolveAttachmentRelativePath({
     attachmentsDir: config.attachmentsDir,
     relativePath: `${relativePath}.${partId}.part`,

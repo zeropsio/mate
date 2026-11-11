@@ -11,6 +11,8 @@ import {
   type OrchestrationThread,
 } from "@t3tools/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
@@ -77,7 +79,7 @@ function makeSession(status: OrchestrationSession["status"]): OrchestrationSessi
   };
 }
 
-it.layer(NodeServices.layer)("settled thread decider", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("settled thread decider", (it) => {
   it.effect("prepends activity unsets for turn starts and live session updates", () =>
     Effect.gen(function* () {
       const turnResult = yield* decideOrchestrationCommand({

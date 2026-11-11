@@ -1,6 +1,7 @@
 import * as Cache from "effect/Cache";
 import * as Data from "effect/Data";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -908,7 +909,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const path = yield* Path.Path;
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const { worktreesDir } = yield* ServerConfig;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
+  const digest = yield* Digest.Digest;
 
   const executeRaw: GitVcsDriver.GitVcsDriver["Service"]["execute"] = Effect.fnUntraced(
     function* (input) {
@@ -2601,11 +2603,13 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     // machine that shares only the checkout with this one (a Zerops service over ssh), where a
     // file in this server's temp directory does not exist and `git add` cannot take its lock.
     const tempIndexPath = yield* Effect.acquireRelease(
-      crypto.randomUUIDv4.pipe(
-        Effect.map((id) =>
-          path.join(path.dirname(indexPath), `t3code-review-index-${process.pid}-${id}`),
+      random
+        .uuidV4()
+        .pipe(
+          Effect.map((id) =>
+            path.join(path.dirname(indexPath), `t3code-review-index-${process.pid}-${id}`),
+          ),
         ),
-      ),
       (file) =>
         Effect.all([
           fileSystem.remove(file, { force: true }),
@@ -2725,8 +2729,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       { concurrency: 2 },
     );
     const files = parseReviewNumstat(stat);
-    const diffHash = yield* crypto
-      .digest("SHA-256", new TextEncoder().encode(`${stat}\0${patch.stdout}`))
+    const diffHash = yield* digest
+      .digest(Digest.sha256, new TextEncoder().encode(`${stat}\0${patch.stdout}`))
       .pipe(
         Effect.map(Hex.encode),
         Effect.mapError(
@@ -2916,7 +2920,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const dirtyDiff = dirtyTrackedResult.stdout;
     const baseDiff = baseResult.stdout;
     const hashDiff = (diff: string, files: ReadonlyArray<ReviewDiffFileStat>) =>
-      crypto.digest("SHA-256", new TextEncoder().encode(JSON.stringify([diff, files]))).pipe(
+      digest.digest(Digest.sha256, new TextEncoder().encode(JSON.stringify([diff, files]))).pipe(
         Effect.map(Hex.encode),
         Effect.mapError(
           (cause) =>

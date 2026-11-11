@@ -13,6 +13,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { it } from "@effect/vitest";
 import { type ProviderApprovalDecision, type ProviderEvent, ThreadId } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
@@ -236,7 +238,7 @@ describe("CodexSessionRuntime collab integration", () => {
       );
       assert.deepEqual(events[0]?.payload, params);
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("preserves each child's native response and turn identity through parent routing", () =>
@@ -284,7 +286,7 @@ describe("CodexSessionRuntime collab integration", () => {
       assert.equal(events[0]?.turnId, "child-native-turn");
       assert.deepEqual(events[0]?.payload, { ...params, parentThreadId: ROOT });
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("looks up child model metadata once after activity registration", () =>
@@ -353,7 +355,7 @@ describe("CodexSessionRuntime collab integration", () => {
       ]);
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("keeps child settings and reroutes newer than the resume snapshot", () =>
@@ -460,7 +462,7 @@ describe("CodexSessionRuntime collab integration", () => {
       assert.equal(readRecordedRequests().length, 1);
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("does not delay the parent turn when the child lookup fails", () =>
@@ -515,7 +517,7 @@ describe("CodexSessionRuntime collab integration", () => {
           NodeFS.rmSync(`${scriptPath}.requests`, { force: true });
         }).pipe(Effect.scoped);
       }
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("replays the captured fan-out into synthetic agent events without child leaks", () =>
@@ -587,7 +589,7 @@ describe("CodexSessionRuntime collab integration", () => {
       );
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("Stop interrupts every live child regardless of registration timing", () =>
@@ -717,7 +719,7 @@ describe("CodexSessionRuntime collab integration", () => {
       assert.isTrue(interruptedThreads.has(ROOT), "parent turn must be interrupted last");
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   // it.live: the runtime talks to a real child process; under it.effect's
@@ -823,7 +825,7 @@ describe("CodexSessionRuntime collab integration", () => {
       assert.deepEqual(answer.result, { permissions: {} });
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.live("Stop targets the active turn when Codex has accepted a queued follow-up", () =>
@@ -871,7 +873,7 @@ describe("CodexSessionRuntime collab integration", () => {
       });
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   const elicitationCases = [
@@ -986,7 +988,7 @@ describe("CodexSessionRuntime collab integration", () => {
       assert.deepEqual(recordedResponse.result, response);
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });
 
@@ -1067,6 +1069,6 @@ describe("CodexSessionRuntime compaction", () => {
       ]);
 
       yield* runtime.close;
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });

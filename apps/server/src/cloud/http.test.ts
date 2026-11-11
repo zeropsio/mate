@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -232,7 +233,7 @@ describe("reconcileDesiredCloudLink", () => {
       Effect.provideService(AgentAwarenessRelay.AgentAwarenessRelay, idleAwarenessRelay),
       Effect.provide(
         ServerConfigModule.layerTest("/", { prefix: "t3-http-reconcile-test-" }).pipe(
-          Layer.provideMerge(NodeServices.layer),
+          Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
         ),
       ),
     ),
@@ -326,7 +327,7 @@ describe("releaseManagedTunnelOnShutdown", () => {
         ),
         Effect.provide(
           ServerConfigModule.layerTest("/", { prefix: "t3-http-release-test-" }).pipe(
-            Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ),
         Effect.scoped,
@@ -649,7 +650,7 @@ describe("makeCloudLinkProof — Zerops project binding", () => {
         ),
       );
       expect(error._tag).toBe("EnvironmentHttpBadRequestError");
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("stamps the Zerops project id and endpoint origin into the signed proof", () =>
@@ -679,6 +680,6 @@ describe("makeCloudLinkProof — Zerops project binding", () => {
       expect(decoded.zeropsProjectId).toBe("TEST000000000000000023");
       expect(decoded.endpointOrigin).toBe("https://zcp-26a7-8080.prg1.zerops.app");
       expect(decoded.scopes).toEqual(["agent_activity_notifications"]);
-    }).pipe(Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });

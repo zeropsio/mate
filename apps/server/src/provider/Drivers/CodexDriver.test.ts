@@ -1,5 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { expect, it } from "@effect/vitest";
@@ -30,7 +31,7 @@ import { CodexDriver } from "./CodexDriver.ts";
 const testLayer = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-codex-driver-maintenance-",
 }).pipe(
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   Layer.provideMerge(ServerSettingsService.layerTest()),
   Layer.provideMerge(ModelManifest.layerTest),
   Layer.provideMerge(ResetCreditCoordinator.layerTest),
@@ -302,7 +303,7 @@ it.layer(testLayer)("CodexDriver", (it) => {
           if (!ChildProcess.isStandardCommand(command) || command.command !== brewPath) {
             return Effect.die("Provider resolution must not execute a provider or updater");
           }
-          probes.push(command.args);
+          probes.push(command.args.map(String));
           const stdout =
             command.args[0] === "--prefix"
               ? brewPrefix

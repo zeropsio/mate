@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import { vi } from "vite-plus/test";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
   type ClaudeSettings,
   ProviderDriverKind,
@@ -30,7 +31,7 @@ const ownClaudeTestProcesses = claudeTestProcessSuite();
 const testLayer = ServerConfig.layerTest(process.cwd(), {
   prefix: "claude-driver-refresh-test",
 }).pipe(
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   // No background refresh: every probe in this test is one the test asked for.
   Layer.provideMerge(
     Layer.mock(BackgroundPolicy.BackgroundPolicy)({

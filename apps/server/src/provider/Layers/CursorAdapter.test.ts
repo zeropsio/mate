@@ -8,6 +8,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -137,7 +138,7 @@ const cursorAdapterTestLayer = it.layer(
         prefix: "t3code-cursor-adapter-test-",
       }),
     ),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 
@@ -1047,7 +1048,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
                 prefix: "t3code-cursor-adapter-test-",
               }),
             ),
-            Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ),
       ),
@@ -1698,7 +1699,7 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
             prefix: "t3code-cursor-adapter-custom-instance-",
           }),
         ),
-        Layer.provideMerge(NodeServices.layer),
+        Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       );
 
       return Effect.gen(function* () {

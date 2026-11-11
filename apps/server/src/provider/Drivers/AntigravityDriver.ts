@@ -1,6 +1,6 @@
 import { AntigravitySettings, ProviderDriverKind, ProviderSetupError } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -63,7 +63,7 @@ export type AntigravityDriverEnv =
   | AntigravityInstallation
   | BackgroundPolicy.BackgroundPolicy
   | ChildProcessSpawner.ChildProcessSpawner
-  | Crypto.Crypto
+  | SecureRandom.SecureRandom
   | FileSystem.FileSystem
   | ModelManifest.ModelManifest
   | Path.Path
@@ -79,7 +79,7 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
   defaultConfig: () => decodeSettings({}),
   create: ({ instanceId, displayName, accentColor, environment, enabled, config }) =>
     Effect.gen(function* () {
-      const crypto = yield* Crypto.Crypto;
+      const crypto = yield* SecureRandom.SecureRandom;
       const fileSystem = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
@@ -206,7 +206,7 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
             auth,
             runtimeTempDirectory,
           }),
-        }).pipe(Effect.provideService(Crypto.Crypto, crypto));
+        }).pipe(Effect.provideService(SecureRandom.SecureRandom, crypto));
         return {
           ...runtime,
           start: () =>

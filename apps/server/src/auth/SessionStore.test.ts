@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { expect, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -75,7 +76,7 @@ const failingSessionLookupCredentialLayer = Layer.effect(
   Layer.provide(makeServerConfigLayer()),
 );
 
-it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("SessionStore.layer", (it) => {
   it.effect("issues and verifies signed browser session tokens", () =>
     Effect.gen(function* () {
       const sessions = yield* SessionStore.SessionStore;

@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
   DEFAULT_SERVER_SETTINGS,
   ProviderDriverKind,
@@ -76,7 +77,7 @@ const recordProviderUsage = (provider: string, instanceId: string | null = provi
     `;
   });
 
-it.layer(NodeServices.layer)("server settings", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("server settings", (it) => {
   it.effect("saves through a symlinked settings file without replacing the link", () =>
     Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;

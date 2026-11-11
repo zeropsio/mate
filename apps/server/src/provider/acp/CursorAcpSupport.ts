@@ -3,7 +3,7 @@ import {
   type ProviderOptionSelection,
   type RuntimeMode,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
@@ -69,7 +69,7 @@ export const makeCursorAcpRuntime = (
 ): Effect.Effect<
   AcpSessionRuntime.AcpSessionRuntime["Service"],
   EffectAcpErrors.AcpError,
-  Crypto.Crypto | Scope.Scope
+  SecureRandom.SecureRandom | Scope.Scope
 > =>
   Effect.gen(function* () {
     const acpContext = yield* Layer.build(
