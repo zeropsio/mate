@@ -38,6 +38,7 @@ import { Route as SettingsTeamClientUserIdRouteImport } from './routes/settings.
 import { Route as ChatMateProjectIdRouteImport } from './routes/_chat.mate.$projectId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
+import { Route as ServiceStackServiceIdDeployAppVersionIdRouteImport } from './routes/service-stack.$serviceId.deploy.$appVersionId'
 import { Route as ChatMateNewBirthIdRouteImport } from './routes/_chat.mate.new.$birthId'
 import { Route as ChatGroupGroupIdFlowRouteImport } from './routes/_chat.group.$groupId.flow'
 import { Route as ChatGroupGroupIdProjectIdRouteImport } from './routes/_chat.group.$groupId.$projectId'
@@ -189,6 +190,12 @@ const ChatEnvironmentIdThreadIdRoute =
     path: '/$environmentId/$threadId',
     getParentRoute: () => ChatRoute,
   } as any)
+const ServiceStackServiceIdDeployAppVersionIdRoute =
+  ServiceStackServiceIdDeployAppVersionIdRouteImport.update({
+    id: '/service-stack/$serviceId/deploy/$appVersionId',
+    path: '/service-stack/$serviceId/deploy/$appVersionId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ChatMateNewBirthIdRoute = ChatMateNewBirthIdRouteImport.update({
   id: '/mate/new/$birthId',
   path: '/mate/new/$birthId',
@@ -244,6 +251,7 @@ export interface FileRoutesByFullPath {
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
+  '/service-stack/$serviceId/deploy/$appVersionId': typeof ServiceStackServiceIdDeployAppVersionIdRoute
   '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRoutesByTo {
@@ -278,6 +286,7 @@ export interface FileRoutesByTo {
   '/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
+  '/service-stack/$serviceId/deploy/$appVersionId': typeof ServiceStackServiceIdDeployAppVersionIdRoute
   '/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRoutesById {
@@ -314,6 +323,7 @@ export interface FileRoutesById {
   '/_chat/group/$groupId/$projectId': typeof ChatGroupGroupIdProjectIdRoute
   '/_chat/group/$groupId/flow': typeof ChatGroupGroupIdFlowRoute
   '/_chat/mate/new/$birthId': typeof ChatMateNewBirthIdRoute
+  '/service-stack/$serviceId/deploy/$appVersionId': typeof ServiceStackServiceIdDeployAppVersionIdRoute
   '/_chat/change/$groupId/$repository/$number': typeof ChatChangeGroupIdRepositoryNumberRoute
 }
 export interface FileRouteTypes {
@@ -350,6 +360,7 @@ export interface FileRouteTypes {
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
     | '/mate/new/$birthId'
+    | '/service-stack/$serviceId/deploy/$appVersionId'
     | '/change/$groupId/$repository/$number'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -384,6 +395,7 @@ export interface FileRouteTypes {
     | '/group/$groupId/$projectId'
     | '/group/$groupId/flow'
     | '/mate/new/$birthId'
+    | '/service-stack/$serviceId/deploy/$appVersionId'
     | '/change/$groupId/$repository/$number'
   id:
     | '__root__'
@@ -419,6 +431,7 @@ export interface FileRouteTypes {
     | '/_chat/group/$groupId/$projectId'
     | '/_chat/group/$groupId/flow'
     | '/_chat/mate/new/$birthId'
+    | '/service-stack/$serviceId/deploy/$appVersionId'
     | '/_chat/change/$groupId/$repository/$number'
   fileRoutesById: FileRoutesById
 }
@@ -433,6 +446,7 @@ export interface RootRouteChildren {
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
   ZeropsAuthorizedRoute: typeof ZeropsAuthorizedRoute
   ZeropsNewRoute: typeof ZeropsNewRoute
+  ServiceStackServiceIdDeployAppVersionIdRoute: typeof ServiceStackServiceIdDeployAppVersionIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -640,6 +654,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatEnvironmentIdThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/service-stack/$serviceId/deploy/$appVersionId': {
+      id: '/service-stack/$serviceId/deploy/$appVersionId'
+      path: '/service-stack/$serviceId/deploy/$appVersionId'
+      fullPath: '/service-stack/$serviceId/deploy/$appVersionId'
+      preLoaderRoute: typeof ServiceStackServiceIdDeployAppVersionIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_chat/mate/new/$birthId': {
       id: '/_chat/mate/new/$birthId'
       path: '/mate/new/$birthId'
@@ -747,6 +768,8 @@ const rootRouteChildren: RootRouteChildren = {
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
   ZeropsAuthorizedRoute: ZeropsAuthorizedRoute,
   ZeropsNewRoute: ZeropsNewRoute,
+  ServiceStackServiceIdDeployAppVersionIdRoute:
+    ServiceStackServiceIdDeployAppVersionIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
