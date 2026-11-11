@@ -39,6 +39,14 @@ export const SHELL_FILES_ELEMENT_ID = "app-shell-files";
 /** How many listed files the worker fetches at once while it keeps a page. */
 export const PRECACHE_CONCURRENCY = 6;
 
+/**
+ * How long the worker leaves the network to a page that just began loading before it fetches the
+ * files it keeps for it: a first visit, or the first load after a deploy, keeps about 300 files
+ * (5.5 MB on the wire), which otherwise download beside the chunks and data the person waits on.
+ * Past the page's own first seconds (`SETTLE_MS`, `lib/appChunks.ts`).
+ */
+export const PRECACHE_CALM_MS = 6_000;
+
 /** Paths the origin serves itself or that belong to a backend, never the app's page. */
 const NEVER_THE_PAGE_PREFIXES = ["/mate", "/assets", "/fonts"] as const;
 
