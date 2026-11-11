@@ -1105,9 +1105,27 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         : {}),
       ...(options.progress ? { progress: options.progress } : {}),
     }).pipe(
-      // Outside the process permit: resolving the repository may itself need one.
-      (execution) =>
-        options.writesSharedConfig ? withSharedConfigLock(cwd, execution) : execution,
+      // Outside the process permit: resolving the repository may itself need one. The wait for
+      // the lock counts toward the command's own timeout, so a queued write never looks hung.
+      (execution) => {
+        if (!options.writesSharedConfig) return execution;
+        const locked = withSharedConfigLock(cwd, execution);
+        const timeoutMs = options.timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : options.timeoutMs;
+        if (timeoutMs === null) return locked;
+        return locked.pipe(
+          Effect.timeoutOption(timeoutMs),
+          Effect.flatMap((result) =>
+            Effect.fromOption(
+              result,
+              () =>
+                new GitCommandError({
+                  ...gitCommandContext({ operation, cwd, args }),
+                  detail: "Git command timed out, including its wait for the repository config.",
+                }),
+            ),
+          ),
+        );
+      },
       Effect.flatMap((result) => {
         if (options.allowNonZeroExit || result.exitCode === 0) {
           return Effect.succeed(result);
@@ -3437,6 +3455,40 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     },
   );
 
+  // `git branch` would write a remote start point's upstream as part of creating the branch, so
+  // the branch is created without tracking and only the tracking write takes the config lock.
+  const createWorktreeBranch = Effect.fn("createWorktreeBranch")(function* (
+    cwd: string,
+    branch: string,
+    startPoint: string,
+  ) {
+    yield* runGit(
+      "GitVcsDriver.createWorktree.createBranch",
+      cwd,
+      ["branch", "--no-track", "--", branch, startPoint],
+      { fallbackErrorDetail: "git worktree add failed" },
+    );
+    const startRef = yield* executeGit(
+      "GitVcsDriver.createWorktree.resolveStartPoint",
+      cwd,
+      ["rev-parse", "--symbolic-full-name", startPoint],
+      { allowNonZeroExit: true },
+    ).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout.trim() : "")));
+    if (!startRef.startsWith("refs/remotes/")) return;
+    yield* runGit(
+      "GitVcsDriver.createWorktree.trackStartPoint",
+      cwd,
+      ["branch", `--set-upstream-to=${startRef}`, "--", branch],
+      { writesSharedConfig: true },
+    ).pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("created the worktree branch without tracking its start point", {
+          cause,
+        }),
+      ),
+    );
+  });
+
   const createWorktree: GitVcsDriver.GitVcsDriver["Service"]["createWorktree"] = Effect.fn(
     "createWorktree",
   )(function* (input, options) {
@@ -3452,16 +3504,32 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const sanitizedBranch = targetBranch.replace(/\//g, "-");
     const repoName = path.basename(input.cwd);
     const worktreePath = input.path ?? path.join(worktreesDir, repoName, sanitizedBranch);
-    const args = newRefName
-      ? ["worktree", "add", "-b", newRefName, "--end-of-options", worktreePath, input.refName]
-      : ["worktree", "add", "--end-of-options", worktreePath, input.refName];
-
-    yield* executeGit("GitVcsDriver.createWorktree", input.cwd, args, {
-      fallbackErrorDetail: "git worktree add failed",
-      timeoutMs: WORKTREE_ADD_TIMEOUT_MS,
-      // A new branch from a remote-tracking ref records its upstream.
-      writesSharedConfig: newRefName !== undefined,
-    });
+    if (newRefName) {
+      // Kept apart from the checkout so the shared-config lock covers only the tracking write,
+      // never a checkout that can take minutes.
+      yield* createWorktreeBranch(input.cwd, newRefName, input.refName);
+    }
+    yield* executeGit(
+      "GitVcsDriver.createWorktree",
+      input.cwd,
+      ["worktree", "add", "--end-of-options", worktreePath, newRefName ?? input.refName],
+      {
+        fallbackErrorDetail: "git worktree add failed",
+        timeoutMs: WORKTREE_ADD_TIMEOUT_MS,
+      },
+    ).pipe(
+      // A failed checkout must not leave the new branch behind to block a retry.
+      Effect.tapError(() =>
+        newRefName
+          ? runGit(
+              "GitVcsDriver.createWorktree.removeBranch",
+              input.cwd,
+              ["branch", "-D", "--", newRefName],
+              { writesSharedConfig: true },
+            ).pipe(Effect.ignore)
+          : Effect.void,
+      ),
+    );
 
     // `git worktree add` leaves submodules empty, so a repo that keeps agent
     // skills, tooling or source in one gets a worktree that is quietly missing
