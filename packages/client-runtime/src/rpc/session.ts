@@ -46,6 +46,11 @@ const PING_TIMEOUT = "17500 millis";
 // A ping tick this long after the last one means this client's timers stood still (a hidden tab's
 // run once a minute, a suspended machine's not at all), not that the Mate was silent meanwhile.
 const LATE_PING_TICK_MILLIS = 10_000;
+// A frame of ours this large or larger left the socket since the last ping tick: the link carries
+// our own send (a picture as data to a Mate before uploads, a file written whole), with the pings
+// and their pongs queued behind it. That is the link's life, not the Mate's silence. A dead link
+// lets nothing leave, so its silence is judged as before.
+const SENT_BYTES_A_TICK = 64 * 1024;
 /** A Mate closed a ticket's socket: it took the ticket's access back, or refused it (`ws.ts`). */
 const MATE_ACCESS_ENDED_CLOSE = 4401;
 
@@ -191,22 +196,38 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
       ),
     });
     const firstFrame = connection.firstFrame;
-    const constructor: typeof webSocketConstructor =
-      firstFrame === undefined
-        ? webSocketConstructor
-        : (url, protocols) => {
-            const socket = webSocketConstructor(url, protocols);
-            // Registered before the protocol's own listeners: the ticket is the connection's first frame.
-            socket.addEventListener("open", () => socket.send(firstFrame), { once: true });
-            socket.addEventListener(
-              "close",
-              (event) => {
-                mateAccessEnded = event.code === MATE_ACCESS_ENDED_CLOSE;
-              },
-              { once: true },
-            );
-            return socket;
-          };
+    /** The connection's socket, and what it still had to send at the last ping tick. */
+    let sending: {
+      readonly socket: ReturnType<typeof webSocketConstructor>;
+      waiting: number;
+    } | null = null;
+    const constructor: typeof webSocketConstructor = (url, protocols) => {
+      const socket = webSocketConstructor(url, protocols);
+      sending = { socket, waiting: 0 };
+      if (firstFrame === undefined) return socket;
+      // Registered before the protocol's own listeners: the ticket is the connection's first frame.
+      socket.addEventListener("open", () => socket.send(firstFrame), { once: true });
+      socket.addEventListener(
+        "close",
+        (event) => {
+          mateAccessEnded = event.code === MATE_ACCESS_ENDED_CLOSE;
+        },
+        { once: true },
+      );
+      return socket;
+    };
+    /** Whether a large frame of ours left the socket since the last ping tick. */
+    const sentSinceLastTick = () => {
+      if (sending === null) return false;
+      // A socket that does not say what waits (a test's, a runtime's own) never counts as sending.
+      const waiting =
+        "bufferedAmount" in sending.socket && typeof sending.socket.bufferedAmount === "number"
+          ? sending.socket.bufferedAmount
+          : 0;
+      const left = sending.waiting - waiting;
+      sending.waiting = waiting;
+      return left >= SENT_BYTES_A_TICK;
+    };
     const socketLayer = Socket.layerWebSocket(connection.socketUrl, {
       openTimeout: SOCKET_OPEN_TIMEOUT,
     }).pipe(Layer.provide(Layer.succeed(Socket.WebSocketConstructor, constructor)));
@@ -218,8 +239,15 @@ export const make = Effect.fn("RpcSessionFactory.make")(function* (
         retryPolicy: Schedule.recurs(0),
         onPingTimeout: Ref.set(pingTimedOut, true),
         // Either way the Mate gets three pings again before its silence drops the socket.
-        pingTimeoutPaused: (sinceLastTickMillis) =>
-          sinceLastTickMillis > LATE_PING_TICK_MILLIS || options.pingTimeoutPaused?.() === true,
+        pingTimeoutPaused: (sinceLastTickMillis) => {
+          // Read on every tick: the next one compares with what waits now.
+          const sent = sentSinceLastTick();
+          return (
+            sent ||
+            sinceLastTickMillis > LATE_PING_TICK_MILLIS ||
+            options.pingTimeoutPaused?.() === true
+          );
+        },
       }),
     ).pipe(
       Layer.provide(
