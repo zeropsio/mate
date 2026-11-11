@@ -34,6 +34,7 @@ import {
   mirrorAskKey,
   mirrorAskRowId,
   mirrorAskState,
+  mirrorDiverged,
   mirrorRemote,
 } from "./mirrorAsk.logic";
 
@@ -151,6 +152,7 @@ function MirrorAsk({
         pending,
         refusal,
         remote,
+        diverged: mirrorDiverged(ask.repo, repos),
         refused: offer.kind === "refused" ? (hqOfferWords(offer) ?? null) : null,
         mateName,
         by: ask.answeredBy === null ? null : (nameOf(ask.answeredBy) ?? null),

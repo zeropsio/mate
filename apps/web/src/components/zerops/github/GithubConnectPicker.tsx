@@ -1291,6 +1291,53 @@ function progressStep(
   const size = pressSize(input.density);
   const href = sent.app === null ? sent.target : `https://github.com/${sent.target}`;
   const shownAs = sent.app === null ? sent.target.replace(/^https:\/\//u, "") : sent.target;
+  if (progress === "paused") {
+    const open = (
+      <Button
+        render={<a href={href} rel="noreferrer" target="_blank" />}
+        size={size}
+        variant="secondary"
+      >
+        {sent.app === null ? `Open on ${hostWords(sent.target)}` : "Open on GitHub"}
+      </Button>
+    );
+    const done =
+      actions.onConnected === undefined ? null : (
+        <Button onClick={actions.onConnected} size={size}>
+          Done
+        </Button>
+      );
+    return {
+      body: (
+        <div className="grid justify-items-start gap-2.5 pt-3" data-github-connect-paused="">
+          <p className="text-sm">
+            <Badge dot tone="warning">
+              Paused
+            </Badge>
+          </p>
+          <p className="text-lg font-medium">{repo} is connected, and the two mains differ</p>
+          <p className="text-sm text-muted-foreground">
+            <span className="font-mono text-foreground">{shownAs}</span> and {repo} each have
+            commits the other doesn't, so Mate moves neither and overwrites nothing. Ask this
+            project's Mate to bring them back in step: it opens one change that holds both. Merge it
+            in Mate and pushing starts.
+          </p>
+        </div>
+      ),
+      foot: (
+        <>
+          {open}
+          {done}
+        </>
+      ),
+      card: (
+        <>
+          {done}
+          {open}
+        </>
+      ),
+    };
+  }
   if (progress === "done") {
     const gate = mirrorGateLine(
       entry?.remote,

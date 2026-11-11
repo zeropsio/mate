@@ -133,6 +133,15 @@ export function mirrorRemote(
   return repos?.find((entry) => entry.name === repo)?.remote?.url ?? null;
 }
 
+/** Whether HQ found the repository's main and its remote's apart, and so moves neither. */
+export function mirrorDiverged(
+  repo: string,
+  repos: ReadonlyArray<RepoListEntry> | undefined,
+): boolean {
+  const entry = repos?.find((each) => each.name === repo);
+  return (entry?.remote?.divergedSince ?? entry?.mirror?.divergedSince ?? null) !== null;
+}
+
 /** The card's title: the verb and its subject. */
 export const mirrorAskTitle = (repo: string): string => `Connect ${repo} to GitHub`;
 
@@ -160,6 +169,8 @@ export function mirrorAskState(input: {
   readonly refusal: string | null;
   /** The remote's address HQ shows (`mirrorRemote`). */
   readonly remote: string | null;
+  /** HQ found the two mains apart and moves neither (`mirrorDiverged`). */
+  readonly diverged?: boolean;
   /** HQ's words when it does not let this person connect the repository; `null` when it does. */
   readonly refused: string | null;
   readonly mateName: string;
@@ -178,7 +189,11 @@ export function mirrorAskState(input: {
         recorded ? input.by : null,
         recorded ? input.at : null,
       ),
-      told: null,
+      // Connected is not in step: a repository that was ahead leaves the mirror paused.
+      told:
+        input.diverged === true
+          ? `Paused: its main and Mate's each have commits the other doesn't. ${input.mateName} can bring them back in step with one change.`
+          : null,
     };
   switch (input.state) {
     case "connected":
