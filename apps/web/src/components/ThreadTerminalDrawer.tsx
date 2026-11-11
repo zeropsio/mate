@@ -151,9 +151,15 @@ export function writeTerminalOutputUpdate(
   }
 }
 
+// Avoid formatting unbounded scrollback selections on every output update.
+const MAX_COMPARED_SELECTION_CELLS = 3_000;
+
 /** Writes what changed between two session notifications: new output, then a new error. */
 export function synchronizeTerminalSession(
-  terminal: Pick<GhosttyTerminalSurface, "resetAndWrite" | "write" | "clearSelection">,
+  terminal: Pick<
+    GhosttyTerminalSurface,
+    "resetAndWrite" | "write" | "getSelection" | "getSelectionCellCount" | "clearSelection"
+  >,
   previous: Pick<TerminalSessionState, "output" | "version" | "error">,
   session: Pick<TerminalSessionState, "output" | "version" | "error">,
   cursor: TerminalOutputCursor,
@@ -161,9 +167,17 @@ export function synchronizeTerminalSession(
   let nextCursor = cursor;
   if (session.version !== previous.version || session.output !== previous.output) {
     const update = readTerminalOutputUpdate(session.output, cursor);
-    writeTerminalOutputUpdate(terminal, update);
     nextCursor = update.cursor;
-    terminal.clearSelection();
+    if (update.type !== "none") {
+      // A selection survives output that leaves its text unchanged.
+      const cells = terminal.getSelectionCellCount();
+      const compared = cells <= MAX_COMPARED_SELECTION_CELLS;
+      const selection = cells > 0 && compared ? terminal.getSelection() : "";
+      writeTerminalOutputUpdate(terminal, update);
+      if (!compared || (cells > 0 && terminal.getSelection() !== selection)) {
+        terminal.clearSelection();
+      }
+    }
   }
   // An attach failure can change only the error, keeping the last buffer.
   if (session.error !== null && session.error !== previous.error) {
@@ -738,8 +752,12 @@ export function TerminalViewport({
         };
       };
 
-      const addSelectionToChat = (selection: TerminalContextSelection) => {
-        handleAddTerminalContext(selection);
+      const addSelectionToChat = (clipboardText: string) => {
+        // Output keeps moving the selected rows while a menu is open, so take
+        // the line numbers now, and only if the same text is still selected.
+        const current = readSelectionAction();
+        if (current?.clipboardText !== clipboardText) return;
+        handleAddTerminalContext(current.selection);
         terminalRef.current?.clearSelection();
         terminalRef.current?.focus();
       };
@@ -813,7 +831,7 @@ export function TerminalViewport({
         }
         switch (clicked) {
           case "add-to-chat":
-            if (selectionAction) addSelectionToChat(selectionAction.selection);
+            if (selectionAction) addSelectionToChat(selectionAction.clipboardText);
             return;
           case "copy":
             if (selectionAction) await copySelection(selectionAction.clipboardText, requestId);
@@ -851,7 +869,7 @@ export function TerminalViewport({
         }
         switch (clicked) {
           case "add-to-chat":
-            addSelectionToChat(nextAction.selection);
+            addSelectionToChat(nextAction.clipboardText);
             return;
           case "copy":
             await copySelection(nextAction.clipboardText, requestId);
