@@ -28,6 +28,7 @@ import { MiddleTruncate } from "../../ui/middle-truncate";
 import { Skeleton } from "../../ui/skeleton";
 import { StopPublicAccessStatus } from "../StopPublicAccess";
 import { DeployLogDetails, useDeployLogUnavailable } from "../ZeropsDeployLog";
+import { useOpenPipeline } from "~/zerops/pipelineSearch";
 import { ServiceList, ServiceRow, serviceRunsLine } from "../system";
 import type { PlaceServiceRow } from "./place.logic";
 
@@ -331,6 +332,16 @@ function ViewDeploy({
   readonly onToggle: () => void;
 }) {
   const unavailable = useDeployLogUnavailable(projectId, target);
+  const openPipeline = useOpenPipeline();
+  const versionId = target.appVersionId;
+  if (versionId !== null) {
+    // A deploy whose version is known opens its pipeline: one place for a pipeline's detail.
+    return (
+      <MenuItem data-zerops-deploy-job={target.jobId} onClick={() => openPipeline(versionId)}>
+        View deploy
+      </MenuItem>
+    );
+  }
   return (
     <MenuItem data-zerops-deploy-job={target.jobId} onClick={onToggle}>
       {open ? "Hide deploy" : unavailable ? "Check deploy history" : "View deploy"}

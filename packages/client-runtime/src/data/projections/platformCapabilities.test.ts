@@ -181,7 +181,7 @@ describe("Zerops native capability table", () => {
       projectRoleOffers(
         platformCapabilities.derive(reads, { orgId: "org", projectId: "p", viewer }),
       ),
-    ).toEqual({ manageAddresses: false });
+    ).toEqual({ manageAddresses: false, cancelBuild: false });
   });
   it("the membership as read outranks the role the session last knew, and another organization's says nothing", () => {
     const reads = readsOfState(
@@ -254,7 +254,10 @@ describe("Zerops native capability table", () => {
         projectId: "p",
         viewer: platformMembership.derive(reads, "org").viewer,
       });
-      expect(projectRoleOffers(capabilities)).toEqual({ manageAddresses: offered });
+      expect(projectRoleOffers(capabilities)).toEqual({
+        manageAddresses: offered,
+        cancelBuild: offered,
+      });
     },
   );
   it("a project whose access is not read yet keeps its address doors drawn", () => {
@@ -264,6 +267,6 @@ describe("Zerops native capability table", () => {
       projectId: "p",
       viewer: platformMembership.derive(reads, "org").viewer,
     });
-    expect(projectRoleOffers(capabilities)).toEqual({ manageAddresses: true });
+    expect(projectRoleOffers(capabilities)).toEqual({ manageAddresses: true, cancelBuild: true });
   });
 });

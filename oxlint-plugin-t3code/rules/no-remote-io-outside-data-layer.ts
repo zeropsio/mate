@@ -135,6 +135,7 @@ export const ZEROPS_CLIENT_VERBS = [
   "addProjectVariable",
   "addServiceVariable",
   "adoptSession",
+  "cancelBuild",
   "checkPublicHttpRoutingDns",
   "connectOrganizationUser",
   "createProject",

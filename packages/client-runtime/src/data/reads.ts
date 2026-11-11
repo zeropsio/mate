@@ -35,6 +35,8 @@ import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
 import { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
 import { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
 import { creditForecast } from "./projections/creditForecast.ts";
+import { pipelineRead, type PipelineRead } from "./projections/pipeline.ts";
+import type { PipelineConfigValue } from "./families/pipelineConfig.ts";
 import { balanceScope } from "./families/organizationBalance.ts";
 import { creditScope } from "./families/organizationCredit.ts";
 import { vault } from "./projections/vault.ts";
@@ -148,6 +150,33 @@ export const projectProcessesAtom = Atom.family((projectId: string) =>
     if (account === null || account.orgId === null) return NOT_READ_PROCESSES;
     return get(account.data.project(projectProcesses, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-processes:${projectId}`)),
+);
+
+const PIPELINE_READING: PipelineRead = { kind: "reading" };
+
+/**
+ * One pipeline read by id under the organization the mounted account observes (`pipelineRead`);
+ * still reading without one.
+ */
+export const pipelineReadAtom = Atom.family((versionId: string) =>
+  Atom.make((get): PipelineRead => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return PIPELINE_READING;
+    return get(account.data.project(pipelineRead, { orgId: account.orgId, versionId }));
+  }).pipe(Atom.withLabel(`data:pipeline:${versionId}`)),
+);
+
+/**
+ * What one pipeline ran — its name and zerops.yaml (`pipelineConfig`) — once the organization the
+ * mounted account observes answered it; `null` before, or where it answered none.
+ */
+export const pipelineConfigAtom = Atom.family((versionId: string) =>
+  Atom.make((get): PipelineConfigValue | null => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return null;
+    const fact = get(account.data.fact("pipelineConfig", versionId));
+    return fact.kind === "known" ? fact.value : null;
+  }).pipe(Atom.withLabel(`data:pipeline-config:${versionId}`)),
 );
 
 export const NOT_READ_SERVICES: ProjectServices = {

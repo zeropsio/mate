@@ -3003,6 +3003,22 @@ export class ZeropsApiClient {
    * cloned from dev comes up unpublished whatever its recipe said, and answers
    * 502 after its first deploy until this runs.
    */
+  /**
+   * `PUT /app-version/{id}/cancel-build` — stops a pipeline whose build has not ended: the GUI's
+   * Cancel build, offered while the version uploads, waits to build or builds
+   * (`process-base.api.ts`). The build's process then ends `CANCELED`.
+   */
+  async cancelBuild(appVersionId: string, beforeWrite?: () => Promise<void>): Promise<void> {
+    await this.#request(
+      `/app-version/${encodeURIComponent(appVersionId)}/cancel-build`,
+      { method: "PUT" },
+      {
+        operationKind: "project-write",
+        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+      },
+    );
+  }
+
   async enableSubdomainAccess(serviceId: string, beforeWrite?: () => Promise<void>): Promise<void> {
     await this.#request(
       `/service-stack/${serviceId}/enable-subdomain-access`,
