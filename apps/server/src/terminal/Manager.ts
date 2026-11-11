@@ -1637,7 +1637,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     threadId: string,
     terminalId: string,
   ) {
-    yield* persistWorker.drainKey(toSessionKey(threadId, terminalId));
+    yield* persistWorker.settleKey(toSessionKey(threadId, terminalId));
   });
 
   const persistHistory = Effect.fn("terminal.persistHistory")(function* (
