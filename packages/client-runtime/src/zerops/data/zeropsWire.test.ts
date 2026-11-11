@@ -270,7 +270,9 @@ describe("the Zerops wire", () => {
         Effect.gen(function* () {
           const { wire } = harness({
             requestData: async () => {
-              throw new ZeropsApiError("gone", status === 404 ? "not-found" : "forbidden", status);
+              throw status === 404
+                ? new ZeropsApiError("gone", "not-found", status, "projectNotFound")
+                : new ZeropsApiError("gone", "forbidden", status);
             },
           });
           const link = yield* wire.open;
@@ -312,6 +314,42 @@ describe("the Zerops wire", () => {
           const link = yield* wire.open;
           const answer = yield* Effect.result(link.get(path));
           expect(answer._tag === "Success" ? answer.success.status : null).toBe(status);
+        }),
+      ),
+  );
+
+  // witness: packages/client-runtime/src/zerops/data/zeropsWire.ts | if (cause.code !== null && notFoundCodeOf(path) === cause.code) return 404; → if (cause.status === 400 && cause.code !== null && notFoundCodeOf(path) === cause.code) return 404;
+  it.effect.each([
+    { path: "/project/p1", code: "projectNotFound" },
+    { path: "/service-stack/s1", code: "serviceStackNotFound" },
+  ])("answers $path refused with 404 $code as gone, as it answers 400", ({ path, code }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { wire } = harness({
+          requestData: async () => {
+            throw new ZeropsApiError("Not found.", "not-found", 404, code);
+          },
+        });
+        const link = yield* wire.open;
+        expect(yield* link.get(path)).toEqual({ status: 404, body: null });
+      }),
+    ),
+  );
+
+  // witness: packages/client-runtime/src/zerops/data/zeropsWire.ts | return cause.status === 404 ? null : cause.status; → return cause.status;
+  it.effect.each(["clientNotFound", "notFound"])(
+    "fails a read answered 404 %s: only a project's own code proves it gone",
+    (code) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { wire } = harness({
+            requestData: async () => {
+              throw new ZeropsApiError("Not found.", "not-found", 404, code);
+            },
+          });
+          const link = yield* wire.open;
+          const fault = yield* Effect.flip(link.get("/project/p1"));
+          expect(fault.outcome).toBe("definitive-refusal");
         }),
       ),
   );

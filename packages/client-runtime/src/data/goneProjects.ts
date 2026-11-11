@@ -1,7 +1,7 @@
 /**
  * A project HQ still places — a Mate, a stage or a production — that the person's own read proved
- * gone on Zerops (`400 projectNotFound`: its `project` fact deleted, never a stream frame alone) is
- * told to HQ, once a session, with the person's token: by its preparer's own receipt
+ * gone on Zerops (`projectNotFound` at 400 or 404: its `project` fact deleted, never a stream frame
+ * alone) is told to HQ, once a session, with the person's token: by its preparer's own receipt
  * (`complete-mate-deletion`), else by an organization owner or admin
  * (`complete-project-deletion`, `finishDeletionPermission`). Anyone else tells HQ nothing, and the
  * row stays drawn gone on Zerops while HQ holds it. Only HQ's drop of its placement clears it.
