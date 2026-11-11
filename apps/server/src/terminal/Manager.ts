@@ -1151,6 +1151,7 @@ function findEscapeSequenceEndIndex(input: string, start: number): number | null
 // libghostty prints UTF-8 C1 code points (U+0080-U+009F) as text, so only ESC starts a sequence.
 // eslint-disable-next-line no-control-regex -- Terminal sequence introducers must reach the parser.
 const HISTORY_SEQUENCE_START = /\u001b/;
+const NEXT_HISTORY_SEQUENCE_START = new RegExp(HISTORY_SEQUENCE_START.source, "g");
 
 function sanitizeTerminalHistoryChunk(
   pendingControlSequence: string,
@@ -1231,8 +1232,11 @@ function sanitizeTerminalHistoryChunk(
       continue;
     }
 
-    append(input[index] ?? "");
-    index += 1;
+    // One slice per printable run: every chunk of coloured output reaches this loop.
+    NEXT_HISTORY_SEQUENCE_START.lastIndex = index + 1;
+    const nextSequenceStart = NEXT_HISTORY_SEQUENCE_START.exec(input)?.index ?? input.length;
+    append(input.slice(index, nextSequenceStart));
+    index = nextSequenceStart;
   }
 
   return { visibleText, pendingControlSequence: "" };
