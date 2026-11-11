@@ -194,7 +194,7 @@ import { engineLayerInert } from "./engine/testing/inertEngine.ts";
 
 const defaultProjectId = ProjectId.make("project-default");
 const defaultThreadId = ThreadId.make("thread-default");
-const defaultDesktopBootstrapToken = "test-desktop-bootstrap-token";
+const defaultTestCredential = "test-credential";
 const defaultModelSelection = {
   instanceId: ProviderInstanceId.make("codex"),
   model: "gpt-5-codex",
@@ -642,7 +642,6 @@ const buildAppUnderTest = (options?: {
       zeropsCrew: false,
       noBrowser: true,
       startupPresentation: "browser",
-      desktopBootstrapToken: defaultDesktopBootstrapToken,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
       basePath: "",
@@ -1510,7 +1509,7 @@ const getHttpServerUrl = (pathname = "") =>
   });
 
 const exchangeAccessToken = (
-  credential = defaultDesktopBootstrapToken,
+  credential = defaultTestCredential,
   options?: {
     readonly headers?: Record<string, string>;
     readonly scope?: string;
@@ -1522,8 +1521,7 @@ const exchangeAccessToken = (
   },
 ) =>
   Effect.gen(function* () {
-    if (credential === defaultDesktopBootstrapToken)
-      credential = (yield* issueFixtureGrant()).credential;
+    if (credential === defaultTestCredential) credential = (yield* issueFixtureGrant()).credential;
     const tokenUrl = yield* getHttpServerUrl("/oauth/token");
     const response = yield* fetchEffect(tokenUrl, {
       method: "POST",
@@ -1756,12 +1754,12 @@ const issueFixtureGrant = (
     ),
   );
 
-const getAuthenticatedAuthorizationHeader = (credential = defaultDesktopBootstrapToken) =>
+const getAuthenticatedAuthorizationHeader = (credential = defaultTestCredential) =>
   getAuthenticatedBearerSessionToken(credential).pipe(Effect.map((token) => `Bearer ${token}`));
 
-const getAuthenticatedBearerSessionToken = (credential = defaultDesktopBootstrapToken) =>
+const getAuthenticatedBearerSessionToken = (credential = defaultTestCredential) =>
   Effect.gen(function* () {
-    if (credential === defaultDesktopBootstrapToken) {
+    if (credential === defaultTestCredential) {
       const auth = yield* testAuth;
       return (yield* auth.issueSession({
         subject: "zerops-user:test",
@@ -5021,7 +5019,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
 
       const response = yield* HttpClient.post("/api/auth/browser-session", {
-        body: yield* HttpBody.json({ credential: defaultDesktopBootstrapToken }),
+        body: yield* HttpBody.json({ credential: defaultTestCredential }),
       });
       assert.equal(response.status, 404);
       assert.equal(response.headers["set-cookie"], undefined);
