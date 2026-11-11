@@ -4793,8 +4793,9 @@ const PlainWorkEntryRow = memo(function PlainWorkEntryRow(props: {
         "aria-label": accessibleDisplayText,
         "aria-expanded": expanded,
         onClick: () => setExpanded((v) => !v),
+        // Only the row itself: Enter or Space on an action inside the expanded row is that action's.
         onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
             e.preventDefault();
             setExpanded((v) => !v);
           }
