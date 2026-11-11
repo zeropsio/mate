@@ -266,7 +266,7 @@ const PICKER: Omit<GithubConnectPickerViewProps, "apps"> = {
     again: nothing,
     leaving: nothing,
     dismiss: nothing,
-    openSettings: nothing,
+    make: async () => false,
     onConnected: nothing,
   },
 };

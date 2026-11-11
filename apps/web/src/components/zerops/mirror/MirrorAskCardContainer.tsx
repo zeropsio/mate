@@ -24,7 +24,7 @@ import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import type { AskDensity } from "../../ask/AskCard";
 import { showAskInConversation } from "../../ask/askReveal";
 import { ComposerAskFace } from "../../chat/ComposerAsk";
-import { GithubConnectPicker } from "../github/GithubConnectPicker";
+import { GithubConnectPicker, GithubConnectReading } from "../github/GithubConnectPicker";
 import { NOT_NOW } from "../../ask/ask.logic";
 import { Button } from "../../ui/button";
 import { MirrorAskCard } from "./MirrorAskCard";
@@ -105,6 +105,11 @@ function MirrorAsk({
   // the card holds them too.
   const github = useGitMirrorApps(waits);
   if (compact && !waits) return null;
+  const notNowPress = (
+    <Button onClick={notNow} size="md" variant="ghost">
+      {NOT_NOW}
+    </Button>
+  );
 
   return (
     <MirrorAskCard
@@ -116,23 +121,19 @@ function MirrorAsk({
       onRetry={retry}
       picker={
         appId === null || github.apps === null ? (
-          <p className="text-body text-muted-foreground">Reading your organization's GitHub…</p>
+          <GithubConnectReading footerEnd={notNowPress} />
         ) : (
           <GithubConnectPicker
             apps={github.apps}
             density="compact"
-            footerEnd={
-              <Button onClick={notNow} size="md" variant="ghost">
-                {NOT_NOW}
-              </Button>
-            }
+            footerEnd={notNowPress}
             project={appId}
             repo={ask.repo}
             returnTo={window.location.href}
           />
         )
       }
-      pickerFoots={appId !== null && github.apps !== null}
+      pickerFoots
       onShowInConversation={
         compact
           ? () =>
