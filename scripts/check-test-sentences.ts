@@ -444,8 +444,12 @@ export function checkTestSentences(
   const ancestor = sentenceComparison(root, base);
   const touched = changedPaths(root, ancestor);
   const imported = importedRoots(root);
+  // `.repos/` holds vendored references, synced whole from their own repositories.
   const paths = touched.filter(
-    (path) => retainedTestFile.test(path) && !imported.some((dir) => path.startsWith(`${dir}/`)),
+    (path) =>
+      retainedTestFile.test(path) &&
+      !path.startsWith(".repos/") &&
+      !imported.some((dir) => path.startsWith(`${dir}/`)),
   );
   const baseSources = readBlobs(
     root,
