@@ -42,9 +42,12 @@ export function useCancelBuild(input: {
         processId,
       });
     } catch (cause) {
-      if (isCurrent()) setTrouble(zeropsErrorMessage(cause));
-    } finally {
-      if (isCurrent()) setCancelling(false);
+      // Only a write Zerops did not take frees the press; a taken one stays cancelling until the
+      // build says so, and the control leaves with the build.
+      if (isCurrent()) {
+        setTrouble(zeropsErrorMessage(cause));
+        setCancelling(false);
+      }
     }
   }, [appVersionId, cancelling, operations, orgId, processId, projectId]);
   return { cancel, cancelling, trouble };

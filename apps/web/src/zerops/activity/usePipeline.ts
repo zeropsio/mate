@@ -88,7 +88,11 @@ export function usePipeline(versionId: string, orgId: string | null): PipelineVi
     projectId === null ? NO_SERVICES : projectServicesAtom(projectId),
   ).services;
   const service = services?.find((entry) => entry.id === pipeline?.serviceId);
-  const process = activity.processes?.find((entry) => entry.appVersion?.id === versionId);
+  // The pipeline's own process — its build, or a deploy without one — never another process
+  // that names the version, such as its activation as a backup.
+  const process = activity.processes?.find(
+    (entry) => entry.appVersion?.id === versionId && PIPELINE_ACTIONS.has(entry.actionName),
+  );
   // The process carries the version as the platform's live stream last said it; the record only
   // as its one read found it.
   const carried = process?.appVersion ?? pipeline?.appVersion;
@@ -203,6 +207,9 @@ function tellingLog(
   }
   return logs.build !== undefined ? "build" : logs.prepare !== undefined ? "prepare" : null;
 }
+
+/** The processes that run a pipeline (the GUI's pipeline history lists these alone). */
+const PIPELINE_ACTIONS: ReadonlySet<string> = new Set(["stack.build", "stack.deploy"]);
 
 /** Statuses a version stays in once its pipeline ended. */
 const SETTLED: ReadonlySet<string> = new Set([

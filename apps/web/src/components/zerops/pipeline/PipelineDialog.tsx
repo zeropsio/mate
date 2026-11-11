@@ -23,6 +23,7 @@ import { usePipeline, type PipelineView } from "~/zerops/activity/usePipeline";
 import { useCancelBuild } from "~/zerops/useCancelBuild";
 import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { pipelineOfSearch, useClosePipeline } from "~/zerops/pipelineSearch";
+import { useAccountDataOptional } from "~/zerops/accountData";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Badge, type BadgeTone } from "../../ui/badge";
@@ -62,8 +63,10 @@ export function PipelineDialogHost(): JSX.Element {
 }
 
 function PipelineDialog({ versionId }: { readonly versionId: string }): JSX.Element {
-  const { activeOrganization, organizations, selectOrganization } = useZeropsSession();
-  const orgId = activeOrganization?.id ?? null;
+  const { organizations, selectOrganization } = useZeropsSession();
+  // The organization the account's data observes: right after a switch the session names the new
+  // one a render before the data does, and the record is judged against what the reads ask.
+  const orgId = useAccountDataOptional()?.orgId ?? null;
   const view = usePipeline(versionId, orgId);
   const read = view.read;
   const elsewhere =
