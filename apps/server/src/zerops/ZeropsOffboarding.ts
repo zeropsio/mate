@@ -44,6 +44,7 @@ import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { type ProjectSigners, ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 import { type SignOutTarget, ZeropsSignOut } from "./ZeropsSignOut.ts";
 import { subscribeChanges } from "./zeropsChanges.ts";
+import { MateUpdateBootFence } from "../mateUpdateBoot.ts";
 
 export class ZeropsOffboarding extends Context.Service<
   ZeropsOffboarding,
@@ -168,7 +169,11 @@ export const layer = Layer.effect(
         ),
       );
       const moved = yield* subscribeChanges([reports, signers.changes, mateOwner.changes]);
-      yield* Effect.forkScoped(Effect.forever(Effect.andThen(moved, service.checkNow)));
+      // Signing out reaches the provider homes and logins outside the state: never before commit.
+      const fence = yield* MateUpdateBootFence;
+      yield* Effect.forkScoped(
+        fence.lifted.pipe(Effect.andThen(Effect.forever(Effect.andThen(moved, service.checkNow)))),
+      );
     }
     return service;
   }),
