@@ -19,9 +19,9 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
  *   every session on a moved Chief mark (`chief`), and to `ZeropsMateOwner`, whom it names the
- *   Mate's owner (`ownerUserId`), and to `ZeropsChangesFile`, which keeps the
- *   Mate's changes from every state where zcp reads them, and to `ZeropsChiefOpener`, whom it lets
- *   open a Chief (`chiefOpenerUserId`); tickets (`ticket`), each answered `ticket-ack`, or
+ *   Mate's owner (`ownerUserId`), and to `ZeropsChiefOpener`, whom it lets open a Chief
+ *   (`chiefOpenerUserId`); the raw `mate` of every state, decoded or not, is kept by
+ *   `ZeropsMateStateFile` where zcp reads it; tickets (`ticket`), each answered `ticket-ack`, or
  *   `ticket_refused` when the access list does not admit its person; the
  *   Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
@@ -32,7 +32,8 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   before HQ's first state on a link is held until it comes ({@link HQ_TASK_HOLD}). An older
  *   HQ's `access` frame is read past like any frame this build cannot decode: the Mate's own list
  *   is the only one (`ZeropsMateAccessList`).
- * - **Closed:** HQ names why (`MateLinkClosed`). A refused key (`4401`) or one HQ does not admit
+ * - **Closed:** the Mate is not linked until HQ's first state on the next link. HQ names why
+ *   (`MateLinkClosed`). A refused key (`4401`) or one HQ does not admit
  *   (`4403`, its code the reason) is the Mate's standing until HQ next sends its state, and so is
  *   an admission that could not resolve the key (`1011`, {@link KEY_UNRESOLVED}) unless a refusal
  *   stands; a link superseded by the Mate's own newer one (`4409`) is expected.
@@ -105,14 +106,18 @@ import { ZeropsChiefOpener } from "./ZeropsChiefOpener.ts";
 import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
-import type { MateChanges } from "@t3tools/shared/hqChanges";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { chatsSource } from "./engineOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
-import { makeChangesFile } from "./ZeropsChangesFile.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
+import {
+  HeardMate,
+  makeMateStateFile,
+  type MateLinkEnd,
+  type MateStateFile,
+} from "./ZeropsMateStateFile.ts";
 import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
 import { ZeropsObserveCredentialFile } from "./ZeropsObserveCredentialFile.ts";
 import { ZeropsMateKey, type ZeropsMateKeyReader } from "./ZeropsMateKey.ts";
@@ -152,8 +157,9 @@ export interface LinkClose {
  */
 export type HqStanding =
   /**
-   * HQ has not sent the Mate yet; or it refused the key, why as HQ's close reason; or the Mate
-   * does not dial because it does not know its public origin (`withheld`).
+   * No link has heard HQ's state: none is up yet or the last one ended; or HQ refused the key, why
+   * as HQ's close reason; or the Mate does not dial because it does not know its public origin
+   * (`withheld`).
    */
   | {
       readonly kind: "not-linked";
@@ -161,8 +167,8 @@ export type HqStanding =
       readonly withheld?: "no_public_origin";
       readonly unresolved?: true;
     }
-  /** The Mate as HQ last sent it. */
-  | { readonly kind: "linked"; readonly mate: LinkedMate; readonly unresolved?: true };
+  /** The Mate as HQ last sent it on the link that is up. */
+  | { readonly kind: "linked"; readonly mate: LinkedMate };
 
 /** HQ's word on the key at the latest admission that closed a link, until HQ next sends its state. */
 type KeyVerdict = { readonly refusal: string } | { readonly unresolved: true };
@@ -186,6 +192,13 @@ const verdictOf = (close: LinkClose | undefined): KeyVerdict | undefined => {
   return closed.value.reason === KEY_UNRESOLVED
     ? { unresolved: true }
     : { refusal: closed.value.reason };
+};
+
+/** Why the Mate is not linked after one attempt: why none was dialled, or HQ's word on the key. */
+const linkEndOf = (ended: MateLinkEnd | undefined, heard: KeyVerdict | undefined): MateLinkEnd => {
+  if (ended !== undefined) return ended;
+  if (heard === undefined) return "closed";
+  return "refusal" in heard ? "key_refused" : "key_unresolved";
 };
 
 /** HQ's refusals of the Mate's key for a safety rule: while one stands, nobody acts in the Mate. */
@@ -218,12 +231,11 @@ export const actingIn = (owner: MateOwner, standing: HqStanding, subject: string
 };
 
 /** What the people in the Mate are told of HQ's word on its key (`ServerConfig.hqKey`); none while none stands. */
-export const hqKeyOf = (standing: HqStanding): MateHqKey | null =>
-  standing.kind === "not-linked" && standing.refusal !== undefined
-    ? { state: "refused", reason: standing.refusal }
-    : standing.unresolved === true
-      ? { state: "unresolved" }
-      : null;
+export const hqKeyOf = (standing: HqStanding): MateHqKey | null => {
+  if (standing.kind === "linked") return null;
+  if (standing.refusal !== undefined) return { state: "refused", reason: standing.refusal };
+  return standing.unresolved === true ? { state: "unresolved" } : null;
+};
 
 export interface ZeropsHqLinkOptions {
   readonly autoUpdatePolicy?: Pick<MateAutoUpdatePolicy["Service"], "open">;
@@ -268,8 +280,8 @@ export interface ZeropsHqLinkOptions {
   readonly gitFingerprint: Effect.Effect<Option.Option<string>>;
   /** The fingerprint of the Observe credential held now, read afresh for every dial; HQ mints none while it names a live one. */
   readonly observeFingerprint?: Effect.Effect<Option.Option<string>>;
-  /** Keeps the Mate's changes from every state HQ sends where zcp reads them (`ZeropsChangesFile`). */
-  readonly mateChanges?: (changes: MateChanges) => Effect.Effect<void>;
+  /** Keeps every state HQ sends, and how the link stands, where zcp reads them; none: no file. */
+  readonly mateState?: Pick<MateStateFile, "linked" | "notLinked">;
   /** Hands on the project HQ's Chief mark names, or none, with every state HQ sends. */
   readonly chief?: (projectId: string | null) => Effect.Effect<void>;
   /** Hands on HQ's word on the Mate and the organization's keys (`ZeropsAutomation`). */
@@ -287,7 +299,7 @@ export class ZeropsHqLink extends Context.Service<
   {
     /** Where the Mate stands with its HQ now. */
     readonly standing: Effect.Effect<HqStanding>;
-    /** Fires whenever `standing` may have moved: each state HQ sends, each word it closes on the key. */
+    /** Fires whenever `standing` may have moved: each state HQ sends, each link's end, each word it closes on the key. */
     readonly changes: Stream.Stream<void>;
   }
 >()("t3/zerops/ZeropsHqLink") {}
@@ -337,6 +349,10 @@ export const connectLinkSocket: ConnectLinkSocket = (url) => {
 
 const decodeDown = Schema.decodeUnknownResult(Schema.fromJsonString(KeyLinkDown));
 const encodeUp = Schema.encodeSync(Schema.fromJsonString(KeyLinkUp));
+/** The `mate` a `state` frame carries, read past what of it this build cannot decode. */
+const decodeHeardState = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ type: Schema.Literal("state"), mate: HeardMate })),
+);
 /** The task a `task` frame names, read past what of it the Mate cannot decode. */
 const decodeNamedTask = Schema.decodeUnknownOption(
   Schema.fromJsonString(
@@ -355,6 +371,7 @@ type SocketEvent =
       readonly _tag: "message";
       readonly raw: string;
       readonly frame: ReturnType<typeof decodeDown>;
+      readonly at: number;
     }
   | { readonly _tag: "close"; readonly close: LinkClose | undefined };
 
@@ -394,6 +411,8 @@ export const makeZeropsHqLink = (
   options: ZeropsHqLinkOptions,
 ): Effect.Effect<ZeropsHqLink["Service"], never, Scope.Scope> =>
   Effect.gen(function* () {
+    // Whether a link is up, and the Mate as it last said: some from a link's first decoded state
+    // to that link's end.
     const state = yield* SubscriptionRef.make<Option.Option<LinkedMate>>(Option.none());
     const keyVerdict = yield* SubscriptionRef.make<KeyVerdict | undefined>(undefined);
     let reportedKey: string | undefined;
@@ -408,13 +427,12 @@ export const makeZeropsHqLink = (
     /**
      * One link, opened with the project's key in its first frame, then relayed in the scope's
      * lifetime until it closes: the overview up once HQ answered, pongs and HQ's frames down.
-     * None when there is no key or the socket never opened.
+     * Fails with why when there is no key or public origin, or the socket never opened.
      */
     const openLink = Effect.fnUntraced(function* (handshake: HandshakeSignals) {
       const key = yield* options.readKey;
-      if (key === undefined || key === "" || options.publicOrigin === undefined) {
-        return Option.none<Link>();
-      }
+      if (options.publicOrigin === undefined) return Result.fail("no_public_origin" as const);
+      if (key === undefined || key === "") return Result.fail("no_key" as const);
       const origin = options.publicOrigin;
       const events = yield* Queue.unbounded<SocketEvent>();
       const clock = yield* Clock.Clock;
@@ -447,7 +465,12 @@ export const makeZeropsHqLink = (
             Deferred.doneUnsafe(pingInterval, Effect.succeed(frame.success.pingIntervalMs));
           }
         }
-        Queue.offerUnsafe(events, { _tag: "message", raw, frame });
+        Queue.offerUnsafe(events, {
+          _tag: "message",
+          raw,
+          frame,
+          at: clock.currentTimeMillisUnsafe(),
+        });
       });
       socket.addEventListener("close", (event) =>
         Queue.offerUnsafe(events, {
@@ -479,7 +502,7 @@ export const makeZeropsHqLink = (
       });
       const first = yield* Queue.take(events);
       if (first._tag !== "open") {
-        return Option.none<Link>();
+        return Result.fail("closed" as const);
       }
       const gitFingerprint = yield* options.gitFingerprint;
       const observeFingerprint = yield* (
@@ -630,7 +653,6 @@ export const makeZeropsHqLink = (
               Effect.andThen(options.owner?.(frame.mate.ownerUserId ?? null) ?? Effect.void),
               Effect.andThen(SubscriptionRef.set(keyVerdict, undefined)),
               Effect.andThen(Ref.set(automatedHere, frame.mate.automated === true)),
-              Effect.andThen(options.mateChanges?.(frame.mate) ?? Effect.void),
               Effect.andThen(options.automation?.heard(frame.mate) ?? Effect.void),
               Effect.andThen(options.chief?.(frame.mate.chief?.projectId ?? null) ?? Effect.void),
               Effect.andThen(
@@ -706,8 +728,20 @@ export const makeZeropsHqLink = (
           if (event._tag === "close") return event.close;
           if (event._tag !== "message") continue;
           const frame = event.frame;
+          // The raw frame, ahead of the decode: a state a newer HQ sent still reaches zcp.
+          const stated =
+            Result.isFailure(frame) || frame.success.type === "state"
+              ? decodeHeardState(event.raw)
+              : Option.none();
+          if (Option.isSome(stated) && options.mateState !== undefined) {
+            yield* options.mateState.linked(stated.value.mate, event.at);
+          }
           if (Result.isSuccess(frame)) yield* receive(frame.success);
-          else yield* undecoded(event.raw, frame.failure);
+          else if (Option.isSome(stated)) {
+            yield* Effect.logWarning("zerops hq link: could not read a state HQ sent", {
+              error: frame.failure.message,
+            });
+          } else yield* undecoded(event.raw, frame.failure);
         }
       });
       const relayed = yield* Effect.forkScoped(
@@ -727,7 +761,7 @@ export const makeZeropsHqLink = (
           ).pipe(Effect.as(undefined)),
         ).pipe(Effect.ensuring(autoUpdatePolicy?.close ?? Effect.void)),
       );
-      return Option.some<Link>(Fiber.join(relayed));
+      return Result.succeed<Link>(Fiber.join(relayed));
     });
 
     /** Whether a link opened, and how it closed. */
@@ -737,8 +771,8 @@ export const makeZeropsHqLink = (
         const firstState = yield* Deferred.make<void>();
         const run = Effect.gen(function* () {
           const link = yield* openLink({ opened, firstState });
-          if (Option.isNone(link)) return { opened: false } as const;
-          const close = yield* link.value;
+          if (Result.isFailure(link)) return { opened: false, ended: link.failure } as const;
+          const close = yield* link.success;
           return { opened: true, close, stated: yield* Deferred.isDone(firstState) } as const;
         });
         const handshake = Deferred.await(opened).pipe(
@@ -771,11 +805,14 @@ export const makeZeropsHqLink = (
             Effect.catchCause(() => Effect.succeed({ opened: false } as const)),
           );
           const close = "close" in ran ? ran.close : undefined;
+          const heard = verdictOf(close);
+          yield* SubscriptionRef.set(state, Option.none());
+          const ended = "ended" in ran ? ran.ended : undefined;
+          yield* options.mateState?.notLinked(linkEndOf(ended, heard)) ?? Effect.void;
           if (close?.keyChanged) {
             attempt = 0;
             continue;
           }
-          const heard = verdictOf(close);
           const planned =
             close?.code === SUPERSEDED ||
             (close?.code !== undefined && PLANNED_HANDOVER.includes(close.code));
@@ -841,11 +878,11 @@ export const makeZeropsHqLink = (
         const word = yield* SubscriptionRef.get(keyVerdict);
         if (word !== undefined && "refusal" in word)
           return { kind: "not-linked", refusal: word.refusal } as const;
-        const unresolved = word === undefined ? {} : ({ unresolved: true } as const);
         const held = yield* SubscriptionRef.get(state);
-        return Option.isSome(held)
-          ? ({ kind: "linked", mate: held.value, ...unresolved } as const)
-          : ({ kind: "not-linked", ...unresolved } as const);
+        if (Option.isSome(held)) return { kind: "linked", mate: held.value } as const;
+        return word === undefined
+          ? ({ kind: "not-linked" } as const)
+          : ({ kind: "not-linked", unresolved: true } as const);
       }),
       changes: Stream.merge(
         Stream.map(SubscriptionRef.changes(state), () => undefined),
@@ -1028,6 +1065,10 @@ export const layer = (crew: OverviewSources["crew"]) =>
           Effect.provideService(FileSystem.FileSystem, fs),
         ),
       });
+      const mateState =
+        zerops.mateStateFile === undefined
+          ? undefined
+          : yield* makeMateStateFile(zerops.mateStateFile, zerops.projectId);
       return yield* makeZeropsHqLink({
         hqOrigin: zerops.hqOrigin,
         serviceId: zerops.serviceId ?? zerops.hostname ?? "",
@@ -1047,9 +1088,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         gitCredential: credential.write,
         observeCredential: observeCredential.write,
         signers: signIns.heard,
-        mateChanges: yield* makeChangesFile(
-          paths.join(config.homeDir, ".zcp", "hq", "changes.json"),
-        ),
+        ...(mateState === undefined ? {} : { mateState }),
         gitFingerprint: credential.fingerprint,
         observeFingerprint: observeCredential.fingerprint,
         // A moved Chief mark rotates every session on this engine, so each runs a fresh zcp.
@@ -1059,6 +1098,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
             ...list.unread,
           ]),
           deliver: engine.deliver,
+          keptChief: mateState?.keptChief ?? Option.none(),
         })).heard,
         automation: yield* ZeropsAutomation,
         tasks: yield* ZeropsTasks,

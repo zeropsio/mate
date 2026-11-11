@@ -9,7 +9,7 @@
  * same thread, with a fresh zcp. A rotation does not wait for the agent's background work: that
  * work ends as lost (`decide.rotate.test.ts`).
  *
- * The first state a process hears restarts nothing: its sessions were spawned after it started.
+ * The first state a process hears is compared with the Chief its state file kept from the last run; with none kept it restarts nothing.
  * Each delivery carries `chief:<conversation>:<millisecond this process began hearing>:<change number>`: one id per mark
  * change, so a return to an earlier Chief rotates again and is not answered by the old receipt. A conversation that refuses (archived) or cannot record now is passed over.
  *
@@ -40,6 +40,8 @@ export interface ChiefRestartDeps {
     commandId: CommandId,
     principal: Principal,
   ) => Effect.Effect<unknown, { readonly message: string }>;
+  /** The project the Chief mark named in the state kept from the last run (`ZeropsMateStateFile`). */
+  readonly keptChief: Option.Option<string | null>;
 }
 
 export interface ChiefRestart {
@@ -49,8 +51,8 @@ export interface ChiefRestart {
 
 export const makeChiefRestart = (deps: ChiefRestartDeps) =>
   Effect.gen(function* () {
-    // Per process: none until the first state, which only records.
-    const lastChief = yield* Ref.make<Option.Option<string | null>>(Option.none());
+    // None until the first state, which then only records, when the last run kept no Chief.
+    const lastChief = yield* Ref.make(deps.keptChief);
     // One id per mark change, across restarts of this process too: a return to an earlier Chief
     // is a new change, never answered by the old change's receipt.
     const run = yield* Clock.currentTimeMillis;

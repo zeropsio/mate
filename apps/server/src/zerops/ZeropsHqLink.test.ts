@@ -40,7 +40,7 @@ import * as Tickets from "./ZeropsTicketDoor.ts";
 import * as Connections from "./ZeropsConnections.ts";
 import { makeAccessScene, sceneRead } from "./testing/accessScene.ts";
 import * as ChiefOpener from "./ZeropsChiefOpener.ts";
-import { makeChangesFile } from "./ZeropsChangesFile.ts";
+import { makeMateStateFile } from "./ZeropsMateStateFile.ts";
 import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
 import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import { memorySignInStore } from "./zeropsSignIns.ts";
@@ -204,7 +204,7 @@ const rig = (
     readonly ticket?: ZeropsHqLinkOptions["ticket"];
     readonly end?: ZeropsHqLinkOptions["end"];
     readonly chiefOpener?: ZeropsHqLinkOptions["chiefOpener"];
-    readonly mateChanges?: ZeropsHqLinkOptions["mateChanges"];
+    readonly mateState?: ZeropsHqLinkOptions["mateState"];
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -253,7 +253,7 @@ const rig = (
       ...(options.ticket === undefined ? {} : { ticket: options.ticket }),
       ...(options.end === undefined ? {} : { end: options.end }),
       ...(options.chiefOpener === undefined ? {} : { chiefOpener: options.chiefOpener }),
-      ...(options.mateChanges === undefined ? {} : { mateChanges: options.mateChanges }),
+      ...(options.mateState === undefined ? {} : { mateState: options.mateState }),
       gitCredential: (credential) =>
         Effect.uninterruptible(
           (options.credentialLands?.(credential) ?? Effect.void).pipe(
@@ -336,6 +336,26 @@ const linked = (sockets: ReadonlyArray<FakeSocket>, index: number) =>
     yield* TestClock.adjust(Duration.zero);
     return socket;
   });
+
+/** The Mate's state file in a temp directory, what it holds, and a queue told as each write lands. */
+const stateFile = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const root = yield* fs.makeTempDirectoryScoped({ prefix: "mate-state-file-" });
+  const at = path.join(root, "state.json");
+  const file = yield* makeMateStateFile(at, "P_MATE");
+  const landed = yield* Queue.unbounded<void>();
+  const told = (write: Effect.Effect<void>) =>
+    write.pipe(Effect.andThen(Queue.offer(landed, undefined)), Effect.asVoid);
+  return {
+    read: Effect.map(fs.readFileString(at), decodeJson),
+    landed,
+    mateState: {
+      linked: (mate, heardAtMs) => told(file.linked(mate, heardAtMs)),
+      notLinked: (reason) => told(file.notLinked(reason)),
+    } satisfies NonNullable<ZeropsHqLinkOptions["mateState"]>,
+  };
+});
 
 describe("ZeropsHqLink", () => {
   it.effect(
@@ -555,7 +575,7 @@ describe("ZeropsHqLink", () => {
           yield* TestClock.adjust(Duration.seconds(3));
           assert.isTrue(first.closed);
           assert.strictEqual(yield* Ref.get(key), "zk-1");
-          assert.deepStrictEqual(yield* link.standing, { kind: "linked", mate: STATE });
+          assert.deepStrictEqual(yield* link.standing, { kind: "not-linked" });
           assert.isTrue(Option.isNone(yield* autoUpdatePolicy.current));
           yield* TestClock.adjust(Duration.millis(30));
           const next = yield* opened(sockets, 1);
@@ -1200,54 +1220,62 @@ describe("ZeropsHqLink", () => {
       ),
   );
 
-  it.effect(
-    "Decision: every state HQ sends lands as the Mate's changes, and only them, in the file zcp reads",
-    () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const root = yield* fs.makeTempDirectoryScoped({ prefix: "mate-changes-file-" });
-        const directory = path.join(root, ".zcp", "hq");
-        const at = path.join(directory, "changes.json");
-        const { sockets } = yield* rig({ mateChanges: yield* makeChangesFile(at) });
-        const socket = yield* linked(sockets, 0);
-        const change = {
-          repo: "shop",
-          number: 3,
-          title: "Mate: shop",
-          head: "a".repeat(40),
-          mergedSha: null,
-          landedHead: null,
-          branch: "mate/ada",
-        } as const;
-        admit(socket, {
-          ...STATE,
-          appId: "app-1",
-          appName: "Shop",
-          changes: [{ ...change, state: "open", updatedAt: "2026-11-05T10:00:00.000Z" }],
-          ownerUserId: "owner",
-        });
-        admit(socket, {
-          ...STATE,
-          appId: "app-1",
-          appName: "Shop",
-          changes: [{ ...change, state: "merged", mergedSha: "b".repeat(40) }],
-          ownerUserId: "owner",
-        });
-        // Frames are taken in order: the pong is the receipt that both states were handled.
-        const ponged = yield* Deferred.make<void>();
-        socket.onSent = (message) => {
-          if (message.type === "pong") Deferred.doneUnsafe(ponged, Effect.void);
-        };
-        socket.hear({ type: "ping" });
-        yield* Deferred.await(ponged);
-        assert.deepStrictEqual(JSON.parse(yield* fs.readFileString(at)), {
-          appId: "app-1",
-          appName: "Shop",
-          changes: [{ ...change, state: "merged", mergedSha: "b".repeat(40) }],
-        });
-        assert.deepStrictEqual(yield* fs.readDirectory(directory), ["changes.json"]);
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  // witness: apps/server/src/zerops/ZeropsHqLink.ts | yield* SubscriptionRef.set(state, Option.none()); → yield* Effect.void;
+  // witness: apps/server/src/zerops/ZeropsHqLink.ts | return "refusal" in heard ? "key_refused" : "key_unresolved"; → return "refusal" in heard ? "key_unresolved" : "key_refused";
+  it.effect("A link that ended is not linked, and the file says why with the last state.", () =>
+    Effect.gen(function* () {
+      const { read, landed, mateState } = yield* stateFile;
+      const { link, sockets } = yield* rig({ mateState });
+      const mate = { ...STATE, repos: [] };
+      const first = yield* linked(sockets, 0);
+      yield* Queue.take(landed);
+      first.closeWith(1006);
+      yield* TestClock.adjust(Duration.zero);
+      yield* Queue.take(landed);
+      assert.deepStrictEqual(yield* link.standing, { kind: "not-linked" });
+      assert.deepStrictEqual(yield* read, {
+        link: "not-linked",
+        reason: "closed",
+        heardAt: "1970-01-01T00:00:00.000Z",
+        mate,
+      });
+      yield* TestClock.adjust(Duration.millis(30));
+      const second = yield* linked(sockets, 1);
+      yield* Queue.take(landed);
+      second.closeWith(4401, "key_refused");
+      yield* TestClock.adjust(Duration.zero);
+      yield* Queue.take(landed);
+      assert.deepStrictEqual(yield* read, {
+        link: "not-linked",
+        reason: "key_refused",
+        heardAt: "1970-01-01T00:00:00.030Z",
+        mate,
+      });
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
+
+  // witness: apps/server/src/zerops/ZeropsHqLink.ts | Result.isFailure(frame) || frame.success.type === "state" → Result.isSuccess(frame) && frame.success.type === "state"
+  it.effect("A state this build cannot decode still reaches the file.", () =>
+    Effect.gen(function* () {
+      const { read, mateState } = yield* stateFile;
+      const { link, sockets } = yield* rig({ mateState });
+      const socket = yield* opened(sockets, 0);
+      const newer = { projectId: "P_MATE", fromANewerHq: true };
+      // Frames are taken in order: the pong is the receipt that the state was handled.
+      const ponged = yield* Deferred.make<void>();
+      socket.onSent = (message) => {
+        if (message.type === "pong") Deferred.doneUnsafe(ponged, Effect.void);
+      };
+      socket.hear({ type: "state", mate: newer });
+      socket.hear({ type: "ping" });
+      yield* Deferred.await(ponged);
+      assert.deepStrictEqual(yield* read, {
+        link: "linked",
+        heardAt: "1970-01-01T00:00:00.000Z",
+        mate: newer,
+      });
+      assert.deepStrictEqual(yield* link.standing, { kind: "not-linked" });
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
   // HQ's state carries the application the Mate is in and its changes there: kept whole, as sent.

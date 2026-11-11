@@ -20,6 +20,21 @@ const input = (overrides?: Partial<Parameters<typeof resolveZeropsEnvironment>[0
 });
 
 describe("resolveZeropsEnvironment — the one detection rule", () => {
+  // witness: apps/server/src/zerops/ZeropsEnvironment.ts | mateStateFile: present(input.mateStateFile), → mateStateFile: present(input.mateStateFile) ?? present(input.statusFile),
+  it("A server whose launch names no state file writes none.", () => {
+    const launched = { projectId: "P_MATE", statusFile: "/run/zcp/status.json" };
+    assert.strictEqual(resolveZeropsEnvironment(input(launched))?.mateStateFile, undefined);
+    assert.strictEqual(
+      resolveZeropsEnvironment(input({ ...launched, mateStateFile: "  " }))?.mateStateFile,
+      undefined,
+    );
+    assert.strictEqual(
+      resolveZeropsEnvironment(input({ ...launched, mateStateFile: "/z/state.json" }))
+        ?.mateStateFile,
+      "/z/state.json",
+    );
+  });
+
   it("is off when the project id is absent", () => {
     assert.strictEqual(resolveZeropsEnvironment(input()), undefined);
   });

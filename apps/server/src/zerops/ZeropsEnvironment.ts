@@ -71,6 +71,8 @@ export interface ZeropsEnvironment {
   readonly mateUpdateStateFile: string | undefined;
   /** Where this boot reports its progress to zcp until it accepts commands (`ZCP_MATE_BOOT_FILE`). */
   readonly mateBootFile?: string | undefined;
+  /** Where the Mate's state is kept for zcp (`ZCP_MATE_STATE_FILE`); none: no state file is written. */
+  readonly mateStateFile?: string | undefined;
   /** The platform's live service-environment store; see {@link ZEMBED_ENV_STORE_PATH}. */
   readonly envStorePath: string;
 }
@@ -89,6 +91,7 @@ export interface ZeropsEnvironmentInput {
   readonly statusFile?: string | undefined;
   readonly mateUpdateStateFile?: string | undefined;
   readonly mateBootFile?: string | undefined;
+  readonly mateStateFile?: string | undefined;
 }
 
 /**
@@ -109,6 +112,9 @@ export const HQ_ORIGIN_ENV = "T3CODE_ZEROPS_HQ_ORIGIN";
 export const publishHqOrigin = (env: Record<string, string | undefined>, origin: string): void => {
   env[HQ_ORIGIN_ENV] = origin;
 };
+
+/** The variable zcp names the Mate's state file by, for this server alone. */
+export const MATE_STATE_FILE_ENV = "ZCP_MATE_STATE_FILE";
 
 /** The variable that names the Git credential file, to the server and to every process it starts. */
 export const HQ_GIT_CREDENTIAL_ENV = "T3CODE_ZEROPS_HQ_GIT_CREDENTIAL";
@@ -184,6 +190,7 @@ export const resolveZeropsEnvironment = (
     statusFile: present(input.statusFile),
     mateUpdateStateFile: present(input.mateUpdateStateFile),
     mateBootFile: present(input.mateBootFile),
+    mateStateFile: present(input.mateStateFile),
     envStorePath: ZEMBED_ENV_STORE_PATH,
   };
 };
