@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
@@ -7,6 +7,7 @@ import {
   type ChatImageAttachment,
   type ChatFileAttachment,
 } from "@t3tools/contracts";
+import { useStableHandlers } from "../../hooks/useStableHandlers";
 import { randomUUID } from "../../lib/utils";
 import type { ComposerImageAttachment } from "../../composerDraftStore";
 import { composerAttachmentRoute, type ComposerFileAttachment } from "../../lib/composerFiles";
@@ -25,6 +26,8 @@ interface QuestionFile {
   readonly questionId: string;
   readonly attachment: ComposerImageAttachment | ComposerFileAttachment;
 }
+
+const NO_FILES: ReadonlyArray<QuestionFile> = [];
 
 /** An answer's files belong to its request and question, never the next chat draft. */
 export function useQuestionAttachments({
@@ -58,11 +61,14 @@ export function useQuestionAttachments({
       files.clear();
     };
   }, []);
-  const entries = scope === null ? [] : (byScope[scope] ?? []);
+  const entries = scope === null ? NO_FILES : (byScope[scope] ?? NO_FILES);
   const pending = scope === null ? 0 : (preparing[scope] ?? 0);
   const blocked =
     pending > 0 || entries.some((entry) => uploads[entry.attachment.id]?.status !== "ready");
-  const current = entries.filter((entry) => entry.questionId === questionId);
+  const current = useMemo(
+    () => entries.filter((entry) => entry.questionId === questionId),
+    [entries, questionId],
+  );
 
   const add = async (files: ReadonlyArray<File>) => {
     if (scope === null || questionId === null) return;
@@ -173,12 +179,9 @@ export function useQuestionAttachments({
     }
     return result;
   };
-  return {
-    current,
-    entries,
-    pending,
-    blocked,
-    uploads,
+  // The same object while what it says stands: the composer it is handed to is drawn again for a
+  // file added or uploaded, not for every render of the conversation around it.
+  const act = useStableHandlers({
     add,
     remove,
     retry,
@@ -187,5 +190,9 @@ export function useQuestionAttachments({
       if (scope !== null) retired.current.add(scope);
       for (const entry of entries) remove(entry.attachment.id);
     },
-  };
+  });
+  return useMemo(
+    () => ({ current, entries, pending, blocked, uploads, ...act }),
+    [current, entries, pending, blocked, uploads, act],
+  );
 }
