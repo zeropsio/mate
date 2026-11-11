@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { mayAutoRestart, mayAutoUpdate, restartReading } from "./mateAutoUpdate.logic.ts";
 
 describe("automatic Mate updates", () => {
+  // witness: apps/server/src/zerops/mateAutoUpdate.logic.ts | updater.failedVersion !== evidence.latest → updater.failedVersion === evidence.latest
   it.each([
     {
       name: "a stable candidate and current HQ permission update",
