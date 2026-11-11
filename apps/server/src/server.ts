@@ -12,7 +12,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as PtyAdapter from "./terminal/PtyAdapter.ts";
-import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
@@ -834,11 +833,6 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
     }),
   );
 
-// The CLI supplies configuration. A boot that fails before activation fails the build (`abort`);
-// one that fails after it (an update's held engine start) ends the server through `failed`.
-export const runServer = Effect.scoped(
-  Effect.gen(function* () {
-    const context = yield* Layer.build(makeServerLayer({ drivers: BUILT_IN_DRIVERS }));
-    return yield* Context.get(context, ServerRuntimeStartup.ServerRuntimeStartup).failed;
-  }),
-);
+// The CLI supplies configuration. A boot that fails fails the build (`abort`): every step that can
+// fail, the engine's boot included, comes before activation.
+export const runServer = Layer.launch(makeServerLayer({ drivers: BUILT_IN_DRIVERS }));

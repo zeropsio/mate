@@ -55,11 +55,6 @@ export class ServerRuntimeStartup extends Context.Service<
   ServerRuntimeStartup,
   {
     readonly awaitCommandReady: Effect.Effect<void, ServerRuntimeStartupError>;
-    /**
-     * Fails once the boot has failed, before or after command readiness (an update's held engine
-     * start fails after zcp's commit); never succeeds. The launched server ends on it.
-     */
-    readonly failed: Effect.Effect<never, ServerRuntimeStartupError>;
     readonly markHttpListening: Effect.Effect<void>;
     readonly enqueueCommand: <A, E>(
       effect: Effect.Effect<A, E>,
@@ -206,39 +201,35 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
   );
 
 /**
- * The conversation's roots: the engine's start in `reactorScope`. Under an update's boot fence the
- * engine's admission closes and its start is held, in its own fiber, until zcp commits or cancels
- * (the fence then reopens admission only after it): the start tells every owner `Recovered` and
- * runs the effects that queues (the crew's sweeps reach its dev services' git), while the readiness
- * proof zcp commits on must answer before that. A held start that fails is the boot's failure
- * (`failBoot`), after zcp's commit has been answered.
+ * The conversation's roots: the engine in `reactorScope`. Its boot reads every record and
+ * reconciles the restart before startup goes on, so a boot that cannot read this Mate's state fails
+ * before command readiness; under an update's boot fence that boot is strict, and zcp rolls the
+ * update back. The engine's opening acts outward and cannot fail: under the fence its admission
+ * closes first and the opening is held, in its own fiber, until zcp commits or cancels (the fence
+ * then reopens admission only after it).
  */
 export const startConversationRoots = (input: {
-  readonly engine: Pick<MateEngineService, "start" | "updateDrain">;
+  readonly engine: Pick<MateEngineService, "boot" | "updateDrain">;
   readonly reactorScope: Scope.Scope;
-  readonly failBoot: (cause: Cause.Cause<unknown>) => Effect.Effect<void>;
 }): Effect.Effect<void, EngineStoreError> =>
   runStartupPhase(
     "engine.start",
     Effect.gen(function* () {
       const fence = yield* MateUpdateBootFence;
-      if (!fence.pending) {
-        yield* input.engine.start().pipe(Scope.provide(input.reactorScope));
-        return;
+      if (fence.pending) {
+        if (input.engine.updateDrain === undefined)
+          return yield* Effect.die(new Error("This Mate cannot fence an automatic update boot."));
+        yield* input.engine.updateDrain.begin;
       }
-      if (input.engine.updateDrain === undefined)
-        return yield* Effect.die(new Error("This Mate cannot fence an automatic update boot."));
-      yield* input.engine.updateDrain.begin;
-      yield* Effect.forkIn(
-        fence
-          .holdStart(input.engine.start().pipe(Scope.provide(input.reactorScope)))
-          .pipe(
-            Effect.catchCause((cause) =>
-              Cause.hasInterruptsOnly(cause) ? Effect.void : input.failBoot(cause),
-            ),
-          ),
-        input.reactorScope,
-      );
+      const open = yield* input.engine
+        .boot({ strict: fence.pending })
+        .pipe(Scope.provide(input.reactorScope));
+      yield* fence.pending
+        ? Effect.forkIn(
+            fence.holdOpen(open.pipe(Scope.provide(input.reactorScope))),
+            input.reactorScope,
+          )
+        : open.pipe(Scope.provide(input.reactorScope));
     }),
   );
 
@@ -263,7 +254,6 @@ export const make = (options?: StartupOptions) =>
     const commandReadiness = yield* Effect.serviceOption(ServerCommandReadiness);
 
     const commandGate = yield* makeCommandGate;
-    const bootFailed = yield* Deferred.make<never, ServerRuntimeStartupError>();
     const httpListening = yield* Deferred.make<void>();
     const reactorScope = yield* Scope.make("sequential");
 
@@ -284,7 +274,6 @@ export const make = (options?: StartupOptions) =>
         ),
         Effect.andThen(commandGate.failCommandReady(error)),
         Effect.andThen(options?.abort?.(error) ?? Effect.void),
-        Effect.andThen(Deferred.fail(bootFailed, error)),
         Effect.asVoid,
       );
     };
@@ -321,11 +310,7 @@ export const make = (options?: StartupOptions) =>
       );
 
       yield* Effect.logDebug("startup phase: starting the Mate engine");
-      yield* startConversationRoots({
-        engine: mateEngine,
-        reactorScope,
-        failBoot,
-      });
+      yield* startConversationRoots({ engine: mateEngine, reactorScope });
 
       const welcomeBase = yield* resolveWelcomeBase;
       const environment = yield* serverEnvironment.getDescriptor;
@@ -436,7 +421,6 @@ export const make = (options?: StartupOptions) =>
 
     return {
       awaitCommandReady: commandGate.awaitCommandReady,
-      failed: Deferred.await(bootFailed),
       markHttpListening: Deferred.succeed(httpListening, undefined),
       enqueueCommand: commandGate.enqueueCommand,
     } satisfies ServerRuntimeStartup["Service"];

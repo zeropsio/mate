@@ -73,8 +73,9 @@ const readinessRoute = HttpRouter.add(
 );
 /**
  * zcp sends commit and cancel once, with a fixed budget: the answer comes once the signal is taken,
- * never after the engine's start the boot fence held (its time grows with the stored conversations).
- * Admission stays closed until that start is up (`MateUpdateBootFence.lift`).
+ * never after the engine's opening the boot fence held nor after the reread of zcp's status that a
+ * commit starts (a spawned `zcp mate status`). Admission stays closed until the engine is open
+ * (`MateUpdateBootFence.lift`).
  */
 const releaseRoute = (path: `/${string}`) =>
   HttpRouter.add(

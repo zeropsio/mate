@@ -110,7 +110,10 @@ export class ZeropsMateUpdate extends Context.Service<
     readonly current: Effect.Effect<ExecutionEnvironmentUpdate | undefined>;
     /** {@link current} now, then every time it changes: the Mate's link to HQ follows it. */
     readonly changes: Stream.Stream<ExecutionEnvironmentUpdate | undefined>;
-    /** Rereads zcp's local status without refreshing releases or starting an update. Never fails. */
+    /**
+     * Starts a reread of zcp's local status (no release refresh, no update) in the service's scope
+     * and returns at once: a caller inside zcp's own request never waits on `zcp mate status`.
+     */
     readonly reread: Effect.Effect<void>;
     /** Runs `zcp mate status` now and updates {@link current}. Never fails. */
     readonly refresh: Effect.Effect<void>;
@@ -448,7 +451,7 @@ export const make = (options: ZeropsMateUpdateOptions) =>
           ),
         ),
       );
-    const reread: Effect.Effect<void> = options.isZeropsEnvironment
+    const readLocal: Effect.Effect<void> = options.isZeropsEnvironment
       ? Effect.suspend(() => readStatus({ local: true })).pipe(
           Effect.catchTags({
             ZeropsCliNotFound: () =>
@@ -525,7 +528,7 @@ export const make = (options: ZeropsMateUpdateOptions) =>
         );
       }
       // Queue writes during the initial read; consume them only after it has published.
-      yield* reread;
+      yield* readLocal;
       // Local reads only, so not held by an update's boot fence: a settled record lifts it.
       yield* forkParkedLocal(
         Effect.gen(function* () {
@@ -536,11 +539,11 @@ export const make = (options: ZeropsMateUpdateOptions) =>
           if (batch.includes("error")) {
             yield* Effect.logWarning("zerops mate update: status watch failed");
           }
-          if (batch.includes("change")) yield* reread;
+          if (batch.includes("change")) yield* readLocal;
         }).pipe(Effect.forever),
       );
     } else {
-      yield* reread;
+      yield* readLocal;
     }
     if (options.policy !== undefined && options.isZeropsEnvironment) {
       yield* forkParked(
@@ -575,7 +578,7 @@ export const make = (options: ZeropsMateUpdateOptions) =>
     return {
       current: SubscriptionRef.get(state),
       changes: SubscriptionRef.changes(state),
-      reread,
+      reread: Effect.asVoid(Effect.forkIn(readLocal, scope)),
       refresh,
       check,
       restart,

@@ -93,6 +93,12 @@ export interface ConversationsShape {
     conversation: ConversationId,
     afterSeq: number,
   ) => Stream.Stream<EngineEvent, EngineStoreError>;
+  /**
+   * Reads an owner's record as an actor's first use would (a snapshot of another state version is
+   * rewritten) and keeps nothing: the boot's proof, before anything is told, that this version
+   * reads every record. An owner no registered kind takes is not read.
+   */
+  readonly read: (owner: ConversationId) => Effect.Effect<void, EngineStoreError>;
   /** The kind that owns an id; none when no registered kind does. */
   readonly kindOf: (owner: ConversationId) => OwnerKind | undefined;
   /** A registered kind's typed door: its own commands, state and events. */
@@ -288,6 +294,10 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
         ),
     state: conversations.state,
     subscribe: conversations.subscribe,
+    read: (owner) => {
+      const domain = domainOf(owner);
+      return domain === undefined ? Effect.void : Effect.asVoid(storeOf(domain).load(owner));
+    },
     kindOf: (owner) => domainOf(owner)?.kind,
     owner: (domain) => handleFor(domain as AnyDomain),
   });
