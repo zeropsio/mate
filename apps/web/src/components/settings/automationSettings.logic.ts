@@ -20,7 +20,7 @@ export const APP_NAME_MAX = 34;
 export const GITHUB_ONE_LINE =
   "Everything Mate writes on GitHub appears as your organization's bot, never a person.";
 export const GITHUB_OLDER_HQ = hqNeedsUpdate("connect GitHub");
-export const GITHUB_WHO_CAN = "The organization's Owner and Admins add GitHub apps.";
+export const GITHUB_WHO_CAN = "Owners and Admins change this.";
 const WITHHELD = "Only the organization's Owner and Admins see this.";
 
 /** A Mate code repository connected through an app: HQ's application id, its repository, and GitHub's. */
@@ -46,14 +46,19 @@ export interface GithubAppRow {
   readonly appUrl: string;
   /** Who vouched for it: {@link GithubSeal}. */
   readonly seal: GithubSeal;
-  /** The accounts it is installed on and not waiting for an OK, in HQ's order. */
-  readonly accounts: ReadonlyArray<string>;
   /** The Mate repositories whose remote is a repository this app reaches. */
   readonly uses: ReadonlyArray<GithubAppUse>;
-  /** Where it is installed and Mate acts, or GitHub suspended it. */
+  /** The GitHub accounts Mate works in through it, or GitHub suspended it on. */
   readonly installations: ReadonlyArray<{
     readonly id: number;
+    /** The GitHub account; `null` for one GitHub did not answer about. */
+    readonly account: string | null;
+    /** An organization's account or a person's own; `null` where GitHub did not answer. */
+    readonly accountType: "Organization" | "User" | null;
+    /** What Mate may use there and how much of it is connected: {@link accountLine}. */
     readonly line: string;
+    /** Zerops user id of who added it from Mate; `null` when added on GitHub, or not answered. */
+    readonly addedBy: string | null;
     /** GitHub's page for it; `null` for one GitHub did not answer about. */
     readonly manageUrl: string | null;
     readonly suspended: boolean;
@@ -65,6 +70,7 @@ export interface GithubAppRow {
   readonly waiting: ReadonlyArray<{
     readonly id: number;
     readonly account: string;
+    readonly accountType: "Organization" | "User";
     /** Its repositories, by `owner/name`. */
     readonly repositories: ReadonlyArray<string>;
   }>;
@@ -100,7 +106,7 @@ export type GithubSeal =
   | { readonly kind: "needed" };
 
 export const NEEDS_REMAKE =
-  "Nobody is recorded to have set this app up, so Mate uses it for nothing. An Owner or Admin removes it and adds it again.";
+  "Nobody is recorded to have set this bot up, so Mate uses it for nothing. An Owner or Admin removes it and adds it again.";
 
 function githubSeal(app: HqGithubApp): GithubSeal {
   return app.sealedBy === null
@@ -178,17 +184,25 @@ function makePublicAt(app: HqGithubApp) {
   return { url: `https://github.com/apps/${slug}`, settings: false };
 }
 
-/** Where the app is installed, in a line: "acme · 3 repositories". */
-export function installationLine(
-  installation: Pick<HqGithubReadInstallation, "account" | "repositorySelection" | "repositories">,
+/**
+ * An account's line: the repositories Mate may use there, and how many of Mate's code
+ * repositories are connected to one of them through this app — "3 repositories Mate may use · 1
+ * connected". The two counts are different things, so each says what it counts.
+ */
+export function accountLine(
+  installation: Pick<HqGithubReadInstallation, "repositorySelection" | "repositories">,
+  githubAppId: number,
 ): string {
   const reach =
     installation.repositorySelection === "all"
-      ? "all repositories"
+      ? "All its repositories"
       : installation.repositories.length === 1
-        ? "1 repository"
-        : `${installation.repositories.length} repositories`;
-  return `${installation.account} · ${reach}`;
+        ? "1 repository Mate may use"
+        : `${installation.repositories.length} repositories Mate may use`;
+  const connected = installation.repositories.filter(
+    (repository) => repository.usedBy !== null && repository.usedBy.githubAppId === githubAppId,
+  ).length;
+  return `${reach} · ${connected === 0 ? "none connected yet" : `${connected} connected`}`;
 }
 
 /**
@@ -224,11 +238,6 @@ export function githubAppRow(app: HqGithubApp): GithubAppRow {
     botLogin: app.botLogin,
     appUrl: app.appUrl,
     seal: githubSeal(app),
-    accounts: app.installations.flatMap((installation) =>
-      installation.state !== "unknown" && installationStanding(installation) !== "waiting"
-        ? [installation.account]
-        : [],
-    ),
     uses: appUses(app),
     installations: app.installations
       .filter((installation) => installationStanding(installation) !== "waiting")
@@ -236,16 +245,22 @@ export function githubAppRow(app: HqGithubApp): GithubAppRow {
         installation.state === "unknown"
           ? {
               id: installation.id,
-              line: `Installation ${installation.id} · GitHub didn't answer about it`,
+              account: null,
+              accountType: null,
+              line: "GitHub didn't answer about it",
+              addedBy: null,
               manageUrl: null,
               suspended: false,
             }
           : {
               id: installation.id,
+              account: installation.account,
+              accountType: installation.accountType,
               line:
                 installationStanding(installation) === "suspended"
-                  ? `${installation.account} · suspended`
-                  : installationLine(installation),
+                  ? "Suspended on GitHub"
+                  : accountLine(installation, app.appId),
+              addedBy: installation.addedBy,
               manageUrl: installation.manageUrl,
               suspended: installationStanding(installation) === "suspended",
             },
@@ -256,6 +271,7 @@ export function githubAppRow(app: HqGithubApp): GithubAppRow {
             {
               id: installation.id,
               account: installation.account,
+              accountType: installation.accountType,
               repositories: installation.repositories.map((repository) => repository.fullName),
             },
           ]
@@ -282,15 +298,24 @@ export function githubSection(setting: SettingValue<HqGithubView>, admin: boolea
   }
 }
 
-/** An app's second line: "On acme and nova · 2 repositories connected · pushes as acme-mate[bot]". */
-export function appReachLine(app: GithubAppRow): string {
-  const on =
-    app.accounts.length === 0
-      ? "Installed nowhere yet"
-      : `On ${app.accounts.length === 1 ? app.accounts[0] : `${app.accounts.slice(0, -1).join(", ")} and ${app.accounts.at(-1)}`}`;
-  const used =
-    app.uses.length === 1 ? "1 repository connected" : `${app.uses.length} repositories connected`;
-  return `${on} · ${used} · pushes as ${app.botLogin}`;
+/**
+ * The bot an *Add a GitHub account* press installs, decided for the person: the one they set up
+ * themselves, else the oldest that belongs to a GitHub organization. Never a bot on another
+ * person's own account, and never one nobody set up: `null` then, and the press makes the
+ * organization's bot first.
+ */
+export function addingApp(
+  apps: ReadonlyArray<GithubAppRow>,
+  viewerId: string | null,
+): GithubAppRow | null {
+  const sealed = apps.filter((app) => app.seal.kind === "sealed");
+  return (
+    sealed.find(
+      (app) => viewerId !== null && app.seal.kind === "sealed" && app.seal.by === viewerId,
+    ) ??
+    sealed.find((app) => !app.personal) ??
+    null
+  );
 }
 
 /**
@@ -311,24 +336,22 @@ export function githubReturnLine(
 ): string | null {
   const apps = section.kind === "apps" ? section.apps : [];
   if (returned === "requested")
-    return "GitHub asked an owner of the GitHub account to approve the app; it's installed once they do.";
+    return "GitHub asked an owner of that account to approve Mate. It's added once they do.";
   // Said only while an installation waits here: not for another organization, nor after its OK.
   if (returned === "waiting")
     return apps.some((app) => app.waiting.length > 0)
-      ? "GitHub installed the app. It waits for an Owner's or Admin's OK before Mate uses it."
+      ? "The account is added on GitHub. It waits for an Owner's or Admin's OK before Mate uses it."
       : null;
   if (returned !== "connected") return null;
   if (githubAppId !== null) {
     const installed = apps.find((app) => app.appId === githubAppId);
     return installed === undefined
       ? null
-      : `GitHub installed ${installed.name} on the account you picked. Mate acts there as ${installed.botLogin}.`;
+      : `The account is added. Mate works there as ${installed.botLogin}.`;
   }
   // Apps are oldest first: the one just made is the last.
   const newest = apps.at(-1);
-  return newest === undefined
-    ? null
-    : `${newest.name} is set up. Mate acts through it as ${newest.botLogin}.`;
+  return newest === undefined ? null : `Mate is on GitHub as ${newest.botLogin}.`;
 }
 
 /** The section's state line. */
@@ -341,15 +364,28 @@ export function githubStatus(section: GithubSection): string {
     case "withheld":
       return WITHHELD;
     case "failed":
-      return couldntRead("the organization's GitHub apps", section.words);
-    case "apps":
-      return section.apps.length === 0
-        ? section.manage
-          ? "No GitHub app yet"
-          : `No GitHub app yet · ${GITHUB_WHO_CAN}`
-        : section.apps.length === 1
-          ? `1 GitHub app · pushes as ${section.apps[0]!.botLogin}`
-          : `${section.apps.length} GitHub apps`;
+      return couldntRead("the organization's GitHub accounts", section.words);
+    case "apps": {
+      if (section.apps.length === 0)
+        return section.manage
+          ? "Mate isn't on GitHub yet"
+          : `Mate isn't on GitHub yet · ${GITHUB_WHO_CAN}`;
+      // A bot nobody set up is used for nothing, whatever it is installed on.
+      const used = section.apps.filter((app) => app.seal.kind === "sealed");
+      if (used.length === 0) return "Mate's bot isn't in use: nobody is recorded to have set it up";
+      // What people come for: the accounts Mate works in, counted once each; not one GitHub
+      // suspended it on, nor one it did not answer about.
+      const accounts = new Set(
+        used.flatMap((app) =>
+          app.installations.flatMap((one) =>
+            one.account === null || one.suspended ? [] : [one.account],
+          ),
+        ),
+      ).size;
+      return accounts === 0
+        ? "Mate's bot is made · no GitHub account added yet"
+        : `Mate works in ${accounts === 1 ? "1 GitHub account" : `${accounts} GitHub accounts`}, as a bot of its own`;
+    }
   }
 }
 
