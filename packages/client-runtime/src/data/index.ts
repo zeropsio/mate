@@ -191,6 +191,7 @@ export {
 } from "./families/projectSpend.ts";
 export {
   computeSpend,
+  organizationComputeSpend,
   type ComputeSpendKey,
   type ComputeSpendRead,
 } from "./projections/projectSpend.ts";

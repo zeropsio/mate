@@ -1,8 +1,9 @@
 /**
  * One line where Zerops will soon stop a project of a card or a project page for insufficient
- * funds: which project, when — in Zerops's own hours — and the way out: a top-up in Zerops, or
+ * funds: which project, when — in Zerops's own hours — and the way out: a top-up in HQ, or
  * asking an owner. Amber while days away, red within the Zerops GUI's own eight hours. Nothing
- * while all is well, and nothing to a member Zerops shows no finances to.
+ * while all is well, and nothing to anyone but the organization's owners and admins
+ * (`mayReadBilling`).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { listedProjectAtom, projectsCreditAtom, stopWords } from "@t3tools/client-runtime/data";
@@ -15,6 +16,8 @@ import { hqCreditUrl } from "~/zerops/hqCredit";
 import { useCreditOffers } from "~/zerops/usePlatformCapabilities";
 
 import { InlineButton } from "../../ui/button";
+import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 
 const NO_PROJECT = Atom.make(null);
 
@@ -32,7 +35,8 @@ export function ProjectCreditLine({
   );
   const { addCredit } = useCreditOffers();
   const orgId = useAccountDataOptional()?.orgId ?? null;
-  if (credit.projectId === null || credit.hoursLeft === null) return null;
+  const readsBilling = mayReadBilling(useZeropsSessionOptional()?.activeOrganization?.roleCode);
+  if (!readsBilling || credit.projectId === null || credit.hoursLeft === null) return null;
   return (
     <p
       className={cn(
@@ -46,7 +50,7 @@ export function ProjectCreditLine({
       {project?.name ?? "A project"} stops {stopWords(credit.hoursLeft)}: not enough credit.{" "}
       {addCredit && orgId !== null ? (
         <InlineButton render={<a href={hqCreditUrl(orgId)} rel="noreferrer" target="_blank" />}>
-          Top up in Zerops
+          Top up in HQ
         </InlineButton>
       ) : (
         "Ask an owner to top up."

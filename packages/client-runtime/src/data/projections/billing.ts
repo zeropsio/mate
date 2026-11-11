@@ -43,6 +43,11 @@ export interface OrganizationBilling {
   readonly daysLeft: number | null;
   /** The project Zerops will stop soonest for insufficient funds, where it says one. */
   readonly soonest: { readonly projectId: string; readonly hoursLeft: number } | null;
+  /**
+   * Whether a top-up (or Zerops itself) verified the organization, once its record is read:
+   * an unverified one is offered the first top-up that verifies it.
+   */
+  readonly verification: "verified" | "unverified" | "unread";
   /** The balance lasts under three days and nothing refills it: the billing page says so. */
   readonly lastsShort: boolean;
   /**
@@ -62,6 +67,13 @@ export const balanceLive: Projection<string, boolean> = {
   },
   equals: (left, right) => left === right,
 };
+
+/** Whether the organization's record says a top-up (or Zerops) verified it; unread until read. */
+function verificationOf(read: ProjectionReads, orgId: string): OrganizationBilling["verification"] {
+  const record = read.fact("organizationCredit", orgId);
+  if (record.kind !== "known") return "unread";
+  return record.value.verified ? "verified" : "unverified";
+}
 
 function costRead(read: ProjectionReads, orgId: string): CostRead {
   const fact = read.fact("organizationCost", orgId);
@@ -108,6 +120,7 @@ export const organizationBilling: Projection<string, OrganizationBilling> = {
     const scope = balanceScope(orgId);
     const fact = balanceOf(read, orgId);
     const cost = costRead(read, orgId);
+    const verification = verificationOf(read, orgId);
     const soonest = soonestStop(read, orgId);
     if (fact.kind !== "known") {
       return {
@@ -117,6 +130,7 @@ export const organizationBilling: Projection<string, OrganizationBilling> = {
         cost,
         daysLeft: null,
         soonest,
+        verification,
         lastsShort: false,
         tone: billingTone({ total: null, soonestHours: soonest?.hoursLeft ?? null }),
       };
@@ -132,6 +146,7 @@ export const organizationBilling: Projection<string, OrganizationBilling> = {
       cost,
       daysLeft,
       soonest,
+      verification,
       lastsShort: lastsShort({ daysLeft, refills: balance.autoTopUp !== null }),
       tone: billingTone({ total, soonestHours: soonest?.hoursLeft ?? null }),
     };

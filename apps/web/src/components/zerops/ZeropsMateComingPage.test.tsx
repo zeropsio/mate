@@ -1870,14 +1870,14 @@ describe("ComingBelow — a project refused for want of credit", () => {
       .map((node) => node.children.join(""));
 
   // Credit may come from another tab, another device or before a reload: Try again stands
-  // beside the way to Zerops for as long as the refusal does (the owner, 2026-10-15).
-  // witness: apps/web/src/components/zerops/ZeropsMateComingPage.tsx | Add credit in Zerops → Add credit in HQ
-  it("offers adding credit in Zerops, in a new tab, with Try again beside it while the refusal stands", () => {
+  // beside the way to HQ for as long as the refusal does (the owner, 2026-10-15).
+  // witness: apps/web/src/components/zerops/ZeropsMateComingPage.tsx | Add credit in HQ → Add credit in Zerops
+  it("offers adding credit in HQ, in a new tab, with Try again beside it while the refusal stands", () => {
     let tried = 0;
     const rendered = render(() => {
       tried += 1;
     });
-    expect(verbs(rendered)).toEqual(["Add credit in Zerops", "Try again"]);
+    expect(verbs(rendered)).toEqual(["Add credit in HQ", "Try again"]);
     const link = rendered.root.findByType("a");
     expect(link.props.href).toBe(HQ_CREDIT);
     expect(link.props.target).toBe("_blank");

@@ -6533,6 +6533,7 @@ code {
   }
 
   .menu-foot-name {
+    min-width: 0;
     overflow: hidden;
     font-size: 15px;
     line-height: 20px;
@@ -6543,33 +6544,25 @@ code {
   }
 
   .menu-foot-role {
-    display: flex;
-    min-width: 0;
     overflow: hidden;
     font-size: 12px;
     line-height: 16px;
     color: var(--sidebar-muted-foreground);
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  /* The role gives way first; the balance after it stays whole. */
-  .menu-foot-role-words {
+  /* The name gives way first; the balance pill after it stays whole. */
+  .menu-foot-name-line {
+    display: flex;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    align-items: center;
+    gap: 8px;
   }
 
   .menu-foot-credit {
+    display: flex;
     flex: none;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .menu-foot-credit[data-tone="low"] {
-    color: var(--zerops-status-attention-text);
-  }
-
-  .menu-foot-credit[data-tone="out"] {
-    color: var(--zerops-status-failed-text);
   }
 
   .menu-foot-button {

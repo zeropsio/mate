@@ -88,6 +88,18 @@ export const ORGANIZATION_PAGES: ReadonlySet<SettingsPath> = new Set([
   "/settings/personas",
 ]);
 
+/** Billing is its owners' and admins' alone (`mayReadBilling`): nobody else is offered it. */
+export const ADMIN_PAGES: ReadonlySet<SettingsPath> = new Set(["/settings/billing"]);
+
+/** Whether a settings page is offered to this viewer: in an organization, and as its admin. */
+export function settingsPageOffered(
+  to: SettingsPath,
+  viewer: { readonly withOrganization: boolean; readonly readsBilling: boolean },
+): boolean {
+  if (ORGANIZATION_PAGES.has(to) && !viewer.withOrganization) return false;
+  return !ADMIN_PAGES.has(to) || viewer.readsBilling;
+}
+
 /**
  * Every searchable setting, in result order. This catalog is the single
  * source of truth for anchor ids and visible titles: panels render both via

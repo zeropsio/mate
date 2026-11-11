@@ -80,7 +80,7 @@ export function useProjectSpend({ appId, projectIds }: ProjectSpendInput): Spend
 const NO_SPEND: SpendState = { kind: "unknown" };
 
 /** "$64" at the figure's size, ".30" smaller and quiet. */
-function Money({ usd }: { readonly usd: number }) {
+export function Money({ usd }: { readonly usd: number }) {
   const { whole, cents } = moneyParts(usd);
   return (
     <span className="text-title font-semibold tabular-nums tracking-tight text-foreground">
@@ -93,7 +93,7 @@ function Money({ usd }: { readonly usd: number }) {
 const COMPUTE_FILL = "bg-spend-compute";
 const TOKENS_FILL = "bg-spend-tokens";
 
-interface BarsGeometry {
+export interface BarsGeometry {
   /** The plot's height, in pixels. */
   readonly height: number;
   /** A bar's width inside its slot: the slot's leftover is the gap between bars. */
@@ -110,11 +110,14 @@ const ROW_BARS: BarsGeometry = {
   slot: null,
   radius: "rounded-t-sm",
 };
+/** The same bars at a page's height: billing's 30 days, read at a glance. */
+export const PAGE_BARS: BarsGeometry = { ...ROW_BARS, height: 88 };
+
 /** Between a day's two segments. */
 const SEGMENT_GAP = 2;
 
 /** One bar a day, compute under tokens, and a tooltip per bar with the day's split. */
-function SpendBars({
+export function SpendBars({
   series,
   geometry,
 }: {

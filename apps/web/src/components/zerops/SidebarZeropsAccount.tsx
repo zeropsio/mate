@@ -22,7 +22,8 @@ import {
 import { Atom } from "effect/reactivity";
 import { formatUsd } from "@t3tools/shared/usageFormat";
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
-import { EllipsisIcon, LogOutIcon } from "lucide-react";
+import { ArrowUpRightIcon, Building2Icon, EllipsisIcon, LogOutIcon } from "lucide-react";
+import { zeropsHqOrigin } from "~/zerops/signInMode";
 import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
 
 import {
@@ -41,6 +42,7 @@ import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useChiefOffer } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
+import { Badge, type BadgeTone } from "../ui/badge";
 import { useSidebar } from "../ui/sidebar";
 import {
   Menu,
@@ -69,6 +71,7 @@ import {
   sidebarAccountRoleParts,
   type SidebarAccountDestination,
 } from "./SidebarZeropsAccount.logic";
+import { mayReadBilling } from "@t3tools/client-runtime/zerops/billingAccess";
 
 type AccountMenuControl = "rail" | "menu";
 const AccountMenuContext = createContext<{
@@ -131,7 +134,11 @@ export function SidebarZeropsAccount({
           onOpenChange: (open: boolean) => accountMenu.setOpen(open ? control : null),
         };
   const lines = sidebarAccountLines({ name: account.name, organization: activeOrganization });
-  const credit = useAccountCredit(activeOrganization?.id ?? null);
+  const credit = useAccountCredit(
+    activeOrganization !== null && mayReadBilling(activeOrganization.roleCode)
+      ? activeOrganization.id
+      : null,
+  );
   const role = sidebarAccountRoleParts(activeOrganization);
   const menu = (
     <MenuPopup align={collapsed ? "start" : "end"} className="w-72" side="top">
@@ -203,17 +210,17 @@ export function SidebarZeropsAccount({
           size={32}
         />
         <span className="menu-foot-lines">
-          <span className="menu-foot-name">{lines.name}</span>
+          <span className="menu-foot-name-line">
+            <span className="menu-foot-name">{lines.name}</span>
+            {credit === null ? null : <AccountCredit credit={credit} />}
+          </span>
           {/* An organization still being resolved is absent, never a placeholder: the foot must
               paint nothing it takes back. */}
           {role === null ? null : (
             <span className="menu-foot-role" data-zerops-surface="sidebar-account-role">
-              <span className="menu-foot-role-words">
-                {role.before}
-                <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
-                {role.after}
-              </span>
-              {credit === null ? null : <AccountCredit credit={credit} />}
+              {role.before}
+              <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
+              {role.after}
             </span>
           )}
         </span>
@@ -388,7 +395,10 @@ export function SidebarZeropsAccountMenu({
           <span className="text-xs text-muted-foreground">One Mate for every project</span>
         </MenuItem>
       )}
-      {SIDEBAR_ACCOUNT_DESTINATIONS.map((entry) => (
+      {SIDEBAR_ACCOUNT_DESTINATIONS.filter(
+        // Billing is its owners' and admins' alone: nobody else is offered the page.
+        (entry) => entry.id !== "billing" || mayReadBilling(activeOrganization?.roleCode),
+      ).map((entry) => (
         <MenuItem
           data-zerops-account-destination={entry.id}
           key={entry.id}
@@ -403,6 +413,15 @@ export function SidebarZeropsAccountMenu({
           ) : null}
         </MenuItem>
       ))}
+      {/* HQ is a place of its own (hq.zerops.io: billing, top-ups, tokens), so it opens beside Mate. */}
+      <MenuItem
+        data-zerops-account-hq=""
+        render={<a href={zeropsHqOrigin()} rel="noreferrer" target="_blank" />}
+      >
+        <Building2Icon />
+        <span className="min-w-0 flex-1 truncate">HQ</span>
+        <ArrowUpRightIcon className="size-3.5 text-muted-foreground" />
+      </MenuItem>
 
       <MenuSeparator />
       {/* Sign-out keeps the menu open so the busy and failed states show
@@ -546,6 +565,13 @@ function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
   return { amount: compactUsd(billing.total), tone: billing.tone, words };
 }
 
+const CREDIT_TONE: Readonly<Record<BillingTone, BadgeTone>> = {
+  quiet: "neutral",
+  low: "warning",
+  out: "danger",
+};
+
+/** The balance as a pill after the name: its tone is how it stands; the button's name says it. */
 function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
   return (
     <span
@@ -554,9 +580,7 @@ function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
       data-tone={credit.tone}
       data-zerops-surface="sidebar-account-credit"
     >
-      {/* A flex item trims plain spaces at its edges: the separator keeps its own. */}
-      {"\u00a0·\u00a0"}
-      {credit.amount}
+      <Badge tone={CREDIT_TONE[credit.tone]}>{credit.amount}</Badge>
     </span>
   );
 }
