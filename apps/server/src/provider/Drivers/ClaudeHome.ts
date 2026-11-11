@@ -33,11 +33,36 @@ export const resolveClaudeHomePath = Effect.fn("resolveClaudeHomePath")(function
   return path.resolve(path.join(NodeOS.homedir(), ".claude"));
 });
 
+// A Claude Code session that launched the server exports these. A claude spawned with them acts as
+// part of that session: its session id, messaging socket and token, and effort.
+const CLAUDE_HOST_SESSION_VARIABLES = [
+  "CLAUDECODE",
+  "CLAUDE_CODE_SESSION_ID",
+  "CLAUDE_CODE_HOST_SESSION_ID",
+  "CLAUDE_CODE_CHILD_SESSION",
+  "CLAUDE_CODE_SESSION_ATTENDED",
+  "CLAUDE_CODE_MESSAGING_SOCKET",
+  "CLAUDE_CODE_MESSAGING_TOKEN",
+  "CLAUDE_CODE_EXECPATH",
+  "CLAUDE_CODE_DESKTOP_APP_VERSION",
+  "CLAUDE_EFFORT",
+  "CLAUDE_PID",
+  "CLAUDE_AGENT_SDK_VERSION",
+  // The desktop runs the server as Node through Electron. Commands Claude runs inherit its env,
+  // so an Electron app they start would run as Node and exit.
+  "ELECTRON_RUN_AS_NODE",
+];
+
 export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function* (
   config: Pick<ClaudeSettings, "homePath">,
   baseEnv?: NodeJS.ProcessEnv,
 ): Effect.fn.Return<NodeJS.ProcessEnv, never, Path.Path> {
-  const resolvedBaseEnv = baseEnv ?? process.env;
+  const sourceEnv = baseEnv ?? process.env;
+  const resolvedBaseEnv = CLAUDE_HOST_SESSION_VARIABLES.some((name) => name in sourceEnv)
+    ? Object.fromEntries(
+        Object.entries(sourceEnv).filter(([name]) => !CLAUDE_HOST_SESSION_VARIABLES.includes(name)),
+      )
+    : sourceEnv;
   const homePath = config.homePath.trim();
   if (homePath.length === 0) return resolvedBaseEnv;
   const resolvedHomePath = yield* resolveClaudeHomePath(config);
