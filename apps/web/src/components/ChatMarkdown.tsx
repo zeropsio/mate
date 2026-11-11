@@ -100,7 +100,6 @@ import { HighlightedCodeLines } from "./chat/HighlightedCodeLines";
 import { RenderErrorBoundary } from "./RenderErrorBoundary";
 import { MermaidSvg, useMermaidDiagram } from "./chat/MermaidDiagram";
 import { mermaidFrame } from "./chat/mermaidDiagram.logic";
-import { useNearViewport } from "../hooks/useNearViewport";
 import { useTheme } from "../hooks/useTheme";
 import { getClientSettings } from "../hooks/useSettings";
 import {
@@ -1239,8 +1238,19 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
       ) : faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
         <GlobeIcon className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "text-muted-foreground")} />
       ) : (
-        <FetchedFavicon
+        // Loaded at once, never left to the browser's lazy loading: a picture waiting on
+        // `loading="lazy"` is an observer of the browser's own, and for as long as one waits
+        // anywhere on the page every animation costs the main thread a frame per tick
+        // (`restingIntersections.ts`); one link scrolled out of a conversation was enough. At
+        // once also means a conversation kept warm has them before it opens, and a row drawn
+        // again paints its mark in the same frame.
+        <img
           src={faviconUrl}
+          alt=""
+          loading="eager"
+          decoding="async"
+          draggable={false}
+          className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-sm")}
           onError={() => {
             failedFaviconHosts.add(host);
             setFailedHost(host);
@@ -1250,29 +1260,6 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
     </span>
   );
 });
-
-/**
- * A site's own mark, fetched once its link is near the viewport. Not the browser's own lazy
- * loading: a picture left waiting by `loading="lazy"` is an IntersectionObserver of the
- * browser's, and for as long as one waits anywhere on the page every animation costs the main
- * thread a frame per tick (`restingIntersections.ts`). One link scrolled out of a conversation
- * was enough.
- */
-function FetchedFavicon({ src, onError }: { readonly src: string; readonly onError: () => void }) {
-  const { ref, near } = useNearViewport<HTMLImageElement>();
-  return (
-    <img
-      ref={ref}
-      src={near ? src : undefined}
-      alt=""
-      loading="eager"
-      decoding="async"
-      draggable={false}
-      className={cn(MARKDOWN_LINK_FAVICON_CLASS_NAME, "rounded-sm")}
-      onError={onError}
-    />
-  );
-}
 
 const CHAT_MARKDOWN_IMAGE_SIZE_CLASS_NAME =
   "h-auto w-auto max-h-[30rem] max-w-[min(100%,30rem)] object-contain";
