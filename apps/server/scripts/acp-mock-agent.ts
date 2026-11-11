@@ -650,8 +650,10 @@ const program = Effect.gen(function* () {
       parameterizedModelPicker =
         request.clientCapabilities?._meta?.parameterizedModelPicker === true;
       if (antigravityProfile) {
+        // The real agent answers the negotiating initialize with version 2 in the v1 shape
+        // (no `info`), so the session runs on v1.
         return {
-          protocolVersion: 1,
+          protocolVersion: 2,
           agentInfo: { name: "antigravity-acp", version: "mock" },
           agentCapabilities: {
             loadSession: true,
