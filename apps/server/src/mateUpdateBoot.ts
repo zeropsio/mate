@@ -14,6 +14,10 @@ import { ServerConfig } from "./config.ts";
  * previous version's state and start it, and every effect this boot made outside that state (an HQ
  * frame, a usage row sent, a git change, a relay publish) would then happen twice.
  *
+ * zcp's commit has a fixed budget, so the commit answers once the lift has started; the engine's
+ * start and everything after it run after the answer. A held start that fails is the server's
+ * failed boot, and the process ends without reopening admission.
+ *
  * The one rule: client and engine admission and new terminals start closed while `pending`, and
  * every root that acts outward awaits `lifted` inside its own fiber. Nothing on the way to command
  * readiness awaits it: zcp commits only after the readiness proof, which needs startup finished.
@@ -27,14 +31,17 @@ export interface MateUpdateBootFenceShape {
   readonly pending: boolean;
   /** Resolves once the lift has reopened admission; at once on a boot that is not pending. */
   readonly lifted: Effect.Effect<void>;
-  /** The engine's start: under a pending fence it runs once zcp commits or cancels. */
-  readonly holdStart: (start: Effect.Effect<void>) => Effect.Effect<void>;
   /**
-   * Starts the lift and returns at once: releases the held start, waits for it, runs `reopen`,
-   * then resolves `lifted`. It runs in the fence's own scope, so it finishes when its caller goes
-   * away and never holds a caller that runs before the engine's start exists (the update service's
-   * first read inside a layer build); a caller that answers for the lift awaits `lifted`. Once
-   * lifted, `reopen` runs inline, as on a boot that is not pending.
+   * The engine's start: under a pending fence it runs once zcp commits or cancels. Only a start
+   * that succeeded lets the lift go on.
+   */
+  readonly holdStart: <E>(start: Effect.Effect<void, E>) => Effect.Effect<void, E>;
+  /**
+   * Starts the lift and returns at once: releases the held start, waits for it to succeed, runs
+   * `reopen`, then resolves `lifted`. It runs in the fence's own scope, so it finishes when its
+   * caller goes away and never holds a caller that runs before the engine's start exists (the
+   * update service's first read inside a layer build), nor a commit answering inside zcp's budget.
+   * Once lifted, `reopen` runs inline, as on a boot that is not pending.
    */
   readonly lift: (reopen: Effect.Effect<void>) => Effect.Effect<void>;
 }
@@ -66,7 +73,8 @@ export class MateUpdateBootFence extends Context.Reference<MateUpdateBootFenceSh
         holdStart: (start) =>
           Deferred.await(released).pipe(
             Effect.andThen(start),
-            Effect.ensuring(Deferred.succeed(started, undefined)),
+            Effect.andThen(Deferred.succeed(started, undefined)),
+            Effect.asVoid,
           ),
         lift: (reopen) =>
           Effect.flatMap(Deferred.isDone(lifted), (done) =>

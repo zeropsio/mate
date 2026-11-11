@@ -1136,7 +1136,7 @@ export const engineWorld: CrewWorldRunner = <E>(
         if (yield* Ref.getAndSet(startedFlag, true)) return;
         const engine = Context.get(context as Context.Context<MateEngine>, MateEngine);
         yield* Scope.provide(engine.start(), life);
-      });
+      }).pipe(Effect.orDie);
       // The Mate's own conversation runs on the Mate's agent, as its stand-up leaves it.
       yield* Effect.provide(
         Effect.flatMap(Conversations, (conversations) =>

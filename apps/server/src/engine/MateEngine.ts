@@ -29,6 +29,7 @@ import type {
 
 import type { OwnerHandle } from "./Conversations.ts";
 import type { MateUpdateDrain } from "../update/MateUpdateDrain.ts";
+import type { EngineStoreError } from "./store/EngineStore.ts";
 
 import type { Command } from "./domain/command.ts";
 import type { Domain, OwnerEvent } from "./owners.ts";
@@ -130,8 +131,11 @@ export interface RunOutcome {
 
 export interface MateEngineService {
   readonly updateDrain?: MateUpdateDrain;
-  /** Boot reconcile, SPI ingestion, outbox and wakes, scoped to the startup's reactor scope. */
-  readonly start: () => Effect.Effect<void, never, Scope.Scope>;
+  /**
+   * Boot reconcile, SPI ingestion, outbox and wakes, scoped to the startup's reactor scope. Its
+   * failure is the server's failed boot: a server whose engine is off never serves.
+   */
+  readonly start: () => Effect.Effect<void, EngineStoreError, Scope.Scope>;
   /**
    * Every conversation as the grafts read it (HQ overview, attention, the menu row), and those
    * whose view could not be read now: a reader never takes an unread one for none.

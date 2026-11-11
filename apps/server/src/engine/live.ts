@@ -120,10 +120,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
           yield* Effect.forkScoped(watchProviderUsage(usageFeed.value));
         }
         yield* Effect.logInfo("Mate engine: on", report);
-      }).pipe(
-        Effect.provide(context),
-        Effect.catchCause((cause) => Effect.logError("Mate engine: the boot failed", cause)),
-      );
+      }).pipe(Effect.provide(context));
 
     const stopSessionsOn: MateEngineService["stopSessionsOn"] = (instanceIds) =>
       Effect.gen(function* () {
