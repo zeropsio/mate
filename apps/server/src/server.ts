@@ -8,6 +8,7 @@ import {
 } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Deferred from "effect/Deferred";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -834,5 +835,11 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
   );
 
 // The CLI supplies configuration. A boot that fails fails the build (`abort`): every step that can
-// fail, the engine's boot included, comes before activation.
-export const runServer = Layer.launch(makeServerLayer({ drivers: BUILT_IN_DRIVERS }));
+// fail, the engine's boot included, comes before activation. Afterwards only an update's refused
+// boot fence ends the server, the same way (`MateUpdateBootFence.ended`).
+export const runServer = Effect.scoped(
+  Effect.flatMap(
+    Layer.build(makeServerLayer({ drivers: BUILT_IN_DRIVERS })),
+    (context) => Context.get(context, MateUpdateBootFence).ended,
+  ),
+);

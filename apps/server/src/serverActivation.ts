@@ -12,8 +12,9 @@ export class ServerActivation extends Context.Reference<Effect.Effect<void> | un
 
 /**
  * Forks a long-running root that acts only on this server's own state and proves it is parked at
- * the activation boundary. An update's boot fence does not hold it: the status watch is how a boot
- * whose commit request was lost reads zcp's settled record and lifts that fence.
+ * the activation boundary. An update's boot fence does not hold it: the status reads are how a boot
+ * whose commit request was lost, or whose switch zcp settled itself, finds zcp's record settled and
+ * lifts or refuses that fence.
  */
 export const forkParkedLocal = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
