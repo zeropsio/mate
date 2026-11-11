@@ -240,6 +240,15 @@ export interface CodexSessionRuntimeShape {
   readonly close: Effect.Effect<void>;
 }
 
+/** What a Codex session generates a random identifier for. */
+type CodexIdentifierPurpose =
+  | "provider-event"
+  | "command-approval-request"
+  | "file-change-approval-request"
+  | "mcp-elicitation-request"
+  | "app-permission-approval-request"
+  | "user-input-request";
+
 export type CodexSessionRuntimeError =
   | CodexErrors.CodexAppServerError
   | CodexSessionRuntimePendingApprovalNotFoundError
@@ -1430,14 +1439,15 @@ export const makeCodexSessionRuntime = (
     );
     const serverNotifications = yield* Queue.unbounded<CodexServerNotification>();
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-    const randomUUIDv4 = (purpose: CodexErrors.CodexAppServerIdentifierPurpose) =>
+    // A failed random source answers Codex the way any failed handler does: an internal error.
+    const randomUUIDv4 = (purpose: CodexIdentifierPurpose) =>
       crypto.randomUUIDv4.pipe(
-        Effect.mapError(
-          (cause) =>
-            new CodexErrors.CodexAppServerIdentifierGenerationError({
-              purpose,
-              cause,
-            }),
+        Effect.mapError((cause) =>
+          CodexErrors.CodexAppServerRequestError.internalError(
+            `Failed to generate Codex App Server identifier for ${purpose}.`,
+            undefined,
+            { cause },
+          ),
         ),
       );
 
@@ -2234,7 +2244,7 @@ export const makeCodexSessionRuntime = (
     const correlateGated = (
       key: string,
       requestKind: ProviderRequestKind,
-      purpose: CodexErrors.CodexAppServerIdentifierPurpose,
+      purpose: CodexIdentifierPurpose,
       payload: { readonly turnId: string; readonly itemId: string },
     ) =>
       Effect.gen(function* () {
@@ -2576,10 +2586,13 @@ export const makeCodexSessionRuntime = (
 
         return {
           answers: yield* toCodexUserInputAnswers(resolvedAnswers).pipe(
-            Effect.mapError((error) =>
-              CodexErrors.CodexAppServerRequestError.invalidParams(error.message, {
-                questionId: error.questionId,
-              }),
+            Effect.mapError(
+              (error) =>
+                new CodexErrors.CodexAppServerRequestError({
+                  code: -32602,
+                  errorMessage: error.message,
+                  data: { questionId: error.questionId },
+                }),
             ),
           ),
         } satisfies EffectCodexSchema.ToolRequestUserInputResponse;

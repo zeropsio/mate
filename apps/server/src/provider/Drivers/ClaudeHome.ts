@@ -2,9 +2,11 @@ import * as NodeOS from "node:os";
 
 import type { ClaudeSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { expandHomePath } from "../../pathExpansion.ts";
 
 const quotePath = Schema.encodeSync(Schema.fromJsonString(Schema.String));
@@ -33,11 +35,36 @@ export const resolveClaudeHomePath = Effect.fn("resolveClaudeHomePath")(function
   return path.resolve(path.join(NodeOS.homedir(), ".claude"));
 });
 
+// A Claude Code session that launched the server exports these. A claude spawned with them acts as
+// part of that session: its session id, messaging socket and token, and effort.
+const CLAUDE_HOST_SESSION_VARIABLES = [
+  "CLAUDECODE",
+  "CLAUDE_CODE_SESSION_ID",
+  "CLAUDE_CODE_HOST_SESSION_ID",
+  "CLAUDE_CODE_CHILD_SESSION",
+  "CLAUDE_CODE_SESSION_ATTENDED",
+  "CLAUDE_CODE_MESSAGING_SOCKET",
+  "CLAUDE_CODE_MESSAGING_TOKEN",
+  "CLAUDE_CODE_EXECPATH",
+  "CLAUDE_CODE_DESKTOP_APP_VERSION",
+  "CLAUDE_EFFORT",
+  "CLAUDE_PID",
+  "CLAUDE_AGENT_SDK_VERSION",
+  // The desktop runs the server as Node through Electron. Commands Claude runs inherit its env,
+  // so an Electron app they start would run as Node and exit.
+  "ELECTRON_RUN_AS_NODE",
+];
+
 export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function* (
   config: Pick<ClaudeSettings, "homePath">,
   baseEnv?: NodeJS.ProcessEnv,
 ): Effect.fn.Return<NodeJS.ProcessEnv, never, Path.Path> {
-  const resolvedBaseEnv = baseEnv ?? process.env;
+  const sourceEnv = baseEnv ?? process.env;
+  const resolvedBaseEnv = CLAUDE_HOST_SESSION_VARIABLES.some((name) => name in sourceEnv)
+    ? Object.fromEntries(
+        Object.entries(sourceEnv).filter(([name]) => !CLAUDE_HOST_SESSION_VARIABLES.includes(name)),
+      )
+    : sourceEnv;
   const homePath = config.homePath.trim();
   if (homePath.length === 0) return resolvedBaseEnv;
   const resolvedHomePath = yield* resolveClaudeHomePath(config);
@@ -51,6 +78,23 @@ export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function
     // keychain) intact.
     CLAUDE_CONFIG_DIR: resolvedHomePath,
   };
+});
+
+/**
+ * Whether an administrator installed Claude Code's `managed-mcp.json`. While it exists Claude
+ * refuses `--strict-mcp-config` and exits before initializing, but it already ignores user,
+ * project and `--mcp-config` servers, so callers isolating MCP can drop the flag.
+ */
+export const hasClaudeManagedMcpConfig = Effect.fn("hasClaudeManagedMcpConfig")(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const platform = yield* HostProcessPlatform;
+  const managedMcpConfigPath =
+    platform === "darwin"
+      ? "/Library/Application Support/ClaudeCode/managed-mcp.json"
+      : platform === "win32"
+        ? "C:\\Program Files\\ClaudeCode\\managed-mcp.json"
+        : "/etc/claude-code/managed-mcp.json";
+  return yield* fileSystem.exists(managedMcpConfigPath).pipe(Effect.orElseSucceed(() => false));
 });
 
 export const makeClaudeContinuationGroupKey = Effect.fn("makeClaudeContinuationGroupKey")(

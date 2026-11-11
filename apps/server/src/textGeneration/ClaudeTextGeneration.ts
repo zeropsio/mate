@@ -49,7 +49,10 @@ import {
   resolveClaudeModelSlug,
   scopeClaudeModelCatalog,
 } from "../spi/claudeProvider.ts";
-import { claudeEnvironment as resolveClaudeEnvironment } from "../spi/driverHomes.ts";
+import {
+  claudeEnvironment as resolveClaudeEnvironment,
+  claudeManagedMcpConfigInstalled,
+} from "../spi/driverHomes.ts";
 
 const CLAUDE_TIMEOUT_MS = 180_000;
 
@@ -199,6 +202,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
                 ),
               )
           : cwd;
+      const managedMcpConfig = yield* claudeManagedMcpConfigInstalled();
       const spawnCommand = yield* resolveSpawnCommand(
         claudeSettings.binaryPath || "claude",
         [
@@ -216,7 +220,9 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           "--tools",
           "",
           "--disable-slash-commands",
-          "--strict-mcp-config",
+          // Claude refuses this flag next to a managed-mcp.json, which already keeps the
+          // user's own MCP servers out.
+          ...(managedMcpConfig ? [] : ["--strict-mcp-config"]),
           "--permission-mode",
           "dontAsk",
         ],
