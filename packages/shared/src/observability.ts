@@ -553,7 +553,16 @@ class LocalFileSpan implements Tracer.Span {
   }
 
   event(name: string, startTime: bigint, attributes?: Record<string, unknown>): void {
-    const nextAttributes = attributes ?? {};
+    const redact = this.redactAttribute;
+    // Logs become span events, so their annotations pass the same redaction as attributes.
+    const nextAttributes =
+      attributes === undefined
+        ? {}
+        : redact === undefined
+          ? attributes
+          : Object.fromEntries(
+              Object.entries(attributes).map(([key, value]) => [key, redact(key, value)]),
+            );
     this.events.push([name, startTime, nextAttributes]);
     this.delegate.event(name, startTime, nextAttributes);
   }
