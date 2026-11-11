@@ -29,6 +29,7 @@ import { streamOf } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
+import { accessEnded } from "./accessEnded.ts";
 
 /** What a person is told when HQ already runs as many heavy reads as it takes, by the read. */
 const GIT_BROWSE_BUSY: Partial<Record<GitBrowseRead, string>> = {
@@ -48,7 +49,7 @@ export const gitBrowseFailure =
     if (cause instanceof HqError) {
       if (cause.code === "busy")
         return { outcome: "transient", message: GIT_BROWSE_BUSY[read] ?? message };
-      if (cause.code === "forbidden" || cause.code === "session_required")
+      if (accessEnded(cause) !== null)
         return { outcome: "authoritative-denial", message, code: cause.code };
       if (cause.kind === "refused")
         return { outcome: "definitive-refusal", message, code: cause.code };

@@ -103,6 +103,7 @@ import {
   ZEROPS_NO_CREDENTIAL,
   ZEROPS_UNANSWERED,
 } from "./refusals.ts";
+import { accessEnded } from "../../data/adapters/accessEnded.ts";
 import { hqStructureOf } from "./structure.ts";
 import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
 
@@ -1305,7 +1306,7 @@ export function makeHqApi(input: {
         unproven.delete(held);
         return response;
       } catch (cause) {
-        if (!(cause instanceof HqError && cause.code === "session_required")) throw cause;
+        if (!(cause instanceof HqError && accessEnded(cause) === "session-ended")) throw cause;
         drop(held, token);
         if (renewed || unproven.has(held)) throw cause;
         renewed = true;

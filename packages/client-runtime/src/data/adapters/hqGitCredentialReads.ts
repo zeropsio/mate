@@ -15,11 +15,12 @@ import { streamOf } from "../reducer.ts";
 import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
 import type { LinkKey } from "../model.ts";
 import type { StreamFault } from "../streamMachine.ts";
+import { accessEnded } from "./accessEnded.ts";
 
 export function credentialFailure(cause: unknown): StreamFault {
   const message = cause instanceof Error ? cause.message : "HQ could not read this repository.";
   if (cause instanceof HqError) {
-    if (cause.code === "forbidden" || cause.code === "session_required")
+    if (accessEnded(cause) !== null)
       return { outcome: "authoritative-denial", message, code: cause.code };
     if (cause.kind === "refused")
       return { outcome: "definitive-refusal", message, code: cause.code };

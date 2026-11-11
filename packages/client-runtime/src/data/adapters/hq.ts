@@ -31,6 +31,7 @@ import {
   type HqScopeDelivery,
   type HqStreamRequest,
 } from "@t3tools/shared/hqStream";
+import { accessEnded } from "./accessEnded.ts";
 import { makeHqPictureReads } from "./hqPictures.ts";
 import type { AttachmentLink, CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
 import * as Clock from "effect/Clock";
@@ -663,11 +664,7 @@ export function hqNavigationLink(options: {
                 return yield* resubscribe(entry.registered);
               }
               // Only HQ's authoritative access denial purges facts; a host probe's refusal is data.
-              const accessDenied =
-                message.disposition === "refused" &&
-                (message.code === "forbidden" ||
-                  message.code === "session_required" ||
-                  message.code === "chief_owner_required");
+              const accessDenied = accessEnded(message) !== null;
               if (accessDenied) {
                 deny(entry.registered.families.map(({ scope }) => scope));
                 subscribed.delete(scopeKey);
@@ -931,8 +928,7 @@ export function hqNavigationLink(options: {
         Effect.tapError((fault) =>
           Effect.sync(() => {
             if (fault.outcome === "definitive-refusal") refusedWhole = true;
-            if (fault.code === "forbidden" || fault.code === "session_required")
-              deny([...scopes, ...demands.scopes().flatMap(fedBy)]);
+            if (accessEnded(fault) !== null) deny([...scopes, ...demands.scopes().flatMap(fedBy)]);
           }),
         ),
       );
