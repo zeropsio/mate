@@ -14324,17 +14324,22 @@ a.message-file:focus-visible {
   }
 }
 
-/* Opening is one story; named beats keep the complete sequence within 600 ms. The stage hands
-   over in place: its words and its face fade where they stand while the conversation fades in —
-   no face flying to the header (the owner, 2026-10-12: "the way this transitions to the mate avatar
-   at the chat top bar is absolute shit effect, need to be removed"), and nothing that moves, so
+/* Opening is one story, and its end holds nothing back: the moment the conversation is placed,
+   the stage's words and face fade where they stand — its eyes opening as they go — while the
+   conversation fades in under them, whole 200 ms later. The stage hands over in place — no face
+   flying to the header (the owner, 2026-10-12: "the way this transitions to the mate avatar at
+   the chat top bar is absolute shit effect, need to be removed"), and nothing that moves, so
    nothing overflows the column for a frame and narrows it by a scrollbar. */
 :root {
-  --duration-conversation-wake: 180ms; /* A short blink-open, fully on the stage. */
-  --duration-conversation-exit: 140ms; /* The stage's words and face fade where they stand. */
-  --duration-conversation-rise: 160ms; /* The conversation fades in under them. */
+  --duration-conversation-wake: 150ms; /* The eyes blink open as the stage goes. */
+  --duration-conversation-exit: 150ms; /* The stage's words and face fade where they stand. */
+  --duration-conversation-rise: 150ms; /* The conversation fades in under them. */
+  /* The conversation starts in a third of the way through the stage's exit. */
+  --delay-conversation-rise: calc(var(--duration-conversation-exit) / 3);
+  /* What is left of the conversation's rise once the eyes have opened. */
   --duration-conversation-handoff: calc(
-    var(--duration-conversation-exit) + var(--duration-conversation-rise) / 2
+    var(--delay-conversation-rise) + var(--duration-conversation-rise) -
+      var(--duration-conversation-wake)
   );
 }
 
@@ -14360,10 +14365,12 @@ a.message-file:focus-visible {
 
 [data-conversation-opening="hand-off"] {
   animation: conversation-handoff var(--duration-conversation-handoff) linear;
+}
 
-  & > * {
-    animation: conversation-stage-exit var(--duration-conversation-exit) var(--ease-out-strong) both;
-  }
+/* From the moment the conversation is placed, through the eyes' opening and what is left after
+   it: one exit, not started again as the stage goes from one to the other. */
+:is([data-conversation-opening="wake"], [data-conversation-opening="hand-off"]) > * {
+  animation: conversation-stage-exit var(--duration-conversation-exit) var(--ease-out-strong) both;
 }
 
 /* The real footer stays laid out and measured throughout. Hidden content accepts the input
@@ -14383,7 +14390,7 @@ a.message-file:focus-visible {
     [data-opening-waits-whole=""]
   ) {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
-    calc(var(--duration-conversation-exit) / 2) backwards;
+    var(--delay-conversation-rise) backwards;
 }
 
 /* The header's way out to Zerops waits for the conversation it is the way out of, and arrives
@@ -14395,16 +14402,17 @@ a.message-file:focus-visible {
   pointer-events: none;
 }
 
-/* The header's name and subject, while the stage says the Mate: their place held, unseen. */
-[data-opening-header="yields"] > * {
+/* The header's name and subject, while the stage says the Mate: their place held, unseen —
+   until the conversation arrives, and they with it. */
+[data-opening-header="yields"]:not([data-opening-arrives]) > * {
   opacity: 0;
   pointer-events: none;
 }
 
-[data-opening-header="says"][data-opening-arrives]:not([data-opening-header="yields"]) > *,
+[data-opening-header][data-opening-arrives]:not([data-opening-header=""]) > *,
 [data-opening-waits="arrives"]:not([data-opening-waits="held"]):not([data-opening-waits=""]) > * {
   animation: conversation-arrive var(--duration-conversation-rise) var(--ease-out-strong)
-    calc(var(--duration-conversation-exit) / 2) backwards;
+    var(--delay-conversation-rise) backwards;
 }
 
 [data-conversation-opening="complete"] {
