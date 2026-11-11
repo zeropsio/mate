@@ -198,7 +198,8 @@ export function ConversationOpeningYields({ children }: { readonly children: Rea
     <span
       aria-hidden={says || undefined}
       className="contents"
-      data-opening-header={says ? "yields" : arrives ? "arrives" : "says"}
+      data-opening-arrives={arrives ? "" : undefined}
+      data-opening-header={says ? "yields" : "says"}
     >
       {children}
     </span>
