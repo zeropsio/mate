@@ -4,7 +4,7 @@ import { mayAutoRestart, mayAutoUpdate, restartReading } from "./mateAutoUpdate.
 describe("automatic Mate updates", () => {
   it.each([
     {
-      name: "a compatible stable candidate and current HQ permission update",
+      name: "a stable candidate and current HQ permission update",
       policy: true,
       protocol: 1,
       phase: "idle",
