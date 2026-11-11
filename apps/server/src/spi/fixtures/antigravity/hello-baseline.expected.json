@@ -7,7 +7,7 @@
     "threadId": "spi-replay-antigravity-thread",
     "payload": {
       "resume": {
-        "protocolVersion": 1,
+        "protocolVersion": 2,
         "agentCapabilities": {
           "loadSession": true,
           "promptCapabilities": {

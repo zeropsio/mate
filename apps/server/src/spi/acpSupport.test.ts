@@ -51,9 +51,11 @@ describe("applyGrokAcpModelSelection", () => {
             calls.push(meta === undefined ? { modelId } : { modelId, meta });
             return {};
           }),
+        setModel: () => Effect.die("A v1 session never sets its model through a config option."),
       };
 
       const changed = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-build",
         requestedModelId: "grok-mock-alt",
@@ -63,6 +65,7 @@ describe("applyGrokAcpModelSelection", () => {
       expect(calls).toEqual([{ modelId: "grok-mock-alt" }]);
 
       const unchanged = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-build",
         requestedModelId: "grok-build",

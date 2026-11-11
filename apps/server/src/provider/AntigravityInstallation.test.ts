@@ -401,7 +401,8 @@ it.layer(fixtureLayer)("Antigravity installation", (it) => {
                       ...(request.method === "initialize"
                         ? {
                             result: {
-                              protocolVersion: 1,
+                              // The real agent answers version 2 in the v1 shape.
+                              protocolVersion: 2,
                               agentInfo: { name: testCase.agentName, version: testCase.version },
                               agentCapabilities: {
                                 loadSession: true,
