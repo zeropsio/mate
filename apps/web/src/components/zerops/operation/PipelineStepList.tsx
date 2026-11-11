@@ -10,7 +10,8 @@
  * holds room for what may come. The step that is running or failed reads in
  * the ink, a finished one muted with its mark (three green rings under a line
  * that already says "Deployed" said nothing more), one still to come fainter. Before the
- * platform has worked the steps out of zerops.yml, one row says so.
+ * platform has worked the steps out of zerops.yml, one row says so. A batch deploy draws one such
+ * list per service (`BatchServiceRows`).
  *
  * Presentational, props only (R2): every sentence is `readPipeline`'s, every
  * duration `formatDuration`'s. A running step's mark steps in the busy blue,
@@ -133,9 +134,15 @@ export function PipelineStepList({
   steps,
   after,
   beneath,
+  ticking = false,
 }: {
   readonly "aria-label": string;
   readonly steps: ReadonlyArray<PipelineStepRow>;
+  /**
+   * The step under way says how long it has run. A single deploy's line carries that clock; in a
+   * batch each service's list has its own.
+   */
+  readonly ticking?: boolean;
   /** What stands after a step's name on its line, by the step's id. */
   readonly after?: Readonly<Partial<Record<string, ReactNode>>> | undefined;
   /** What stands under a step, by the step's id. */
@@ -149,7 +156,9 @@ export function PipelineStepList({
           beneath={beneath?.[step.id]}
           // One clock ticks, the line's: a step says how long it took once it ended.
           duration={
-            step.durationMs === undefined || isInFlight(step.state) || step.state === "waiting"
+            step.durationMs === undefined ||
+            step.state === "waiting" ||
+            (isInFlight(step.state) && !ticking)
               ? undefined
               : formatDuration(step.durationMs)
           }

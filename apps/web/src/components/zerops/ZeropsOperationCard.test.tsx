@@ -23,6 +23,7 @@ import { useRightPanelStore } from "../../rightPanelStore";
 const tooltip = await import("~/components/ui/tooltip");
 
 import { formatWorkDuration } from "../chat/conversation.logic";
+import type { PipelineStepRow } from "./operation/PipelineStepList";
 import { ZeropsOperationCard, type ObservedRegion } from "./ZeropsOperationCard";
 
 /** No project known; every build a result names still runs. */
@@ -1180,11 +1181,10 @@ describe("ZeropsOperationCard — a batch deploy names every service it deploys"
         status: "inProgress",
       }),
     );
-    const step = (id: string, state: "done" | "running" | "queued") => ({
+    const step = (id: PipelineStepRow["id"], state: "finished" | "running" | "waiting") => ({
       id,
-      label: id,
+      sentence: id,
       state,
-      stateLabel: state,
     });
     const observed: ObservedRegion = {
       steps: [],
@@ -1195,13 +1195,13 @@ describe("ZeropsOperationCard — a batch deploy names every service it deploys"
           name: "api",
           state: "running",
           stateLabel: "Running",
-          steps: [step("Build container", "done"), step("Build", "running")],
+          steps: [step("INIT_BUILD_CONTAINER", "finished"), step("RUN_BUILD_COMMANDS", "running")],
         },
         {
           name: "web",
           state: "waiting",
           stateLabel: "Waiting",
-          steps: [step("Build container", "queued"), step("Build", "queued")],
+          steps: [step("INIT_BUILD_CONTAINER", "waiting"), step("RUN_BUILD_COMMANDS", "waiting")],
         },
       ],
     };
@@ -1215,18 +1215,19 @@ describe("ZeropsOperationCard — a batch deploy names every service it deploys"
         ...(html
           .split(`data-zerops-batch-service="${name}"`)[1]
           ?.split("data-zerops-batch-service=")[0]
-          ?.matchAll(/data-zerops-process-state="([^"]+)"/g) ?? []),
+          ?.matchAll(/data-zerops-pipeline-state="([^"]+)"/g) ?? []),
       ].map((m) => m[1]);
     expect({ api: states("api"), web: states("web") }).toEqual({
-      api: ["done", "running"],
-      web: ["queued", "queued"],
+      api: ["finished", "running"],
+      web: ["waiting", "waiting"],
     });
   });
 
-  it("a service without a stage keeps its slot: every row's steps on one grid", () => {
+  // witness: apps/web/src/components/zerops/operation/BatchServiceRows.tsx | steps={service.steps} → steps={service.steps.slice(1)}
+  it("a service lists the steps its own pipeline has: none is held for a stage it has not", () => {
     const operation = operationFor(
       zeropsCall({
-        id: "batch-grid",
+        id: "batch-lists",
         startedAt: "2026-09-01T00:00:00.000Z",
         turnId: "t1",
         toolName: "zerops_deploy_batch",
@@ -1234,7 +1235,7 @@ describe("ZeropsOperationCard — a batch deploy names every service it deploys"
         status: "inProgress",
       }),
     );
-    const done = (id: string) => ({ id, label: id, state: "done" as const, stateLabel: "Done" });
+    const done = (id: PipelineStepRow["id"]) => ({ id, sentence: id, state: "finished" as const });
     const observed: ObservedRegion = {
       steps: [],
       chips: [],
@@ -1244,27 +1245,35 @@ describe("ZeropsOperationCard — a batch deploy names every service it deploys"
           name: "api",
           state: "done",
           stateLabel: "Deployed",
-          steps: ["a", "b", "c", "d", "e"].map(done),
+          steps: (
+            [
+              "INIT_BUILD_CONTAINER",
+              "RUN_BUILD_COMMANDS",
+              "INIT_PREPARE_CONTAINER",
+              "RUN_PREPARE_COMMANDS",
+              "DEPLOY",
+            ] as const
+          ).map(done),
         },
         {
           name: "web",
           state: "done",
           stateLabel: "Deployed",
-          steps: [done("a"), done("b"), null, null, done("e")],
+          steps: (["INIT_BUILD_CONTAINER", "RUN_BUILD_COMMANDS", "DEPLOY"] as const).map(done),
         },
       ],
     };
     const html = renderToStaticMarkup(
       <ZeropsOperationCard headless observed={observed} operation={operation} />,
     );
-    const slots = (name: string) =>
+    const steps = (name: string) =>
       (
         html
           .split(`data-zerops-batch-service="${name}"`)[1]
           ?.split("data-zerops-batch-service=")[0]
-          ?.match(/data-zerops-segment="/g) ?? []
+          ?.match(/data-zerops-pipeline-step="/g) ?? []
       ).length;
-    expect({ api: slots("api"), web: slots("web") }).toEqual({ api: 5, web: 5 });
+    expect({ api: steps("api"), web: steps("web") }).toEqual({ api: 5, web: 3 });
   });
 });
 
