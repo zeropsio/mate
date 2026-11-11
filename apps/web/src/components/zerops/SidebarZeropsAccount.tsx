@@ -42,7 +42,6 @@ import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useChiefOffer } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
-import { Badge, type BadgeTone } from "../ui/badge";
 import { useSidebar } from "../ui/sidebar";
 import {
   Menu,
@@ -209,11 +208,19 @@ export function SidebarZeropsAccount({
           picture={account.avatarUrl}
           size={32}
         />
-        <span className="menu-foot-lines">
-          <span className="menu-foot-name-line">
-            <span className="menu-foot-name">{lines.name}</span>
-            {credit === null ? null : <AccountCredit credit={credit} />}
-          </span>
+        {/* Who on the leading edge, what the organization has left on the trailing one: two lines
+            each, on shared baselines. */}
+        <span className="menu-foot-lines" data-credit={credit === null ? undefined : credit.tone}>
+          <span className="menu-foot-name">{lines.name}</span>
+          {credit === null ? null : (
+            <span
+              aria-hidden="true"
+              className="menu-foot-credit-amount"
+              data-zerops-surface="sidebar-account-credit"
+            >
+              {credit.amount}
+            </span>
+          )}
           {/* An organization still being resolved is absent, never a placeholder: the foot must
               paint nothing it takes back. */}
           {role === null ? null : (
@@ -221,6 +228,11 @@ export function SidebarZeropsAccount({
               {role.before}
               <span data-zerops-surface="sidebar-account-organization">{role.organization}</span>
               {role.after}
+            </span>
+          )}
+          {credit === null ? null : (
+            <span aria-hidden="true" className="menu-foot-credit-label">
+              {credit.label}
             </span>
           )}
         </span>
@@ -546,6 +558,8 @@ interface AccountCreditFigure {
   readonly tone: BillingTone;
   /** How it stands, for a reader who does not see the colour; `null` while all is well. */
   readonly words: string | null;
+  /** What the figure is, under it: its name while all is well, else how it stands. */
+  readonly label: string;
 }
 
 const NO_BILLING = Atom.make<OrganizationBilling | null>(null);
@@ -562,27 +576,15 @@ function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
       : billing.tone === "low"
         ? "credit running low"
         : null;
-  return { amount: compactUsd(billing.total), tone: billing.tone, words };
-}
-
-const CREDIT_TONE: Readonly<Record<BillingTone, BadgeTone>> = {
-  quiet: "neutral",
-  low: "warning",
-  out: "danger",
-};
-
-/** The balance as a pill after the name: its tone is how it stands; the button's name says it. */
-function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="menu-foot-credit"
-      data-tone={credit.tone}
-      data-zerops-surface="sidebar-account-credit"
-    >
-      <Badge tone={CREDIT_TONE[credit.tone]}>{credit.amount}</Badge>
-    </span>
-  );
+  const label =
+    billing.tone === "out"
+      ? billing.total < 0
+        ? "Below zero"
+        : "Nearly out"
+      : billing.tone === "low"
+        ? "Running low"
+        : "Credit";
+  return { amount: compactUsd(billing.total), tone: billing.tone, words, label };
 }
 
 const WHOLE_USD = new Intl.NumberFormat("en-US", {

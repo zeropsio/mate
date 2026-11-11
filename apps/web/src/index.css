@@ -6532,6 +6532,14 @@ code {
     min-width: 0;
   }
 
+  /* With credit to show the lines are two columns: who, then what the organization has left, its
+     figure on the name's baseline and its caption on the role's. */
+  .menu-foot-lines[data-credit] {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+    column-gap: 12px;
+  }
+
   .menu-foot-name {
     min-width: 0;
     overflow: hidden;
@@ -6552,17 +6560,57 @@ code {
     white-space: nowrap;
   }
 
-  /* The name gives way first; the balance pill after it stays whole. */
-  .menu-foot-name-line {
-    display: flex;
-    min-width: 0;
-    align-items: center;
-    gap: 8px;
+  .menu-foot-name,
+  .menu-foot-role {
+    grid-column: 1;
   }
 
-  .menu-foot-credit {
-    display: flex;
-    flex: none;
+  /* The figure is a value, quieter than the name it shares a line with; its caption is the role
+     line's twin. Both end on one edge, and take the tone when credit needs the person. */
+  .menu-foot-credit-amount,
+  .menu-foot-credit-label {
+    grid-column: 2;
+    justify-self: end;
+    white-space: nowrap;
+  }
+
+  .menu-foot-credit-amount {
+    grid-row: 1;
+    font-size: 13px;
+    /* 18 px, so its baseline meets the name's inside the name's own 20 px line. */
+    line-height: 18px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--sidebar-foreground);
+  }
+
+  .menu-foot-credit-label {
+    grid-row: 2;
+    font-size: 12px;
+    line-height: 16px;
+    color: var(--sidebar-muted-foreground);
+  }
+
+  /* The balance is read after the name: it comes in, and changes tone, without a cut. */
+  @media (prefers-reduced-motion: no-preference) {
+    .menu-foot-credit-amount,
+    .menu-foot-credit-label {
+      transition:
+        opacity 200ms var(--ease-out-strong),
+        color 150ms var(--ease-out-strong);
+
+      @starting-style {
+        opacity: 0;
+      }
+    }
+  }
+
+  .menu-foot-lines[data-credit="low"] > :is(.menu-foot-credit-amount, .menu-foot-credit-label) {
+    color: var(--zerops-status-attention-text);
+  }
+
+  .menu-foot-lines[data-credit="out"] > :is(.menu-foot-credit-amount, .menu-foot-credit-label) {
+    color: var(--zerops-status-failed-text);
   }
 
   .menu-foot-button {
