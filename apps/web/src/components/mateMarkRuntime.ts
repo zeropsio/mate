@@ -97,6 +97,8 @@ interface MarkRuntime {
    * open menu's while it is closed. Read with its box (`host.shown`); it keeps no pose.
    */
   unseen: boolean;
+  /** How many reads in a row found it unseen. */
+  unseenReads: number;
   /** Back in view after a while out of it: the next frame takes the pose at once. */
   returning: boolean;
   rect: DOMRect | null;
@@ -181,6 +183,12 @@ export interface MarkLoop {
  * layout (a panel opening, the menu folding) lands a frame or more after the input itself.
  */
 const SETTLE_AFTER_INPUT_MS = 300;
+/**
+ * When a mark drawn where nobody can see it is read again while the person is about: what shows
+ * it may be no input at all. Soon at first — a mark often arrives with its page fading in, unseen
+ * for its first frames — then once a second (a panel shown when its data arrives).
+ */
+const unseenRereadMs = (reads: number) => (reads <= 1 ? 120 : reads === 2 ? 300 : 1000);
 
 export function createMarkLoop(host: MarkLoopHost): MarkLoop {
   const marks = new Set<MarkRuntime>();
@@ -221,6 +229,7 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     const unseen = host.shown?.(mark.root) === false;
     const appeared = mark.unseen && !unseen;
     mark.unseen = unseen;
+    mark.unseenReads = unseen ? mark.unseenReads + 1 : 0;
     // Seen again, it takes its pose at once, as one scrolled back into view does. Unseen, it
     // stops bobbing: the stylesheet would keep repainting it for nobody.
     if (appeared) mark.returning = true;
@@ -284,14 +293,20 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     let moving = settling;
     let due = Number.POSITIVE_INFINITY;
     let shown = false;
+    /** When the next unseen mark is looked at again. */
+    let unseenDue = Number.POSITIVE_INFINITY;
     for (const mark of marks) {
       if (!mark.visible) continue;
-      // An unseen mark is read again only when something may have shown it: an input, a scroll,
-      // a resize. A seen one, every 400 ms of frames.
-      if (settling || mark.rectAt < 0 || (!mark.unseen && now - mark.rectAt > 400)) {
-        measure(mark, now);
+      // A seen mark is read again every 400 ms of frames; an unseen one when something may have
+      // shown it (an input, a scroll, a resize), and now and then besides.
+      const stale = mark.unseen
+        ? now - mark.rectAt >= unseenRereadMs(mark.unseenReads)
+        : now - mark.rectAt > 400;
+      if (settling || mark.rectAt < 0 || stale) measure(mark, now);
+      if (mark.unseen) {
+        unseenDue = Math.min(unseenDue, mark.rectAt + unseenRereadMs(mark.unseenReads));
+        continue;
       }
-      if (mark.unseen) continue;
       const step = tick(mark, pointer, host, now, dt, reduced);
       moving ||= step.moving;
       due = Math.min(due, step.due);
@@ -306,6 +321,8 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
     if (shown && !reduced && !pointer.asleep) {
       due = Math.min(due, pointer.activeAt + SLEEP_AFTER_MS + 1);
     }
+    // While the person is about, an unseen mark is looked at again: it may have been shown.
+    if (!reduced && !pointer.asleep) due = Math.min(due, unseenDue);
     if (due === Number.POSITIVE_INFINITY) return;
     timer = host.setTimer(
       () => {
@@ -329,6 +346,7 @@ export function createMarkLoop(host: MarkLoopHost): MarkLoop {
         hovered: false,
         visible: true,
         unseen: false,
+        unseenReads: 0,
         returning: false,
         rect: null,
         rectAt: -1,
