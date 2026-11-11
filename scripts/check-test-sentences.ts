@@ -418,6 +418,17 @@ function addsWitnessedCase(root: string, commit: string, lines: ReadonlySet<stri
     );
 }
 
+// The Import zone carries upstream's tests byte for byte (imported.lock proves it), so it can
+// neither carry witness lines nor keep a sentence upstream dropped: a re-import owns its tests.
+function importedRoots(root: string): string[] {
+  const lock = NodePath.join(root, "imported.lock");
+  if (!NodeFS.existsSync(lock)) return [];
+  const parsed: unknown = JSON.parse(NodeFS.readFileSync(lock, "utf8"));
+  const paths =
+    typeof parsed === "object" && parsed !== null && "paths" in parsed ? parsed.paths : undefined;
+  return typeof paths === "object" && paths !== null ? Object.keys(paths) : [];
+}
+
 export interface SentenceReport {
   /** Removed titles no trailer approves. */
   readonly dropped: string[];
@@ -432,7 +443,10 @@ export function checkTestSentences(
 ): SentenceReport {
   const ancestor = sentenceComparison(root, base);
   const touched = changedPaths(root, ancestor);
-  const paths = touched.filter((path) => retainedTestFile.test(path));
+  const imported = importedRoots(root);
+  const paths = touched.filter(
+    (path) => retainedTestFile.test(path) && !imported.some((dir) => path.startsWith(`${dir}/`)),
+  );
   const baseSources = readBlobs(
     root,
     paths.map((path) => `${ancestor}:${path}`),
