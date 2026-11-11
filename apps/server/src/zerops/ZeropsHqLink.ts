@@ -29,7 +29,9 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   follow-ups people say on them (`task-message`) and their stops (`task-stop`), worked by
  *   `ZeropsTasks`, whose reports go up as `task-state` — the latest task's first on every link —
  *   and only on a link whose HQ said in its state that the Mate is automated. A task's frame told
- *   before HQ's first state on a link is held until it comes ({@link HQ_TASK_HOLD}). An older
+ *   before HQ's first state on a link is held until it comes ({@link HQ_TASK_HOLD}). The
+ *   operator's command (`command`) is run aside (`zeropsLinkCommand.ts`) and its `command-result`
+ *   goes up the link stated when it ends, or nowhere. An older
  *   HQ's `access` frame is read past like any frame this build cannot decode: the Mate's own list
  *   is the only one (`ZeropsMateAccessList`).
  * - **Closed:** the Mate is not linked until HQ's first state on the next link. HQ names why
@@ -69,6 +71,9 @@ import {
   type LinkedMate,
   type TicketRefusal,
   KEY_UNRESOLVED,
+  LINK_COMMAND_PROTOCOL,
+  type LinkCommandDown,
+  type LinkCommandResultUp,
   MATE_OVERVIEW_EVERY_MS,
   MATE_REFUSAL_REASK_MS,
   MateLinkClosed,
@@ -124,6 +129,7 @@ import { ZeropsMateKey, type ZeropsMateKeyReader } from "./ZeropsMateKey.ts";
 import type { ZeropsKeyRefusal } from "./ZeropsKeyRefusal.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsTasks } from "./ZeropsTasks.ts";
+import { makeLinkCommands } from "./zeropsLinkCommand.ts";
 import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import type { UsageLink } from "../usage/UsageLink.ts";
@@ -288,6 +294,11 @@ export interface ZeropsHqLinkOptions {
   readonly automation?: Pick<ZeropsAutomation["Service"], "heard" | "keysHeard">;
   /** Works the tasks HQ hands an automated Mate, and says how each stands (`ZeropsTasks`). */
   readonly tasks?: ZeropsTasks["Service"];
+  /**
+   * Runs the operator's command HQ sent and says how it went (`zeropsLinkCommand.ts`); none: the
+   * frame is passed by.
+   */
+  readonly command?: (frame: LinkCommandDown) => Effect.Effect<LinkCommandResultUp>;
   /** The waits before each next attempt; the last one repeats. */
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
   /** The least time between two frames of the overview (`MATE_OVERVIEW_EVERY_MS`). */
@@ -422,6 +433,9 @@ export const makeZeropsHqLink = (
       changedSince: () => Effect.never,
     };
     const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_OVERVIEW_EVERY_MS);
+    // A command outlives the link it came on: its result goes up the link stated when it ends.
+    const commands = yield* Effect.scope;
+    let stated: ((message: KeyLinkUp) => Effect.Effect<void>) | undefined;
     const url = `${options.hqOrigin.replace(/^http/u, "ws").replace(/\/+$/u, "")}/api/mate/link`;
 
     /**
@@ -703,6 +717,15 @@ export const makeZeropsHqLink = (
                 );
           case "close-session":
             return options.end?.({ session: frame.sessionId }) ?? Effect.void;
+          case "command":
+            // Run aside, past this link's end, so pings and the frames after it are not held back.
+            return options.command === undefined
+              ? Effect.void
+              : options.command(frame).pipe(
+                  Effect.flatMap((result) => stated?.(result) ?? Effect.void),
+                  Effect.forkIn(commands),
+                  Effect.asVoid,
+                );
           default:
             return usage?.receive(frame) ?? Effect.void;
         }
@@ -744,6 +767,19 @@ export const makeZeropsHqLink = (
           } else yield* undecoded(event.raw, frame.failure);
         }
       });
+      // This link carries the commands' results from HQ's first state until it ends.
+      const carrying = onceAnswered(
+        Effect.acquireUseRelease(
+          Effect.sync(() => {
+            stated = send;
+          }),
+          () => Effect.never,
+          () =>
+            Effect.sync(() => {
+              if (stated === send) stated = undefined;
+            }),
+        ),
+      );
       const relayed = yield* Effect.forkScoped(
         Effect.raceFirst(
           Effect.raceFirst(Effect.raceFirst(relay, silence), Deferred.await(keyChanged)),
@@ -756,6 +792,7 @@ export const makeZeropsHqLink = (
               ...(usage ? [onceAnswered(usage.run)] : []),
               reporting,
               keyRefusals,
+              carrying,
             ],
             { concurrency: "unbounded" },
           ).pipe(Effect.as(undefined)),
@@ -936,6 +973,8 @@ export interface OverviewSources {
   readonly engine?: { readonly protocol: number };
   /** Whether its service holds the press's setup marker, read locally at each look; none off Zerops. */
   readonly setupMarker?: Effect.Effect<boolean>;
+  /** That it runs HQ's `command` frame (`LINK_COMMAND_PROTOCOL`); none where it cannot. */
+  readonly command?: { readonly protocol: number };
 }
 
 /**
@@ -968,6 +1007,7 @@ export const mateOverviewFeed = (
           update: (yield* sources.update.current) ?? null,
           ...(sources.engine === undefined ? {} : { engine: sources.engine }),
           ...(sources.setupMarker === undefined ? {} : { setupMarker: yield* sources.setupMarker }),
+          ...(sources.command === undefined ? {} : { command: sources.command }),
           ...(sources.providers === undefined
             ? {}
             : {
@@ -1064,6 +1104,8 @@ export const layer = (crew: OverviewSources["crew"]) =>
           Effect.map(hasSetupMarker),
           Effect.provideService(FileSystem.FileSystem, fs),
         ),
+        // Here `runExecCommand` runs: the link exists only in a Zerops environment.
+        command: { protocol: LINK_COMMAND_PROTOCOL },
       });
       const mateState =
         zerops.mateStateFile === undefined
@@ -1102,6 +1144,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         })).heard,
         automation: yield* ZeropsAutomation,
         tasks: yield* ZeropsTasks,
+        command: yield* makeLinkCommands,
         autoUpdatePolicy: yield* MateAutoUpdatePolicy,
         attention: attention.changes,
         health: attention.healthChanges,
