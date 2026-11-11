@@ -9558,6 +9558,95 @@ button.ov-change {
   }
 }
 
+/* A ledger of changes (`ChangeList ledger`): a project's Changes, under the line that pictures
+   them (the owner, 2026-11-11, of two-line rows that each said their Mate and "Ready to merge" under a
+   face and ended in Review: "no thought, no design, no craft, no UX"). One line a change: its
+   bead as the line draws it, its title, then columns that run down the list — what stops it,
+   where anything does; its pull request; whose and when; *Review* where a review is due, else
+   the mark of where the row leads, always shown. Narrow, what stops it stands under its title. */
+.ov-changes[data-ledger] {
+  --ln-ground: transparent;
+  --ln-track: color-mix(in oklab, var(--foreground) 30%, transparent);
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+}
+
+.ov-changes[data-ledger] .ov-change {
+  align-items: center;
+}
+
+/* A row's bead: the line's own, standing still. */
+.ov-change-bead {
+  grid-column: 1;
+  margin-inline-end: 12px;
+  cursor: default;
+  pointer-events: none;
+}
+
+.ov-change > .ov-change-state {
+  grid-column: 3;
+  margin-inline-start: 16px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.ov-change-state[data-tone="attention"] {
+  color: var(--zerops-status-attention-text);
+}
+
+.ov-change-state[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
+
+.ov-changes[data-ledger] .ov-change-pr {
+  grid-column: 4;
+  align-self: center;
+  margin-block-start: 0;
+  margin-inline-start: 16px;
+}
+
+.ov-changes[data-ledger] .ov-change-when {
+  grid-column: 5;
+  margin-inline-start: 16px;
+}
+
+.ov-changes[data-ledger] .ov-change-time {
+  padding-top: 0;
+}
+
+/* The verb's seat is held in every row, so a chevron ends where a Review does and a row with
+   either is as tall. */
+.ov-changes[data-ledger] .ov-change-act {
+  grid-column: 6;
+  min-width: 58px;
+  min-height: 22px;
+  align-items: center;
+  margin-inline-start: 12px;
+}
+
+.ov-changes[data-ledger] .ov-change-verb {
+  grid-column: 6;
+}
+
+.ov-changes[data-ledger] .ov-change:not(:hover, :focus-visible) .ov-go {
+  opacity: 0.55;
+}
+
+@container changes (max-width: 639px) {
+  .ov-changes[data-ledger] .ov-change > .ov-change-state {
+    grid-row: 2;
+    grid-column: 2;
+    justify-self: start;
+    margin-inline-start: 0;
+  }
+
+  .ov-changes[data-ledger] .ov-change > .ov-change-when,
+  .ov-changes[data-ledger] .ov-change > .ov-change-act {
+    grid-row: 1 / span 2;
+  }
+}
+
 /* Its pull request on GitHub, in the column before when it last moved, on the title's line. */
 .ov-change-pr {
   z-index: 1;

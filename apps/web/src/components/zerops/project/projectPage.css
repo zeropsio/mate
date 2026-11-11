@@ -297,9 +297,12 @@
 }
 
 /* The changes' picture, between the section's label and its list: 12 px above the list. */
-.pp-picture {
+/* The Changes card: the line that pictures the changes is its masthead, the ledger of them
+   stands under a hairline — one card, so the beads on the line are plainly the rows' own. */
+.pp-changes > .pp-list {
+  display: grid;
   min-width: 0;
-  margin-bottom: 8px;
+  border-top: 1px solid var(--ov-rule);
 }
 
 /* A group of the list the picture's count led to: lit a moment. */
@@ -351,13 +354,28 @@
   color: var(--muted-foreground);
 }
 
+/* What is live is a record: its beads quiet with its ink. */
+.pp-record .ov-change-bead {
+  opacity: 0.6;
+}
+
 /* A group of changes inside the Changes card, where they went said once over its rows. */
 .pp-change-group + .pp-change-group {
   margin-top: 6px;
 }
 
+/* The Changes card's foot, where it lists only the first few: on its rows' titles' edge. */
+.pp-changes .pp-more {
+  padding: 6px 10px 6px 24px;
+}
+
+/* A group's label starts on its rows' edge: the edge of their beads. */
 .pp-change-group > [data-zerops-section-label] {
-  padding-inline: 8px;
+  padding-inline: 10px;
+}
+
+.pp-changes .pp-change-group > [data-zerops-section-label] {
+  padding-top: 6px;
 }
 
 .pp-list > .pp-change-group > .ov-changes,
@@ -366,7 +384,7 @@
 }
 
 /* The Changes card's rows, a hairline between each, as History's opened release has them. */
-[data-zerops-surface="project-changes"] > .pp-list:not([data-history]) {
+.pp-changes > .pp-list:not([data-history]) {
   padding: 6px 8px;
 }
 

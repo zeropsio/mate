@@ -1,6 +1,7 @@
 export { ChangeAge, ChangeList, ChangeRow, CutText } from "./ChangeRow";
 export type { ChangeRowProps, ChangeRowSubject } from "./ChangeRow";
 export {
+  changeReviewable,
   changeRowLine,
   mergedChangeWords,
   openChangeWords,
@@ -33,6 +34,7 @@ export {
 export {
   fitBeads,
   lineChangeKey,
+  lineMarkOf,
   projectLine,
   projectLineFull,
   READY_FOR_REVIEW,

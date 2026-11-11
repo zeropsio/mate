@@ -230,20 +230,21 @@ function ProductionFoot({ station }: { readonly station: LineStationFull }) {
 }
 
 /**
- * What a bead's marks mean, at the card's foot: a change in its Mate's colour, the ring of one that
- * waits on the person, the mark of a stuck one, and work that is no change yet where the line
- * draws any (a Mate's own line reads its checkout; a project's reads none).
+ * What a bead's marks mean, at the line's foot: only the marks the line draws now — the ring of a
+ * change that waits on the person, the mark of a stuck one, work that is no change yet (a Mate's
+ * own line reads its checkout) — after a plain bead to tell them from. A line of plain beads
+ * alone has no legend: its rows under it wear the same beads and name them.
  */
 function Legend({ beads }: { readonly beads: ReadonlyArray<LineBead> }) {
   const tint = beads.find((bead) => bead.tint !== undefined)?.tint;
-  const keys: ReadonlyArray<{ readonly mark: LineBead["mark"]; readonly words: string }> = [
-    { mark: undefined, words: "a change, in its Mate’s colour" },
-    { mark: "waits", words: "waits on you" },
-    { mark: "stuck", words: "stuck, its Mate’s to fix" },
-    ...(beads.some((bead) => bead.mark === "work")
-      ? [{ mark: "work" as const, words: "work not yet a change" }]
-      : []),
+  const drawn = (mark: LineBead["mark"]) => beads.some((bead) => bead.mark === mark);
+  const marked: ReadonlyArray<{ readonly mark: LineBead["mark"]; readonly words: string }> = [
+    ...(drawn("waits") ? [{ mark: "waits" as const, words: "waits on you" }] : []),
+    ...(drawn("stuck") ? [{ mark: "stuck" as const, words: "stuck, its Mate’s to fix" }] : []),
+    ...(drawn("work") ? [{ mark: "work" as const, words: "work not yet a change" }] : []),
   ];
+  if (marked.length === 0) return null;
+  const keys = [{ mark: undefined, words: "a change, in its Mate’s colour" }, ...marked];
   return (
     <ul aria-label="What the marks mean" className="lnx-legend" data-zerops-line-legend="">
       {keys.map((key) => (
