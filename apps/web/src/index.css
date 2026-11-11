@@ -789,6 +789,13 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     var(--app-scrollbar-width) 100%;
 }
 
+/* A skeleton's sweep runs only while it is in view (`ui/skeleton.tsx` marks it `data-seen`): a
+   stand-in out of sight keeps its box and moves nothing. Outside the layers, so it outranks the
+   utility that starts the sweep. */
+[data-slot="skeleton"]:not([data-seen])::after {
+  animation: none;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
