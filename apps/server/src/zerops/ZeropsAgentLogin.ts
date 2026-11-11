@@ -24,11 +24,19 @@
  * fails the login with how it ended, instead of leaving it at `menu` or
  * `awaiting-browser` with nothing left to answer it.
  *
- * Each login gets at most one active session at a time (`start` on a login
- * with a session already running just re-attaches to it — same
- * `{terminalId}`, no second command spawned into the same shell). A finished
- * session (`succeeded` / `failed` / `cancelled`) is removed from the active
- * set, so a later `start` opens a fresh one.
+ * Each login gets at most one active session at a time, held from the moment
+ * `start` takes it. A second `start` while the first still prepares its home
+ * or opens its terminal is refused (`unavailable`): both would sign in in the
+ * one scratch home. A `start` on a login whose session is running just
+ * re-attaches to it — same `{terminalId}`, no second command spawned into the
+ * same shell. A finished session (`succeeded` / `failed` / `cancelled`) is
+ * removed from the active set, so a later `start` opens a fresh one.
+ *
+ * A sign-in belongs to the connection that started it ({@link LoginConnection}):
+ * its terminal is opened for that connection, and the connection's end closes
+ * the terminal, which fails the sign-in, or interrupts a `start` still under
+ * way, which leaves the login as it was. Another connection's sign-in and
+ * credentials already signed in stay.
  *
  * A login is an agent's default one, keyed by the agent id, or one beyond the
  * defaults (crew mode's *Runs on*, `ZeropsLogins`), keyed by its own id: the
@@ -61,6 +69,7 @@
  */
 
 import type {
+  AuthSessionId,
   TerminalAttachInput,
   TerminalCloseInput,
   TerminalError,
@@ -77,6 +86,7 @@ import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -86,7 +96,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../config.ts";
-import { TerminalManager } from "../terminal/Manager.ts";
+import { TerminalManager, type TerminalOpener } from "../terminal/Manager.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { withLogins, ZeropsLogins } from "./ZeropsLogins.ts";
@@ -138,6 +148,16 @@ export const loginTerminalId = (key: string): string => `agent-login-${key}`;
 export interface LoginTarget {
   readonly id: string;
   readonly env: Readonly<Record<string, string>>;
+}
+
+/**
+ * The authenticated connection a sign-in is started on, as `ws.ts` admitted it — never named by
+ * the client. The sign-in's terminal is opened for `id`; the start and the terminal end with
+ * `scope`, the connection's own.
+ */
+export interface LoginConnection {
+  readonly id: AuthSessionId;
+  readonly scope: Scope.Scope;
 }
 
 /** Login state by agent id for the default logins, and by login id for every other. */
@@ -238,6 +258,8 @@ export class ZeropsAgentLogin extends Context.Service<
        * client records the signer once it succeeds.
        */
       subject: string,
+      /** The connection the sign-in is started on: it ends with that connection. */
+      connection: LoginConnection,
       /** Absent: the agent's default login. */
       login?: LoginTarget,
     ) => Effect.Effect<{ readonly terminalId: string }, TerminalError | ZeropsAgentLoginError>;
@@ -260,7 +282,7 @@ export class ZeropsAgentLogin extends Context.Service<
 export interface ZeropsAgentLoginOptions {
   readonly terminalManager: Pick<
     TerminalManager["Service"],
-    "open" | "write" | "attachStream" | "close"
+    "open" | "write" | "attachStream" | "close" | "closeOpenedBy"
   >;
   readonly zeropsAgentAuth: Pick<ZeropsAgentAuth["Service"], "recheckNow">;
   /** Re-checks a login beyond the defaults once it signs in; absent, only default logins run. */
@@ -290,7 +312,15 @@ interface FeedState {
   readonly logins: ZeropsAgentLoginByAgent;
 }
 
+/** A `start` holding its login while it prepares the scratch home and opens the terminal. */
+interface ReservedSession {
+  readonly status: "reserved";
+  /** Only the start holding this may discard the scratch home, put the login back or let go. */
+  readonly token: symbol;
+}
+
 interface ActiveSession {
+  readonly status: "live";
   readonly agentId: ZeropsAgentId;
   readonly threadId: string;
   readonly terminalId: string;
@@ -393,7 +423,13 @@ export const make = (options: ZeropsAgentLoginOptions) =>
     // Plain Map, not a Ref — mirrors `ZeropsAgentAuth.ts`'s own
     // `providerCheckQueues`: session bookkeeping is fiber/queue handles,
     // never decoded/compared as data, so a Ref buys nothing here.
-    const sessions = new Map<string, ActiveSession>();
+    const sessions = new Map<string, ReservedSession | ActiveSession>();
+
+    /** The login's session once its terminal is open, if it is still the attempt `token` names. */
+    const liveSession = (key: string, token: symbol): ActiveSession | undefined => {
+      const session = sessions.get(key);
+      return session?.status === "live" && session.token === token ? session : undefined;
+    };
 
     const publish = Ref.get(state).pipe(
       Effect.flatMap((current) => PubSub.publish(changes, current.logins)),
@@ -432,19 +468,19 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         logins: { ...current.logins, [key]: before },
       })).pipe(Effect.andThen(publish));
 
-    /** Removes the session from the active map and stops its output listener — see the module header for why the stall fiber is left running. */
+    /** Removes the session, reserved or live, from the active map and stops its output listener — see the module header for why the stall fiber is left running. */
     const disposeSession = (key: string, token: symbol) => {
       const session = sessions.get(key);
       if (session !== undefined && session.token === token) {
         sessions.delete(key);
-        session.unsubscribeOutput();
+        if (session.status === "live") session.unsubscribeOutput();
       }
     };
 
     const fireStall = (key: string, token: symbol): Effect.Effect<void> =>
       Effect.gen(function* () {
-        const session = sessions.get(key);
-        if (session === undefined || session.token !== token) {
+        const session = liveSession(key, token);
+        if (session === undefined) {
           return;
         }
         const login = (yield* Ref.get(state)).logins[key];
@@ -465,8 +501,8 @@ export const make = (options: ZeropsAgentLoginOptions) =>
 
     const handleOutputChunk = (key: string, token: symbol, chunk: string): Effect.Effect<void> =>
       Effect.gen(function* () {
-        const session = sessions.get(key);
-        if (session === undefined || session.token !== token) {
+        const session = liveSession(key, token);
+        if (session === undefined) {
           return;
         }
         const buffer = appendAndTrim(yield* Ref.get(session.bufferRef), chunk);
@@ -554,17 +590,14 @@ export const make = (options: ZeropsAgentLoginOptions) =>
 
     /**
      * The login's process ended while the walker still waited on it — it
-     * crashed, was killed, or quit on a screen the walker did not recognize.
+     * crashed, was killed, quit on a screen the walker did not recognize, or
+     * its terminal closed, as it does when the connection that started it ends.
      * The login is over: nothing it printed later could move it on.
      */
-    const handleExit = (
-      key: string,
-      token: symbol,
-      ended: { readonly exitCode: number | null; readonly exitSignal: number | null },
-    ): Effect.Effect<void> =>
+    const handleEnd = (key: string, token: symbol, detail: string): Effect.Effect<void> =>
       Effect.gen(function* () {
-        const session = sessions.get(key);
-        if (session === undefined || session.token !== token) {
+        const session = liveSession(key, token);
+        if (session === undefined) {
           return;
         }
         disposeSession(key, token);
@@ -572,7 +605,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         const before = (yield* Ref.get(state)).logins[key];
         yield* setLoginState(key, {
           phase: "failed",
-          message: `The sign-in ended before it finished (${exitDetail(ended)}). Start it again.`,
+          message: `The sign-in ended before it finished (${detail}). Start it again.`,
           terminalId: session.terminalId,
           startedAt: before?.startedAt ?? (yield* DateTime.now),
           startedBy: session.startedBy,
@@ -591,14 +624,17 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           event.type === "output"
             ? handleOutputChunk(key, token, event.data)
             : event.type === "exited"
-              ? handleExit(key, token, event)
-              : Effect.void,
+              ? handleEnd(key, token, exitDetail(event))
+              : event.type === "closed"
+                ? handleEnd(key, token, "its terminal closed")
+                : Effect.void,
       );
 
     const start = (
       agentId: ZeropsAgentId,
       threadId: string,
       subject: string,
+      connection: LoginConnection,
       login?: LoginTarget,
     ): Effect.Effect<{ readonly terminalId: string }, TerminalError | ZeropsAgentLoginError> =>
       Effect.gen(function* () {
@@ -609,35 +645,36 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           });
         }
         const key = login?.id ?? agentId;
-        const existing = sessions.get(key);
-        if (existing !== undefined) {
-          return { terminalId: existing.terminalId };
-        }
-
         const terminalId = loginTerminalId(key);
         const token = Symbol(key);
-        const startedAt = yield* DateTime.now;
         const startedBy = zeropsUserIdOf(subject);
-        const before = (yield* Ref.get(state)).logins[key];
         const home: LoginHomeTarget = {
           agentId,
           key,
           ...(login === undefined ? {} : { env: login.env }),
         };
 
-        yield* setLoginState(key, { phase: "starting", terminalId, startedAt, startedBy });
-
         const attempt = Effect.gen(function* () {
+          const startedAt = yield* DateTime.now;
+          yield* setLoginState(key, { phase: "starting", terminalId, startedAt, startedBy });
           // A fresh PTY and no replayed history — see the module header.
           yield* terminalManager
             .close({ threadId, terminalId, deleteHistory: true } satisfies TerminalCloseInput)
             .pipe(Effect.ignore);
-          yield* terminalManager.open({
-            threadId,
-            terminalId,
-            cwd: AGENT_LOGIN_CWD,
-            env: yield* homes.prepare(home),
-          } satisfies TerminalOpenInput);
+          const env = yield* homes.prepare(home);
+          // Opened for the connection, and its close put on the connection's scope in the same
+          // uninterruptible step: a connection that ends while it opens still closes it. The
+          // close names the connection, so it never takes a later sign-in's terminal.
+          yield* Effect.acquireRelease(
+            terminalManager.open({
+              threadId,
+              terminalId,
+              cwd: AGENT_LOGIN_CWD,
+              env,
+              openedBy: connection.id,
+            } satisfies TerminalOpenInput & TerminalOpener),
+            () => terminalManager.closeOpenedBy(connection.id, { threadId, terminalId }),
+          ).pipe(Effect.provideService(Scope.Scope, connection.scope));
           // The shell exits with the CLI, so the terminal's own `exited`
           // event is the end of the login process, however it ended.
           yield* terminalManager.write({
@@ -651,6 +688,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           const unsubscribeOutput = yield* attachTerminalListener(key, token, threadId, terminalId);
 
           sessions.set(key, {
+            status: "live",
             agentId,
             threadId,
             terminalId,
@@ -674,16 +712,42 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           // Arms the FIRST countdown too — mirrors the GUI walker sending
           // the command and immediately being subject to the stall timer.
           yield* Queue.offer(stallQueue, undefined);
+          return { terminalId };
         });
 
-        yield* attempt.pipe(
-          Effect.tapError(() =>
-            restoreLoginState(key, before).pipe(Effect.andThen(homes.discard(key))),
-          ),
+        // The key is taken in the same step it is found free, and the attempt's cleanup is in
+        // place before anything can interrupt it.
+        return yield* Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            const existing = sessions.get(key);
+            if (existing?.status === "live") {
+              return { terminalId: existing.terminalId };
+            }
+            if (existing !== undefined) {
+              return yield* new ZeropsAgentLoginError({
+                reason: "unavailable",
+                detail: "This sign-in is already starting. Try again in a moment.",
+              });
+            }
+            sessions.set(key, { status: "reserved", token });
+            const before = (yield* Ref.get(state)).logins[key];
+            return yield* restore(attempt).pipe(
+              // A failed or interrupted attempt leaves the login as it was. The key is let go of
+              // last: a start after that prepares a scratch home this one no longer discards.
+              Effect.onError(() =>
+                restoreLoginState(key, before).pipe(
+                  Effect.andThen(homes.discard(key)),
+                  Effect.ensuring(Effect.sync(() => disposeSession(key, token))),
+                ),
+              ),
+            );
+          }),
         );
-
-        return { terminalId };
-      });
+      }).pipe(
+        // The attempt is the connection's, not this call's: the connection's end interrupts it.
+        Effect.forkIn(connection.scope),
+        Effect.flatMap(Fiber.join),
+      );
 
     const cancel = (
       agentId: ZeropsAgentId,
@@ -692,7 +756,8 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       Effect.gen(function* () {
         const key = loginId ?? agentId;
         const session = sessions.get(key);
-        if (session === undefined) {
+        // A start still opening its terminal is its own to finish or undo.
+        if (session?.status !== "live") {
           return;
         }
         disposeSession(key, session.token);
@@ -723,7 +788,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         const session = sessions.get(key);
         const login = (yield* Ref.get(state)).logins[key];
         if (
-          session === undefined ||
+          session?.status !== "live" ||
           login === undefined ||
           ZEROPS_AGENT_LOGIN_HANDLERS[agentId].flowMode !== "paste-code" ||
           !AWAITING_CODE_PHASES.has(login.phase)

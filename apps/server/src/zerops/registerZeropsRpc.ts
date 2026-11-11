@@ -107,6 +107,11 @@ export interface RegisterZeropsRpcDeps {
    */
   readonly subject: string;
   /**
+   * The connection these calls arrive on, from `ws.ts`, never from RPC input: an agent sign-in
+   * started on it ends with it.
+   */
+  readonly connection: ZeropsAgentLoginModule.LoginConnection;
+  /**
    * `ws.ts`'s update admission: while a Mate update waits, a call that changes something is
    * refused (or, for a continuation, let through) so the update starts once work is done.
    */
@@ -414,6 +419,7 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
     zeropsDataConsole,
     zeropsGitRemoteProbe,
     subject,
+    connection,
     admit,
   } = deps;
 
@@ -430,10 +436,10 @@ export const registerZeropsRpc = (deps: RegisterZeropsRpcDeps): ZeropsRpcHandler
       admit(
         WS_METHODS.zeropsAgentLoginStart,
         input.loginId === undefined
-          ? zeropsAgentLogin.start(input.agentId, input.threadId, subject)
+          ? zeropsAgentLogin.start(input.agentId, input.threadId, subject, connection)
           : resolveLoginTarget(zeropsLogins, input.agentId, input.loginId).pipe(
               Effect.flatMap((login) =>
-                zeropsAgentLogin.start(input.agentId, input.threadId, subject, login),
+                zeropsAgentLogin.start(input.agentId, input.threadId, subject, connection, login),
               ),
             ),
       ),

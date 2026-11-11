@@ -221,10 +221,15 @@ export class TerminalManager extends Context.Service<
     }) => Effect.Effect<void>;
 
     /**
-     * Close every terminal whose process the session opened, hanging up its
-     * shell. Answers how many it closed.
+     * Close every terminal whose process the session opened — given a
+     * terminal, only that one — hanging up its shell. Answers how many it
+     * closed. The opener is read again under the thread's lock: a terminal
+     * reopened for another session meanwhile stays open.
      */
-    readonly closeOpenedBy: (sessionId: AuthSessionId) => Effect.Effect<number>;
+    readonly closeOpenedBy: (
+      sessionId: AuthSessionId,
+      terminal?: { readonly threadId: string; readonly terminalId: string },
+    ) => Effect.Effect<number>;
 
     /**
      * Subscribe to terminal runtime events with a direct callback.
@@ -3101,29 +3106,34 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   // Hangs up rather than terminates: an interactive shell ignores SIGTERM and would outlive the
   // session by the kill grace, and a hung-up shell passes the hangup on to its jobs.
-  const closeOpenedBy: TerminalManager["Service"]["closeOpenedBy"] = (sessionId) =>
+  const closeOpenedBy: TerminalManager["Service"]["closeOpenedBy"] = (sessionId, terminal) =>
     Effect.gen(function* () {
-      const opened = [...(yield* readManagerState).sessions.values()].filter(
-        (session) => session.openedBy === sessionId,
-      );
-      yield* Effect.forEach(
-        opened,
-        (session) =>
-          withThreadLock(
-            session.threadId,
-            closeSession(session.threadId, session.terminalId, false, "SIGHUP"),
-          ).pipe(
-            Effect.catchCause((cause) =>
-              Effect.logWarning("failed to close a terminal its revoked session opened", {
-                threadId: session.threadId,
-                terminalId: session.terminalId,
-                cause,
-              }),
-            ),
+      const opened =
+        terminal === undefined
+          ? [...(yield* readManagerState).sessions.values()].filter(
+              (session) => session.openedBy === sessionId,
+            )
+          : [terminal];
+      const closed = yield* Effect.forEach(opened, ({ threadId, terminalId }) =>
+        withThreadLock(
+          threadId,
+          Effect.gen(function* () {
+            const current = yield* getSession(threadId, terminalId);
+            if (Option.isNone(current) || current.value.openedBy !== sessionId) return false;
+            yield* closeSession(threadId, terminalId, false, "SIGHUP");
+            return true;
+          }),
+        ).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("failed to close a terminal its session opened", {
+              threadId,
+              terminalId,
+              cause,
+            }).pipe(Effect.as(false)),
           ),
-        { discard: true },
+        ),
       );
-      return opened.length;
+      return closed.filter(Boolean).length;
     });
 
   let updateFenced = options.updateBootFenced ?? false;

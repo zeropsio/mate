@@ -21,6 +21,7 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import {
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
@@ -390,7 +391,11 @@ function readClientConnectionOrigin(
   };
 }
 
-const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
+const makeWsRpcLayer = (
+  currentSession: EnvironmentAuth.AuthenticatedSession,
+  /** The connection's own scope: it closes when the socket ends. */
+  connectionScope: Scope.Scope,
+) =>
   WsRpcGroup.toLayer(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
@@ -1350,6 +1355,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           zeropsGitRemoteProbe,
           zeropsCrewProposals,
           subject: currentSession.subject,
+          connection: { id: currentSessionId, scope: connectionScope },
           admit,
         }),
         ...registerCrewRpc({
@@ -2029,6 +2035,8 @@ export const websocketRpcRouteLayer = HttpRouter.add(
   "/ws",
   Effect.gen(function* () {
     const request = yield* HttpServerRequest.HttpServerRequest;
+    // The request's scope lives as long as the socket: the connection's own.
+    const connectionScope = yield* Effect.scope;
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
     const config = yield* ServerConfig.ServerConfig;
     if (!isAllowedWebSocketOrigin(config, request.headers.origin)) {
@@ -2159,7 +2167,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       return httpEffect;
     }).pipe(
       Effect.provide(
-        makeWsRpcLayer(session).pipe(
+        makeWsRpcLayer(session, connectionScope).pipe(
           Layer.provideMerge(RpcSerialization.layerJson),
           // Request fibers run in the handlers' context, so this reporter sees
           // their defects, not the rest of the server's.
