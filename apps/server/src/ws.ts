@@ -1817,8 +1817,11 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
           Stream.unwrap(
             Effect.gen(function* () {
               const usageLimitsCommand = input.usageLimitsCommand === true;
+              // Subscribe before the snapshot so changes made while it loads are buffered.
+              const keybindingsChanges = yield* keybindings.subscribeChanges;
+              const settingsChanges = yield* serverSettings.subscribeChanges;
               const config = yield* loadServerConfig({ usageLimitsCommand });
-              const keybindingsUpdates = keybindings.streamChanges.pipe(
+              const keybindingsUpdates = keybindingsChanges.pipe(
                 Stream.map((event) => ({
                   version: 1 as const,
                   type: "keybindingsUpdated" as const,
@@ -1912,7 +1915,7 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
                       })),
                     )
                   : Stream.empty;
-              const settingsUpdates = serverSettings.streamChanges.pipe(
+              const settingsUpdates = settingsChanges.pipe(
                 Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
                 Stream.map((settings) => ({
                   version: 1 as const,
