@@ -1,4 +1,4 @@
-import { useAtomValue } from "@effect/atom-react";
+import { RegistryContext, useAtomMount, useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -32,6 +32,7 @@ import {
   type ReactNode,
   type SetStateAction,
   useCallback,
+  useContext,
   useEffect,
   useEffectEvent,
   useLayoutEffect,
@@ -71,7 +72,7 @@ import { readLocalApi } from "~/localApi";
 import { confirmTerminalClose } from "~/lib/terminalCloseConfirm";
 import { useClientSettings } from "../hooks/useSettings";
 import { useLocalStorage } from "../hooks/useLocalStorage";
-import { useAttachedTerminalSession } from "../state/terminalSessions";
+import { attachedTerminalSessionAtom } from "../state/terminalSessions";
 import { serverEnvironment } from "../state/server";
 import { terminalEnvironment } from "../state/terminal";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -132,7 +133,10 @@ export function terminalDrawerHeightForKey(
   return nextHeight === null ? null : clampDrawerHeightToBounds(nextHeight, bounds);
 }
 
-function writeSystemMessage(terminal: GhosttyTerminalSurface, message: string): void {
+function writeSystemMessage(
+  terminal: Pick<GhosttyTerminalSurface, "write">,
+  message: string,
+): void {
   terminal.write(`\r\n[terminal] ${message}\r\n`);
 }
 
@@ -145,6 +149,35 @@ export function writeTerminalOutputUpdate(
   } else if (update.type === "append") {
     terminal.write(update.data);
   }
+}
+
+/** Writes what changed between two session notifications: new output, then a new error. */
+export function synchronizeTerminalSession(
+  terminal: Pick<GhosttyTerminalSurface, "resetAndWrite" | "write" | "clearSelection">,
+  previous: Pick<TerminalSessionState, "output" | "version" | "error">,
+  session: Pick<TerminalSessionState, "output" | "version" | "error">,
+  cursor: TerminalOutputCursor,
+): TerminalOutputCursor {
+  let nextCursor = cursor;
+  if (session.version !== previous.version || session.output !== previous.output) {
+    const update = readTerminalOutputUpdate(session.output, cursor);
+    writeTerminalOutputUpdate(terminal, update);
+    nextCursor = update.cursor;
+    terminal.clearSelection();
+  }
+  // An attach failure can change only the error, keeping the last buffer.
+  if (session.error !== null && session.error !== previous.error) {
+    writeSystemMessage(terminal, session.error);
+  }
+  return nextCursor;
+}
+
+/**
+ * A running session's output generation. A new one is a fresh attachment (a
+ * reconnect or a new PTY) that has not seen the surface's grid yet.
+ */
+function runningSessionGeneration(session: TerminalSessionState): number | null {
+  return session.version > 0 && session.status === "running" ? session.output.generation : null;
 }
 
 function parseTerminalColor(value: string, fallback: GhosttyColor): GhosttyColor {
@@ -454,16 +487,24 @@ export function TerminalViewport({
     }),
   );
   const terminalFontRef = useRef({ family: terminalFontFamily, size: terminalFontSize });
-  const terminalSession = useAttachedTerminalSession({
-    environmentId,
-    terminal: {
-      threadId,
-      terminalId,
-      cwd,
-      ...(worktreePath !== undefined ? { worktreePath } : {}),
-      ...(runtimeEnv ? { env: runtimeEnv } : {}),
-    },
+  // Keyed by the launch, which also keys the surface setup below, so the
+  // subscription there always follows this atom.
+  const terminalSessionAtom = attachedTerminalSessionAtom(environmentId, {
+    threadId,
+    terminalId,
+    cwd,
+    ...(worktreePath !== undefined ? { worktreePath } : {}),
+    ...(runtimeEnv ? { env: runtimeEnv } : {}),
   });
+  // Attaching starts with the viewport, while the WASM surface is still loading;
+  // the surface reads the session itself, so output chunks never re-render here.
+  useAtomMount(terminalSessionAtom);
+  const registry = useContext(RegistryContext);
+  const readTerminalSession = useEffectEvent(() => registry.get(terminalSessionAtom));
+  const subscribeTerminalSession = useEffectEvent(
+    (listener: (session: TerminalSessionState) => void) =>
+      registry.subscribe(terminalSessionAtom, listener),
+  );
   const writeTerminal = useEffectEvent((data: string) =>
     runTerminalWrite({
       environmentId,
@@ -476,9 +517,6 @@ export function TerminalViewport({
       input: { threadId, terminalId, cols, rows },
     }),
   );
-  const terminalOutput = terminalSession.output;
-  const terminalError = terminalSession.error;
-  const terminalStatus = terminalSession.status;
   const outputCursorRef = useRef<TerminalOutputCursor>(INITIAL_TERMINAL_OUTPUT_CURSOR);
   const synchronizedStatusRef = useRef<TerminalSessionState["status"]>("closed");
   const synchronizeTerminalStatus = useEffectEvent(
@@ -498,20 +536,6 @@ export function TerminalViewport({
       synchronizedStatusRef.current = status;
     },
   );
-  const terminalVersion = terminalSession.version;
-  const previousSessionRef = useRef({
-    output: terminalOutput,
-    error: terminalError,
-    status: terminalStatus,
-    version: terminalVersion,
-  });
-  const latestSessionRef = useRef(previousSessionRef.current);
-  latestSessionRef.current = {
-    output: terminalOutput,
-    error: terminalError,
-    status: terminalStatus,
-    version: terminalVersion,
-  };
 
   useEffect(() => {
     keybindingsRef.current = keybindings;
@@ -579,8 +603,7 @@ export function TerminalViewport({
       if (currentFont.family !== setupFont.family || currentFont.size !== setupFont.size) {
         void terminal.setFont(terminalFontOptions(currentFont.family, currentFont.size));
       }
-      const latestSession = latestSessionRef.current;
-      previousSessionRef.current = latestSession;
+      const latestSession = readTerminalSession();
       const initialOutput = readTerminalOutputUpdate(
         latestSession.output,
         INITIAL_TERMINAL_OUTPUT_CURSOR,
@@ -596,6 +619,29 @@ export function TerminalViewport({
       // never started, so only "exited" triggers the message — as with xterm.)
       synchronizedStatusRef.current = "closed";
       synchronizeTerminalStatus(terminal, latestSession.status);
+      // Read and subscribe in one synchronous step so no output lands between them.
+      let previousSession = latestSession;
+      let resizeGeneration = runningSessionGeneration(latestSession);
+      setupCleanups.push(
+        subscribeTerminalSession((session) => {
+          const nextResizeGeneration = runningSessionGeneration(session);
+          if (nextResizeGeneration !== resizeGeneration) {
+            resizeGeneration = nextResizeGeneration;
+            // A new attachment (a reconnect, a restarted server) has not heard
+            // this surface's grid yet.
+            if (nextResizeGeneration !== null) terminal.resendSize();
+          }
+          const previous = previousSession;
+          previousSession = session;
+          synchronizeTerminalStatus(terminal, session.status);
+          outputCursorRef.current = synchronizeTerminalSession(
+            terminal,
+            previous,
+            session,
+            outputCursorRef.current,
+          );
+        }),
+      );
       // Startup may finish after the user has returned to the composer.
       if (visibleRef.current && mount.contains(document.activeElement)) {
         terminal.focus();
@@ -971,37 +1017,6 @@ export function TerminalViewport({
       if (hadFocus && mount.isConnected) mount.focus({ preventScroll: true });
     };
   }, [cwd, environmentId, runtimeEnvKey, terminalId, threadId, worktreePath]);
-
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    const current = {
-      output: terminalOutput,
-      error: terminalError,
-      status: terminalStatus,
-      version: terminalVersion,
-    };
-    if (!terminal) {
-      previousSessionRef.current = current;
-      return;
-    }
-
-    const previous = previousSessionRef.current;
-    synchronizeTerminalStatus(terminal, current.status);
-    if (current.version === previous.version && current.output === previous.output) {
-      return;
-    }
-
-    const outputUpdate = readTerminalOutputUpdate(current.output, outputCursorRef.current);
-    writeTerminalOutputUpdate(terminal, outputUpdate);
-    outputCursorRef.current = outputUpdate.cursor;
-    terminal.clearSelection();
-
-    if (current.error !== null && current.error !== previous.error) {
-      writeSystemMessage(terminal, current.error);
-    }
-
-    previousSessionRef.current = current;
-  }, [terminalOutput, terminalError, terminalStatus, terminalVersion]);
 
   useEffect(() => {
     if (!autoFocus || !visible) return;

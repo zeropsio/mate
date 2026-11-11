@@ -861,6 +861,12 @@ export class GhosttyTerminalSurface {
     this.applyFontMetrics();
   };
 
+  /** Reports the current grid again, for a PTY that has not heard it yet. */
+  resendSize(): void {
+    this.resizeNotified = false;
+    this.fit();
+  }
+
   fit(): boolean {
     if (this.disposed || !this.visible) return false;
     const width = this.mount.clientWidth;
