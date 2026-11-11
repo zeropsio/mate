@@ -2,9 +2,11 @@ import * as NodeOS from "node:os";
 
 import type { ClaudeSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { expandHomePath } from "../../pathExpansion.ts";
 
 const quotePath = Schema.encodeSync(Schema.fromJsonString(Schema.String));
@@ -76,6 +78,23 @@ export const makeClaudeEnvironment = Effect.fn("makeClaudeEnvironment")(function
     // keychain) intact.
     CLAUDE_CONFIG_DIR: resolvedHomePath,
   };
+});
+
+/**
+ * Whether an administrator installed Claude Code's `managed-mcp.json`. While it exists Claude
+ * refuses `--strict-mcp-config` and exits before initializing, but it already ignores user,
+ * project and `--mcp-config` servers, so callers isolating MCP can drop the flag.
+ */
+export const hasClaudeManagedMcpConfig = Effect.fn("hasClaudeManagedMcpConfig")(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const platform = yield* HostProcessPlatform;
+  const managedMcpConfigPath =
+    platform === "darwin"
+      ? "/Library/Application Support/ClaudeCode/managed-mcp.json"
+      : platform === "win32"
+        ? "C:\\Program Files\\ClaudeCode\\managed-mcp.json"
+        : "/etc/claude-code/managed-mcp.json";
+  return yield* fileSystem.exists(managedMcpConfigPath).pipe(Effect.orElseSucceed(() => false));
 });
 
 export const makeClaudeContinuationGroupKey = Effect.fn("makeClaudeContinuationGroupKey")(
