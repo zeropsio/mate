@@ -157,6 +157,8 @@ export interface TraceSink {
 export interface LocalFileTracerOptions extends TraceSinkOptions {
   readonly delegate?: Tracer.Tracer;
   readonly sink?: TraceSink;
+  /** Rewrites an attribute before the file and the delegate record it. */
+  readonly redactAttribute?: (key: string, value: unknown) => unknown;
 }
 
 type OtlpSpan = OtlpTracer.ScopeSpan["spans"][number];
@@ -503,14 +505,17 @@ class LocalFileSpan implements Tracer.Span {
   events: Array<[name: string, startTime: bigint, attributes: Record<string, unknown>]>;
   private readonly delegate: Tracer.Span;
   private readonly push: (record: EffectTraceRecord) => void;
+  private readonly redactAttribute: ((key: string, value: unknown) => unknown) | undefined;
 
   constructor(
     options: Parameters<Tracer.Tracer["span"]>[0],
     delegate: Tracer.Span,
     push: (record: EffectTraceRecord) => void,
+    redactAttribute?: (key: string, value: unknown) => unknown,
   ) {
     this.delegate = delegate;
     this.push = push;
+    this.redactAttribute = redactAttribute;
     this.name = delegate.name;
     this.spanId = delegate.spanId;
     this.traceId = delegate.traceId;
@@ -542,8 +547,9 @@ class LocalFileSpan implements Tracer.Span {
   }
 
   attribute(key: string, value: unknown): void {
-    this.attributes.set(key, value);
-    this.delegate.attribute(key, value);
+    const recorded = this.redactAttribute ? this.redactAttribute(key, value) : value;
+    this.attributes.set(key, recorded);
+    this.delegate.attribute(key, recorded);
   }
 
   event(name: string, startTime: bigint, attributes?: Record<string, unknown>): void {
@@ -579,7 +585,12 @@ export const makeLocalFileTracer = Effect.fn("makeLocalFileTracer")(function* (
 
   return Tracer.make({
     span(spanOptions) {
-      return new LocalFileSpan(spanOptions, delegate.span(spanOptions), sink.push);
+      return new LocalFileSpan(
+        spanOptions,
+        delegate.span(spanOptions),
+        sink.push,
+        options.redactAttribute,
+      );
     },
     ...(delegate.context ? { context: delegate.context } : {}),
   });
