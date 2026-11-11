@@ -751,7 +751,7 @@ it.each([
     const stages = result.stdout.split("\n");
     for (const client of clients) {
       expect(stages, "ASSERTION: every affected app keeps its typecheck").toContain(
-        `typecheck @t3tools/${client}: vp exec tsc --noEmit --incremental`,
+        `typecheck @t3tools/${client}: vp exec effect-tsgo tsrs --noEmit --incremental`,
       );
       expect(stages, "ASSERTION: the gate runs each affected app's selected unit test").toContain(
         `related @t3tools/${client}: vp test run src/gateSelectionFixture.test.ts`,
@@ -790,7 +790,7 @@ it.each(["mobile", "desktop"])(
         ),
         "ASSERTION: native-only edits run their typecheck and unit test",
       ).toEqual([
-        `typecheck @t3tools/${client}: vp exec tsc --noEmit --incremental`,
+        `typecheck @t3tools/${client}: vp exec effect-tsgo tsrs --noEmit --incremental`,
         `related @t3tools/${client}: vp test run src/nativeGateFixture.test.ts`,
       ]);
       expect(

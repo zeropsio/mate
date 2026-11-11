@@ -31,7 +31,7 @@ import {
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@t3tools/shared/projectFavicon";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
@@ -747,7 +747,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
               expiresAt,
             };
       if (sourceFaviconPath && canonicalFaviconPath) {
-        const crypto = yield* Crypto.Crypto;
+        const crypto = yield* Digest.Digest;
         const faviconBytes = yield* fileSystem.readFile(canonicalFaviconPath).pipe(
           Effect.mapError(
             (cause) =>
@@ -757,7 +757,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
               }),
           ),
         );
-        const revision = yield* crypto.digest("SHA-256", faviconBytes).pipe(
+        const revision = yield* crypto.digest(Digest.sha256, faviconBytes).pipe(
           Effect.map(Hex.encode),
           Effect.mapError(
             (cause) =>

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalConsole:off globalDate:off -- blocking CI smoke and affected scenarios.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off globalConsole:off globalDate:off -- blocking CI smoke and affected scenarios.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";

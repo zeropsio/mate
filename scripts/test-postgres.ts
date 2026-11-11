@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off globalDate:off -- host-only test process supervisor protocol.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off globalDate:off -- host-only test process supervisor protocol.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeNet from "node:net";

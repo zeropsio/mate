@@ -4,6 +4,8 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -303,7 +305,7 @@ describe("XAiAcpExtension", () => {
           requestId: promptId,
         },
       });
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("fails a hung standard prompt from an xAI rate-limit completion", () =>
@@ -324,7 +326,7 @@ describe("XAiAcpExtension", () => {
         code: -32003,
         errorMessage: "Grok usage limit reached. Try again later.",
       });
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it.effect("ignores stale xAI completion from an already settled prompt", () =>
@@ -355,7 +357,7 @@ describe("XAiAcpExtension", () => {
           requestId: secondPromptId,
         },
       });
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 
   it("extracts plan markdown from exit_plan_mode payloads", () => {

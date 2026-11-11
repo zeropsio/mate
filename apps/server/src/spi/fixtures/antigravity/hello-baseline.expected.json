@@ -7,22 +7,19 @@
     "threadId": "spi-replay-antigravity-thread",
     "payload": {
       "resume": {
+        "protocolVersion": 2,
         "agentCapabilities": {
-          "auth": {
-            "logout": {}
-          },
           "loadSession": true,
           "promptCapabilities": {
-            "embeddedContext": true,
-            "image": true
+            "image": true,
+            "embeddedContext": true
           },
           "sessionCapabilities": {
             "resume": {}
+          },
+          "auth": {
+            "logout": {}
           }
-        },
-        "agentInfo": {
-          "name": "antigravity-acp",
-          "version": "mock"
         },
         "authMethods": [
           {
@@ -30,7 +27,10 @@
             "name": "Sign in with Google"
           }
         ],
-        "protocolVersion": 1
+        "agentInfo": {
+          "name": "antigravity-acp",
+          "version": "mock"
+        }
       }
     }
   },

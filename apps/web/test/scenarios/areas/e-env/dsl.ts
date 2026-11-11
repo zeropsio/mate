@@ -1,4 +1,4 @@
-// @effect-diagnostics preferSchemaOverJson:off nodeBuiltinImport:off -- human-readable failure diagnostics.
+// @effect-diagnostics globalJsonInEffect:off nodeBuiltinImport:off -- human-readable failure diagnostics.
 import * as NodeCrypto from "node:crypto";
 import { openScenarioNavigation } from "../../harness/hqCore.ts";
 import * as Effect from "effect/Effect";

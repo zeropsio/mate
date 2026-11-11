@@ -35,7 +35,7 @@ import {
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -800,14 +800,14 @@ export const layer = Layer.effect(
     const live = yield* McpLive;
     const files = yield* nodeFileStore;
     const http = yield* HttpClient.HttpClient;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const resolve =
       yield* Effect.context<Effect.Services<ReturnType<typeof resolveMcpAgentPaths>>>();
     return yield* make({
       files,
       live,
       signInPage: mcpSignInPage(config.zerops?.publicOrigin, config.basePath),
-      newId: crypto.randomUUIDv4.pipe(Effect.orDie),
+      newId: crypto.uuidV4().pipe(Effect.orDie),
       relay: relayToListener(http),
       paths: settings.getSettings.pipe(
         Effect.mapError(

@@ -8,7 +8,7 @@ import {
   type EngineCallResult,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Layer from "effect/Layer";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -173,11 +173,8 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
                 run: (_id, effect) => r.run(effect),
               } as EnvironmentRegistry["Service"]),
               Layer.succeed(
-                Crypto.Crypto,
-                Crypto.make({
-                  randomBytes: (size) => new Uint8Array(size),
-                  digest: (_algorithm, data) => Effect.succeed(data),
-                }),
+                SecureRandom.SecureRandom,
+                SecureRandom.make((size) => new Uint8Array(size)),
               ),
             ),
           );
@@ -217,11 +214,8 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
                 run: (_id, effect) => r.run(effect),
               } as EnvironmentRegistry["Service"]),
               Layer.succeed(
-                Crypto.Crypto,
-                Crypto.make({
-                  randomBytes: (size) => new Uint8Array(size),
-                  digest: (_algorithm, data) => Effect.succeed(data),
-                }),
+                SecureRandom.SecureRandom,
+                SecureRandom.make((size) => new Uint8Array(size)),
               ),
             ),
           );

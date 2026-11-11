@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off preferSchemaOverJson:off -- gate check over the scenario tree.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalJsonInEffect:off -- gate check over the scenario tree.
 /**
  * Every directory under the scenario areas has a case cap in `budget.json`, and holds no more
  * cases than it. Only the owner raises a cap. Cases under the owner-reported layout regressions

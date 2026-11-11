@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off preferSchemaOverJson:off -- host gate runner.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalJsonInEffect:off -- host gate runner.
 import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
@@ -1700,7 +1700,7 @@ export function selectGateSteps(
     steps.push({
       name: `typecheck ${pkg.name}`,
       command: "vp",
-      args: ["exec", "tsc", "--noEmit", "--incremental"],
+      args: ["exec", "effect-tsgo", "tsrs", "--noEmit", "--incremental"],
       cwd: pkg.directory,
     });
   // The web's own test projects import the web and its dependencies, so they typecheck whenever it does.
@@ -1711,7 +1711,8 @@ export function selectGateSteps(
       command: "vp",
       args: [
         "exec",
-        "tsc",
+        "effect-tsgo",
+        "tsrs",
         "--noEmit",
         "--incremental",
         "-p",
@@ -1724,7 +1725,8 @@ export function selectGateSteps(
       command: "vp",
       args: [
         "exec",
-        "tsc",
+        "effect-tsgo",
+        "tsrs",
         "--noEmit",
         "--incremental",
         "-p",

@@ -23,7 +23,7 @@
  *
  * @module ZeropsAccessSocket
  */
-import { NodeWS } from "@effect/platform-node/NodeSocket";
+import * as NodeWS from "@effect/platform-node/NodeWS";
 import { readUserRoles } from "@t3tools/shared/mateAccess";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";

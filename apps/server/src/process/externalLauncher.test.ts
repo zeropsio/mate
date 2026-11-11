@@ -331,7 +331,7 @@ it.effect("reveals a file in File Explorer through PowerShell on Windows", () =>
       "Bypass",
       "-EncodedCommand",
     ]);
-    const encodedCommand = spawned.args[spawned.args.length - 1] ?? "";
+    const encodedCommand = String(spawned.args[spawned.args.length - 1] ?? "");
     const decodedCommand = Buffer.from(encodedCommand, "base64").toString("utf16le");
     // explorer.exe expects `/select,"<path>"` with only the path quoted;
     // PowerShell 5.1's Start-Process passes the argument string verbatim.
@@ -479,7 +479,7 @@ it.effect.skipIf(windowsHost)(
       // The reveal routes through interop PowerShell so Explorer receives its
       // raw `/select,"<path>"` switch even for spaced paths.
       assert.equal(spawned.command, "powershell.exe");
-      const encodedCommand = spawned.args[spawned.args.length - 1] ?? "";
+      const encodedCommand = String(spawned.args[spawned.args.length - 1] ?? "");
       const decodedCommand = Buffer.from(encodedCommand, "base64").toString("utf16le");
       assert.equal(
         decodedCommand,

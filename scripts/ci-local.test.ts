@@ -48,7 +48,7 @@ it("CI and local Check run the lane's standalone scenario typecheck", () => {
     "utf8",
   );
   expect(checkSteps(workflow).map((step) => step.run)).toContain(
-    "vp exec tsc --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json",
+    "vp exec effect-tsgo tsrs --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json",
   );
 });
 

@@ -14,7 +14,7 @@ import {
   type UserInputQuestion,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -981,7 +981,7 @@ export function makeOpenCodeAdapter(
     const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
     const openCodeRuntime = yield* OpenCodeRuntime;
     const threadPolicies = yield* readOpenCodeThreadPolicies;
-    const crypto = yield* Crypto.Crypto;
+    const crypto = yield* SecureRandom.SecureRandom;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const sameDirectory = (left: string, right: string) =>
@@ -1017,7 +1017,7 @@ export function makeOpenCodeAdapter(
       }
       return current;
     });
-    const randomUUIDv4 = crypto.randomUUIDv4.pipe(
+    const randomUUIDv4 = crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
           new ProviderAdapterRequestError({

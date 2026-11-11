@@ -8,7 +8,7 @@
 import type { MateAccessMember } from "@t3tools/shared/mateAccess";
 import type { TicketRefusal } from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -68,7 +68,7 @@ export class ZeropsConnections extends Context.Service<
 
 export const make = Effect.gen(function* () {
   const access = yield* ZeropsMateAccessList;
-  const crypto = yield* Crypto.Crypto;
+  const crypto = yield* SecureRandom.SecureRandom;
   const tickets = yield* ZeropsTicketDoor;
   const scope = yield* Effect.scope;
   const lock = yield* Semaphore.make(1);
@@ -152,7 +152,7 @@ export const make = Effect.gen(function* () {
         const member = openMember(list, userId);
         if (member === undefined || ticketVerdict(list, userId, now) !== "open")
           return Option.none<ConnectionIdentity>();
-        const connectionId = yield* crypto.randomUUIDv4.pipe(Effect.orDie);
+        const connectionId = yield* crypto.uuidV4().pipe(Effect.orDie);
         connections.set(id, {
           connectionId,
           id,

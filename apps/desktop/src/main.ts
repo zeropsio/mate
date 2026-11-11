@@ -7,6 +7,7 @@ for (const stream of [process.stdout, process.stderr]) {
 import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 // @effect-diagnostics-next-line nodeBuiltinImport:off - Version output must flush before Electron exits, without acquiring the runtime.
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -79,7 +80,9 @@ const electronLayer = Layer.mergeAll(
   ElectronDialog.layer,
   ElectronMenu.layer,
   ElectronPowerMonitor.layer,
-  ElectronProtocol.layer.pipe(Layer.provideMerge(NodeServices.layer)),
+  ElectronProtocol.layer.pipe(
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
+  ),
   ElectronSafeStorage.layer,
   ElectronShell.layer,
   ElectronTheme.layer,
@@ -113,7 +116,7 @@ const desktopApplicationLayer = Layer.mergeAll(
 );
 
 const desktopApplicationRuntimeLayer = desktopApplicationLayer.pipe(
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   Layer.provideMerge(NodeHttpClient.layerUndici),
   Layer.provideMerge(electronLayer),
 );

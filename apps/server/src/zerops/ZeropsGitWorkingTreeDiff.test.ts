@@ -4,6 +4,7 @@
  * whatever git is handed outside it lies on the service's own disk, never this container's.
  */
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -74,8 +75,10 @@ describe("a checkout's changes not committed, in Diff", () => {
             spawned.push({ command: command.command });
             return platform.spawn(command);
           }
-          spawned.push({ command: "ssh", host: command.args.at(-2) ?? "" });
-          return platform.spawn(ChildProcess.make("sh", ["-c", remote(command.args.at(-1) ?? "")]));
+          spawned.push({ command: "ssh", host: String(command.args.at(-2) ?? "") });
+          return platform.spawn(
+            ChildProcess.make("sh", ["-c", remote(String(command.args.at(-1) ?? ""))]),
+          );
         });
         const repository: ZeropsRepository = {
           host,
@@ -117,7 +120,7 @@ describe("a checkout's changes not committed, in Diff", () => {
         Effect.scoped,
         Effect.provide(
           ServerConfig.layerTest(process.cwd(), { prefix: "mate-working-tree-diff-config-" }).pipe(
-            Layer.provideMerge(NodeServices.layer),
+            Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
           ),
         ),
       ),

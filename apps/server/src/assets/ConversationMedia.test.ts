@@ -2,6 +2,7 @@
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { EventId, ThreadId, OrchestrationThreadDetailSnapshot } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -37,7 +38,7 @@ const layer = Layer.mergeAll(
   Layer.succeed(AssetSigningKey.AssetSigningKey, { get: Effect.die("legacy signing is not used") }),
 ).pipe(
   Layer.provideMerge(layerTest(process.cwd(), { prefix: "mate-capture-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 it.effect(
   "captures a produced image without a viewer and gives pathname reuse a new occurrence",

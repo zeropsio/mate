@@ -9,6 +9,8 @@ import {
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Layer from "effect/Layer";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 
 import { decideOrchestrationCommand } from "./decider.ts";
 import { createEmptyReadModel, projectEvent } from "./projector.ts";
@@ -38,7 +40,7 @@ const seedProjectCreated = (sequence: number): OrchestrationEvent => ({
   },
 });
 
-it.layer(NodeServices.layer)("decider project defaults", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("decider project defaults", (it) => {
   it.effect("only treats metadata updates as explicit model defaults", () =>
     Effect.gen(function* () {
       const selection: ModelSelection = {

@@ -7,6 +7,13 @@
     "threadId": "spi-replay-cursor-mcp-thread",
     "payload": {
       "resume": {
+        "protocolVersion": 1,
+        "agentCapabilities": {
+          "loadSession": true,
+          "sessionCapabilities": {
+            "resume": {}
+          }
+        },
         "_meta": {
           "modelState": {
             "currentModelId": "grok-4.6",
@@ -46,14 +53,7 @@
               }
             ]
           }
-        },
-        "agentCapabilities": {
-          "loadSession": true,
-          "sessionCapabilities": {
-            "resume": {}
-          }
-        },
-        "protocolVersion": 1
+        }
       }
     }
   },
@@ -117,13 +117,13 @@
         "sessionId": "mock-session-1",
         "update": {
           "sessionUpdate": "tool_call",
+          "toolCallId": "item-0",
+          "title": "zerops: zerops_discover",
           "kind": "other",
+          "status": "pending",
           "rawInput": {
             "targetService": "api"
-          },
-          "status": "pending",
-          "title": "zerops: zerops_discover",
-          "toolCallId": "item-0"
+          }
         }
       }
     },
@@ -182,6 +182,8 @@
         "sessionId": "mock-session-1",
         "update": {
           "sessionUpdate": "tool_call_update",
+          "toolCallId": "item-0",
+          "status": "completed",
           "content": [
             {
               "type": "content",
@@ -198,9 +200,7 @@
                 "text": "{\"status\":\"FINISHED\"}"
               }
             ]
-          },
-          "status": "completed",
-          "toolCallId": "item-0"
+          }
         }
       }
     },
@@ -245,13 +245,13 @@
         "sessionId": "mock-session-1",
         "update": {
           "sessionUpdate": "tool_call",
+          "toolCallId": "item-1",
+          "title": "mcp__zerops__zerops_deploy",
           "kind": "execute",
+          "status": "pending",
           "rawInput": {
             "targetService": "api"
-          },
-          "status": "pending",
-          "title": "mcp__zerops__zerops_deploy",
-          "toolCallId": "item-1"
+          }
         }
       }
     },
@@ -310,6 +310,8 @@
         "sessionId": "mock-session-1",
         "update": {
           "sessionUpdate": "tool_call_update",
+          "toolCallId": "item-1",
+          "status": "completed",
           "content": [
             {
               "type": "content",
@@ -326,9 +328,7 @@
                 "text": "{\"status\":\"FINISHED\"}"
               }
             ]
-          },
-          "status": "completed",
-          "toolCallId": "item-1"
+          }
         }
       }
     },

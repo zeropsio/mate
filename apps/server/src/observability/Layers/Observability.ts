@@ -23,6 +23,12 @@ import * as ResourceAttribution from "../../resourceTelemetry/ResourceAttributio
 import { ServerLoggerLive } from "../../serverLogger.ts";
 import * as BrowserTraceCollector from "../BrowserTraceCollector.ts";
 
+/**
+ * Signed asset and upload URLs carry their bearer token as the first path
+ * segment after these prefixes; traces and the HTTP log line redact it.
+ */
+export const SIGNED_URL_PATH_PREFIXES = [ASSET_ROUTE_PREFIX, ATTACHMENT_UPLOAD_ROUTE_PREFIX];
+
 export const ObservabilityLive = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
@@ -73,11 +79,7 @@ export const ObservabilityLive = Layer.unwrap(
           maxFiles: config.traceMaxFiles,
           batchWindowMs: config.traceBatchWindowMs,
           sink,
-          // Signed asset and upload URLs carry their bearer token as the first path segment.
-          redactAttribute: makeUrlAttributeRedactor([
-            ASSET_ROUTE_PREFIX,
-            ATTACHMENT_UPLOAD_ROUTE_PREFIX,
-          ]),
+          redactAttribute: makeUrlAttributeRedactor(SIGNED_URL_PATH_PREFIXES),
           ...(delegate ? { delegate } : {}),
         });
 

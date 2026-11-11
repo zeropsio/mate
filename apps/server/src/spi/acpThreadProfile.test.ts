@@ -1,5 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 import * as Effect from "effect/Effect";
 
 import { acpGateCalls, acpTerminalReason, decideAcpPermission } from "./acpThreadProfile.ts";

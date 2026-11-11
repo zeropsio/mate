@@ -22,6 +22,7 @@
  * holds regardless of which thread a notification is addressed to.
  */
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import {
   CodexSettings,
   type ProviderApprovalDecision,
@@ -263,7 +264,7 @@ export async function replayCodex(fixture: Fixture): Promise<ReadonlyArray<SpiEv
     ServerConfig.layerTest(process.cwd(), process.cwd()),
     ServerSettingsService.layerTest(),
     providerSessionDirectoryTestLayer,
-  ).pipe(Layer.provideMerge(NodeServices.layer));
+  ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
   return Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(testLayer)));
 }

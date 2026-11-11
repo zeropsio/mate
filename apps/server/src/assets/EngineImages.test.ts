@@ -2,6 +2,7 @@
 import * as NodeFSP from "node:fs/promises";
 import { layerLoopbackTest } from "../testing/loopbackHttpServer.ts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { AuthOrchestrationReadScope, AuthSessionId, ThreadId } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -34,7 +35,7 @@ const layer = Layer.mergeAll(
   }),
 ).pipe(
   Layer.provideMerge(layerTest(process.cwd(), { prefix: "engine-images-" })),
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 // Decision: V1 behaviour unchanged; engine gets image parity.

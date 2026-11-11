@@ -15,6 +15,7 @@ import {
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { assert, it } from "@effect/vitest";
 import { IMAGE_ONLY_BOOTSTRAP_PROMPT, USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 import * as Effect from "effect/Effect";
@@ -62,7 +63,7 @@ const makeProjectionPipelinePrefixedTestLayer = (prefix: string) =>
     Layer.provideMerge(OrchestrationEventStoreLive),
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix })),
     Layer.provideMerge(SqlitePersistenceMemory),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
 
 const exists = (filePath: string) =>
@@ -3707,7 +3708,7 @@ it.effect("restores pending turn-start metadata across projection pipeline resta
         ServerConfig.layerTest(process.cwd(), {
           prefix: "t3-projection-pipeline-restart-",
         }),
-        NodeServices.layer,
+        Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
       ),
     ),
   ),
@@ -3729,7 +3730,7 @@ const engineLayer = it.layer(
         prefix: "t3-projection-pipeline-engine-dispatch-",
       }),
     ),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   ),
 );
 

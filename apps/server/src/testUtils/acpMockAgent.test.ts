@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off - drives the mock agent as a real child process over raw stdin.
+// @effect-diagnostics nodeBuiltinImport:off globalJsonInEffect:off - drives the mock agent as a real child process over raw stdin.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";

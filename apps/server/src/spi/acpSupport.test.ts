@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import type * as EffectAcpSchema from "effect-acp/schema";
+import type * as EffectAcpSchema from "effect-acp/compat";
 
 import {
   applyCursorAcpModelSelection,
@@ -51,9 +51,11 @@ describe("applyGrokAcpModelSelection", () => {
             calls.push(meta === undefined ? { modelId } : { modelId, meta });
             return {};
           }),
+        setModel: () => Effect.die("A v1 session never sets its model through a config option."),
       };
 
       const changed = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-build",
         requestedModelId: "grok-mock-alt",
@@ -63,6 +65,7 @@ describe("applyGrokAcpModelSelection", () => {
       expect(calls).toEqual([{ modelId: "grok-mock-alt" }]);
 
       const unchanged = yield* applyGrokAcpModelSelection({
+        selectsModelByConfigOption: false,
         runtime,
         currentModelId: "grok-build",
         requestedModelId: "grok-build",

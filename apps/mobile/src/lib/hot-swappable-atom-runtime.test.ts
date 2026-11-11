@@ -167,10 +167,14 @@ describe("hotSwappableAtomRuntime", () => {
     });
     const valueAtom = runtime.atom(RuntimeValue.pipe(Effect.map((service) => service.value)));
     const values: string[] = [];
-    const unsubscribe = registry.subscribe(valueAtom, (result) => {
-      if (AsyncResult.isSuccess(result)) values.push(result.value);
-    });
-    registry.get(valueAtom);
+    // A subscriber hears changes; the value the atom already holds is asked for.
+    const unsubscribe = registry.subscribe(
+      valueAtom,
+      (result) => {
+        if (AsyncResult.isSuccess(result)) values.push(result.value);
+      },
+      { immediate: true },
+    );
 
     hotSwappableAtomRuntime({
       id,

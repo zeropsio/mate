@@ -1,5 +1,6 @@
-import * as NodeSocket from "@effect/platform-node/NodeSocket";
+import * as NodeWS from "@effect/platform-node/NodeWS";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as NodeCryptoLayer from "@effect/platform-node/NodeCrypto";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- Effect's Crypto has no KeyObject, generateKeyPairSync, or sign.
 import * as NodeCrypto from "node:crypto";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
@@ -194,7 +195,7 @@ import { engineLayerInert } from "./engine/testing/inertEngine.ts";
 
 const defaultProjectId = ProjectId.make("project-default");
 const defaultThreadId = ThreadId.make("thread-default");
-const defaultDesktopBootstrapToken = "test-desktop-bootstrap-token";
+const defaultTestCredential = "test-credential";
 const defaultModelSelection = {
   instanceId: ProviderInstanceId.make("codex"),
   model: "gpt-5-codex",
@@ -642,7 +643,6 @@ const buildAppUnderTest = (options?: {
       zeropsCrew: false,
       noBrowser: true,
       startupPresentation: "browser",
-      desktopBootstrapToken: defaultDesktopBootstrapToken,
       autoBootstrapProjectFromCwd: false,
       logWebSocketEvents: false,
       basePath: "",
@@ -860,6 +860,10 @@ const buildAppUnderTest = (options?: {
         ),
       ),
     );
+    // The config subscription acquires both change feeds before it reads the snapshot;
+    // the real services hand back the same feed, buffered from that moment.
+    const keybindingsChanges = options?.layers?.keybindings?.streamChanges ?? Stream.empty;
+    const serverSettingsChanges = options?.layers?.serverSettings?.streamChanges ?? Stream.empty;
     const servedRoutesLayer = serveRoutes({
       disableListenLog: true,
       disableLogger: true,
@@ -872,7 +876,8 @@ const buildAppUnderTest = (options?: {
               keybindings: [],
               issues: [],
             }),
-            streamChanges: Stream.empty,
+            streamChanges: keybindingsChanges,
+            subscribeChanges: Effect.succeed(keybindingsChanges),
             ...options?.layers?.keybindings,
           }),
           Layer.mock(UsageLimitSources.UsageLimitSources)({
@@ -914,7 +919,8 @@ const buildAppUnderTest = (options?: {
           ready: Effect.void,
           getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
           updateSettings: () => Effect.succeed(DEFAULT_SERVER_SETTINGS),
-          streamChanges: Stream.empty,
+          streamChanges: serverSettingsChanges,
+          subscribeChanges: Effect.succeed(serverSettingsChanges),
           ...options?.layers?.serverSettings,
         }),
       ),
@@ -923,6 +929,7 @@ const buildAppUnderTest = (options?: {
           Layer.mock(ExternalLauncher.ExternalLauncher)({
             resolveAvailableEditors: () => Effect.succeed([]),
             resolveFileManagerRevealKind: () => Effect.undefined,
+            rediscoverEditors: () => Effect.void,
             ...options?.layers?.externalLauncher,
           }),
           Layer.mock(RemoteOpenTargets.RemoteOpenTargets)({
@@ -1433,7 +1440,7 @@ const wsRpcProtocolLayer = (
     Socket.WebSocketConstructor,
     (socketUrl, protocols) => {
       // Socket.makeWebSocket only ever passes its `protocols` option here.
-      const socket = new NodeSocket.NodeWS.WebSocket(
+      const socket = new NodeWS.WebSocket(
         socketUrl,
         protocols as string | string[] | undefined,
         ticket
@@ -1510,7 +1517,7 @@ const getHttpServerUrl = (pathname = "") =>
   });
 
 const exchangeAccessToken = (
-  credential = defaultDesktopBootstrapToken,
+  credential = defaultTestCredential,
   options?: {
     readonly headers?: Record<string, string>;
     readonly scope?: string;
@@ -1522,8 +1529,7 @@ const exchangeAccessToken = (
   },
 ) =>
   Effect.gen(function* () {
-    if (credential === defaultDesktopBootstrapToken)
-      credential = (yield* issueFixtureGrant()).credential;
+    if (credential === defaultTestCredential) credential = (yield* issueFixtureGrant()).credential;
     const tokenUrl = yield* getHttpServerUrl("/oauth/token");
     const response = yield* fetchEffect(tokenUrl, {
       method: "POST",
@@ -1756,12 +1762,12 @@ const issueFixtureGrant = (
     ),
   );
 
-const getAuthenticatedAuthorizationHeader = (credential = defaultDesktopBootstrapToken) =>
+const getAuthenticatedAuthorizationHeader = (credential = defaultTestCredential) =>
   getAuthenticatedBearerSessionToken(credential).pipe(Effect.map((token) => `Bearer ${token}`));
 
-const getAuthenticatedBearerSessionToken = (credential = defaultDesktopBootstrapToken) =>
+const getAuthenticatedBearerSessionToken = (credential = defaultTestCredential) =>
   Effect.gen(function* () {
-    if (credential === defaultDesktopBootstrapToken) {
+    if (credential === defaultTestCredential) {
       const auth = yield* testAuth;
       return (yield* auth.issueSession({
         subject: "zerops-user:test",
@@ -1868,7 +1874,7 @@ const getWsServerUrl = (
     );
   });
 
-it.layer(NodeServices.layer)("server router seam", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server router seam", (it) => {
   it.effect(
     "an exact first-frame HQ ticket opens RPC and authorizes HTTP only for its live connection",
     () =>
@@ -1921,7 +1927,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
       const url = yield* getWsServerUrl("/ws", { authenticated: false });
       const status = yield* Effect.callback<number | undefined, Error>((resume) => {
-        const socket = new NodeSocket.NodeWS.WebSocket(url, {
+        const socket = new NodeWS.WebSocket(url, {
           origin: "https://foreign.example.test",
         });
         socket.once("unexpected-response", (_request, response) => {
@@ -4773,8 +4779,8 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const { cookie, url } = parseAuthorizationFromWsUrl(yield* getWsServerUrl("/ws"));
       const openSocket = (perMessageDeflate: boolean) =>
         Effect.acquireRelease(
-          Effect.callback<NodeSocket.NodeWS.WebSocket, Error>((resume) => {
-            const socket = new NodeSocket.NodeWS.WebSocket(url, {
+          Effect.callback<NodeWS.WebSocket, Error>((resume) => {
+            const socket = new NodeWS.WebSocket(url, {
               perMessageDeflate,
               ...(cookie ? { headers: { authorization: cookie } } : {}),
             });
@@ -5021,7 +5027,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
 
       const response = yield* HttpClient.post("/api/auth/browser-session", {
-        body: yield* HttpBody.json({ credential: defaultDesktopBootstrapToken }),
+        body: yield* HttpBody.json({ credential: defaultTestCredential }),
       });
       assert.equal(response.status, 404);
       assert.equal(response.headers["set-cookie"], undefined);
@@ -5039,7 +5045,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.deepInclude(yield* ticketResponse.json, { reason: "missing_credential" });
       const url = yield* getWsServerUrl("/ws", { authenticated: false });
       const code = yield* Effect.callback<number, Error>((resume) => {
-        const socket = new NodeSocket.NodeWS.WebSocket(url, {
+        const socket = new NodeWS.WebSocket(url, {
           origin: "https://mate.zerops.io",
           headers: { cookie },
         });
@@ -5796,7 +5802,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       // Other routes keep their HTTP server span.
       const session = yield* HttpClient.get("/api/auth/session", { headers: { authorization } });
       assert.equal(session.status, 200);
-      assert.include(spanNames, "http.server GET");
+      assert.include(spanNames, "GET");
     }).pipe(Effect.provide(layerLoopbackTest())),
   );
 

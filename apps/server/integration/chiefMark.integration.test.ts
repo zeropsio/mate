@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off -- a loopback HQ the Mate links to.
 import { describe, expect, it } from "@effect/vitest";
-import { NodeWS } from "@effect/platform-node/NodeSocket";
+import * as NodeWS from "@effect/platform-node/NodeWS";
 import {
   CommandId,
   ConversationId,

@@ -1,5 +1,5 @@
 import { type EnvironmentId, type ProjectReadFileResult, WS_METHODS } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import { Atom } from "effect/reactivity";
 
 import {
@@ -40,7 +40,7 @@ function optimisticProjectFileKey(target: OptimisticProjectFileTarget): string {
 }
 
 export function createProjectCommands<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry | Crypto.Crypto | R, E>,
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | SecureRandom.SecureRandom | R, E>,
 ) {
   const projectScheduler = createAtomCommandScheduler();
   const projectConcurrency = {
@@ -71,7 +71,7 @@ export function createProjectCommands<R, E>(
 }
 
 export function createProjectEnvironmentAtoms<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry | Crypto.Crypto | R, E>,
+  runtime: Atom.AtomRuntime<EnvironmentRegistry | SecureRandom.SecureRandom | R, E>,
 ) {
   const fileScheduler = createAtomCommandScheduler();
   const optimisticFileFamily = Atom.family((key: string) =>
