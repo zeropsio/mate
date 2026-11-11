@@ -189,6 +189,11 @@ type Item =
       readonly stages: ReadonlyArray<readonly [string, number, number]>;
       /** A deploy's pipeline as its card reads it of the platform: each step, from when to when. */
       readonly pipeline?: ReadonlyArray<readonly [PipelineStepId, number, number]>;
+      /** A batch deploy's services, each with the pipeline its own version runs. */
+      readonly services?: ReadonlyArray<{
+        readonly name: string;
+        readonly pipeline: ReadonlyArray<readonly [PipelineStepId, number, number]>;
+      }>;
       /** Where what it deployed answers, once it is out. */
       readonly address?: string;
     }
@@ -445,6 +450,61 @@ const DEPLOY: Run = {
   write: 905,
   end: 910,
   answer: "The fix is on stage and the smoke tests pass.",
+};
+
+/**
+ * One call deploying two services, each at its own pace and with its own steps: `at=4` both wait,
+ * `at=7` the platform reads their zerops.yml, `at=30` and `at=70` they are at different steps (one
+ * pipeline has no prepare steps), `at=130` both are out.
+ */
+const BATCH: Run = {
+  ask: "Put the fix on the pool and on stage.",
+  items: [
+    { id: "n1", kind: "note", start: 1, text: "Deploying the fix to shoppool and shopstage now." },
+    {
+      id: "d1",
+      kind: "deploy",
+      start: 2,
+      returns: 120,
+      end: 120,
+      subject: "shoppool, shopstage",
+      stages: [
+        ["Building", 2, 80],
+        ["Deploying", 80, 120],
+      ],
+      services: [
+        {
+          name: "shoppool",
+          pipeline: [
+            ["INIT_BUILD_CONTAINER", 9, 20],
+            ["RUN_BUILD_COMMANDS", 20, 26],
+            ["INIT_PREPARE_CONTAINER", 26, 55],
+            ["RUN_PREPARE_COMMANDS", 55, 82],
+            ["DEPLOY", 82, 112],
+          ],
+        },
+        {
+          name: "shopstage",
+          pipeline: [
+            ["INIT_BUILD_CONTAINER", 10, 22],
+            ["RUN_BUILD_COMMANDS", 22, 66],
+            ["DEPLOY", 66, 120],
+          ],
+        },
+      ],
+    },
+    {
+      id: "c1",
+      kind: "command",
+      start: 122,
+      end: 600,
+      words: "Run the smoke tests on shopstage",
+      code: 'ssh shopstage "cd /var/www && npm run smoke"',
+    },
+  ],
+  write: 605,
+  end: 610,
+  answer: "The fix is on the pool and on stage.",
 };
 
 /** Two edits in a row, then a command: the second folds into the first once it lands. */
@@ -1102,6 +1162,7 @@ const RUN: Run =
     long: LONG,
     edits: EDITS,
     deploy: DEPLOY,
+    batch: BATCH,
     cards: CARDS,
     interrupt: INTERRUPT,
     smooth: SMOOTH,
@@ -1229,20 +1290,58 @@ function HandedBuildLog({
 /** What a deploy's card read of the platform, made up: its pipeline at the run's second, its log. */
 function handedOperationCard(operation: ZeropsOperation): OperationCardRegions | undefined {
   const item = RUN.items.find((candidate) => `op:${candidate.id}` === operation.key);
-  if (item === undefined || item.kind !== "deploy" || item.pipeline === undefined) return undefined;
+  if (item === undefined || item.kind !== "deploy") return undefined;
   const t = drawnAt;
-  const steps = item.pipeline.map(([id, from, to]) => {
-    const state = t >= to ? "finished" : t >= from ? "running" : "waiting";
+  const read = (pipeline: ReadonlyArray<readonly [PipelineStepId, number, number]>) =>
+    pipeline.map(([id, from, to]) => {
+      const state = t >= to ? "finished" : t >= from ? "running" : "waiting";
+      return {
+        id,
+        label: PIPELINE_LABEL[id],
+        state,
+        sentence: PIPELINE_LABEL[id],
+        ...(state === "waiting"
+          ? {}
+          : { durationMs: (Math.min(t, to) - from) * 1000, startedAt: iso(from) }),
+      } as const;
+    });
+  if (item.services !== undefined)
     return {
-      id,
-      label: PIPELINE_LABEL[id],
-      state,
-      sentence: PIPELINE_LABEL[id],
-      ...(state === "waiting"
-        ? {}
-        : { durationMs: (Math.min(t, to) - from) * 1000, startedAt: iso(from) }),
-    } as const;
-  });
+      observed: {
+        steps: [],
+        chips: [],
+        provenance: "",
+        services: item.services.map((service) => {
+          const first = service.pipeline[0]?.[1] ?? 0;
+          const last = service.pipeline.at(-1)?.[2] ?? 0;
+          // Its version exists a few seconds in; its steps are known a few seconds after.
+          if (t < first - 4)
+            return { name: service.name, state: "waiting", stateLabel: "Waiting", steps: [] };
+          if (t < first)
+            return {
+              name: service.name,
+              state: "running",
+              stateLabel: "Deploying",
+              steps: [],
+              calculating: true,
+            };
+          const steps = read(service.pipeline);
+          const built = steps.some(
+            (step) => step.id === "RUN_BUILD_COMMANDS" && step.state !== "waiting",
+          );
+          return {
+            name: service.name,
+            ...(t >= last
+              ? { state: "done" as const, stateLabel: "Deployed" }
+              : { state: "running" as const, stateLabel: "Deploying" }),
+            steps,
+            ...(built ? { log: <HandedBuildLog running={t < last} subject={service.name} /> } : {}),
+          };
+        }),
+      },
+    };
+  if (item.pipeline === undefined) return undefined;
+  const steps = read(item.pipeline);
   const running = t < item.end;
   const pipeline: PipelineReadout = {
     status: running ? { tone: "running", word: "Running" } : { tone: "finished", word: "Finished" },
@@ -1279,6 +1378,7 @@ function operationEntry(
           stateLabel: t >= to ? "Done" : t >= from ? label : "Waiting",
         }));
   const subject = item.kind === "browser" ? item.page : item.subject;
+  const services = item.kind === "deploy" ? item.services : undefined;
   const operation: ZeropsOperation = {
     key: `op:${item.id}`,
     kind: item.kind,
@@ -1305,7 +1405,16 @@ function operationEntry(
           ? "Stood up"
           : "Checked"
       : "Working",
-    steps,
+    steps:
+      services === undefined
+        ? steps
+        : services.map((service) => ({
+            id: service.name,
+            label: service.name,
+            state: settled ? ("done" as const) : ("running" as const),
+            stateLabel: settled ? "Deployed" : "Running",
+          })),
+    ...(services === undefined ? {} : { batch: true }),
     links:
       item.kind === "deploy" && settled && item.address !== undefined
         ? [{ label: item.address, url: `https://${item.address}` }]
