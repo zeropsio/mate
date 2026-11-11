@@ -22,7 +22,8 @@ import {
 import { Atom } from "effect/reactivity";
 import { formatUsd } from "@t3tools/shared/usageFormat";
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
-import { EllipsisIcon, LogOutIcon } from "lucide-react";
+import { ArrowUpRightIcon, Building2Icon, EllipsisIcon, LogOutIcon } from "lucide-react";
+import { zeropsHqOrigin } from "~/zerops/signInMode";
 import { createContext, useContext, useId, useMemo, useState, type ReactNode } from "react";
 
 import {
@@ -412,6 +413,15 @@ export function SidebarZeropsAccountMenu({
           ) : null}
         </MenuItem>
       ))}
+      {/* HQ is a place of its own (hq.zerops.io: billing, top-ups, tokens), so it opens beside Mate. */}
+      <MenuItem
+        data-zerops-account-hq=""
+        render={<a href={zeropsHqOrigin()} rel="noreferrer" target="_blank" />}
+      >
+        <Building2Icon />
+        <span className="min-w-0 flex-1 truncate">HQ</span>
+        <ArrowUpRightIcon className="size-3.5 text-muted-foreground" />
+      </MenuItem>
 
       <MenuSeparator />
       {/* Sign-out keeps the menu open so the busy and failed states show
