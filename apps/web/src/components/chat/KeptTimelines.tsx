@@ -51,7 +51,6 @@ import {
   warmingTimeline,
   type KeptTimeline,
 } from "./keptTimelines.logic";
-import { HELD_READ_EVERY_MS } from "./heldRead";
 import { useWarmTimeline, type WarmTimelineProps } from "./useWarmTimeline";
 import { rememberedTimelineInset } from "./timelineInsets";
 import { ConversationOpeningLayer } from "./ConversationOpeningStage";
@@ -282,20 +281,6 @@ const TimelineSlot = memo(function TimelineSlot({
   if (changedNow && !changedAway) setChangedAway(true);
   if (mode === "open" && changedAway) setChangedAway(false);
   const opened = mode === "open" || mode === "remembered" || mode === "settling";
-  // Just left, it stands as the pane last drew it and is read anew a beat later (the pace a held
-  // list reads at): its reader derives the whole conversation again — and again for each read of
-  // its project that arrives after a switch — for nobody to see, in the moments the conversation
-  // just opened is being drawn. Resting on its row reads it at once.
-  const [reads, setReads] = useState(mode === "warm");
-  if (opened && reads) setReads(false);
-  useEffect(() => {
-    if (opened || reads) return;
-    const timer = window.setTimeout(() => setReads(true), HELD_READ_EVERY_MS);
-    return () => window.clearTimeout(timer);
-  }, [opened, reads]);
-  // Opening, it is drawn with the pane's own reading from its first frame — what the Mate is on
-  // now, its helpers, a message on its way — never with what it read out of sight, which is the
-  // conversation alone and may be a second old.
   if (opened && warmed !== null) setWarmed(null);
   const shown = mode === "open" || (mode === "remembered" && !changedAway);
   // Kept out of sight, gone quiet: not laid out until it shows.
@@ -334,7 +319,7 @@ const TimelineSlot = memo(function TimelineSlot({
             </CrewTimelineContext>
           </KeptTimelineContext>
         )}
-        {!opened && (reads || readsLive || mode === "warm") ? (
+        {!opened ? (
           <Reader
             key="reader"
             hold={mode === "hidden" && !readsLive}
