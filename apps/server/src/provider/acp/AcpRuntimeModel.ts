@@ -863,6 +863,18 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
       });
       break;
     }
+    // ACP v2 names each plan and also sends markdown plans; the one plan a turn shows is
+    // its latest list of steps.
+    case "plan_update": {
+      if (upd.plan.type !== "items" || !("entries" in upd.plan)) break;
+      if (!Array.isArray(upd.plan.entries)) break;
+      events.push({
+        _tag: "PlanUpdated",
+        payload: { plan: planSteps(upd.plan.entries) },
+        rawPayload: params,
+      });
+      break;
+    }
     case "tool_call": {
       const toolCall = parseTypedToolCallState(upd, {
         fallbackStatus: "pending",
