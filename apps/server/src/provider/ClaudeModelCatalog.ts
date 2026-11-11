@@ -159,10 +159,13 @@ function isVersionSupported(
 }
 
 /**
- * A bare alias (`haiku`, `sonnet`) names a family that several models carry,
+ * A bare alias (`haiku`, `sonnet`) names a family: several models carry it,
  * newest first. A model the installed Claude Code is too old for gives up its
- * aliases, so the alias lands on the newest model of the family this CLI
- * supports, the one the picker offers. Slugs still resolve. An unknown version
+ * shared aliases, so a bare alias lands on the newest model of the family this
+ * CLI supports, the one the picker offers. Aliases only one model carries
+ * (`opus-4.8`, `claude-fable-5.1`) keep naming that model, as slugs do. When the
+ * CLI runs no model of a family, its bare alias resolves to nothing and reaches
+ * Claude Code as typed, which then decides what it means. An unknown version
  * scopes nothing.
  */
 export function scopeClaudeModelCatalogToVersion(
@@ -170,11 +173,21 @@ export function scopeClaudeModelCatalogToVersion(
   version: string | null | undefined,
 ): ClaudeModelCatalog {
   if (!version) return catalog;
+  const carriers = new Map<string, number>();
+  for (const entry of catalog.models) {
+    for (const alias of entry.model.aliases ?? []) {
+      const key = alias.toLowerCase();
+      carriers.set(key, (carriers.get(key) ?? 0) + 1);
+    }
+  }
   return {
     models: catalog.models.map((entry) => {
       if (!entry.model.aliases || isVersionSupported(entry.compatibility, version)) return entry;
-      const { aliases: _aliases, ...model } = entry.model;
-      return { ...entry, model };
+      const aliases = entry.model.aliases.filter(
+        (alias) => (carriers.get(alias.toLowerCase()) ?? 0) < 2,
+      );
+      if (aliases.length === entry.model.aliases.length) return entry;
+      return { ...entry, model: { ...entry.model, aliases } };
     }),
   };
 }
