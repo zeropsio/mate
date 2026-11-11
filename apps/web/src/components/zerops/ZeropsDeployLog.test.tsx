@@ -54,7 +54,8 @@ vi.mock("../ui/dialog", () => {
   };
 });
 
-const TARGET = { jobId: "7", processId: "p7", appVersionId: "v7" };
+// A deploy whose version is unknown: one with a version opens the pipeline dialog instead.
+const TARGET = { jobId: "7", processId: "p7", appVersionId: null };
 const PROCESS: ActivityProcess = {
   id: "p7",
   projectId: "project-1",
